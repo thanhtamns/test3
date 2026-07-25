@@ -1,0 +1,170 @@
+"""Tests for DGM Proposer + Benchmark — Loop 3 self-rewriting."""
+
+import json
+import shutil
+import tempfile
+from pathlib import Path
+from dataclasses import asdict
+
+import pytest
+
+from ..dgm_proposer import DGMProposer, DGMProposal
+from ..dgm_benchmark import DGMBenchmark
+
+
+@pytest.fixture
+def evolution_dir(tmp_path):
+    evo = tmp_path / "evolution"
+    evo.mkdir()
+    (evo / "__init__.py").write_text("")
+    (evo / "mutator.py").write_text("def mutate(x):\n    return x + 1\n")
+    (evo / "fitness.py").write_text("def score(x):\n    return x * 0.5\n")
+    return evo
+
+
+@pytest.fixture
+def proposals_dir(tmp_path):
+    d = tmp_path / "dgm-proposals"
+    d.mkdir()
+    return d
+
+
+def mock_llm_call(prompt: str) -> str:
+    return json.dumps({
+        "target_file": "mutator.py",
+        "patch": "def mutate(x):\n    return x + 2\n",
+        "rationale": "Increase mutation step size for faster convergence",
+    })
+
+
+def mock_llm_outside_scope(prompt: str) -> str:
+    return json.dumps({
+        "target_file": "../stage0.md",
+        "patch": "# hacked",
+        "rationale": "Escape scope",
+    })
+
+
+@pytest.fixture
+def proposer(evolution_dir, proposals_dir):
+    return DGMProposer(
+        evolution_dir=evolution_dir,
+        proposals_dir=proposals_dir,
+        llm_call=mock_llm_call,
+    )
+
+
+class TestDGMProposer:
+    def test_reads_evolution_source_files(self, proposer, evolution_dir):
+        context = proposer.gather_context()
+        assert "mutator.py" in context["source_files"]
+        assert "fitness.py" in context["source_files"]
+        assert "def mutate" in context["source_files"]["mutator.py"]
+
+    def test_reads_performance_signals(self, proposer):
+        context = proposer.gather_context(
+            performance_data={"avg_fitness": 0.65, "fidelity": 0.8, "error_count": 2}
+        )
+        assert context["performance"]["avg_fitness"] == 0.65
+
+    def test_generates_valid_python_patch(self, proposer):
+        proposal = proposer.generate_proposal()
+        assert isinstance(proposal, DGMProposal)
+        assert proposal.target_file == "mutator.py"
+        compile(proposal.patch, "<test>", "exec")  # valid Python
+
+    def test_scope_locked_to_evolution_dir(self, evolution_dir, proposals_dir):
+        proposer = DGMProposer(
+            evolution_dir=evolution_dir,
+            proposals_dir=proposals_dir,
+            llm_call=mock_llm_outside_scope,
+        )
+        proposal = proposer.generate_proposal()
+        assert proposer.validate_scope(proposal) is False
+
+    def test_proposal_includes_rationale(self, proposer):
+        proposal = proposer.generate_proposal()
+        assert len(proposal.rationale) > 10
+
+    def test_rate_limited_to_50_cycles(self, proposer):
+        assert proposer.should_propose(cycles_since_last=10) is False
+        assert proposer.should_propose(cycles_since_last=50) is True
+        assert proposer.should_propose(cycles_since_last=100) is True
+
+
+class TestDGMBenchmark:
+    def test_runs_test_suite_on_modified_code(self, evolution_dir, proposals_dir):
+        proposal = DGMProposal(
+            target_file="mutator.py",
+            patch="def mutate(x):\n    return x + 2\n",
+            rationale="test",
+            generated_at="2026-05-16T00:00:00Z",
+        )
+        benchmark = DGMBenchmark(evolution_dir=evolution_dir, proposals_dir=proposals_dir)
+        result = benchmark.validate_syntax(proposal)
+        assert result is True
+
+    def test_rejects_invalid_syntax(self, evolution_dir, proposals_dir):
+        proposal = DGMProposal(
+            target_file="mutator.py",
+            patch="def mutate(x)\n    return x + 2\n",  # missing colon
+            rationale="bad syntax",
+            generated_at="2026-05-16T00:00:00Z",
+        )
+        benchmark = DGMBenchmark(evolution_dir=evolution_dir, proposals_dir=proposals_dir)
+        result = benchmark.validate_syntax(proposal)
+        assert result is False
+
+    def test_creates_backup_before_apply(self, evolution_dir, proposals_dir):
+        proposal = DGMProposal(
+            target_file="mutator.py",
+            patch="def mutate(x):\n    return x + 3\n",
+            rationale="test backup",
+            generated_at="2026-05-16T00:00:00Z",
+        )
+        benchmark = DGMBenchmark(evolution_dir=evolution_dir, proposals_dir=proposals_dir)
+        benchmark.apply_proposal(proposal)
+        backups = list(proposals_dir.glob("backup_*"))
+        assert len(backups) >= 1
+
+    def test_rollback_restores_original(self, evolution_dir, proposals_dir):
+        original = (evolution_dir / "mutator.py").read_text()
+        proposal = DGMProposal(
+            target_file="mutator.py",
+            patch="def mutate(x):\n    return x + 99\n",
+            rationale="test rollback",
+            generated_at="2026-05-16T00:00:00Z",
+        )
+        benchmark = DGMBenchmark(evolution_dir=evolution_dir, proposals_dir=proposals_dir)
+        benchmark.apply_proposal(proposal)
+        assert (evolution_dir / "mutator.py").read_text() != original
+        benchmark.rollback()
+        assert (evolution_dir / "mutator.py").read_text() == original
+
+    def test_audit_trail_saved(self, evolution_dir, proposals_dir):
+        proposal = DGMProposal(
+            target_file="mutator.py",
+            patch="def mutate(x):\n    return x + 5\n",
+            rationale="test audit",
+            generated_at="2026-05-16T00:00:00Z",
+        )
+        benchmark = DGMBenchmark(evolution_dir=evolution_dir, proposals_dir=proposals_dir)
+        benchmark.save_audit(proposal, accepted=True, reason="benchmark improved")
+        audits = list(proposals_dir.glob("proposal_*.json"))
+        assert len(audits) == 1
+        data = json.loads(audits[0].read_text())
+        assert data["accepted"] is True
+
+    def test_auto_rollback_after_3_drops(self, evolution_dir, proposals_dir):
+        benchmark = DGMBenchmark(evolution_dir=evolution_dir, proposals_dir=proposals_dir)
+        benchmark.record_outcome(improved=False)
+        benchmark.record_outcome(improved=False)
+        benchmark.record_outcome(improved=False)
+        assert benchmark.should_rollback(threshold=3) is True
+
+    def test_no_rollback_when_mixed(self, evolution_dir, proposals_dir):
+        benchmark = DGMBenchmark(evolution_dir=evolution_dir, proposals_dir=proposals_dir)
+        benchmark.record_outcome(improved=True)
+        benchmark.record_outcome(improved=False)
+        benchmark.record_outcome(improved=False)
+        assert benchmark.should_rollback(threshold=3) is False

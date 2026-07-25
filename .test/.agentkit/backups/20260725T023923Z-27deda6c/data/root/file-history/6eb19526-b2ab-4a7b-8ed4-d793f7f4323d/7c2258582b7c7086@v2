@@ -1,0 +1,87 @@
+---
+name: dream5
+description: Manage Dream 5 relationship targets (Phase 4). Usage: /dream5 add|give|status|replace
+---
+
+# /dream5 - Dream 5 Target Manager
+
+Track your 5 most important relationship targets. Give First, then Ask.
+
+## Usage
+
+```
+/dream5 add              # Add a new target (max 5 active)
+/dream5 give <id>        # Log a "give" action for a target
+/dream5 status           # Show all targets + give counts + dependency signals
+/dream5 replace <id>     # Replace non-responsive target
+```
+
+## Subcommands
+
+### `/dream5 add`
+
+Interview (AskUserQuestion):
+1. **Name** — Full name
+2. **Role & Company** — Current position
+3. **Why target?** — Specific reason (in the cashflow stream? multiplier?)
+4. **What they need that you can provide** — Specific value you offer
+5. **Best approach** — Event / intro / cold reach / online
+6. **Mutual connection** — Anyone who can introduce you?
+7. **Wealth multiple** — How much richer than you? (5-10x recommended)
+
+Save:
+```bash
+cd "D:\code\invesments\master_investments" && python execution/scripts/positioning-crud.py add-dream5 '{JSON}'
+```
+
+### `/dream5 give <target-id>`
+
+Interview:
+1. **Give type** — intel_share / introduction / problem_solving / attendance_support / research_gift
+2. **What did you give?** — Specific description
+3. **Their response** — How did they react? (no response / acknowledged / engaged / reciprocated)
+
+Save:
+```bash
+cd "D:\code\invesments\master_investments" && python execution/scripts/positioning-crud.py dream5-give '{"target_id": "<id>", ...}'
+```
+
+### `/dream5 status`
+
+Read dream5.json and display:
+
+```markdown
+## 🎯 Dream 5 Status
+
+| # | Name | Status | Gives | Last Interaction | Dependency Signals |
+|---|------|--------|-------|------------------|--------------------|
+| 1 | {name} | {status} | {give_count}/5 | {last_date} | {signal_count}/4 |
+| ... | | | | | |
+
+### Give-First Timeline
+- Target 1: Give #1 ✅ → Give #2 ✅ → Give #3 ⏳ → ...
+- Target 2: Give #1 ✅ → Give #2 ⏳ → ...
+
+### Dependency Signal Checklist
+For each responsive target:
+- [ ] Replies within 24h
+- [ ] Forwards info unprompted
+- [ ] Introduces you to others
+- [ ] Asks your opinion before decisions
+
+### ⚠️ Alerts
+- {target X}: No response after Give #2 → reduce frequency, try research gift
+- {target Y}: 30+ days since last interaction → re-engage
+```
+
+### `/dream5 replace <target-id>`
+
+Ask: Why replacing? (no response / not valuable / too distant / other)
+Mark target as "replaced" with reason. Then prompt `/dream5 add` for replacement.
+
+## Rules
+
+- Max 5 ACTIVE targets at any time
+- Give 5 Before Ask 1 — enforce this
+- If no response after Give #4 → MUST replace
+- Track every give with date and response

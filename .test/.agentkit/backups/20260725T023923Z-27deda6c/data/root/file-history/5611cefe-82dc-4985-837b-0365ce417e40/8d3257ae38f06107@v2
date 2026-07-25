@@ -1,0 +1,226 @@
+{
+  "dimensions": [
+    {
+      "id": "DIM-01",
+      "name": "competition_landscape",
+      "weight": 1.5,
+      "questions": [
+        "how many {business_type} in {country}",
+        "{niche} market saturation level {year}",
+        "{niche} new entrants last 12 months",
+        "barriers to entry {business_type} {country}",
+        "{niche} top 5 competitors revenue",
+        "{business_type} failure rate first year",
+        "how crowded is {niche} market",
+        "{niche} market consolidation trends"
+      ],
+      "required_fields": ["competition_count", "market_saturation", "barrier_score"],
+      "principle_alignment": ["P-001", "P-002", "P-003"]
+    },
+    {
+      "id": "DIM-02",
+      "name": "market_sizing",
+      "weight": 1.0,
+      "questions": [
+        "{niche} total addressable market size",
+        "{business_type} {country} market value {year}",
+        "{niche} growth rate year over year",
+        "how many potential customers for {business_type} in {country}",
+        "{niche} average customer lifetime value",
+        "{business_type} serviceable market {country}"
+      ],
+      "required_fields": ["tam_usd", "sam_usd", "growth_rate_pct"],
+      "principle_alignment": []
+    },
+    {
+      "id": "DIM-03",
+      "name": "cash_flow_mechanics",
+      "weight": 1.3,
+      "questions": [
+        "typical time to first revenue {business_type}",
+        "{business_type} average days to first sale",
+        "do customers prepay in {niche}",
+        "{business_type} payment terms typical",
+        "cash conversion cycle {business_type}",
+        "{niche} recurring revenue percentage",
+        "can you pre-sell {business_type} before building"
+      ],
+      "required_fields": ["time_to_first_revenue_days", "customer_pays_first", "recurring_pct"],
+      "principle_alignment": ["P-008", "P-012"]
+    },
+    {
+      "id": "DIM-04",
+      "name": "moat_analysis",
+      "weight": 1.2,
+      "questions": [
+        "how long to replicate {business_type}",
+        "{niche} switching costs for customers",
+        "does {business_type} have network effects",
+        "what proprietary data does {business_type} accumulate",
+        "{niche} brand loyalty factors",
+        "how defensible is {business_type} against well-funded competitor",
+        "{business_type} customer lock-in mechanisms"
+      ],
+      "required_fields": ["replication_time_months", "switching_cost_dollars", "network_effect_real", "knowledge_compounds"],
+      "principle_alignment": ["P-013", "P-014", "P-015", "P-016"]
+    },
+    {
+      "id": "DIM-05",
+      "name": "leverage_assessment",
+      "weight": 1.3,
+      "questions": [
+        "does {business_type} scale without more labor",
+        "marginal cost per additional customer {business_type}",
+        "{niche} automation potential",
+        "can {business_type} be run by one person",
+        "{business_type} exit multiple typical",
+        "does {business_type} create sellable asset",
+        "CENTS score framework applied to {niche}"
+      ],
+      "required_fields": ["leverage_type_score", "cents_score", "creates_asset"],
+      "principle_alignment": ["P-009", "P-010", "P-011"]
+    },
+    {
+      "id": "DIM-06",
+      "name": "asymmetric_payoff",
+      "weight": 1.5,
+      "questions": [
+        "maximum upside of {business_type} in {country}",
+        "worst case loss for starting {business_type}",
+        "upside downside ratio {niche}",
+        "does {business_type} benefit from market disruption",
+        "how many exit paths from {business_type}",
+        "{business_type} antifragile characteristics"
+      ],
+      "required_fields": ["upside_downside_ratio", "disruption_benefits", "exit_paths"],
+      "principle_alignment": ["P-004", "P-005", "P-006"]
+    },
+    {
+      "id": "DIM-07",
+      "name": "information_advantage",
+      "weight": 1.5,
+      "questions": [
+        "what local knowledge needed for {business_type} in {country}",
+        "information asymmetry opportunities in {niche}",
+        "what data advantage possible in {business_type}",
+        "proprietary insights needed for {niche}",
+        "does {country} location give info edge in {niche}"
+      ],
+      "required_fields": ["info_advantage_score"],
+      "principle_alignment": ["P-007"]
+    },
+    {
+      "id": "DIM-08",
+      "name": "regulatory_landscape",
+      "weight": 0.8,
+      "questions": [
+        "regulations for {business_type} in {country}",
+        "licensing requirements {niche} {country}",
+        "regulatory differences {business_type} between countries",
+        "is {business_type} legal in {country}",
+        "upcoming regulation changes {niche}"
+      ],
+      "required_fields": ["regulatory_arbitrage_exists"],
+      "principle_alignment": ["P-019"]
+    },
+    {
+      "id": "DIM-09",
+      "name": "cultural_barriers",
+      "weight": 0.8,
+      "questions": [
+        "does language barrier protect {business_type} in {country}",
+        "cultural factors {niche} {country}",
+        "can foreign companies enter {niche} in {country} easily",
+        "local advantages for {business_type} in {country}"
+      ],
+      "required_fields": ["language_barrier_protects"],
+      "principle_alignment": ["P-020"]
+    },
+    {
+      "id": "DIM-10",
+      "name": "founder_fit",
+      "weight": 1.0,
+      "questions": [
+        "skills needed to start {business_type}",
+        "minimum capital to start {business_type} in {country}",
+        "does {business_type} require physical presence",
+        "can {business_type} be started part-time",
+        "what experience needed for {niche}"
+      ],
+      "required_fields": ["founder_skill_match", "capital_required_usd"],
+      "principle_alignment": []
+    },
+    {
+      "id": "DIM-11",
+      "name": "timing_analysis",
+      "weight": 1.0,
+      "questions": [
+        "is {niche} market growing or declining {year}",
+        "{business_type} market cycle position",
+        "seasonal patterns in {niche}",
+        "technology shifts affecting {business_type}",
+        "best time to enter {niche} market"
+      ],
+      "required_fields": ["market_timing_score"],
+      "principle_alignment": []
+    },
+    {
+      "id": "DIM-12",
+      "name": "failure_patterns",
+      "weight": 1.3,
+      "questions": [
+        "why {business_type} fails most often",
+        "{niche} common mistakes new entrants",
+        "{business_type} failure rate statistics",
+        "biggest risk factors {business_type}",
+        "{niche} business closures reasons",
+        "post-mortem {business_type} failures"
+      ],
+      "required_fields": ["failure_rate_pct", "top_failure_reasons"],
+      "principle_alignment": []
+    },
+    {
+      "id": "DIM-13",
+      "name": "crowd_signal",
+      "weight": 1.2,
+      "questions": [
+        "how many youtube tutorials about {opportunity}",
+        "how many udemy courses on {business_type}",
+        "how many gurus selling {niche} courses",
+        "{business_type} reddit posts frequency",
+        "is {niche} trending on social media",
+        "how many {niche} influencers exist"
+      ],
+      "required_fields": ["tutorial_count", "guru_count"],
+      "principle_alignment": ["P-017", "CR-001"]
+    },
+    {
+      "id": "DIM-14",
+      "name": "chokepoint_analysis",
+      "weight": 1.2,
+      "questions": [
+        "what is the supply chain for {business_type}",
+        "bottlenecks in {niche} value chain",
+        "who controls distribution in {niche}",
+        "critical dependencies in {business_type}",
+        "can you own a chokepoint in {niche}"
+      ],
+      "required_fields": ["controls_chokepoint"],
+      "principle_alignment": ["P-018"]
+    },
+    {
+      "id": "DIM-15",
+      "name": "exit_optionality",
+      "weight": 0.8,
+      "questions": [
+        "can {business_type} pivot to adjacent markets",
+        "transferable skills from {business_type}",
+        "exit options for {business_type} owners",
+        "what asset remains if {business_type} fails",
+        "can {business_type} be sold on flippa or similar"
+      ],
+      "required_fields": ["exit_paths"],
+      "principle_alignment": ["P-006"]
+    }
+  ]
+}

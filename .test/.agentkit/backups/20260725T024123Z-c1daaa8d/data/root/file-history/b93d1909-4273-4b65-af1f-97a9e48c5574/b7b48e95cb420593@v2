@@ -1,0 +1,255 @@
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const { classifyGaps, getAllActionable } = require('./gap-classifier.cjs');
+const { shouldPass } = require('./convergence-detector.cjs');
+const { recordIteration, getIterationCount } = require('./audit-history.cjs');
+
+const SCHEMAS_DIR = path.join(__dirname, 'audit-schemas');
+const schemaCache = new Map();
+
+function loadSchema(type) {
+  if (schemaCache.has(type)) return schemaCache.get(type);
+  const filePath = path.join(SCHEMAS_DIR, `${type}.json`);
+  if (!fs.existsSync(filePath)) return null;
+  const schema = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+  schemaCache.set(type, schema);
+  return schema;
+}
+
+function loadAllSchemas() {
+  const files = fs.readdirSync(SCHEMAS_DIR).filter(f => f.endsWith('.json') && !f.startsWith('_'));
+  for (const f of files) {
+    const type = f.replace('.json', '');
+    if (!schemaCache.has(type)) loadSchema(type);
+  }
+  return [...schemaCache.values()];
+}
+
+function detectType(text) {
+  const schemas = loadAllSchemas();
+  let bestMatch = null;
+  let bestScore = 0;
+
+  for (const schema of schemas) {
+    if (schema.type === 'default') continue;
+    const patterns = schema.trigger_patterns || [];
+    let score = 0;
+    for (const p of patterns) {
+      if (text.toLowerCase().includes(p.toLowerCase())) score++;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatch = schema.type;
+    }
+  }
+
+  return bestScore > 0 ? bestMatch : 'default';
+}
+
+// Rule evaluation functions
+const ruleFunctions = {
+  min_length(text, arg) {
+    const num = parseInt(arg, 10);
+    return text.length >= num;
+  },
+
+  contains(text, patterns) {
+    const parts = patterns.split('|');
+    return parts.some(p => new RegExp(p.trim(), 'i').test(text));
+  },
+
+  not_contains(text, patterns) {
+    const parts = patterns.split('|');
+    return !parts.some(p => new RegExp(`\\b${p.trim()}\\b`, 'i').test(text));
+  },
+
+  section_exists(text, patterns) {
+    const parts = patterns.split('|');
+    return parts.some(p => {
+      const escaped = p.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return new RegExp(`(^|\\n)\\s*#+\\s*.*${escaped}|\\*\\*.*${escaped}`, 'im').test(text);
+    });
+  },
+
+  count_pattern(text, patterns) {
+    const parts = patterns.split('|');
+    let count = 0;
+    for (const p of parts) {
+      const matches = text.match(new RegExp(p.trim(), 'gi'));
+      if (matches) count += matches.length;
+    }
+    return count;
+  },
+
+  unsourced_number_count(text) {
+    // Numbers that aren't inside [K]/[T]/[?] tagged sentences or code blocks
+    const lines = text.split('\n').filter(l => !l.trim().startsWith('```') && !l.trim().startsWith('|'));
+    let unsourced = 0;
+    for (const line of lines) {
+      if (/\d{2,}/.test(line) && !/\[(K|T|\?)\]/.test(line) && !/^\s*(#|\||-)/.test(line)) {
+        unsourced++;
+      }
+    }
+    return unsourced;
+  },
+
+  vague_phrase_count(text, phrases) {
+    const parts = phrases.split('|');
+    let count = 0;
+    for (const p of parts) {
+      const matches = text.match(new RegExp(p.trim(), 'gi'));
+      if (matches) count += matches.length;
+    }
+    return count;
+  },
+
+  prose_ratio(text) {
+    const lines = text.split('\n').filter(l => l.trim().length > 0);
+    const proseLines = lines.filter(l => !l.trim().startsWith('#') && !l.trim().startsWith('|') && !l.trim().startsWith('-') && !l.trim().startsWith('```') && !l.trim().startsWith('>'));
+    return lines.length > 0 ? proseLines.length / lines.length : 1;
+  },
+
+  statement_ratio(text, threshold) {
+    const sentences = text.split(/[.!?](?:\s|$)/).filter(s => s.trim().length > 0);
+    if (sentences.length === 0) return true;
+    const questions = text.split(/\?(?:\s|$)/).length - 1;
+    const total = text.split(/[.!?](?:\s|$)/).filter(s => s.trim().length > 0).length;
+    if (total === 0) return true;
+    const ratio = (total - questions) / total;
+    return ratio >= parseFloat(threshold);
+  },
+
+  zone_tag_ratio(text) {
+    const lines = text.split('\n').filter(l => /\d/.test(l) && l.trim().length > 20);
+    if (lines.length === 0) return 1;
+    const tagged = lines.filter(l => /\[(K|T|\?)\]/.test(l));
+    return lines.length > 0 ? tagged.length / lines.length : 1;
+  },
+
+  avg_paragraph_length(text) {
+    const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim().length > 0);
+    if (paragraphs.length === 0) return 10;
+    const totalSentences = paragraphs.reduce((sum, p) => sum + p.split(/[.!?]\s/).length, 0);
+    return totalSentences / paragraphs.length;
+  },
+
+  no_score_contradiction(text) {
+    // Detect if same entity gets both high and low scores
+    const highScores = text.match(/\b(9|10|high|strong|excellent)\/10\b/gi) || [];
+    const lowScores = text.match(/\b(1|2|3|low|weak|poor)\/10\b/gi) || [];
+    // Simple heuristic: if both extremes present, potential contradiction
+    return !(highScores.length > 0 && lowScores.length > 0);
+  },
+
+  verdict_aligned_with_scores(text) {
+    const hasGo = /\b(GO|PROCEED|APPROVE)\b/.test(text);
+    const hasKill = /\b(KILL|REJECT|NO-GO)\b/.test(text);
+    const lowScores = (text.match(/\b[1-3]\/10\b/g) || []).length;
+    const highScores = (text.match(/\b[7-9]\/10\b/g) || []).length;
+    if (hasGo && lowScores > highScores) return false;
+    if (hasKill && highScores > lowScores) return false;
+    return true;
+  }
+};
+
+function stripQuotes(s) {
+  return s.replace(/^['"]|['"]$/g, '');
+}
+
+function evaluateRule(text, rule) {
+  // Handle OR combinator first (before regex matching)
+  if (rule.includes(') OR ')) {
+    const parts = rule.split(/\)\s+OR\s+/).map((p, i, arr) => i < arr.length - 1 ? p + ')' : p);
+    return parts.some(p => evaluateRule(text, p.trim()));
+  }
+
+  // Parse rule: "function_name(args)" or "function_name() OP value"
+  const compareMatch = rule.match(/^(\w+)\((.*?)\)\s*(>=|<=|>|<|==)\s*(.+)$/);
+  if (compareMatch) {
+    const [, fn, rawArgs, op, val] = compareMatch;
+    const args = stripQuotes(rawArgs.trim());
+    const fnRef = ruleFunctions[fn];
+    if (!fnRef) return true; // unknown rule = pass
+    const result = args ? fnRef(text, args) : fnRef(text);
+    const numVal = parseFloat(val);
+    switch (op) {
+      case '>=': return result >= numVal;
+      case '<=': return result <= numVal;
+      case '>': return result > numVal;
+      case '<': return result < numVal;
+      case '==': return result == numVal;
+    }
+  }
+
+  // Parse: "function_name(args)" returning boolean
+  const boolMatch = rule.match(/^(\w+)\((.*?)\)$/);
+  if (boolMatch) {
+    const [, fn, rawArgs] = boolMatch;
+    const args = stripQuotes(rawArgs.trim());
+    const fnRef = ruleFunctions[fn];
+    if (!fnRef) return true;
+    return args ? fnRef(text, args) : fnRef(text);
+  }
+
+  return true; // unknown format = pass
+}
+
+function runChecks(text, schema) {
+  const failed = [];
+  const dimensions = schema.dimensions || {};
+
+  for (const [dimName, dim] of Object.entries(dimensions)) {
+    const checks = dim.checks || [];
+    for (const check of checks) {
+      const passed = evaluateRule(text, check.rule);
+      if (!passed) {
+        failed.push({
+          ...check,
+          dimension: dimName
+        });
+      }
+    }
+  }
+
+  return failed;
+}
+
+function audit(text) {
+  const type = detectType(text);
+  const schema = loadSchema(type) || loadSchema('default');
+
+  if (!schema) {
+    return { type, passed: true, gaps: { critical: [], major: [], minor: [] }, iteration: 0, converged: false, reason: 'no_schema' };
+  }
+
+  // Check minimum length threshold
+  const minLen = schema.min_length || 500;
+  if (text.length < minLen) {
+    return { type, passed: true, gaps: { critical: [], major: [], minor: [] }, iteration: 0, converged: false, reason: 'below_min_length' };
+  }
+
+  const failedChecks = runChecks(text, schema);
+  const classified = classifyGaps(failedChecks);
+  const allGaps = [...classified.critical, ...classified.major, ...classified.minor];
+
+  // Check convergence BEFORE recording this iteration (compares against previous)
+  const convergence = shouldPass(allGaps);
+
+  recordIteration(allGaps);
+  const iteration = getIterationCount();
+
+  if (convergence.pass) {
+    return { type, passed: true, gaps: classified, iteration, converged: true, reason: convergence.reason, unfillable: convergence.unfillable };
+  }
+
+  const actionable = getAllActionable(classified);
+  if (actionable.length === 0) {
+    return { type, passed: true, gaps: classified, iteration, converged: false, reason: 'no_actionable_gaps' };
+  }
+
+  return { type, passed: false, gaps: classified, iteration, converged: false, reason: null };
+}
+
+module.exports = { audit, detectType, loadSchema, runChecks, evaluateRule, ruleFunctions };

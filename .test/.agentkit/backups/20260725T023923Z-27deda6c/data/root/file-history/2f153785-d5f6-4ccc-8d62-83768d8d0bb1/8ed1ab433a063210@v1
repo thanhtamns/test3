@@ -1,0 +1,227 @@
+#!/usr/bin/env python3
+"""multi-path-comparator.py — Force comparison of 3+ paths before recommendation.
+
+BLOCKING GATE: The system cannot make a single-path recommendation.
+Every recommendation must compare at least 3 alternative paths.
+
+Brain analogy: This is the "prefrontal cortex deliberation" — forcing the brain
+to consider multiple options before committing to action.
+
+Usage:
+    python multi-path-comparator.py --query "coffee export solo founder"
+    python multi-path-comparator.py --founder-profile profile.json
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+HERE = Path(__file__).parent
+CASES_DIR = HERE.parent / "kb" / "cases"
+
+
+def load_all_cases() -> list[dict]:
+    """Load all cases from KB."""
+    cases = []
+    if not CASES_DIR.exists():
+        return cases
+    for p in sorted(CASES_DIR.glob("*.json")):
+        try:
+            cases.append(json.loads(p.read_text(encoding="utf-8")))
+        except Exception:
+            continue
+    return cases
+
+
+def compute_query_relevance(case: dict, query: str) -> float:
+    """Simple keyword matching for query relevance."""
+    if not query:
+        return 0.5
+
+    query_lower = query.lower()
+    keywords = query_lower.split()
+
+    # Fields to search
+    searchable = " ".join([
+        str(case.get("topic", "")),
+        str(case.get("title_en", "")),
+        str(case.get("title_vn", "")),
+        str(case.get("domain", "")),
+        str(case.get("verdict_class", "")),
+    ]).lower()
+
+    matches = sum(1 for kw in keywords if kw in searchable)
+    return matches / len(keywords) if keywords else 0.5
+
+
+def compute_founder_fit(case: dict, founder_profile: dict | None) -> float:
+    """Compute founder-case fit score."""
+    if not founder_profile:
+        return 0.5
+
+    score = 0.5  # Base score
+    case_profile = case.get("founder_profile_fit", {})
+
+    # Capital match
+    founder_capital = founder_profile.get("capital_tier", "TIER_0")
+    case_capital = case_profile.get("capital_tier") or case_profile.get("capital_fit", "unknown")
+
+    if founder_capital in str(case_capital):
+        score += 0.15
+    elif "TIER_0" in str(case_capital) or "$0" in str(case_capital):
+        score += 0.1  # Zero capital is always accessible
+
+    # Track match
+    founder_track = founder_profile.get("track", "SERVICE_ENTRY")
+    if founder_track.lower() in str(case_profile).lower():
+        score += 0.15
+
+    # Skills match
+    if case_profile.get("skills_match") in (True, "true", 1):
+        score += 0.1
+
+    # Verdict boost (MOUNTAIN > PROVISIONAL > EXPLORATION > KILL)
+    verdict = case.get("verdict_class", "").upper()
+    if "MOUNTAIN" in verdict:
+        score += 0.1
+    elif "PROVISIONAL" in verdict:
+        score += 0.05
+    elif "KILL" in verdict:
+        score -= 0.2
+
+    return min(max(score, 0), 1)  # Clamp 0-1
+
+
+def compare_paths(
+    query: str = "",
+    founder_profile: dict | None = None,
+    min_paths: int = 3,
+) -> dict[str, Any]:
+    """Compare all paths and return top N ranked."""
+    cases = load_all_cases()
+
+    if not cases:
+        return {
+            "error": "No cases found in KB",
+            "paths": [],
+            "comparison_valid": False,
+        }
+
+    # Score all cases
+    scored = []
+    for case in cases:
+        p_mountain = case.get("p_mountain") or case.get("confidence", 0.5)
+        query_rel = compute_query_relevance(case, query)
+        founder_fit = compute_founder_fit(case, founder_profile)
+
+        # Combined score: 40% mountain potential, 30% query relevance, 30% founder fit
+        combined = 0.4 * float(p_mountain) + 0.3 * query_rel + 0.3 * founder_fit
+
+        scored.append({
+            "case_id": case.get("case_id", "unknown"),
+            "domain": case.get("domain", "unknown"),
+            "verdict": case.get("verdict_class") or case.get("verdict", "UNKNOWN"),
+            "p_mountain": round(float(p_mountain), 3),
+            "query_relevance": round(query_rel, 3),
+            "founder_fit": round(founder_fit, 3),
+            "combined_score": round(combined, 3),
+            "title": case.get("title_en") or case.get("title_vn", ""),
+            "alternative_paths": len(case.get("alternative_paths", [])),
+        })
+
+    # Sort by combined score
+    scored.sort(key=lambda x: x["combined_score"], reverse=True)
+
+    # Get top paths
+    top_paths = scored[:max(min_paths, 3)]
+
+    # Check if we have enough diversity
+    domains = set(p["domain"] for p in top_paths)
+    domain_diversity = len(domains) / len(top_paths) if top_paths else 0
+
+    return {
+        "query": query,
+        "founder_tier": founder_profile.get("capital_tier", "unknown") if founder_profile else "unknown",
+        "total_cases_evaluated": len(cases),
+        "paths_returned": len(top_paths),
+        "domain_diversity": round(domain_diversity, 2),
+        "comparison_valid": len(top_paths) >= min_paths,
+        "top_paths": top_paths,
+        "recommendation": top_paths[0] if top_paths else None,
+        "alternatives": top_paths[1:] if len(top_paths) > 1 else [],
+    }
+
+
+def format_comparison_table(result: dict) -> str:
+    """Format comparison as readable table."""
+    lines = [
+        "=" * 80,
+        f"MULTI-PATH COMPARISON REPORT",
+        f"Query: {result['query'][:50]}..." if len(result.get('query', '')) > 50 else f"Query: {result.get('query', 'N/A')}",
+        f"Founder Tier: {result['founder_tier']}",
+        f"Cases Evaluated: {result['total_cases_evaluated']}",
+        f"Domain Diversity: {result['domain_diversity']*100:.0f}%",
+        "=" * 80,
+        "",
+        "RANKING (Top 3+):",
+        "-" * 80,
+        f"{'Rank':<5} {'Score':<8} {'P_Mtn':<8} {'Verdict':<15} {'Domain':<25}",
+        "-" * 80,
+    ]
+
+    for i, path in enumerate(result["top_paths"], 1):
+        lines.append(
+            f"{i:<5} {path['combined_score']:<8.3f} {path['p_mountain']:<8.3f} "
+            f"{path['verdict'][:14]:<15} {path['domain'][:24]:<25}"
+        )
+
+    lines.extend([
+        "-" * 80,
+        "",
+        "RECOMMENDATION:",
+        f"  Primary: {result['recommendation']['case_id']}" if result.get("recommendation") else "  No recommendation available",
+        f"  Score: {result['recommendation']['combined_score']}" if result.get("recommendation") else "",
+        "",
+        "ALTERNATIVES:",
+    ])
+
+    for alt in result.get("alternatives", [])[:2]:
+        lines.append(f"  - {alt['case_id']} (score={alt['combined_score']})")
+
+    if result["comparison_valid"]:
+        lines.append("\n[OK] Multi-path comparison VALID (3+ paths evaluated)")
+    else:
+        lines.append("\n[WARN] Multi-path comparison INVALID (fewer than 3 paths)")
+
+    return "\n".join(lines)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--query", type=str, default="", help="Search query")
+    parser.add_argument("--founder-profile", type=Path, help="Founder profile JSON file")
+    parser.add_argument("--min-paths", type=int, default=3, help="Minimum paths to compare")
+    parser.add_argument("--json", action="store_true", help="Output as JSON")
+    args = parser.parse_args()
+
+    founder_profile = None
+    if args.founder_profile and args.founder_profile.exists():
+        founder_profile = json.loads(args.founder_profile.read_text(encoding="utf-8"))
+
+    result = compare_paths(
+        query=args.query,
+        founder_profile=founder_profile,
+        min_paths=args.min_paths,
+    )
+
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(format_comparison_table(result))
+
+
+if __name__ == "__main__":
+    main()

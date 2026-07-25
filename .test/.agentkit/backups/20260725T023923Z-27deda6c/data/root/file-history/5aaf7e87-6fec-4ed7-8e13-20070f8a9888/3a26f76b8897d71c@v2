@@ -1,0 +1,213 @@
+---
+phase: 3
+title: "Iterative Refinement Loop"
+status: pending
+priority: P0
+effort: "6h"
+dependencies: [1, 2]
+---
+
+# Phase 3: Iterative Refinement Loop
+
+## Overview
+
+Add Phase 2.8 — an iterative refinement cycle that STRENGTHENS, ATTACKS, and EVOLVES the top-ranked hypotheses from the tournament. This is the core Co-Scientist principle: hypotheses don't just get ranked once — they get refined across multiple rounds until the ranking converges.
+
+Co-Scientist equivalent: the Evolution agent that takes top-ranked ideas, refines them based on verification results, and re-submits for another round of debate. This is where novel discoveries emerge — not from initial generation, but from iterative refinement.
+
+## Requirements
+
+- Functional: After tournament (Phase 2.7), take top-3 ranked hypotheses
+- Functional: For each: STRENGTHEN (fill evidence gaps), ATTACK (find counter-evidence), EVOLVE (merge compatible hypotheses)
+- Functional: Re-run tournament on refined + evolved hypotheses
+- Functional: Convergence detection: stop when top-3 ranking is stable across 2 consecutive rounds
+- Functional: Max 3 refinement rounds (hard cap on compute)
+- Functional: Track evolution trace per hypothesis (what changed and why each round)
+- Non-functional: Each round uses targeted search (gap-filling), not broad web search
+- Non-functional: Protocol is markdown (LLM executes), convergence check is Python (deterministic)
+
+## Architecture
+
+### Refinement Cycle
+
+```
+Tournament Result (Phase 2.7)
+        ↓
+   top_3 hypotheses
+        ↓
+┌─── ROUND N ──────────────────────────────────────┐
+│                                                   │
+│  STRENGTHEN (per hypothesis):                     │
+│    Query KnowledgeGraph for gaps                  │
+│    Generate targeted search queries for each gap  │
+│    Execute searches (max 3 per hypothesis)        │
+│    Update KnowledgeGraph with new evidence        │
+│    Upgrade claim from [T]→[K] if verified         │
+│                                                   │
+│  ATTACK (per hypothesis):                         │
+│    Generate inversion queries:                    │
+│      "[hypothesis] why it fails"                  │
+│      "[business model] common mistakes"           │
+│      "[market] declining saturated"               │
+│    Execute attack searches (max 2 per hypothesis) │
+│    If attack finds strong counter-evidence:       │
+│      Add ContradictionEdge to KnowledgeGraph      │
+│      Hypothesis strength_score decreases          │
+│                                                   │
+│  EVOLVE (across hypotheses):                      │
+│    Check if any 2 hypotheses can MERGE:           │
+│      Compatible if: same customer_segment +       │
+│        complementary mechanisms +                 │
+│        non-overlapping value props                │
+│    If merge possible: create evolved hypothesis   │
+│      with combined mechanism                      │
+│    Evolved hypothesis enters next tournament      │
+│                                                   │
+│  RE-TOURNAMENT:                                   │
+│    Run Phase 2.7 tournament on:                   │
+│      refined originals + evolved merges           │
+│    New ranking produced                           │
+│                                                   │
+│  CONVERGENCE CHECK (Python, deterministic):       │
+│    Compare this round's top-3 IDs with previous   │
+│    If same 3 IDs in same order → CONVERGED        │
+│    If round >= 3 → FORCE STOP                     │
+│    Else → next round                              │
+│                                                   │
+└──────────────────────────────────────────────────┘
+        ↓
+   Final ranked hypotheses with evolution traces
+        ↓
+   Phase 3 (Lens Analysis) + Phase 4 (Synthesis)
+```
+
+### Search Budget Per Round
+
+| Action | Searches per hypothesis | Hypotheses | Total per round |
+|--------|------------------------|------------|-----------------|
+| STRENGTHEN | 3 | 3 | 9 |
+| ATTACK | 2 | 3 | 6 |
+| EVOLVE | 0 (pure reasoning) | — | 0 |
+| **Total** | | | **15 per round** |
+
+Max 3 rounds × 15 = **45 targeted searches** (vs current ~40+ broad searches in Phase 2).
+The difference: these are GAP-DIRECTED searches, not exploratory. Each search has a specific claim to verify or attack.
+
+### Convergence Detection (Python)
+
+```python
+@dataclass
+class RefinementRound:
+    round_number: int
+    top_3_ids: list[str]           # ordered
+    hypotheses_refined: int
+    hypotheses_evolved: int        # merges created
+    searches_executed: int
+    contradictions_found: int
+    evidence_upgrades: int         # [T]→[K] transitions
+    
+@dataclass
+class RefinementResult:
+    rounds: list[RefinementRound]
+    converged: bool
+    final_top_3: list[str]
+    evolution_traces: dict[str, list[str]]  # hypothesis_id → [round changes]
+    total_searches: int
+    
+def check_convergence(rounds: list[RefinementRound]) -> bool:
+    """Top-3 stable across 2 consecutive rounds = converged."""
+    if len(rounds) < 2:
+        return False
+    return rounds[-1].top_3_ids == rounds[-2].top_3_ids
+```
+
+### Evolution Trace
+
+Every hypothesis carries its history:
+
+```python
+@dataclass
+class EvolutionEntry:
+    round: int
+    action: str                    # STRENGTHENED | ATTACKED | EVOLVED | MERGED
+    description: str               # "Evidence gap filled: market size verified at $2.3B [K]"
+    evidence_delta: str            # what changed in supporting/contradicting evidence
+    score_before: float
+    score_after: float
+```
+
+This trace becomes part of the final output — users see HOW the system refined each idea, not just the final ranking.
+
+### Integration with Tournament
+
+The refinement loop REUSES the existing tournament engine (Phase 2.7). Each refinement round:
+1. Collects refined + evolved hypotheses
+2. Converts them to `OpportunityHypothesis` (tournament format)
+3. Runs full tournament (round-robin debates + Elo)
+4. Extracts new top-3
+5. Checks convergence
+
+No changes to tournament-protocol.md or elo_engine.py needed.
+
+## Related Code Files
+
+- Create: `.claude/agents/core/intelligence/refinement-loop-protocol.md` (agent protocol for STRENGTHEN + ATTACK + EVOLVE steps)
+- Create: `.claude/lib/intelligence/refinement/convergence_checker.py` (Python: RefinementRound, RefinementResult, check_convergence, evolution trace)
+- Create: `.claude/lib/intelligence/refinement/tests/test_convergence_checker.py`
+- Modify: `.claude/agents/core/intelligence/tournament-protocol.md` — add note that tournament can be invoked multiple times per session (refinement rounds)
+- Modify: `.claude/lib/intelligence/knowledge/knowledge_graph.py` — add `gaps_for_hypothesis(hypothesis_id)` method
+- Read: `.claude/lib/intelligence/tournament/elo_engine.py` — reused, not modified
+- Read: `.claude/lib/intelligence/tournament/models.py` — reused, not modified
+
+## Implementation Steps
+
+1. Create `refinement/` directory under `.claude/lib/intelligence/`
+2. Implement `convergence_checker.py`:
+   - `RefinementRound` dataclass
+   - `RefinementResult` dataclass  
+   - `EvolutionEntry` dataclass
+   - `check_convergence(rounds)` — top-3 stable across 2 rounds
+   - `should_stop(rounds, max_rounds=3)` — convergence OR max reached
+   - `to_dict()` / `from_dict()` for all dataclasses
+3. Write `refinement-loop-protocol.md`:
+   - Header: agent name=refinement-executor, model=opus, timeout=600s (longer — multiple rounds)
+   - Input: tournament_result_path, knowledge_graph (serialized), founder_context
+   - STRENGTHEN step: query graph gaps → generate search queries → execute → update graph
+   - ATTACK step: generate inversion queries → execute → add contradictions to graph
+   - EVOLVE step: check merge compatibility → create evolved hypotheses
+   - RE-TOURNAMENT step: invoke tournament protocol on refined candidates
+   - CONVERGENCE step: call Python check_convergence → continue or stop
+   - Output: `plans/{session_id}/refinement-result.md` with evolution traces
+4. Write unit tests for convergence_checker.py:
+   - `test_convergence_same_top3` — 2 rounds same order → True
+   - `test_no_convergence_different_order` — same IDs different order → False
+   - `test_no_convergence_different_ids` — different IDs → False
+   - `test_force_stop_at_max` — round 3 always stops
+   - `test_single_round_no_convergence` — 1 round → False
+   - `test_evolution_entry_serialization` — roundtrip
+   - `test_refinement_result_total_searches` — sum across rounds
+5. Add `gaps_for_hypothesis(text)` to KnowledgeGraph:
+   - Find claims related to hypothesis with evidence_type=INFERRED
+   - Return as list of gap descriptions + suggested search queries
+6. Modify tournament-protocol.md:
+   - Add note in header: "May be invoked multiple times per session during refinement loop"
+   - No functional changes needed
+
+## Success Criteria
+
+- [ ] Convergence checker correctly detects stable top-3 across 2 rounds
+- [ ] Force stop at max 3 rounds regardless of convergence
+- [ ] Protocol defines STRENGTHEN/ATTACK/EVOLVE steps with search budget per round
+- [ ] Evolution trace captures what changed per hypothesis per round
+- [ ] KnowledgeGraph.gaps_for_hypothesis() returns actionable search targets
+- [ ] Tournament reusable across refinement rounds without modification
+- [ ] 10+ unit tests for convergence logic
+
+## Risk Assessment
+
+- **Risk:** 3 refinement rounds × tournament = very long wall time (15+ min total)
+  - Mitigation: Most sessions converge in 1-2 rounds (if initial tournament had strong winner). Round 3 is rare. 600s timeout on refinement-executor catches runaway. Each round's search is targeted (15 searches), not broad.
+- **Risk:** EVOLVE step produces Frankenstein hypotheses (forced merge of incompatible ideas)
+  - Mitigation: Merge compatibility check requires same customer_segment + complementary (not overlapping) mechanisms. If no compatible pair exists, EVOLVE step produces nothing — no forced merges.
+- **Risk:** ATTACK step kills all hypotheses (every idea has counter-evidence)
+  - Mitigation: Attack doesn't KILL — it adds contradictions to graph and lowers strength_score. A hypothesis with counter-evidence but also strong supporting evidence survives. Only hypotheses where attack evidence overwhelms support evidence drop in tournament ranking.

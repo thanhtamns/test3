@@ -1,0 +1,229 @@
+"""
+FounderCapabilities — persistent founder skill/capital/network state.
+Used by GapAnalyzer to compute execution distance. Zero LLM calls.
+"""
+
+import json
+import sqlite3
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
+
+ROOT = Path(__file__).resolve().parents[4]
+DEFAULT_DB = ROOT / ".claude" / "data" / "founder" / "capabilities.db"
+
+TIER_ORDER = {"bootstrapper": 0, "operator": 1, "investor": 2}
+
+
+@dataclass
+class FounderState:
+    skills: list[str] = field(default_factory=list)
+    credentials: list[str] = field(default_factory=list)
+    capital_usd: float = 0.0
+    monthly_burn_usd: float = 0.0
+    hours_per_day: float = 4.0
+    network_score: float = 0.0
+    market: str = "Vietnam"
+    industry_experience_years: float = 0.0
+    languages: list[str] = field(default_factory=list)
+    prior_ventures: int = 0
+    current_revenue_usd: float = 0.0
+    # v2 fields
+    capability_tier: str = "bootstrapper"  # bootstrapper | operator | investor
+    compound_assets: list[str] = field(default_factory=list)  # existing assets that compound
+    technical_builder: bool = True  # can build software
+    location_advantage: str = ""  # e.g. "Thanh Hoa — not HCMC, limited local VC access"
+    killer_instinct_score: float = 0.0  # 0-1, learned from past decisions
+
+    def to_dict(self) -> dict:
+        return {
+            "skills": self.skills,
+            "credentials": self.credentials,
+            "capital_usd": self.capital_usd,
+            "monthly_burn_usd": self.monthly_burn_usd,
+            "hours_per_day": self.hours_per_day,
+            "network_score": self.network_score,
+            "market": self.market,
+            "industry_experience_years": self.industry_experience_years,
+            "languages": self.languages,
+            "prior_ventures": self.prior_ventures,
+            "current_revenue_usd": self.current_revenue_usd,
+            "capability_tier": self.capability_tier,
+            "compound_assets": self.compound_assets,
+            "technical_builder": self.technical_builder,
+            "location_advantage": self.location_advantage,
+            "killer_instinct_score": self.killer_instinct_score,
+        }
+
+
+class FounderCapabilitiesDB:
+    def __init__(self, db_path: Optional[Path] = None):
+        self.db_path = db_path or DEFAULT_DB
+        self._ensure_tables()
+
+    def save(self, state: FounderState) -> None:
+        with self._conn() as conn:
+            conn.execute("DELETE FROM founder_state")
+            conn.execute(
+                "INSERT INTO founder_state "
+                "(skills, credentials, capital_usd, monthly_burn_usd, hours_per_day, "
+                "network_score, market, industry_experience_years, languages, "
+                "prior_ventures, current_revenue_usd, capability_tier, compound_assets, "
+                "technical_builder, location_advantage, killer_instinct_score) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    json.dumps(state.skills),
+                    json.dumps(state.credentials),
+                    state.capital_usd,
+                    state.monthly_burn_usd,
+                    state.hours_per_day,
+                    state.network_score,
+                    state.market,
+                    state.industry_experience_years,
+                    json.dumps(state.languages),
+                    state.prior_ventures,
+                    state.current_revenue_usd,
+                    state.capability_tier,
+                    json.dumps(state.compound_assets),
+                    1 if state.technical_builder else 0,
+                    state.location_advantage,
+                    state.killer_instinct_score,
+                ),
+            )
+
+    def load(self) -> Optional[FounderState]:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT skills, credentials, capital_usd, monthly_burn_usd, "
+                "hours_per_day, network_score, market, industry_experience_years, "
+                "languages, prior_ventures, current_revenue_usd, "
+                "capability_tier, compound_assets, technical_builder, "
+                "location_advantage, killer_instinct_score "
+                "FROM founder_state LIMIT 1"
+            ).fetchone()
+        if not row:
+            return None
+        return FounderState(
+            skills=json.loads(row[0]),
+            credentials=json.loads(row[1]),
+            capital_usd=row[2],
+            monthly_burn_usd=row[3],
+            hours_per_day=row[4],
+            network_score=row[5],
+            market=row[6],
+            industry_experience_years=row[7],
+            languages=json.loads(row[8]),
+            prior_ventures=row[9],
+            current_revenue_usd=row[10],
+            capability_tier=row[11] if row[11] is not None else "bootstrapper",
+            compound_assets=json.loads(row[12]) if row[12] is not None else [],
+            technical_builder=bool(row[13]) if row[13] is not None else True,
+            location_advantage=row[14] if row[14] is not None else "",
+            killer_instinct_score=row[15] if row[15] is not None else 0.0,
+        )
+
+    def update_field(self, field_name: str, value) -> None:
+        state = self.load()
+        if not state:
+            state = FounderState()
+        if hasattr(state, field_name):
+            setattr(state, field_name, value)
+            self.save(state)
+
+    def compute_gaps(self, requirements: dict) -> list[dict]:
+        state = self.load()
+        if not state:
+            return [{"dimension": "founder_state", "gap": "NO DATA", "severity": "critical"}]
+
+        gaps = []
+
+        req_years = requirements.get("experience_years", 0)
+        if state.industry_experience_years < req_years:
+            diff = req_years - state.industry_experience_years
+            gaps.append({
+                "dimension": "experience",
+                "gap": diff,
+                "unit": "years",
+                "severity": "critical" if diff > 5 else "high",
+            })
+
+        req_creds = set(requirements.get("credentials", []))
+        has_creds = set(state.credentials)
+        missing = req_creds - has_creds
+        if missing:
+            gaps.append({
+                "dimension": "credentials",
+                "gap": list(missing),
+                "severity": "high",
+            })
+
+        req_capital = requirements.get("capital_usd", 0)
+        if req_capital > 0 and state.capital_usd < req_capital:
+            gaps.append({
+                "dimension": "capital",
+                "gap": req_capital - state.capital_usd,
+                "unit": "USD",
+                "severity": "critical" if state.capital_usd < req_capital * 0.1 else "high",
+            })
+
+        req_network = requirements.get("network_score", 0)
+        if req_network > 0 and state.network_score < req_network:
+            gaps.append({
+                "dimension": "network",
+                "gap": round(req_network - state.network_score, 2),
+                "severity": "critical" if state.network_score < 0.2 else "medium",
+            })
+
+        req_tier = requirements.get("capability_tier", "")
+        if req_tier and req_tier in TIER_ORDER:
+            current_rank = TIER_ORDER.get(state.capability_tier, 0)
+            required_rank = TIER_ORDER[req_tier]
+            if current_rank < required_rank:
+                gaps.append({
+                    "dimension": "capability_tier",
+                    "gap": f"{state.capability_tier} → {req_tier} required",
+                    "severity": "high" if required_rank - current_rank == 1 else "critical",
+                })
+
+        return sorted(gaps, key=lambda g: {"critical": 0, "high": 1, "medium": 2}.get(g["severity"], 3))
+
+    def _conn(self) -> sqlite3.Connection:
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        return sqlite3.connect(str(self.db_path))
+
+    def _ensure_tables(self) -> None:
+        with self._conn() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS founder_state (
+                    id INTEGER PRIMARY KEY DEFAULT 1,
+                    skills TEXT DEFAULT '[]',
+                    credentials TEXT DEFAULT '[]',
+                    capital_usd REAL DEFAULT 0,
+                    monthly_burn_usd REAL DEFAULT 0,
+                    hours_per_day REAL DEFAULT 4,
+                    network_score REAL DEFAULT 0,
+                    market TEXT DEFAULT 'Vietnam',
+                    industry_experience_years REAL DEFAULT 0,
+                    languages TEXT DEFAULT '[]',
+                    prior_ventures INTEGER DEFAULT 0,
+                    current_revenue_usd REAL DEFAULT 0,
+                    capability_tier TEXT DEFAULT 'bootstrapper',
+                    compound_assets TEXT DEFAULT '[]',
+                    technical_builder INTEGER DEFAULT 1,
+                    location_advantage TEXT DEFAULT '',
+                    killer_instinct_score REAL DEFAULT 0
+                )
+            """)
+            # Backward compatibility: add new columns to existing DBs that predate v2
+            _add_column_if_missing(conn, "founder_state", "capability_tier", "TEXT DEFAULT 'bootstrapper'")
+            _add_column_if_missing(conn, "founder_state", "compound_assets", "TEXT DEFAULT '[]'")
+            _add_column_if_missing(conn, "founder_state", "technical_builder", "INTEGER DEFAULT 1")
+            _add_column_if_missing(conn, "founder_state", "location_advantage", "TEXT DEFAULT ''")
+            _add_column_if_missing(conn, "founder_state", "killer_instinct_score", "REAL DEFAULT 0")
+
+
+def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, col_def: str) -> None:
+    """ALTER TABLE only when column does not already exist — idempotent migration."""
+    existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+    if column not in existing:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_def}")

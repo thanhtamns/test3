@@ -1,0 +1,409 @@
+"""persist-verdict.py — Step 9 atomic write of verdict + case + memory.jsonl.
+
+Fixes audit findings F2 (verdicts empty), F3 (memory.jsonl empty), F4 (only 1 case lifetime).
+
+Single entry point called by /stage0 Step 9. Atomically writes 3 stores via tempfile + rename.
+Returns JSON receipt for verify-persistence.py to validate.
+
+Brain principle: episodic memory (kb/cases) + index (memory.jsonl) + retrievable narrative (verdicts/)
+all written together — no partial-write split-brain syndrome.
+
+Usage:
+    python persist-verdict.py --case <case-json-path> --verdict-md <verdict-md-path>
+
+Input case JSON must follow schema in nui-hunter/kb/schema-case.json.
+"""
+from __future__ import annotations
+
+import argparse
+import io
+import json
+import os
+import sys
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+
+HERE = Path(__file__).parent
+NUI_HUNTER = HERE.parent
+KB_DIR = NUI_HUNTER / "kb"
+CASES_DIR = KB_DIR / "cases"
+VERDICTS_DIR = NUI_HUNTER / "verdicts"
+MEMORY_FILE = KB_DIR / "memory.jsonl"
+
+# Phase 4 Fix #6 — Confidence gate. Prevent low-confidence positive verdicts from
+# shipping. Root cause: 2026-04-13 platform-rev-share-leakage shipped at conf=0.58
+# with verdict_class=compound_stack_pulse_gated. The gate forces Wave 2 retry OR
+# explicit downgrade to EXPLORATION_ONGOING.
+MIN_CONFIDENCE = 0.70
+
+# Verdict classes EXEMPT from the confidence gate. Kills are allowed at any
+# confidence (decisive rejection based on math/regulation/identity). Honest
+# "not enough data" verdicts are encouraged, not blocked. SIDE_HUSTLE is a
+# low-stakes "meh" verdict that doesn't need strong confidence.
+EXEMPT_CLASSES = {
+    "KILL",
+    "HARD_KILL",
+    "INSUFFICIENT_SIGNAL",
+    "EXPLORATION_ONGOING",
+    "SIDE_HUSTLE",
+    "TEST",
+}
+
+# Agent gate — minimum agents that must fire in Wave 1 for a non-exempt verdict.
+# Root cause: LLM can hand-assign confidence=0.72 without spawning any agents,
+# bypassing the confidence gate. This gate ensures actual agent dispatch occurred.
+MIN_AGENTS_FIRED = 8
+
+
+def atomic_write(target: Path, content: str) -> None:
+    """Write content to target atomically via tempfile + os.replace (Win10+ atomic)."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(dir=str(target.parent), prefix=".tmp-", suffix=target.suffix)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp_path, target)
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise
+
+
+def append_jsonl(target: Path, record: dict[str, Any]) -> None:
+    """Append a JSONL record. Creates file if missing."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(record, ensure_ascii=False) + "\n"
+    with open(target, "a", encoding="utf-8") as f:
+        f.write(line)
+
+
+def normalize_verdict_class(raw: Any) -> str:
+    """Normalize a raw verdict_class string to canonical tag for gate check."""
+    if not isinstance(raw, str):
+        return "UNKNOWN"
+    upper = raw.upper()
+    for tag in ("HARD_KILL", "KILL", "EXPLORATION_ONGOING", "EXPLORATION_COMPLETE",
+                "MOUNTAIN_CANDIDATE", "PROVISIONAL_MOUNTAIN", "MOUNTAIN",
+                "COMMERCE_ENTRY", "CONDITIONAL_GO", "CONDITIONAL",
+                "SIDE_HUSTLE", "INSUFFICIENT_SIGNAL", "TEST"):
+        if tag in upper:
+            return tag
+    return "UNKNOWN"
+
+
+def check_confidence_gate(case: dict, force_low_conf: bool = False) -> dict:
+    """Phase 4 Fix #6 — Confidence gate. Raise ValueError if case below threshold
+    AND verdict class is non-exempt. Returns gate decision metadata.
+
+    Args:
+        case: parsed case JSON dict
+        force_low_conf: bypass gate (for tests ONLY, writes WARN to stderr)
+
+    Raises:
+        ValueError: if gate blocks (conf<0.70 + non-exempt class + no force)
+
+    Returns:
+        dict with gate_passed, conf, verdict_class_normalized, reason
+    """
+    conf = case.get("confidence")
+    verdict_class_raw = (case.get("verdict_class") or case.get("verdict") or "")
+    verdict_class = normalize_verdict_class(verdict_class_raw)
+
+    # Missing confidence field is a Phase 4 precondition violation
+    if conf is None:
+        raise ValueError(
+            "Case missing required 'confidence' field. Phase 4 Fix #6 requires all "
+            "cases to populate confidence (derived from agent_response_rate, "
+            "triangulation_confidence, contradiction_count). "
+            "See plans/260413-1002-stage0-bias-fix/phase-04-gates-framing-*.md"
+        )
+
+    if not isinstance(conf, (int, float)):
+        raise ValueError(f"confidence must be numeric, got {type(conf).__name__}={conf}")
+
+    # Gate check: block if low conf AND not exempt
+    if conf < MIN_CONFIDENCE and verdict_class not in EXEMPT_CLASSES:
+        if force_low_conf:
+            print(
+                f"[WARN] Confidence gate bypassed via --force-low-conf: "
+                f"conf={conf} class={verdict_class}",
+                file=sys.stderr,
+            )
+            return {
+                "gate_passed": True,
+                "gate_bypassed": True,
+                "conf": conf,
+                "verdict_class_normalized": verdict_class,
+                "reason": "Force-bypass (test mode)",
+            }
+        raise ValueError(
+            f"Confidence gate BLOCKED: conf={conf} below {MIN_CONFIDENCE} AND "
+            f"verdict_class='{verdict_class}' is NOT in exempt set {sorted(EXEMPT_CLASSES)}. "
+            f"Action required: (1) run Wave 2 to raise confidence, OR (2) downgrade "
+            f"verdict_class to EXPLORATION_ONGOING, OR (3) use --force-low-conf flag "
+            f"(test only). Raw class: {verdict_class_raw!r}"
+        )
+
+    return {
+        "gate_passed": True,
+        "gate_bypassed": False,
+        "conf": conf,
+        "verdict_class_normalized": verdict_class,
+        "reason": (
+            f"Conf {conf} >= {MIN_CONFIDENCE}"
+            if conf >= MIN_CONFIDENCE
+            else f"Low conf {conf} allowed — class '{verdict_class}' is exempt"
+        ),
+    }
+
+
+def check_agent_gate(case: dict, skip_agent_gate: bool = False) -> dict:
+    """Agent-count gate. Prevent verdicts from persisting when no agents actually
+    ran. A confidence score without agent dispatch evidence is just LLM hand-waving.
+
+    Checks (in order):
+    1. ``agents_fired`` / ``wave1_agents`` / ``wave2_agents`` fields in case JSON
+    2. Tmp receipt file: ``stage0-wave1-receipt-{case_id}.json`` in tempdir
+
+    Args:
+        case: parsed case JSON dict
+        skip_agent_gate: bypass gate (for tests ONLY, writes WARN to stderr)
+
+    Raises:
+        ValueError: if gate blocks (no evidence of agent dispatch for non-exempt class)
+
+    Returns:
+        dict with gate_passed, agents_fired, evidence_source, reason
+    """
+    verdict_class_raw = (case.get("verdict_class") or case.get("verdict") or "")
+    verdict_class = normalize_verdict_class(verdict_class_raw)
+
+    # Exempt classes don't need agent evidence (kills, exploration_ongoing, etc.)
+    if verdict_class in EXEMPT_CLASSES:
+        return {
+            "gate_passed": True,
+            "gate_bypassed": False,
+            "agents_fired": None,
+            "evidence_source": "exempt",
+            "reason": f"Class '{verdict_class}' is exempt from agent gate",
+        }
+
+    # Source 1: explicit agents_fired field
+    agents_fired = case.get("agents_fired")
+    if agents_fired is not None:
+        if not isinstance(agents_fired, (int, float)):
+            raise ValueError(
+                f"agents_fired must be numeric, got {type(agents_fired).__name__}={agents_fired}"
+            )
+        agents_fired = int(agents_fired)
+        if agents_fired >= MIN_AGENTS_FIRED:
+            return {
+                "gate_passed": True,
+                "gate_bypassed": False,
+                "agents_fired": agents_fired,
+                "evidence_source": "agents_fired_field",
+                "reason": f"agents_fired={agents_fired} >= {MIN_AGENTS_FIRED}",
+            }
+        # agents_fired present but too low
+        if skip_agent_gate:
+            print(
+                f"[WARN] Agent gate bypassed via --skip-agent-gate: "
+                f"agents_fired={agents_fired} class={verdict_class}",
+                file=sys.stderr,
+            )
+            return {
+                "gate_passed": True,
+                "gate_bypassed": True,
+                "agents_fired": agents_fired,
+                "evidence_source": "agents_fired_field",
+                "reason": "Force-bypass (test mode)",
+            }
+        raise ValueError(
+            f"Agent gate BLOCKED: agents_fired={agents_fired} below {MIN_AGENTS_FIRED} AND "
+            f"verdict_class='{verdict_class}' is NOT in exempt set {sorted(EXEMPT_CLASSES)}. "
+            f"Wave 1 needs >= {MIN_AGENTS_FIRED} agents for a non-exempt verdict. "
+            f"Action required: (1) re-run Wave 1 with full agent roster, OR (2) downgrade "
+            f"verdict_class to EXPLORATION_ONGOING, OR (3) use --skip-agent-gate flag "
+            f"(test only). Raw class: {verdict_class_raw!r}"
+        )
+
+    # Source 2: wave1_agents / wave2_agents arrays
+    wave1 = case.get("wave1_agents") or []
+    wave2 = case.get("wave2_agents") or []
+    if isinstance(wave1, list) or isinstance(wave2, list):
+        total = len(wave1) + len(wave2)
+        if total > 0:
+            if total >= MIN_AGENTS_FIRED:
+                return {
+                    "gate_passed": True,
+                    "gate_bypassed": False,
+                    "agents_fired": total,
+                    "evidence_source": "wave_agents_arrays",
+                    "reason": f"wave1({len(wave1)})+wave2({len(wave2)})={total} >= {MIN_AGENTS_FIRED}",
+                }
+            # Present but too few
+            if skip_agent_gate:
+                print(
+                    f"[WARN] Agent gate bypassed via --skip-agent-gate: "
+                    f"wave_agents={total} class={verdict_class}",
+                    file=sys.stderr,
+                )
+                return {
+                    "gate_passed": True,
+                    "gate_bypassed": True,
+                    "agents_fired": total,
+                    "evidence_source": "wave_agents_arrays",
+                    "reason": "Force-bypass (test mode)",
+                }
+            raise ValueError(
+                f"Agent gate BLOCKED: wave1({len(wave1)})+wave2({len(wave2)})={total} "
+                f"below {MIN_AGENTS_FIRED} AND verdict_class='{verdict_class}' is NOT in "
+                f"exempt set {sorted(EXEMPT_CLASSES)}. Wave 1 needs >= {MIN_AGENTS_FIRED} "
+                f"agents. Raw class: {verdict_class_raw!r}"
+            )
+
+    # Source 3: tmp receipt file
+    case_id = case.get("case_id", "")
+    receipt_name = f"stage0-wave1-receipt-{case_id}.json"
+    receipt_path = Path(tempfile.gettempdir()) / receipt_name
+    if receipt_path.exists():
+        return {
+            "gate_passed": True,
+            "gate_bypassed": False,
+            "agents_fired": None,
+            "evidence_source": "wave1_receipt_file",
+            "reason": f"Wave 1 receipt found at {receipt_path}",
+        }
+
+    # No evidence at all
+    if skip_agent_gate:
+        print(
+            f"[WARN] Agent gate bypassed via --skip-agent-gate: "
+            f"no dispatch evidence, class={verdict_class}",
+            file=sys.stderr,
+        )
+        return {
+            "gate_passed": True,
+            "gate_bypassed": True,
+            "agents_fired": None,
+            "evidence_source": "none",
+            "reason": "Force-bypass (test mode)",
+        }
+    raise ValueError(
+        f"Agent gate BLOCKED: No agent dispatch evidence found for case '{case_id}'. "
+        f"Checked: (1) 'agents_fired' field — missing, (2) 'wave1_agents'/'wave2_agents' "
+        f"arrays — missing/empty, (3) tmp receipt '{receipt_name}' — not found. "
+        f"verdict_class='{verdict_class}' is NOT in exempt set {sorted(EXEMPT_CLASSES)}. "
+        f"A non-exempt verdict requires proof that agents actually ran. "
+        f"Action required: (1) re-run stage0 pipeline, OR (2) downgrade verdict_class "
+        f"to EXPLORATION_ONGOING, OR (3) use --skip-agent-gate flag (test only). "
+        f"Raw class: {verdict_class_raw!r}"
+    )
+
+
+def persist(case_path: Path, verdict_md_path: Path, force_low_conf: bool = False,
+            skip_agent_gate: bool = False) -> dict[str, Any]:
+    case = json.loads(case_path.read_text(encoding="utf-8"))
+    case_id = case.get("case_id")
+    if not case_id:
+        raise ValueError(f"case JSON missing case_id field: {case_path}")
+
+    # Phase 4 Fix #6 — Confidence gate BEFORE any atomic writes
+    gate_result = check_confidence_gate(case, force_low_conf=force_low_conf)
+
+    # Agent-count gate — AFTER confidence gate (both must pass)
+    agent_gate_result = check_agent_gate(case, skip_agent_gate=skip_agent_gate)
+
+    verdict_md = verdict_md_path.read_text(encoding="utf-8")
+    if len(verdict_md) < 200:
+        raise ValueError(f"verdict markdown too short ({len(verdict_md)} bytes): {verdict_md_path}")
+
+    # 1. Persist case JSON to kb/cases/
+    case_target = CASES_DIR / f"{case_id}.json"
+    atomic_write(case_target, json.dumps(case, ensure_ascii=False, indent=2))
+
+    # 2. Persist verdict markdown to verdicts/
+    date_slug = datetime.now(timezone.utc).strftime("%y%m%d")
+    topic_slug = case.get("topic_slug") or case_id.replace("stage0-", "").replace(f"{date_slug}-", "")
+    verdict_target = VERDICTS_DIR / f"verdict-{date_slug}-{topic_slug}.md"
+    atomic_write(verdict_target, verdict_md)
+
+    # 3. Append memory.jsonl index entry
+    verdict_str = case.get("verdict_class") or case.get("verdict_type") or case.get("verdict", "")
+    verdict_class = "UNKNOWN"
+    if isinstance(verdict_str, str):
+        for tag in ("MOUNTAIN", "PROVISIONAL_MOUNTAIN", "COMMERCE_ENTRY", "CONDITIONAL_GO",
+                    "CONDITIONAL", "EXPLORATION_COMPLETE", "EXPLORATION_ONGOING",
+                    "SIDE_HUSTLE", "INSUFFICIENT_SIGNAL", "KILL", "TEST"):
+            if tag in verdict_str.upper():
+                verdict_class = tag
+                break
+
+    query_field = (case.get("query") or case.get("topic") or
+                   case.get("title_en") or case.get("title_vn") or
+                   case.get("domain") or "")
+
+    memory_entry = {
+        "verdict_id": f"verdict-{date_slug}-{topic_slug}",
+        "case_id": case_id,
+        "query": query_field,
+        "profile_id": case.get("profile_id") or case.get("founder_profile_ref", "unknown"),
+        "top_opp": (case.get("top_opportunity") or case.get("verdict") or "")[:200],
+        "score": case.get("score") or case.get("mountain_score") or case.get("confidence"),
+        "verdict_class": verdict_class,
+        "date": datetime.now(timezone.utc).isoformat(),
+    }
+    append_jsonl(MEMORY_FILE, memory_entry)
+
+    return {
+        "case_id": case_id,
+        "case_path": str(case_target.relative_to(NUI_HUNTER.parent.parent.parent.parent)),
+        "verdict_path": str(verdict_target.relative_to(NUI_HUNTER.parent.parent.parent.parent)),
+        "memory_appended": True,
+        "memory_entry_id": memory_entry["verdict_id"],
+        "confidence_gate": gate_result,
+        "agent_gate": agent_gate_result,
+        "ts": memory_entry["date"],
+    }
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--case", required=True, type=Path)
+    ap.add_argument("--verdict-md", required=True, type=Path)
+    ap.add_argument(
+        "--force-low-conf",
+        action="store_true",
+        help="Bypass Phase 4 confidence gate (TEST ONLY)",
+    )
+    ap.add_argument(
+        "--skip-agent-gate",
+        action="store_true",
+        help="Bypass agent-count gate (TEST ONLY)",
+    )
+    args = ap.parse_args()
+
+    if not args.case.exists():
+        print(json.dumps({"error": f"case file not found: {args.case}"}), file=sys.stderr)
+        sys.exit(1)
+    if not args.verdict_md.exists():
+        print(json.dumps({"error": f"verdict-md file not found: {args.verdict_md}"}), file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        receipt = persist(args.case, args.verdict_md, force_low_conf=args.force_low_conf,
+                         skip_agent_gate=args.skip_agent_gate)
+        print(json.dumps(receipt, ensure_ascii=False, indent=2))
+        sys.exit(0)
+    except Exception as e:
+        print(json.dumps({"error": str(e), "type": type(e).__name__}), file=sys.stderr)
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    main()

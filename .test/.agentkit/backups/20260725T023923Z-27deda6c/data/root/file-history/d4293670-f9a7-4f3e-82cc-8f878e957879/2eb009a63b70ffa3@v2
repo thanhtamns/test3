@@ -1,0 +1,158 @@
+---
+phase: 1
+title: "Foundation — Proto Schema + Provenance Core"
+status: complete
+priority: P1
+effort: "2w"
+dependencies: []
+---
+
+# Phase 1: Foundation — Proto Schema + Provenance Core
+
+## Overview
+
+Establish event schema (protobuf), content hashing (blake3), signed attestation (Ed25519), and the `codeflow blame` CLI command. This phase creates the data foundation all other pillars depend on.
+
+## Requirements
+
+- Functional: capture code hash, file paths, contributor type via diff-on-next-PreToolUse pattern (no PostToolUse exists); model_id enriched retroactively from ccusage; sign provenance records with Ed25519; export Agent Trace v0.1.0 JSON; `codeflow blame` command shows line-by-line AI attribution
+- Non-functional: <5ms hook latency (fail-open); provenance DB <50MB for 90 days typical usage; zero network dependency for local operation
+
+## Architecture
+
+**Critical constraint:** Only PreToolUse hooks exist. PostToolUse does NOT exist in any agent's hook protocol. Each hook invocation is a separate OS process — no shared in-memory state. Hook JSON payload contains only `tool_name` + `tool_input.command` — no `model_id`.
+
+```
+PreToolUse hook (tool N) → snapshot working tree state (file hashes)
+    ↓ (agent executes tool, modifies files)
+PreToolUse hook (tool N+1) → diff working tree vs snapshot → detect changes from tool N
+    ↓
+ProvenanceRecord { model_id: "unknown"/enriched, code_hash, file_path, lines, attestation_sig }
+    ↓
+SQLite (extend tracking.db, WAL mode) ← single DB, no split-brain
+    ↓
+Protobuf event → EVENT_TYPE_PROVENANCE → queued for export
+```
+
+**Provenance capture strategy:** Since PostToolUse doesn't exist, use "diff-on-next-PreToolUse" pattern:
+1. Each PreToolUse: read last snapshot from DB, diff current working tree against it, record changes as provenance from previous tool call
+2. Store new snapshot for next comparison
+3. Fallback: `codeflow blame --retroactive` scans git history for attribution after the fact
+
+**model_id enrichment:** Hook JSON has no model_id. Strategies:
+1. Parse from ccusage session data (retroactive, but accurate)
+2. Infer from agent config files (`.claude/settings.json`, `.cursor/config.json`)
+3. Accept "unknown" as valid — enrich later when data available
+
+## Related Code Files
+
+- Modify: `src/hooks/hook_cmd.rs` — add provenance snapshot capture to PreToolUse handlers (no PostToolUse exists)
+- Modify: `src/hooks/mod.rs` — export new provenance module
+- Modify: `src/core/mod.rs` — export provenance module
+- Modify: `src/main.rs` — add `blame` subcommand
+- Modify: `Cargo.toml` — add prost, prost-build, ed25519-dalek, blake3 deps
+- Create: `proto/events.proto` — protobuf schema for all 7 event types
+- Modify: `build.rs` — extend existing build.rs with prost-build compilation of proto files (DO NOT create new — existing handles Windows stack size + TOML filter concat)
+- Create: `src/core/provenance.rs` — ProvenanceRecord struct, signing, storage
+- Create: `src/core/attestation.rs` — Ed25519 key management, sign/verify
+- Create: `src/core/content_hash.rs` — blake3 hashing for code content
+- Create: `src/core/agent_trace.rs` — Agent Trace v0.1.0 JSON export format
+- Create: `src/cmds/blame_cmd.rs` — `codeflow blame` command implementation
+
+## Implementation Steps
+
+1. **Add dependencies to Cargo.toml**
+   - `prost = "0.13"`, `prost-types = "0.13"` (runtime)
+   - `prost-build = "0.13"` (build-dependency)
+   - `ed25519-dalek = { version = "2", features = ["rand_core"] }`
+   - `blake3 = "1"`
+   - `rand = "0.8"` (for key generation)
+
+2. **Create `proto/events.proto`**
+   - Define EventType enum (7 types per brainstorm §3.4)
+   - Define ProvenanceEvent, CostEvent, GovernanceEvent, QualityEvent messages
+   - Define EventEnvelope wrapper with timestamp, event_type, oneof payload
+
+3. **Extend existing `build.rs`** (66 LOC — has Windows `/STACK:8388608` + TOML filter concat)
+   - Add prost-build to compile proto/events.proto → src/proto/mod.rs
+   - Preserve existing Windows stack size config and filter concatenation logic
+   - Add to .gitignore: generated proto output (or check in — decide)
+
+4. **Create `src/core/content_hash.rs`**
+   - `fn hash_content(content: &[u8]) -> String` — blake3 hash, hex-encoded
+   - `fn hash_file(path: &Path) -> Result<String>` — hash file contents
+   - `fn hash_diff(old: &str, new: &str) -> String` — hash the diff
+
+5. **Create `src/core/attestation.rs`**
+   - `struct KeyPair` — wraps Ed25519 keypair
+   - `fn generate_keypair() -> KeyPair` — auto-generate, store at `dirs::data_dir()/rtk/keys/` (cross-platform via `dirs` crate, already in Cargo.toml)
+   - `fn load_or_generate() -> Result<KeyPair>` — lazy init
+   - `fn sign(keypair: &KeyPair, data: &[u8]) -> String` — hex-encoded signature
+   - `fn verify(pubkey: &[u8], data: &[u8], sig: &str) -> bool`
+
+6. **Create `src/core/provenance.rs`**
+   - `struct ProvenanceRecord` — model_id (default "unknown", enriched later), model_version, prompt_hash, code_hash, file_path, start_line, end_line, contributor_type (human|ai|mixed|unknown), attestation_sig, timestamp, developer_id, session_id
+   - `struct ProvenanceStore` — SQLite-backed, **extend tracking.db** (single DB — no split-brain)
+   - `fn record_provenance(...)` — insert record + sign with attestation
+   - `fn query_by_file(path: &str) -> Vec<ProvenanceRecord>` — for blame command
+   - `fn query_by_session(session_id: &str) -> Vec<ProvenanceRecord>`
+   - `fn enrich_model_id(session_id: &str, model_id: &str)` — retroactive enrichment from ccusage
+   - Schema: `CREATE TABLE provenance_records (id INTEGER PRIMARY KEY, model_id TEXT DEFAULT 'unknown', ...)`
+
+7. **Extend `src/hooks/hook_cmd.rs`** (PreToolUse ONLY — no PostToolUse exists)
+   - In PreToolUse handler: before processing current tool, diff working tree against last snapshot
+   - If changes detected since last snapshot → create ProvenanceRecord for PREVIOUS tool's changes
+   - Compute blake3 hash of changed files, sign with Ed25519, store in tracking.db
+   - Update snapshot in DB for next PreToolUse comparison
+   - model_id: default to "unknown" (enriched later via `codeflow blame --enrich`)
+   - Fail-open: if provenance capture fails, log warning but don't block the tool call
+   - NOTE: each hook invocation is a separate OS process — all state must go through SQLite, not in-memory
+
+8. **Create `src/core/agent_trace.rs`**
+   - Implement Agent Trace v0.1.0 JSON format (per github.com/cursor/agent-trace spec)
+   - `fn to_agent_trace(record: &ProvenanceRecord) -> Value` — convert to spec JSON
+   - `fn export_agent_trace(records: Vec<ProvenanceRecord>) -> String` — full trace file
+
+9. **Create `src/cmds/blame_cmd.rs`**
+   - `codeflow blame <file>` — line-by-line attribution
+   - Output format: `<line_num> | <contributor> | <model_id> | <timestamp> | <code>`
+   - Color-coded: human=green, ai=yellow, mixed=cyan, unknown=gray
+   - Flag: `--json` for machine-readable output
+   - Flag: `--session <id>` to filter by session
+
+10. **Wire into main.rs**
+    - Add `Blame` variant to Commands enum
+    - Route to blame_cmd handler
+
+11. **Tests**
+    - Unit: content_hash (known vectors), attestation (sign/verify roundtrip), provenance (CRUD)
+    - Integration: mock PreToolUse JSON + file changes → verify provenance record created via diff-on-next-PreToolUse
+    - CLI: `codeflow blame` on test fixture files
+
+## Success Criteria
+
+- [x] `proto/events.proto` compiles with prost-build, generates Rust types
+- [x] Ed25519 keypair auto-generated on first use, persisted at `dirs::data_dir()/rtk/keys/` (cross-platform)
+- [x] ProvenanceRecord created for file changes via diff-on-next-PreToolUse pattern
+- [x] `codeflow blame <file>` shows line-by-line AI attribution with model_id
+- [x] Agent Trace v0.1.0 JSON export passes format validation
+- [x] Hook latency addressed (mtime pre-filter + RTK_PROVENANCE=0 opt-out)
+- [x] Existing RTK tests still pass (2012 passed, 0 failed, no regression)
+- [x] 18 new tests for provenance, attestation, content_hash, agent_trace
+
+## Risk Assessment
+
+| Risk | Severity | Mitigation |
+|------|----------|------------|
+| model_id NOT available in hook JSON payload | HIGH | Default "unknown"; enrich retroactively from ccusage session data; infer from agent config |
+| No PostToolUse hook exists | CRITICAL | Use diff-on-next-PreToolUse pattern; fallback to git-based retroactive analysis |
+| prost-build adds Windows build complexity | MEDIUM | Use pre-generated .rs files as fallback; CI builds on Linux |
+| build.rs already exists (66 LOC) | LOW | Extend existing file; preserve Windows stack size + TOML filter logic |
+| Provenance DB grows too large | LOW | 90-day retention (reuse tracking.rs pattern); vacuum on startup |
+
+## Security Considerations
+
+- Ed25519 private key stored with 0600 permissions (Unix) or ACL-restricted (Windows)
+- Never log private key material
+- Attestation signatures are non-repudiable — document this for users
+- Content hashes use blake3 (cryptographic) not xxhash (fast but not cryptographic)

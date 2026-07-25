@@ -1,0 +1,54 @@
+# CODEFLOW Phases 2+4: Cost Attribution + Quality Gate — Shipped
+
+**Date:** 2026-06-07
+**Repo:** `D:/code/invesments/tools_decisions/rtk-analysis/`
+
+## What shipped
+
+Two phases implemented in parallel via worktree-isolated agents, merged cleanly.
+
+### Phase 2 — Cost Attribution Engine (36 tests)
+
+| Module | Purpose |
+|--------|---------|
+| `core/pricing.rs` | Model pricing table (5 models), fuzzy lookup, OnceLock cache |
+| `core/pr_linker.rs` | PR detection from env vars + branch name + commit message |
+| `core/cost_store.rs` | CostRecord + CostStore SQLite (separate cost.db) |
+| `cmds/codeflow/cost_cmd.rs` | `rtk cost --by pr/dev/model/day --json` |
+| `hooks/hook_cmd.rs` (extended) | PR metadata capture on first tool call per session |
+| `data/model-pricing.toml` | Bundled pricing: Claude Opus/Sonnet/Haiku, GPT-4o, Gemini 2.5 Pro |
+
+### Phase 4 — Quality Gate (32 tests)
+
+| Module | Purpose |
+|--------|---------|
+| `core/dep_validator.rs` | Import parsing (JS/TS/Python/Cargo.toml), registry validation, SQLite cache |
+| `core/hallucination_detector.rs` | Typosquat (Levenshtein), suspicious API, hardcoded secrets |
+| `core/license_checker.rs` | Allow/deny license enforcement |
+| `core/quality_gate.rs` | Orchestrator: runs all checkers, aggregates GateResult |
+| `cmds/codeflow/gate_cmd.rs` | `rtk gate --all --json`, exit codes 0/1 for CI |
+| `cmds/codeflow/scan_cmd.rs` | `rtk scan <file> --deps --security` |
+| `data/quality-rules.toml` | Configurable thresholds, licenses, registry settings |
+| `data/top-packages-{npm,pypi,crates}.txt` | 50 packages each for typosquat baseline |
+
+**Total: 2079 tests passing (68 new), 0 regressions.**
+
+## Code review findings (all fixed)
+
+- **[C] pricing.rs:** PricingTable re-loaded on every call. Fixed with OnceLock cache.
+- **[H] scan_cmd.rs:** Always returned exit code 0. Fixed to return 1 on blocking findings.
+- **[H] pr_linker.rs:** Misleading "<1ms" doc comment (spawns git subprocess). Updated doc.
+- **[H] dep_validator.rs:** Regex compiled on every parse call. Fixed with lazy_regex macro.
+- **[M] license_checker.rs:** Repurposing HallucinatedDep for license issues. Added LicenseViolation variant.
+- **[M] quality_gate.rs:** Naive glob matching in should_ignore. Fixed with path-segment-boundary matching.
+- **[M] cost_store.rs:** i64→u64 cast without .max(0). Fixed.
+
+## Parallel implementation approach
+
+Both phases implemented via `Agent(isolation: "worktree")`. Since the target repo (rtk-analysis) differs from the orchestration repo (master_investments_mmo), both agents wrote directly to rtk-analysis. Merged cleanly — shared files (main.rs, core/mod.rs) had no conflicts because the second agent extended what the first wrote.
+
+## What's next
+
+- Phase 3 (Budget Governance) — now unblocked (depends on Phase 2)
+- Phase 5 (Compliance Export) — blocked until Phases 1-4 complete (3 of 4 done)
+- Phase 6 (CLI Export + Dashboard) and Phase 7 (OSS Launch) follow sequentially

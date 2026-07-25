@@ -1,0 +1,142 @@
+"""Adversarial orchestrator — generates Analyst→Critic→Synthesizer prompts for brainstorm pipeline."""
+
+import argparse
+import json
+from dataclasses import dataclass
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[4]
+
+_GATE_REQUIREMENTS = """
+Gate requirements (ALL must be satisfied):
+- NAME at least 5 specific real humans with (Organization, Title) who would buy/use/need this
+- Include income math: $/month projection with assumptions spelled out
+- Include realistic response rates with % (not optimistic scenarios)
+- Map at least 4 alternative money flows
+- Include Munger inversion: score /10 (10 = kills the idea completely)
+- Use [K], [T], [?] zone tags on every factual claim
+- Maximum 800 words
+- Structure as: V (Verdict), E (Economics), M (Moat), R (Risks), A (Action)
+""".strip()
+
+_CRITIC_ROLE = """You are a ruthless bullshit detector. Your job is to find every weak claim,
+unverified assertion, and wishful thinking in this analysis.""".strip()
+
+
+@dataclass
+class AdversarialOrchestrator:
+    thinkrunner_output: dict
+    query: str
+    vemra_draft: str = None
+
+    def __post_init__(self):
+        self._scores = self.thinkrunner_output.get("dimension_scores", {})
+        self._facts = self.thinkrunner_output.get("facts", [])
+        self._overall_score = self.thinkrunner_output.get("overall_score", 0.0)
+        self._path = self.thinkrunner_output.get("path", [])
+        self._insight = self.thinkrunner_output.get("strategic_insight", {})
+
+    def generate_analyst_prompt(self) -> str:
+        facts_block = self._format_facts(self._facts, max_n=20)
+        scores_block = self._format_scores(self._scores)
+        insight_block = ""
+        if self._insight:
+            verdict = self._insight.get("verdict", "")
+            key = self._insight.get("key_insight", "")
+            if verdict or key:
+                insight_block = f"\nStrategic insight: {verdict} — {key}"
+
+        return (
+            f"## Research Context\n\n"
+            f"Overall intelligence score: {self._overall_score:.2f}\n\n"
+            f"### Dimension scores\n{scores_block}\n\n"
+            f"### Key facts\n{facts_block}"
+            f"{insight_block}\n\n"
+            f"---\n\n"
+            f"## Task\n\n"
+            f"Produce a VEMRA draft analyzing: {self.query}\n\n"
+            f"{_GATE_REQUIREMENTS}"
+        )
+
+    def generate_critic_prompt(self, analyst_output: str) -> str:
+        return (
+            f"{_CRITIC_ROLE}\n\n"
+            f"---\n\n"
+            f"## Document to challenge\n\n"
+            f"{analyst_output}\n\n"
+            f"---\n\n"
+            f"## Challenge instructions\n\n"
+            f"- For each named human: verify they exist, verify their role, verify the claimed need\n"
+            f"- For each economics claim: show the math, challenge the assumptions, find the leak\n"
+            f"- For each action step: simulate Day 1 with realistic response rates (not optimistic)\n"
+            f"- For each moat claim: can this be bought for <$100/mo? Is there a free alternative?\n"
+            f"- Kill score: 0-10 per section (V, E, M, R, A). 0 = fabricated, 10 = bulletproof\n"
+            f"- List every [K] claim that should actually be [T] or [?]\n"
+        )
+
+    def generate_synthesizer_prompt(self, analyst_output: str, critic_output: str) -> str:
+        return (
+            f"You are the final synthesizer. Merge the analyst's VEMRA with the critic's challenges.\n\n"
+            f"## Merge rules\n\n"
+            f"- Keep claims that SURVIVED critique unchanged\n"
+            f"- Remove or downgrade claims that were KILLED by critic\n"
+            f"- Where critic raised valid concerns but analyst had partial evidence: "
+            f"mark as [T] with concern noted inline\n"
+            f"- Highlight UNRESOLVED disagreements in a separate section\n"
+            f"- Produce final VEMRA (800 words max)\n"
+            f"- Structure: V, E, M, R, A + Unresolved section\n\n"
+            f"---\n\n"
+            f"## Analyst VEMRA\n\n"
+            f"{analyst_output}\n\n"
+            f"---\n\n"
+            f"## Critic challenges\n\n"
+            f"{critic_output}"
+        )
+
+    def _format_facts(self, facts: list, max_n: int = 20) -> str:
+        sorted_facts = sorted(facts, key=lambda f: f.get("confidence", 0.0), reverse=True)
+        top = sorted_facts[:max_n]
+        if not top:
+            return "(no facts available)"
+        lines = []
+        for f in top:
+            zone = f.get("zone_tag", "?")
+            text = f.get("fact", "")
+            conf = f.get("confidence", 0.0)
+            lines.append(f"- [{zone}] {text} (conf: {conf:.2f})")
+        return "\n".join(lines)
+
+    def _format_scores(self, scores: dict) -> str:
+        if not scores:
+            return "(no scores)"
+        lines = []
+        for dim, val in scores.items():
+            if isinstance(val, dict):
+                score = val.get("score", 0.0)
+            else:
+                score = float(val)
+            lines.append(f"{dim}: {score:.2f}")
+        return "\n".join(lines)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--thinkrunner-output", required=True, help="Path to ThinkRunner JSON")
+    parser.add_argument("--query", required=True)
+    parser.add_argument("--stage", choices=["analyst", "critic", "synthesizer"], required=True)
+    parser.add_argument("--input", help="Path to previous stage output (for critic/synthesizer)")
+    args = parser.parse_args()
+
+    with open(args.thinkrunner_output) as f:
+        tr_output = json.load(f)
+
+    orch = AdversarialOrchestrator(tr_output, args.query)
+
+    if args.stage == "analyst":
+        print(orch.generate_analyst_prompt())
+    elif args.stage == "critic":
+        prev = Path(args.input).read_text() if args.input else ""
+        print(orch.generate_critic_prompt(prev))
+    elif args.stage == "synthesizer":
+        prev = json.loads(Path(args.input).read_text()) if args.input else {}
+        print(orch.generate_synthesizer_prompt(prev.get("analyst", ""), prev.get("critic", "")))

@@ -1,0 +1,59 @@
+package api
+
+import (
+	"log/slog"
+	"net/http"
+)
+
+type RouterOption func(*handler)
+
+func WithPublisher(p EventPublisher) RouterOption {
+	return func(h *handler) { h.publisher = p }
+}
+
+func NewRouter(store Storage, logger *slog.Logger, opts ...RouterOption) http.Handler {
+	apiMux := http.NewServeMux()
+
+	h := &handler{store: store, hub: newWSHub(), logger: logger}
+	for _, opt := range opts {
+		opt(h)
+	}
+
+	apiMux.HandleFunc("POST /v1/events", h.handleIngestEvents)
+	apiMux.HandleFunc("GET /v1/overview", h.handleOverview)
+	apiMux.HandleFunc("GET /v1/projects", h.handleListProjects)
+	apiMux.HandleFunc("GET /v1/projects/{id}/stats", h.handleProjectStats)
+	apiMux.HandleFunc("GET /v1/savings/trend", h.handleSavingsTrend)
+	apiMux.HandleFunc("GET /v1/waste", h.handleWasteReport)
+	apiMux.HandleFunc("GET /v1/waste/projects", h.handleProjectWasteScores)
+	apiMux.HandleFunc("GET /v1/ws", h.handleWebSocket)
+
+	rl := newRateLimiter()
+
+	var wrapped http.Handler = apiMux
+	wrapped = withRateLimit(rl)(wrapped)
+	wrapped = withTenantAuth(wrapped)
+	wrapped = withCORS(wrapped)
+
+	root := http.NewServeMux()
+	root.HandleFunc("GET /healthz", handleHealthz)
+	root.Handle("/", wrapped)
+
+	return withLogging(logger, root)
+}
+
+func handleHealthz(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status":"ok"}`))
+}
+
+func withLogging(logger *slog.Logger, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		logger.Info("request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"remote", r.RemoteAddr,
+		)
+		next.ServeHTTP(w, r)
+	})
+}

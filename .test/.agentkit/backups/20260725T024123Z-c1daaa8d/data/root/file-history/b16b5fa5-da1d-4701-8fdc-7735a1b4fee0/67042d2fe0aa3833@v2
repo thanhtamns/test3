@@ -1,0 +1,189 @@
+"""
+Seeder — bootstraps the MoneyFlowGraph with 3 targeted seed searches.
+Deterministic: no LLM for search strategy, only for parsing results.
+"""
+
+import json
+import re
+from dataclasses import dataclass, field
+from typing import Callable, Optional
+
+from .money_flow_graph import MoneyFlowGraph
+
+
+@dataclass
+class SeedResult:
+    query: str
+    raw_response: str
+    entities_extracted: list[dict] = field(default_factory=list)
+    numbers_extracted: list[dict] = field(default_factory=list)
+    relationships_extracted: list[dict] = field(default_factory=list)
+
+
+SEED_TEMPLATES = {
+    "who_pays": [
+        '"{topic}" who pays pricing cost',
+        '"{topic}" service providers market',
+        '"{topic}" buyer spending annual',
+    ],
+    "market_size": [
+        '"{topic}" market size revenue 2024 2025',
+        '"{topic}" industry worth billion',
+    ],
+    "chain_actors": [
+        '"{topic}" companies providers list',
+        '"{topic}" intermediaries brokers agents',
+        '"{topic}" supply chain participants',
+    ],
+}
+
+MONEY_PATTERNS = [
+    r'\$[\d,.]+\s*(?:billion|million|B|M|K|k|bn|mn)',
+    r'(?:USD|EUR|€)\s*[\d,.]+\s*(?:billion|million|B|M|K)',
+    r'[\d,.]+\s*(?:billion|million|B|M)\s*(?:dollars|USD|EUR)',
+    r'\$[\d,.]+(?:/(?:month|year|mo|yr|hr|hour|deal|transaction))',
+    r'[\d,.]+%\s*(?:commission|take rate|margin|fee|growth)',
+    r'[\d,.]+\s*(?:companies|firms|providers|clients|customers)',
+]
+
+ENTITY_SIGNALS = [
+    r'(?:Inc|LLC|Corp|Ltd|GmbH|SA|AG|Co)\b',
+    r'(?:founded|launched|acquired|raised)\s+(?:by|in)\s+',
+    r'(?:market leader|top provider|largest|biggest)\s+',
+]
+
+
+def _normalize_amount(text: str) -> Optional[float]:
+    text = text.replace(",", "").strip()
+    multipliers = {"billion": 1e9, "B": 1e9, "bn": 1e9, "million": 1e6, "M": 1e6, "mn": 1e6, "K": 1e3, "k": 1e3}
+    for suffix, mult in multipliers.items():
+        if suffix in text:
+            num_match = re.search(r'\d+\.?\d+', text)
+            if num_match:
+                try:
+                    return float(num_match.group()) * mult
+                except ValueError:
+                    continue
+    num_match = re.search(r'\d+\.?\d+', text)
+    if num_match:
+        try:
+            return float(num_match.group())
+        except ValueError:
+            pass
+    return None
+
+
+class Seeder:
+    def __init__(self, research_fn: Callable[[str], str]):
+        self.research_fn = research_fn
+
+    def seed(self, topic: str, graph: Optional[MoneyFlowGraph] = None) -> MoneyFlowGraph:
+        if graph is None:
+            graph = MoneyFlowGraph()
+
+        queries = self._generate_seed_queries(topic)
+        results = []
+        for q in queries[:3]:
+            raw = self._search(q)
+            result = SeedResult(query=q, raw_response=raw)
+            self._extract_entities(result, raw)
+            self._extract_numbers(result, raw)
+            self._extract_relationships(result, raw, topic)
+            results.append(result)
+
+        self._populate_graph(graph, results, topic)
+        return graph
+
+    def _generate_seed_queries(self, topic: str) -> list[str]:
+        queries = []
+        for category in ["who_pays", "market_size", "chain_actors"]:
+            templates = SEED_TEMPLATES[category]
+            q = templates[0].format(topic=topic)
+            queries.append(q)
+        return queries
+
+    def _search(self, query: str) -> str:
+        try:
+            return self.research_fn(query)
+        except Exception:
+            return ""
+
+    def _extract_entities(self, result: SeedResult, text: str) -> None:
+        if not text:
+            return
+        for pattern in ENTITY_SIGNALS:
+            for match in re.finditer(pattern, text, re.IGNORECASE):
+                start = max(0, match.start() - 50)
+                end = min(len(text), match.end() + 20)
+                context = text[start:end].strip()
+                result.entities_extracted.append({
+                    "context": context,
+                    "match": match.group(),
+                    "position": match.start(),
+                })
+
+    def _extract_numbers(self, result: SeedResult, text: str) -> None:
+        if not text:
+            return
+        for pattern in MONEY_PATTERNS:
+            for match in re.finditer(pattern, text, re.IGNORECASE):
+                value = _normalize_amount(match.group())
+                start = max(0, match.start() - 40)
+                end = min(len(text), match.end() + 40)
+                context = text[start:end].strip()
+                result.numbers_extracted.append({
+                    "raw": match.group(),
+                    "normalized": value,
+                    "context": context,
+                })
+
+    def _extract_relationships(self, result: SeedResult, text: str, topic: str) -> None:
+        if not text:
+            return
+        rel_patterns = [
+            r'(\w[\w\s]{2,30})\s+(?:pays|charges|costs?|spends?)\s+(\$[\d,.]+\w*)',
+            r'(\w[\w\s]{2,30})\s+(?:hires?|contracts?|uses?)\s+(\w[\w\s]{2,30})',
+            r'(\w[\w\s]{2,30})\s+(?:sells?|provides?|offers?)\s+(?:to\s+)?(\w[\w\s]{2,30})',
+            r'(\w[\w\s]{2,30})\s+(?:refers?|connects?|brokers?)\s+(\w[\w\s]{2,30})',
+        ]
+        for pattern in rel_patterns:
+            for match in re.finditer(pattern, text, re.IGNORECASE):
+                result.relationships_extracted.append({
+                    "subject": match.group(1).strip(),
+                    "object": match.group(2).strip(),
+                    "full_match": match.group(),
+                })
+
+    def _populate_graph(self, graph: MoneyFlowGraph, results: list[SeedResult], topic: str) -> None:
+        graph.add_node(topic, "MARKET", confidence=0.9)
+
+        for result in results:
+            for entity in result.entities_extracted:
+                name = self._clean_entity_name(entity["context"])
+                if name and len(name) > 2:
+                    graph.add_node(name, "UNKNOWN", confidence=0.4, source_url=result.query)
+
+            for num in result.numbers_extracted:
+                if num["normalized"] and "market" in num["context"].lower():
+                    market_node = graph.nodes.get(next(
+                        (nid for nid, n in graph.nodes.items() if n.entity == topic), ""
+                    ))
+                    if market_node:
+                        market_node.monthly_volume = num["normalized"] / 12 if num["normalized"] > 1000 else num["normalized"]
+                        market_node.confidence = 0.7
+
+            for rel in result.relationships_extracted:
+                subj = rel["subject"][:40]
+                obj = rel["object"][:40]
+                if subj and obj and subj.lower() != obj.lower():
+                    graph.add_node(subj, "PAYER", confidence=0.4)
+                    graph.add_node(obj, "PROVIDER", confidence=0.4)
+                    graph.add_edge(subj, obj, "PAYS", confidence=0.3, verified_by=result.query)
+
+    def _clean_entity_name(self, context: str) -> str:
+        context = re.sub(r'\s+', ' ', context).strip()
+        words = context.split()
+        capitalized = [w for w in words if w and w[0].isupper() and len(w) > 1]
+        if capitalized:
+            return " ".join(capitalized[:4])
+        return ""

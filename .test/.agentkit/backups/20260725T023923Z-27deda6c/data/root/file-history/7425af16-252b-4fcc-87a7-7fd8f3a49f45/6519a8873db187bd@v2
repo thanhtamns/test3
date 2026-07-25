@@ -1,0 +1,488 @@
+# /startup Skill
+
+Analyze a startup/business idea using 12 reasoning lenses, tiered research, question-driven output.
+
+## Trigger
+/startup {business idea description}
+/launch {business idea description}
+
+## Variants
+- /startup:quick — Tier 1 only, short verdict (20-30 lines)
+- /startup:deep — Force Tier 3 deep dive regardless of signals
+- /startup:resume {slug} — Resume previous analysis from data/analysis-history/
+
+## Execution Flow
+
+### Phase 0: Intent Classification (NON-BLOCKING)
+
+Classify query intent BEFORE any analysis. Lightweight inline logic — no subagent needed.
+
+**Signal Word Detection:**
+```
+DISCOVERY_SIGNALS: "explore", "what should", "ideas", "options", "possibilities",
+                   "trending", "brainstorm", "discover", "find me", "what's hot",
+                   "opportunities", "suggest", "recommend"
+EXECUTION_SIGNALS: "how to", "build", "launch", "start", "implement", "sell",
+                   "price", "negotiate", "close", "execute", "step by step",
+                   "plan for", "strategy to"
+```
+
+**Classification:**
+- Count signal word matches in query (case-insensitive)
+- discovery_score > execution_score → **DISCOVERY**
+- execution_score > discovery_score → **EXECUTION**
+- Equal or mixed → **HYBRID**
+
+**Meta-directive Extraction:**
+```
+intent_meta = {
+    class: DISCOVERY | EXECUTION | HYBRID,
+    original_query: <full query, never truncate>,
+    language: <detected from query>,
+    exploration_breadth: WIDE (DISCOVERY) | NARROW (EXECUTION) | BALANCED (HYBRID),
+    stability_preference: STABLE | RISKY | BALANCED,
+    concrete_examples: <any $ amounts, timelines, names mentioned>,
+    experience_requested: <"like X did" or "similar to Y" references>,
+    vision_depth: SHORT (<6mo) | MEDIUM (6-24mo) | LONG (>24mo),
+    non_tech_requested: true if "no code" or "non-technical" in query,
+    prompt_intelligence: {
+        constraints: {budget, timeline, revenue_target, business_model},
+        vision_requirements: [<explicit vision statements from query>],
+        anti_patterns: [{pattern, reason}],
+        reference_examples: [{name, sentiment: POSITIVE|NEGATIVE|NEUTRAL}],
+        exploration_scope: {tech: bool, non_tech: bool},
+        experience_queries: [<questions asking for agent's experience>],
+        output_format: {language, grammar_quality},
+        discovery_mode: DISCOVERY | VALIDATION | COMPARISON,
+        implicit_values: {moat_priority, stability_preference, ...},
+        strategic_depth: {
+            thinking_level: 1|2|3,
+            trigger_phrases: [],
+            reference_patterns: [{example, pattern, insight, search_directive}],
+            anti_surface_signals: [],
+            experience_demand: bool,
+            search_mode_override: null | "COUNTER_TREND"
+        }
+    }
+}
+```
+
+**Prompt Intelligence Extraction (Phase -0.5):**
+Parse the FULL original query to populate `prompt_intelligence` fields:
+1. **constraints** — extract explicit $, timeline, revenue mentions
+2. **anti_patterns** — scan for "NOT X", "no X", "don't want X", negative examples
+3. **reference_examples** — extract named products/companies + sentiment (positive/negative/neutral)
+4. **vision_requirements** — capture "unique", "solve thoroughly", "opportunity others miss" type statements
+5. **exploration_scope** — detect if query asks for tech-only, non-tech, or both
+6. **experience_queries** — detect "what experience do you have", "have you done this"
+7. **output_format** — detect language from query text, grammar quality instructions
+8. **discovery_mode** — DISCOVERY (open exploration), VALIDATION (specific idea), COMPARISON (A vs B vs C)
+9. **implicit_values** — infer moat_priority, stability_preference from anti_patterns + vision
+10. **unasked_questions** — gaps in the prompt the founder should address
+11. **opportunity_pattern_extraction** — decompose reference examples into 5-layer meta-patterns (mechanism, conditions, anti-conditions, search fingerprint, execution template)
+12. **vision_quality_criteria** — convert vision requirements into scoring rubric (information_asymmetry_required, evidence_chain_mandatory, non_obvious_scoring, minimum_insight_level)
+13. **search_strategy_directives** — generate explicit search queries per source based on prompt; output per_source_queries, priority_sources, anti_queries
+14. **strategic_depth** — detect thinking depth level (1/2/3), counter-trend signals, reference pattern extraction, experience demand, search_mode_override
+
+ALSO: Run Vietnamese semantic expansion on raw prompt via prompt-decomposer agent (.claude/agents/core/focus/prompt-decomposer.md). Expand keywords like "bền vững", "thu nhập thụ động" into structured analysis requirements. Route research queries to niche-relevant languages (e.g., Portuguese for coffee/Brazil, Chinese for manufacturing).
+
+If query is too minimal (<10 words, no constraints): set `prompt_intelligence.unasked_questions` with missing context.
+
+**Strategic Depth Extraction:**
+Extract `thinking_level` from prompt_intelligence.strategic_depth. When `thinking_level >= 2`:
+- Generate `depth_directive` injected into ALL Phase 2+ agent prompts:
+  ```
+  STRATEGIC DEPTH DIRECTIVE (thinking_level={N}):
+  - User requires second-order analysis. DO NOT recommend surface-level plays.
+  - Apply "1000 Others Test" to every recommendation.
+  - If recommending something everyone already does → REJECT and find adjacent/infrastructure play.
+  - Reference patterns: {prompt_intelligence.strategic_depth.reference_patterns}
+  - Search mode: COUNTER_TREND (use counter-trend search layers)
+  ```
+- `researcher`: activates Counter-Trend Search Protocol (5 layers before standard)
+- `customer-obsession-researcher`: activates Counter-Trend Signal Mining mode
+- `niche-archaeologist`: activates Meta-Niche Mining mode
+- `opportunity-scanner`: activates Depth Scoring with auto-rejection
+
+**Routing Impact:**
+- **DISCOVERY** → Phase 1 auto-fills from query context, skips interview, research-first
+- **EXECUTION** → Standard flow (unchanged)
+- **HYBRID** → Light interview (max 2 clarifying questions), then proceed
+
+### Phase 1: Signal Scan
+1. Spawn `signal-scanner` agent (from .claude/agents/analysis/signal-scanner.md)
+2. Input: user query + business description + `intent_meta.prompt_intelligence`
+3. Output: domain classification + signal list + escalation decision
+4. If ALL signals DEAD/NEUTRAL → output short verdict, STOP
+5. If ANY signal non-neutral → proceed to Phase 2
+
+### Phase 2: Question Generation + Research
+1. Spawn `question-generator` agent
+   - Input: signals from Phase 1 + founder context
+   - Output: 5-7 prioritized questions with lens assignments
+2. Determine tier level:
+   - Default: Tier 2
+   - If /startup:deep or 3+ INTERESTING signals: Tier 3
+3. Spawn `deep-researcher` agent
+   - Input: questions + domain search template (from .claude/agents/analysis/search-templates/)
+   - Output: sourced data briefs per question
+4. Spawn conditional agents if relevant:
+   - `negotiation-planner` if B2B deal signals
+   - `export-ops` if physical product export
+   - `competitor-profiler` if 3+ strong competitors found
+5. Spawn intelligence agents IN PARALLEL with step 3-4:
+   - `youtube-intelligence-agent` (always — 60s timeout, skip on failure)
+   - `podcast-intelligence-agent` (always — 90s timeout, skip on failure)
+   - `community-intelligence-agent` (always — 45s timeout, skip on failure)
+6. Spawn research expansion agents IN PARALLEL with step 3-5:
+   - `deep-forum-researcher` (researcher agent + .claude/skills/business/deep-forum-researcher/SKILL.md)
+     - Input: entity from signals, intent_meta from Phase 0
+     - Max 5 WebSearch, 800 tok output, [K]/[T]/[?] tagged
+   - `experiential-knowledge-miner` (researcher agent + .claude/skills/business/experiential-knowledge-miner/SKILL.md)
+     - Input: entity, intent_meta
+     - Max 5 WebSearch, 800 tok output, [K]/[T]/[?] tagged
+   - `video-intelligence-scanner` (researcher agent + .claude/skills/business/video-intelligence-scanner/SKILL.md)
+     - Input: entity, intent_meta
+     - Max 3 WebSearch, 500 tok output, [K]/[T]/[?] tagged
+   - `failure-db-researcher` (researcher agent + search-pattern-library.md L12 patterns)
+     - Input: entity — search Failory, Autopsy.io, CB Insights, Startup Graveyard
+     - Max 3 WebSearch, 500 tok output, extract: business model, capital burned, timeline, root cause
+   - `market-intel-aggregator` (researcher agent + search-pattern-library.md L13 patterns)
+     - Input: entity — search Exploding Topics, Google Trends, SimilarWeb, Crunchbase
+     - Max 3 WebSearch, 500 tok output, extract: growth rate, market size, trend direction
+   - **Total expansion budget:** 19 WebSearch calls, ~3100 tokens overhead
+7. After ALL step 3-6 agents complete:
+   - Spawn `triangulation-verifier` (30s timeout, WARNING mode)
+   - Input: deep-researcher output + intel agent outputs + **expansion track outputs**
+   - Output: TRIANGULATION_REPORT with [K]/[T]/[?] tags + coverage %
+   - If any intel agent failed → auto-retry once (30s), then skip
+
+### Phase 2.5A: Evidence Vault Creation (MANDATORY)
+
+After ALL Phase 2 research agents complete, aggregate into centralized vault:
+1. Spawn `evidence-vault-aggregator` agent (general-purpose)
+   - Protocol: `.claude/agents/core/intelligence/evidence-vault-protocol.md`
+   - Input: ALL Phase 2 outputs (deep-researcher, intel agents, expansion tracks, triangulation report)
+   - Output: `plans/{session_id}/evidence-vault.md` with all 7 sections
+   - Writing rules: raw evidence only, verbatim quotes, [K]/[T]/[?] tags, search log complete
+2. Validate vault quality:
+   - WebFetch count >= `search_depth_directive.min_webfetch`
+   - Language count >= `search_depth_directive.min_languages`
+   - Case studies >= `search_depth_directive.min_case_studies`
+   - If any check fails → return to Phase 2 with specific re-search instructions
+3. Save vault path as checkpoint for Phase 2.5B and Phase 3
+
+### Phase 2.5B: Multi-Step Reasoning Chain (MANDATORY)
+
+After vault created and validated:
+1. Spawn `reasoning-chain-executor` agent (general-purpose, model=opus)
+   - Protocol: `.claude/agents/core/intelligence/reasoning-chain-protocol.md`
+   - Input: evidence vault path
+   - Execute ALL 5 steps sequentially:
+     1. Pattern Detection (minimum 3 patterns with counter-evidence)
+     2. Cross-Reference Validation (matrix across markets/time/languages/size)
+     3. Causal Inference (mechanisms + alternative explanations + testable predictions)
+     4. Domain Expert Lens (3-5 frameworks, evidence-based interpretation)
+     5. Synthesis + Gaps (traced conclusions + honest gap assessment)
+   - Output: `plans/{session_id}/reasoning-chain.md`
+   - RULES: every claim traces to vault evidence by section + entry number
+2. Save reasoning chain path as checkpoint for Phase 3+4
+
+**BLOCKING:** Evidence vault + reasoning chain must exist before Phase 2.5C proceeds.
+Phase 3+ agents receive BOTH vault and reasoning chain as input context.
+
+### Phase 2.5C: Opportunity Pattern Matching (NON-BLOCKING)
+
+After Phase 2 research completes, run pattern recognition to decompose opportunities into validated meta-patterns.
+
+1. Spawn `opportunity-pattern-matcher` agent (.claude/agents/core/intelligence/opportunity-pattern-matcher.md)
+   - Input: `prompt_intelligence` (categories 4, 11, 13) + Phase 2 research data
+   - Uses `deep-search-protocol` (.claude/agents/core/intelligence/deep-search-protocol.md) for condition validation
+   - Decomposes reference examples into 5-layer patterns (mechanism → conditions → anti-conditions → search fingerprint → execution template)
+   - Classifies against 12 archetypes (T1-T6 tech, N1-N6 non-tech)
+   - Validates conditions with multi-source evidence; kills patterns with any anti-condition triggered
+   - Output: top 5 scored patterns + killed patterns with reasons
+   - Updates `data/patterns/pattern-library.json` with validated patterns
+2. If exploration_scope.non_tech is true: include N1-N6 non-tech patterns
+3. Respect anti_patterns from prompt_intelligence — exclude patterns matching founder's rejections
+4. Output feeds: first-principles generator (Phase 2.6) + tournament (Phase 2.7, if activated) OR vision-quality-gate (Phase 4) + synthesis-engine (Phase 4)
+
+### Phase 2.6: First Principles Hypothesis Generator (NON-BLOCKING)
+
+Generate NOVEL business hypotheses from first principles — pure LLM reasoning, zero web search.
+Runs after evidence vault provides context, but generates ideas that DON'T exist in any search result.
+
+1. Spawn `first-principles-generator` agent (general-purpose, model=opus)
+   - Protocol: `.claude/agents/core/intelligence/first-principles-protocol.md`
+   - Input: `founder_context` (from Phase 0 intent_meta) + `domain` (original query) + `evidence_vault_path` + `reasoning_chain_path`
+   - Timeout: 120s
+   - Output: `plans/{session_id}/first-principles-hypotheses.md`
+2. Parse output → extract `first_principles_hypotheses`:
+   - 5-8 novel hypotheses, each with mechanism + falsification + evidence gaps
+   - Each tagged `source_phase = "first_principles"` for tournament attribution
+3. If generation fails (timeout, < 1 hypothesis):
+   - Set `first_principles_hypotheses = null`
+   - Log: "First principles generation skipped: {reason}"
+   - Tournament uses only pattern-matcher results (current behavior)
+4. `first_principles_hypotheses` feeds: reflection agent (Phase 2.6B) then tournament (Phase 2.7)
+
+### Phase 2.6B: Reflection Agent — Pre-Tournament Filter (NON-BLOCKING)
+
+Self-critique ALL hypotheses before tournament entry. Kills weak candidates (<3/10), flags medium ones (3-5/10) for strengthening, passes strong ones (>5/10). Saves tournament compute.
+
+1. Combine candidate pool: pattern-matcher top_5 + first-principles hypotheses (5-8) = 10-13 candidates
+2. For EACH candidate, spawn reflection scoring (can be done in single agent call):
+   - Protocol: `.claude/agents/core/intelligence/reflection-protocol.md`
+   - 3 questions per hypothesis: mechanism clarity (40%), falsifiability (30%), novelty (30%)
+   - Verdicts: KILL (<3.0), REFINE (3.0-5.0), PASS (>5.0)
+   - Output: `plans/{session_id}/reflection-result.md`
+3. Parse reflection-result.md → filter candidates:
+   - KILL: removed from pool
+   - REFINE: kept but flagged with `_reflection_flag = true` + `_refinement_suggestion`
+   - PASS: enter tournament as-is
+4. If reflection fails (timeout, error):
+   - Set `reflection_result = null`
+   - All candidates enter tournament unfiltered (current behavior)
+5. Surviving candidates feed: tournament (Phase 2.7)
+
+### Phase 2.7: Idea Tournament (CONDITIONAL — requires >= 3 hypotheses)
+
+Adversarial pairwise debate to rank opportunity hypotheses before synthesis.
+Only activates when evidence is rich enough to justify debate cost.
+
+1. **Activation gate (zero LLM cost, dual condition):**
+   - Count distinct opportunity-related keywords in Phase 2.5C output >= 3
+   - Pattern matcher found >= 3 distinct patterns
+   - BOTH conditions must pass. If either fails → skip tournament, set `tournament_context = null`
+2. If gate passes, spawn `tournament-executor` agent (general-purpose, model=opus)
+   - Protocol: `.claude/agents/core/intelligence/tournament-protocol.md`
+   - Input: `evidence_vault_path` + Phase 2.5C `pattern_matcher_top5` + `founder_context` (from Phase 0 intent_meta) + `first_principles_hypotheses` (from Phase 2.6, may be null)
+   - When `first_principles_hypotheses` exists: tournament candidate pool = pattern-matcher top_5 + first-principles hypotheses. Hard cap 10: if > 10, keep top 5 from each source. Source attribution preserved in output.
+   - Timeout: 300s (5 min max)
+   - Output: `plans/{session_id}/tournament-result.md`
+3. Parse tournament-result.md → extract `tournament_context`:
+   - Ranked hypotheses with Elo scores
+   - Debate highlights (key arguments from top-3 matchups)
+   - Diversity report (cluster representation)
+4. If tournament agent fails (timeout, malformed output, < 3 hypotheses):
+   - Set `tournament_context = null`
+   - Log: "Tournament skipped: {reason}"
+   - Pipeline continues with current behavior (Phase 2.5C top_5 → Phase 4)
+5. `tournament_context` feeds: refinement loop (Phase 2.8) if activated, else vision-quality-gate (Phase 4)
+
+### Phase 2.8: Refinement Loop — Iterative Hypothesis Evolution (CONDITIONAL)
+
+Iteratively STRENGTHEN, ATTACK, and EVOLVE top-3 hypotheses from tournament. Evidence-based debate with knowledge graph ammunition. Dynamic convergence via Elo delta rate.
+
+1. **Activation gate:** `tournament_context` must exist AND have >= 3 ranked hypotheses
+   - If gate fails → skip refinement, set `refinement_result = null`
+2. Build knowledge graph from evidence vault:
+   - Parse evidence-vault.md → extract claims with zone tags ([K]/[T]/[?])
+   - Build queryable graph: claims linked to hypotheses, supporting/contradicting edges
+   - If graph build fails → set `knowledge_graph = null`, proceed with opinion-based debate
+3. Spawn `refinement-executor` agent (general-purpose, model=opus)
+   - Protocol: `.claude/agents/core/intelligence/refinement-loop-protocol.md`
+   - Input: `tournament_result_path` + `knowledge_graph` (serialized) + `founder_context`
+   - Timeout: 600s (10 min max — multiple rounds)
+   - Per round: STRENGTHEN (9 targeted searches) + ATTACK (6 searches) + EVOLVE (0 searches) + RE-TOURNAMENT
+   - Convergence: Elo delta <5% OR ranking stable across 2 rounds OR max 5 rounds
+   - Output: `plans/{session_id}/refinement-result.md`
+4. Parse refinement-result.md → extract:
+   - `refinement_result`: final ranking + evolution traces + contradiction list + Elo trajectory
+   - Updated `knowledge_graph` with new evidence from refinement searches
+5. If refinement fails (timeout, < 3 hypotheses, convergence never reached):
+   - Set `refinement_result = null`
+   - Synthesis uses tournament result directly
+6. `refinement_result` + `knowledge_graph` feed: lens analysis (Phase 3) + synthesis (Phase 4)
+
+### Phase 3: Lens Analysis (reads Evidence Vault + Reasoning Chain)
+
+All Phase 3 agents receive evidence_vault_path + reasoning_chain_path as context.
+Agents MUST reference vault entries by section + entry number, build on reasoning chain patterns.
+
+1. Select lenses: 6 core (always) + 1-3 conditional (signal-dependent)
+   - Core: unit-economics-surgeon, distribution-realist, antifragility-auditor, pattern-matcher, contrarian-challenger, cash-flow-physicist
+   - Conditional: offer-architect, moat-detector, negotiation-reader, operator-lens, growth-mechanic, customer-truth-finder
+   - Lens balance check: for non-digital domains (export, manufacturing, agriculture, retail, healthcare), MUST include operator-lens and distribution-realist in conditional set
+2. Spawn `lens-runner` agent
+   - Input: research data + selected lens files from .claude/agents/lenses/
+   - Output: analytical answers per question from each lens
+3. Spawn `contrarian-agent` in parallel
+   - Input: all research + lens outputs
+   - Output: strongest case AGAINST
+4. Spawn `circuit-designer` in parallel
+   - Input: unit economics + business model
+   - Output: cash flow map with friction points
+
+### Phase 4: Vision Quality Gate + Synthesis + Action
+
+**4A: Vision Quality Gate (BLOCKING)**
+1. Spawn `vision-quality-gate` agent (.claude/agents/core/intelligence/vision-quality-gate.md)
+   - Input (when `tournament_context` exists): tournament-ranked hypotheses (from Phase 2.7) + debate highlights + `prompt_intelligence.vision_quality_criteria`
+   - Input (when `tournament_context` is null): pattern-matcher top_5 (from Phase 2.5) + `prompt_intelligence.vision_quality_criteria` [UNCHANGED behavior]
+   - Scores each opportunity on 6 mandatory questions (100pts total):
+     - Q1: Information Asymmetry (30pts) — name type + cite URL + quantify gap
+     - Q2: Timing Window (20pts) — catalyst event + date within 180 days
+     - Q3: Evidence Chain (20pts) — pain quote + gap comparison + revenue path
+     - Q4: Precedent (15pts) — named company + revenue + pattern match
+     - Q5: Reasoning Process (10pts) — data trail + uncertainty + alternatives
+     - Q6: Kill Criteria (5pts) — 3+ measurable conditions
+   - Output: approved (>70), flagged (50-70), rejected (<50)
+   - If ALL rejected + ALL flagged empty: expand search scope, do NOT kill pipeline
+   - Only APPROVED + FLAGGED opportunities proceed to synthesis
+
+**4A.5: Depth Filter (when thinking_level >= 2, BLOCKING)**
+Before synthesis, apply depth filter to all opportunities:
+- Collect all opportunities from Phase 2.5 pattern-matcher + Phase 3 lens analysis
+- Score each for depth level (1/2/3) using opportunity-scanner depth scoring
+- REJECT all Level 1 (surface play) opportunities — include them as "rejected with upgrade path"
+- Only Level 2+ proceed to synthesis
+- If ALL rejected at Level 1: WARNING — re-examine with stronger counter-trend focus before giving up
+- Output: depth_filter_report with accepted/rejected counts + upgrade hints
+
+**4B: Synthesis (reads Evidence Vault + Reasoning Chain + HDIE outputs)**
+1. Spawn `synthesis-engine` agent
+   - Input: ALL outputs from Phases 0-3 + evidence-vault.md + reasoning-chain.md + Phase 2.5C pattern-matcher results + vision gate results + depth_filter_report + `intent_meta.prompt_intelligence` + output template (.claude/agents/analysis/output-template.md)
+   - Additional input (when `tournament_context` exists): TOURNAMENT RANKING section (Elo scores + ranked hypotheses), DEBATE HIGHLIGHTS section (key arguments for top-3), DIVERSITY REPORT section (cluster representation).
+   - Additional input (when `refinement_result` exists): EVOLUTION TRACES (per-hypothesis change history), CONTRADICTION LIST (unresolved counter-evidence), ELO TRAJECTORY (convergence data). Format output using mechanism-output-protocol.md.
+   - Additional input (when `knowledge_graph` exists): EVIDENCE GAPS (unverified claims), CONTRADICTION EDGES. Surface in "WHAT WE DON'T KNOW" section.
+   - Additional input (when `first_principles_hypotheses` exists): SOURCE ATTRIBUTION — label each hypothesis as Novel/Evidence-based/Evolved.
+   - Output format: use `.claude/agents/core/intelligence/mechanism-output-protocol.md` when HDIE data exists, fall back to current format when null.
+   - MUST reference vault entries by section + entry number in all claims
+   - MUST build on reasoning chain patterns, not re-derive from scratch
+   - MUST respect prompt_intelligence.anti_patterns (never recommend rejected models)
+   - MUST honor prompt_intelligence.output_format (language, grammar quality)
+   - MUST address prompt_intelligence.experience_queries with domain-specific knowledge
+   - Only include opportunities that passed vision quality gate (APPROVED or FLAGGED)
+   - For FLAGGED opportunities: include explicit warning banner with missing evidence
+   - For each opportunity: include Q1-Q6 score breakdown in appendix
+   - Include pattern archetype (T1-T6, N1-N6) label for each opportunity
+   - Include kill criteria from Q6 in the "When to Pivot" section
+   - Output: question-driven report (80-150 lines)
+2. Spawn `action-translator` agent
+   - Input: verdict + findings
+   - Output: 7-day action list + kill triggers
+3. Spawn `bias-detector` agent (WARNING mode)
+   - Input: synthesis output + business_type + lens_analysis
+   - Output: BIAS-CHECK report (appended to output, never blocks)
+4. Save analysis to data/analysis-history/{date}-{slug}.json
+   - MUST include `intent_meta` (with `prompt_intelligence`) in saved state
+   - MUST include `pattern_matcher_results` and `vision_gate_results`
+   - Resume flow depends on this for context restoration
+
+**4C: Deal Drill — Mechanism to Actionable Output (CONDITIONAL)**
+
+Drill top-1 mechanism-verified hypothesis into SPECIFIC actionable output: named companies, verified prices, specific communities, đường vòng strategy, measurable kill criteria.
+
+1. **Activation gate:** top-1 hypothesis confidence >= 0.7 (from synthesis or refinement Elo)
+   - If confidence < 0.7: skip drill, note "Confidence too low for deal-specific output"
+2. Spawn `deal-drill-executor` agent (general-purpose, model=opus)
+   - Protocol: `.claude/agents/core/intelligence/deal-drill-protocol.md`
+   - Input: top-1 hypothesis (mechanism, evidence profile, Elo) + `founder_profile` (data/founder-profile.json) + `knowledge_graph` (if available) + competitor analysis from evidence vault
+   - Timeout: 300s
+   - Search budget: 15 targeted web searches max
+   - 5 sequential drills: WHO PAYS → PRICING → ENTRY POINT → EDGE + đường vòng → KILL CRITERIA
+   - Output: `plans/{session_id}/deal-drill.md`
+3. Parse deal-drill.md → extract `deal_drill`:
+   - Specific company/segment names with urgency
+   - Competitor price table with URLs
+   - Entry channel with member count + cold outreach script
+   - 2-3 đường vòng strategies
+   - 3 measurable kill criteria with thresholds + timeframes
+   - 7-day sprint plan
+4. If drill fails or invalidates mechanism:
+   - If drill finds no valid companies/pricing: note "Drill invalidated mechanism — recommend re-examine"
+   - If timeout/error: set `deal_drill = null`, output note
+5. `deal_drill` section appended to final output after synthesis
+
+## Agents
+- .claude/agents/core/focus/prompt-decomposer.md
+- .claude/agents/core/intelligence/deep-search-protocol.md
+- .claude/agents/core/intelligence/evidence-vault-protocol.md
+- .claude/agents/core/intelligence/reasoning-chain-protocol.md
+- .claude/agents/core/intelligence/opportunity-pattern-matcher.md
+- .claude/agents/core/intelligence/first-principles-protocol.md
+- .claude/agents/core/intelligence/reflection-protocol.md
+- .claude/agents/core/intelligence/tournament-protocol.md
+- .claude/agents/core/intelligence/refinement-loop-protocol.md
+- .claude/agents/core/intelligence/mechanism-output-protocol.md
+- .claude/agents/core/intelligence/deal-drill-protocol.md
+- .claude/agents/core/intelligence/vision-quality-gate.md
+- .claude/agents/analysis/signal-scanner.md
+- .claude/agents/analysis/question-generator.md
+- .claude/agents/analysis/deep-researcher.md
+- .claude/agents/analysis/lens-runner.md
+- .claude/agents/analysis/contrarian-agent.md
+- .claude/agents/analysis/circuit-designer.md
+- .claude/agents/analysis/synthesis-engine.md
+- .claude/agents/analysis/action-translator.md
+- .claude/agents/analysis/negotiation-planner.md
+- .claude/agents/analysis/export-ops.md
+- .claude/agents/analysis/competitor-profiler.md
+- .claude/agents/analysis/bias-detector.md
+- .claude/agents/analysis/youtube-intelligence-agent.md
+- .claude/agents/analysis/podcast-intelligence-agent.md
+- .claude/agents/analysis/community-intelligence-agent.md
+- .claude/agents/analysis/triangulation-verifier.md
+
+## Research Expansion Skills (V2)
+- .claude/skills/business/deep-forum-researcher/SKILL.md
+- .claude/skills/business/experiential-knowledge-miner/SKILL.md
+- .claude/skills/business/video-intelligence-scanner/SKILL.md
+- .claude/skills/business/search-pattern-library.md (L12: Failure DBs, L13: Market Intel, L14: Multi-Source Intelligence)
+
+## Lenses
+- .claude/agents/lenses/offer-architect.md
+- .claude/agents/lenses/moat-detector.md
+- .claude/agents/lenses/unit-economics-surgeon.md
+- .claude/agents/lenses/distribution-realist.md
+- .claude/agents/lenses/negotiation-reader.md
+- .claude/agents/lenses/antifragility-auditor.md
+- .claude/agents/lenses/operator-lens.md
+- .claude/agents/lenses/growth-mechanic.md
+- .claude/agents/lenses/pattern-matcher.md
+- .claude/agents/lenses/contrarian-challenger.md
+- .claude/agents/lenses/customer-truth-finder.md
+- .claude/agents/lenses/cash-flow-physicist.md
+
+## Variant: :quick
+- Run ONLY Phase 1 (signal scanner, 3 WebSearches)
+- Generate 3 questions (not 5-7)
+- Apply only core lenses (no conditionals)
+- Output: 20-30 lines short verdict
+- Skip analysis history save (too shallow to track)
+
+## Variant: :deep
+- Force Tier 3 deep dive regardless of Phase 1 signals
+- Generate 7 questions (max)
+- Activate ALL conditional agents that could be relevant
+- Apply 9 lenses (all core + most relevant conditionals)
+- Output: 120-180 lines (allow longer for depth)
+- Save to analysis history
+
+## Variant: :resume {slug}
+- Load previous analysis from data/analysis-history/{slug}.json
+- Restore `intent_meta` including `prompt_intelligence` from saved state
+  - If saved state lacks `prompt_intelligence` (pre-V17): re-extract from `intent_meta.original_query`
+  - If `original_query` also missing: proceed without (graceful degradation)
+- Pass restored `prompt_intelligence` to all re-run agents via context injection
+- Display questions, verdict, predictions
+- Ask user: "What's changed since {date}?"
+- Re-run only the questions affected by changes
+- Update analysis history file (append, don't overwrite)
+- Save as new version: {date}-{slug}-v2.json
+
+## Research Chains
+- .claude/agents/analysis/research-chains.md
+
+## Search Templates
+- .claude/agents/analysis/search-templates/saas-and-digital.yaml
+- .claude/agents/analysis/search-templates/export-and-physical.yaml
+- .claude/agents/analysis/search-templates/service-business.yaml
+- .claude/agents/analysis/search-templates/content-and-media.yaml
+
+## Output Template
+- .claude/agents/analysis/output-template.md
+
+## History
+- data/analysis-history/{date}-{slug}.json

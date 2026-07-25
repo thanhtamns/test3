@@ -1,0 +1,138 @@
+import json, sys
+from collections import Counter, defaultdict
+sys.stdout.reconfigure(encoding='utf-8')
+
+with open('unified_training_set.json', 'r', encoding='utf-8') as f:
+    cases = json.load(f)
+
+patterns = []
+
+# Pattern 1: Success rate by money_flow_type
+type_outcomes = defaultdict(lambda: defaultdict(int))
+for c in cases:
+    mft = c.get('money_flow_type', 'unknown')
+    outcome = c.get('outcome', 'unknown')
+    type_outcomes[mft][outcome] += 1
+    type_outcomes[mft]['total'] += 1
+
+for mft, counts in type_outcomes.items():
+    total = counts['total']
+    if total >= 3:
+        sr = counts.get('success', 0) / total
+        fr = counts.get('failure', 0) / total
+        patterns.append({
+            'id': f'PAT-MFT-{mft.upper().replace("_","-")}',
+            'type': 'money_flow_type_base_rate',
+            'description': f'{mft}: {sr:.0%} success, {fr:.0%} failure (n={total})',
+            'money_flow_type': mft,
+            'success_rate': round(sr, 3),
+            'failure_rate': round(fr, 3),
+            'sample_size': total,
+            'confidence': min(0.95, 0.5 + total * 0.01)
+        })
+
+# Pattern 2: Success rate by structural_position
+pos_outcomes = defaultdict(lambda: defaultdict(int))
+for c in cases:
+    pos = c.get('structural_position', 'unknown')
+    outcome = c.get('outcome', 'unknown')
+    pos_outcomes[pos][outcome] += 1
+    pos_outcomes[pos]['total'] += 1
+
+for pos, counts in pos_outcomes.items():
+    total = counts['total']
+    if total >= 3:
+        sr = counts.get('success', 0) / total
+        fr = counts.get('failure', 0) / total
+        patterns.append({
+            'id': f'PAT-POS-{pos.upper().replace("_","-")}',
+            'type': 'structural_position_base_rate',
+            'description': f'{pos}: {sr:.0%} success, {fr:.0%} failure (n={total})',
+            'structural_position': pos,
+            'success_rate': round(sr, 3),
+            'failure_rate': round(fr, 3),
+            'sample_size': total,
+            'confidence': min(0.95, 0.5 + total * 0.01)
+        })
+
+# Pattern 3: Success rate by compound_engine
+eng_outcomes = defaultdict(lambda: defaultdict(int))
+for c in cases:
+    eng = c.get('compound_engine', 'unknown')
+    outcome = c.get('outcome', 'unknown')
+    eng_outcomes[eng][outcome] += 1
+    eng_outcomes[eng]['total'] += 1
+
+for eng, counts in eng_outcomes.items():
+    total = counts['total']
+    if total >= 3:
+        sr = counts.get('success', 0) / total
+        fr = counts.get('failure', 0) / total
+        patterns.append({
+            'id': f'PAT-ENG-{eng.upper().replace("_","-")}',
+            'type': 'compound_engine_base_rate',
+            'description': f'{eng} engine: {sr:.0%} success, {fr:.0%} failure (n={total})',
+            'compound_engine': eng,
+            'success_rate': round(sr, 3),
+            'failure_rate': round(fr, 3),
+            'sample_size': total,
+            'confidence': min(0.95, 0.5 + total * 0.01)
+        })
+
+# Pattern 4: Cross-patterns (position x engine)
+cross = defaultdict(lambda: defaultdict(int))
+for c in cases:
+    pos = c.get('structural_position', '?')
+    eng = c.get('compound_engine', '?')
+    key = f"{pos}_x_{eng}"
+    outcome = c.get('outcome', 'unknown')
+    if outcome in ('success', 'failure'):
+        cross[key][outcome] += 1
+        cross[key]['total'] += 1
+
+for key, counts in cross.items():
+    if counts['total'] >= 3:
+        sr = counts['success'] / counts['total']
+        patterns.append({
+            'id': f'PAT-CROSS-{key.upper().replace("_","-")}',
+            'type': 'cross_pattern',
+            'description': f'{key}: {sr:.0%} success rate (n={counts["total"]})',
+            'cross_key': key,
+            'success_rate': round(sr, 3),
+            'sample_size': counts['total'],
+            'confidence': min(0.9, 0.4 + counts['total'] * 0.02)
+        })
+
+# Pattern 5: Kill reasons from failures
+kill_reasons = []
+for c in cases:
+    if c.get('outcome') == 'failure':
+        kr = c.get('kill_reason') or c.get('key_pattern', '')
+        if kr:
+            kill_reasons.append(kr)
+
+kill_words = Counter()
+for kr in kill_reasons:
+    for word in ['competition', 'crowd', 'capital', 'timing', 'market', 'burn',
+                 'churn', 'scale', 'pricing', 'moat', 'entry', 'commodity',
+                 'platform', 'dependency', 'unit economics', 'funded']:
+        if word.lower() in kr.lower():
+            kill_words[word] += 1
+
+if kill_words:
+    patterns.append({
+        'id': 'PAT-KILL-COMMON',
+        'type': 'kill_reason_frequency',
+        'description': f'Top kill reasons across {len(kill_reasons)} failures',
+        'kill_word_counts': dict(kill_words.most_common(10)),
+        'sample_size': len(kill_reasons),
+        'confidence': 0.75
+    })
+
+with open('extracted_patterns.json', 'w', encoding='utf-8') as f:
+    json.dump(patterns, f, indent=2, ensure_ascii=False)
+
+print(f'Extracted {len(patterns)} patterns:')
+for p in patterns:
+    print(f'  {p["id"]}: {p["description"]}')
+print(f'\nWritten to extracted_patterns.json')

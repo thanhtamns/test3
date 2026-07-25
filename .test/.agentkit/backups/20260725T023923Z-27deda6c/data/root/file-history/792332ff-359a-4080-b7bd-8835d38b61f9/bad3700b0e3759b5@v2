@@ -1,0 +1,304 @@
+"""Tests for Phase 3: Synthesis Engine (LOCAL-ONLY)."""
+
+import pytest
+
+from ..decomposer import Decomposer, DecompositionTree
+from ..dimension_registry import Dimension
+from ..dimension_scorer import DimensionScore, DimensionScorer
+from ..gap_analyzer import GapAnalyzer, GapReport
+from ..output_formatter import OutputFormatter
+from ..path_generator import PathGenerator, PathStep
+from ..synthesis_engine import SynthesisEngine, SynthesisResult
+from ...hunger.claim_parser import ParsedClaim
+
+
+def _make_fact(fact="Test fact", dimension="regulatory_risks", confidence=0.8, zone="K", date="2025-06-01"):
+    return ParsedClaim(
+        fact=fact, value=None, dimension=dimension,
+        source_url=None, source_date=date,
+        confidence=confidence, zone_tag=zone,
+    )
+
+
+def _make_tree(query="How to start a SaaS?", query_type="market_entry"):
+    decomposer = Decomposer()
+    return decomposer.decompose(query)
+
+
+# ── DimensionScorer ──────────────────────────────────────────────────────────
+
+
+class TestDimensionScorer:
+    def setup_method(self):
+        self.scorer = DimensionScorer()
+
+    def test_score_empty_facts(self):
+        score = self.scorer.score("base_rates", [])
+        assert score.score == 0.0
+        assert score.zone_tag == "?"
+        assert score.fact_count == 0
+
+    def test_score_high_confidence_facts(self):
+        facts = [_make_fact(f"Fact {i}", confidence=0.9, zone="K") for i in range(5)]
+        score = self.scorer.score("base_rates", facts)
+        assert score.score >= 0.6
+        assert score.zone_tag in ("K", "T")
+        assert score.fact_count == 5
+
+    def test_score_low_confidence_facts(self):
+        facts = [_make_fact(f"Fact {i}", confidence=0.3, zone="?") for i in range(2)]
+        score = self.scorer.score("base_rates", facts)
+        assert score.score < 0.5
+        assert score.zone_tag == "?"
+
+    def test_score_mixed_confidence(self):
+        facts = [
+            _make_fact("High", confidence=0.9, zone="K"),
+            _make_fact("Low", confidence=0.3, zone="?"),
+        ]
+        score = self.scorer.score("base_rates", facts)
+        assert 0.2 < score.score < 0.8
+
+    def test_zone_tag_assignment(self):
+        high = [_make_fact(f"F{i}", confidence=0.95, zone="K") for i in range(5)]
+        score = self.scorer.score("base_rates", high)
+        # 0.3*1.0 + 0.4*0.95 + 0.1*freshness ≈ 0.68-0.78 depending on freshness
+        assert score.zone_tag in ("K", "T")
+
+    def test_contradiction_penalty(self):
+        facts = [
+            _make_fact("Good", confidence=0.8, zone="K"),
+            _make_fact("Bad", confidence=0.3, zone="?"),
+            _make_fact("Ugly", confidence=0.2, zone="?"),
+        ]
+        score = self.scorer.score("base_rates", facts)
+        assert score.contradictions == 2
+
+    def test_freshness_with_recent_dates(self):
+        facts = [_make_fact("Recent", confidence=0.8, date="2026-04-01")]
+        score = self.scorer.score("base_rates", facts)
+        assert score.score > 0
+
+    def test_freshness_with_old_dates(self):
+        facts = [_make_fact("Old", confidence=0.8, date="2020-01-01")]
+        score_old = self.scorer.score("base_rates", facts)
+        facts_new = [_make_fact("New", confidence=0.8, date="2026-04-01")]
+        score_new = self.scorer.score("base_rates", facts_new)
+        assert score_new.score >= score_old.score
+
+    def test_score_all(self):
+        facts_by_dim = {
+            "base_rates": [_make_fact("F1", confidence=0.8)],
+            "unit_economics": [_make_fact("F2", dimension="unit_economics", confidence=0.6)],
+        }
+        scores = self.scorer.score_all(facts_by_dim)
+        assert "base_rates" in scores
+        assert "unit_economics" in scores
+
+    def test_score_bounded_0_to_1(self):
+        facts = [_make_fact(f"F{i}", confidence=1.0, zone="K") for i in range(20)]
+        score = self.scorer.score("base_rates", facts)
+        assert 0.0 <= score.score <= 1.0
+
+
+# ── GapAnalyzer ──────────────────────────────────────────────────────────────
+
+
+class TestGapAnalyzer:
+    def setup_method(self):
+        self.analyzer = GapAnalyzer()
+
+    def test_no_gaps_when_all_covered(self):
+        tree = _make_tree()
+        scores = {
+            dim.name: DimensionScore(dim.name, 0.8, 5, 0.8, 0, "K")
+            for dim in tree.dimensions
+        }
+        gaps = self.analyzer.analyze(tree, scores)
+        assert len(gaps) == 0
+
+    def test_gaps_for_uncovered_dimensions(self):
+        tree = _make_tree()
+        scores = {
+            dim.name: DimensionScore(dim.name, 0.2, 1, 0.3, 0, "?")
+            for dim in tree.dimensions
+        }
+        gaps = self.analyzer.analyze(tree, scores)
+        assert len(gaps) > 0
+        assert all(g.score < 0.7 for g in gaps)
+
+    def test_gaps_sorted_by_priority_desc(self):
+        tree = _make_tree()
+        scores = {
+            dim.name: DimensionScore(dim.name, 0.1, 0, 0.0, 0, "?")
+            for dim in tree.dimensions
+        }
+        gaps = self.analyzer.analyze(tree, scores)
+        for i in range(len(gaps) - 1):
+            assert gaps[i].priority >= gaps[i + 1].priority
+
+    def test_gap_has_suggested_action(self):
+        tree = _make_tree()
+        scores = {"base_rates": DimensionScore("base_rates", 0.1, 0, 0.0, 0, "?")}
+        gaps = self.analyzer.analyze(tree, scores)
+        for gap in gaps:
+            assert gap.suggested_action
+
+    def test_gap_priority_formula(self):
+        tree = _make_tree()
+        dim = tree.dimensions[0]
+        scores = {dim.name: DimensionScore(dim.name, 0.3, 1, 0.3, 0, "?")}
+        gaps = self.analyzer.analyze(tree, scores)
+        matching = [g for g in gaps if g.dimension == dim.name]
+        if matching:
+            expected_priority = dim.weight * (1.0 - 0.3)
+            assert abs(matching[0].priority - expected_priority) < 0.01
+
+
+# ── PathGenerator ────────────────────────────────────────────────────────────
+
+
+class TestPathGenerator:
+    def setup_method(self):
+        self.generator = PathGenerator()
+
+    def test_generate_career_path(self):
+        scores = {
+            "base_rates": DimensionScore("base_rates", 0.8, 5, 0.8, 0, "K"),
+            "career_path": DimensionScore("career_path", 0.5, 3, 0.6, 0, "T"),
+            "execution_distance": DimensionScore("execution_distance", 0.3, 1, 0.4, 0, "?"),
+        }
+        path = self.generator.generate("career_path", scores, {"industry": "VC"})
+        assert len(path) >= 3
+        assert all(isinstance(s, PathStep) for s in path)
+
+    def test_generate_deal_analysis(self):
+        scores = {}
+        path = self.generator.generate("deal_analysis", scores, {"industry": "SaaS"})
+        assert len(path) >= 4
+
+    def test_steps_have_zone_tags(self):
+        scores = {"base_rates": DimensionScore("base_rates", 0.9, 5, 0.9, 0, "K")}
+        path = self.generator.generate("wealth_strategy", scores, {})
+        for step in path:
+            assert step.zone_tag in ("K", "T", "?")
+
+    def test_unknown_type_uses_fallback(self):
+        path = self.generator.generate("nonexistent_type", {}, {})
+        assert len(path) > 0
+
+    def test_context_fills_action_text(self):
+        scores = {}
+        path = self.generator.generate("market_entry", scores, {"market": "Vietnam"})
+        vietnam_steps = [s for s in path if "Vietnam" in s.action]
+        assert len(vietnam_steps) >= 1
+
+    def test_step_to_dict(self):
+        step = PathStep(1, "Test action", "Test rationale", 0.8, ["dep1"], "K")
+        d = step.to_dict()
+        assert d["step_number"] == 1
+        assert d["zone_tag"] == "K"
+
+
+# ── OutputFormatter ──────────────────────────────────────────────────────────
+
+
+class TestOutputFormatter:
+    def test_format_produces_markdown(self):
+        tree = _make_tree()
+        engine = SynthesisEngine()
+        facts = [_make_fact(f"Fact {i}", confidence=0.7) for i in range(3)]
+        result = engine.synthesize(tree, facts)
+        output = engine.format_output(result)
+        # Narrative format: header changed, zone tags still present inline
+        assert "# Intelligence Brief" in output
+        assert "[K]" in output or "[T]" in output or "[?]" in output
+
+    def test_format_no_dimension_table(self):
+        # Narrative rewrite: dimension tables replaced by prose
+        tree = _make_tree()
+        engine = SynthesisEngine()
+        result = engine.synthesize(tree, [_make_fact()])
+        output = engine.format_output(result)
+        assert "| Dimension |" not in output
+
+    def test_format_includes_gap_section(self):
+        tree = _make_tree()
+        engine = SynthesisEngine()
+        result = engine.synthesize(tree, [])
+        output = engine.format_output(result)
+        assert "Critical Gaps" in output
+
+
+# ── SynthesisEngine ──────────────────────────────────────────────────────────
+
+
+class TestSynthesisEngine:
+    def setup_method(self):
+        self.engine = SynthesisEngine()
+
+    def test_synthesize_with_facts(self):
+        tree = _make_tree()
+        facts = [_make_fact(f"Fact {i}", confidence=0.8) for i in range(5)]
+        result = self.engine.synthesize(tree, facts)
+        assert result.facts_used == 5
+        assert result.llm_calls_made == 0
+        assert result.overall_score > 0
+
+    def test_synthesize_zero_facts(self):
+        tree = _make_tree()
+        result = self.engine.synthesize(tree, [])
+        assert result.facts_used == 0
+        assert result.overall_score == 0.0
+        assert len(result.gaps) > 0
+
+    def test_local_only_assertion(self):
+        tree = _make_tree()
+        result = self.engine.synthesize(tree, [])
+        assert result.llm_calls_made == 0
+
+    def test_zone_distribution(self):
+        facts = [
+            _make_fact("K fact", confidence=0.9, zone="K"),
+            _make_fact("T fact", confidence=0.6, zone="T"),
+            _make_fact("? fact", confidence=0.3, zone="?"),
+        ]
+        tree = _make_tree()
+        result = self.engine.synthesize(tree, facts)
+        assert result.facts_by_zone["K"] >= 1
+        assert result.facts_by_zone["T"] >= 1
+        assert result.facts_by_zone["?"] >= 1
+
+    def test_recommendations_generated(self):
+        tree = _make_tree()
+        facts = [_make_fact(f"F{i}", confidence=0.9, zone="K") for i in range(5)]
+        result = self.engine.synthesize(tree, facts)
+        assert isinstance(result.recommendations, list)
+
+    def test_to_dict_serialization(self):
+        tree = _make_tree()
+        result = self.engine.synthesize(tree, [_make_fact()])
+        d = result.to_dict()
+        assert "query" in d
+        assert "overall_score" in d
+        assert "dimension_scores" in d
+        assert "gaps" in d
+        assert "path" in d
+        assert "facts_by_zone" in d
+
+    def test_overall_score_bounded(self):
+        tree = _make_tree()
+        facts = [_make_fact(f"F{i}", confidence=1.0, zone="K") for i in range(20)]
+        result = self.engine.synthesize(tree, facts)
+        assert 0.0 <= result.overall_score <= 1.0
+
+    def test_gap_analysis_integrated(self):
+        tree = _make_tree()
+        result = self.engine.synthesize(tree, [])
+        assert all(isinstance(g, GapReport) for g in result.gaps)
+
+    def test_path_generation_integrated(self):
+        tree = _make_tree()
+        result = self.engine.synthesize(tree, [_make_fact()])
+        assert all(isinstance(p, PathStep) for p in result.path)
+        assert len(result.path) >= 3

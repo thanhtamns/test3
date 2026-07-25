@@ -1,0 +1,139 @@
+---
+phase: 2
+title: "Cost Attribution Engine"
+status: complete-reimplemented
+priority: P1
+effort: "2w"
+dependencies: [1]
+---
+
+# Phase 2: Cost Attribution Engine
+
+## Overview
+
+Attribute every token to a specific session → PR → feature. Extend existing `tracking.rs` + `cc_economics.rs` with PR linkage, model pricing lookup, and cost-per-PR calculations. Add `codeflow cost` CLI command.
+
+## Requirements
+
+- Functional: link sessions to PRs via git branch metadata; calculate dollar cost per session/PR/feature; model pricing table (updatable); `codeflow cost` command shows cost breakdown by PR/dev/project
+- Non-functional: cost calculation adds <1ms per event; pricing table updatable without recompile; backward-compatible with existing tracking.db
+
+## Architecture
+
+**Critical constraint:** No PostToolUse hook exists. Cost data comes from ccusage (actual API billing), not hook-captured tokens.
+
+```
+ccusage CLI (actual Anthropic billing) → parsed by ccusage.rs
+    ↓
++ `codeflow cost sync` → import ccusage sessions into tracking.db cost_records
++ Extract PR ref from: git branch name, commit message, env vars (GH_PR_NUMBER)
++ Match session timestamps to PR activity windows
+    ↓
+CostRecord { session_id, model_id, cost_usd, pr_ref, feature_tag, source: "ccusage" }
+    ↓
+SQLite (extend tracking.db with cost_records table)
+    ↓
+Protobuf EVENT_TYPE_COST → queued for export
+```
+
+**Existing assets to extend:**
+- `ccusage.rs` — **authoritative cost source** — parses actual Anthropic API billing data
+- `cc_economics.rs` — computes cost-per-token from ccusage (billing truth)
+- `session_cmd.rs` — session analysis for adoption metrics
+
+**IMPORTANT — dual cost system clarification (Finding #4, #8):**
+- `tracking.rs` tracks RTK **compression** tokens (input string size vs filtered output size), NOT LLM API tokens. Do NOT use tracking.rs token counts for cost calculation.
+- `ccusage` provides actual API billing data — this is the authoritative cost source.
+- New `CostRecord` table provides **attribution metadata** (which PR/feature/dev consumed cost), NOT billing truth. Attribution links ccusage billing data to PRs, not a parallel cost system.
+
+## Related Code Files
+
+- Modify: `src/core/tracking.rs` — add cost_records table, PR linkage fields
+- Modify: `src/analytics/cc_economics.rs` — integrate per-PR cost rollups
+- Modify: `src/analytics/session_cmd.rs` — add cost column to session analysis
+- Modify: `src/analytics/mod.rs` — export cost module
+- Modify: `src/hooks/hook_cmd.rs` — extract PR ref in PreToolUse (no PostToolUse exists), store as session metadata
+- Modify: `src/main.rs` — add `cost` subcommand
+- Create: `src/analytics/cost_cmd.rs` — `codeflow cost` command
+- Create: `src/core/pricing.rs` — model pricing table + lookup
+- Create: `src/core/pr_linker.rs` — git branch → PR linkage logic
+- Create: `data/model-pricing.toml` — default pricing table (updatable)
+
+## Implementation Steps
+
+1. **Create `data/model-pricing.toml`**
+   ```toml
+   [models.claude-opus-4]
+   input_per_mtok = 15.0
+   output_per_mtok = 75.0
+   cache_read_per_mtok = 1.5
+   cache_write_per_mtok = 18.75
+
+   [models.claude-sonnet-4]
+   input_per_mtok = 3.0
+   output_per_mtok = 15.0
+   # ... etc for GPT-4o, Gemini, Codex
+   ```
+
+2. **Create `src/core/pricing.rs`**
+   - Load from `data/model-pricing.toml` (bundled) or `~/.config/rtk/model-pricing.toml` (user override)
+   - `fn cost_for_tokens(model_id: &str, input: u64, output: u64, cache_read: u64, cache_write: u64) -> f64`
+   - Fallback: if model_id unknown, use median pricing + log warning
+
+3. **Create `src/core/pr_linker.rs`**
+   - `fn detect_pr_ref() -> Option<String>` — try in order:
+     1. Env var `GH_PR_NUMBER` or `GITHUB_PR_NUMBER`
+     2. Parse git branch name: `feat/PROJ-123-description` → `PROJ-123`
+     3. Parse recent commit messages for `(#123)` pattern
+     - **REMOVED:** `gh pr view` — network call (500ms+) violates <1ms NFR, cannot run in hook hot path
+   - `fn detect_feature_tag() -> Option<String>` — from branch prefix or git tag
+
+4. **Extend tracking.db schema**
+   - New table: `cost_records (id, session_id, model_id, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, pr_ref, feature_tag, project_path, developer_id, timestamp)`
+   - Migration: add table if not exists (backward-compatible)
+
+5. **Extend `src/hooks/hook_cmd.rs`** (PreToolUse ONLY — no PostToolUse exists)
+   - In PreToolUse: detect PR ref via pr_linker.rs (env vars + branch name only — no network calls)
+   - Store PR ref as session metadata in tracking.db for later ccusage matching
+   - Cost calculation happens in `codeflow cost sync`, NOT in the hook hot path
+
+6. **Create `src/analytics/cost_cmd.rs`**
+   - `codeflow cost` — summary of costs for current project
+   - `codeflow cost --by pr` — cost breakdown by PR
+   - `codeflow cost --by dev` — cost breakdown by developer
+   - `codeflow cost --by model` — cost breakdown by model
+   - `codeflow cost --by day` — daily cost trend
+   - `codeflow cost --pr 1234` — specific PR cost detail
+   - `codeflow cost --json` — machine-readable output
+   - Reuse display_helpers.rs formatting patterns
+
+7. **Extend `src/analytics/cc_economics.rs`** (authoritative cost source)
+   - Add `fn cost_per_pr(tracker: &Tracker, pr_ref: &str) -> PeriodEconomics`
+   - Add PR column to economics table output
+   - **Clarify ownership:** cc_economics = billing truth (from ccusage). CostRecord = attribution (which PR/feature). Never show two conflicting cost numbers to user.
+
+8. **Wire into main.rs** — add `Cost` variant to Commands enum
+
+9. **Tests**
+   - Unit: pricing lookup (known model → expected cost), pr_linker (branch patterns)
+   - Integration: mock ccusage import → verify CostRecord in DB with correct cost_usd and PR attribution
+   - CLI: `codeflow cost --by pr` with fixture data
+   - 12+ new tests
+
+## Success Criteria
+
+- [x] Model pricing table covers Claude (Opus/Sonnet/Haiku), GPT-4o, Gemini (5 models)
+- [x] PR linkage detects PR ref from all 3 methods (env vars, branch name, commit message)
+- [x] `codeflow cost` shows total cost for current project with breakdown
+- [x] `codeflow cost --by pr` shows per-PR cost ranking
+- [x] Cost records stored in separate cost.db, backward-compatible (no tracking.db changes)
+- [x] Existing `rtk economics` command still works (2079 tests, 0 regressions)
+- [x] 36 new tests for pricing (8), pr_linker (10), cost_store (9), cost_cmd (6), plus 3 integration
+
+## Risk Assessment
+
+| Risk | Severity | Mitigation |
+|------|----------|------------|
+| Model pricing changes frequently | LOW | TOML file updatable; CLI flag `--update-pricing` fetches latest |
+| PR detection fails in detached HEAD CI | MEDIUM | Fallback to "unknown" PR; CI env vars as primary source |
+| tracking.db migration breaks existing data | MEDIUM | ALTER TABLE ADD COLUMN; test migration path |

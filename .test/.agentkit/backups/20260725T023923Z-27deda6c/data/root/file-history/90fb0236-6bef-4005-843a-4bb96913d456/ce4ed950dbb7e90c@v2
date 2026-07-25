@@ -1,0 +1,51 @@
+---
+title: "Side-Door Thinking Engine — Stage0 Intelligence Upgrade"
+description: "Add power-network side-door thinking to stage0 KILL path, operator voice output, and anti-orthodox quality gate"
+status: completed
+priority: P1
+branch: "master"
+tags: [stage0, power-network, output-format, quality-gate]
+blockedBy: []
+blocks: []
+created: "2026-05-10T01:01:22.166Z"
+createdBy: "ck:plan"
+source: skill
+completed: "2026-05-10T08:18:00.000Z"
+---
+
+# Side-Door Thinking Engine — Stage0 Intelligence Upgrade
+
+## Problem
+
+Stage0 has 13+ power-network agents (power-cartographer, gate-broker, proximity-engineer, patron-acquisition-strategist, tay-trang-positioner, value-fabricator, ego-leverage-specialist, chameleon-communicator...) but NEVER uses them. When stage0 issues KILL verdict, it generates orthodox alternatives via opportunity-scanner — the same advice ChatGPT gives ("go to events", "build content", "network").
+
+The system thinks like a McKinsey consultant, not an operator. It evaluates front-door feasibility and kills when credentials don't match — never asking "who is the decision maker's weak link?"
+
+## Root Cause
+
+1. **Step 6.4** (constraint-inversion) spawns analytical personas, not power-network operators
+2. **Step 6.8** (alternative generation) uses opportunity-scanner with standard role scan
+3. **Output template** (Step 7) is analyst format — tables, scores, tags — not operator guidance
+4. No quality gate checks if recommendations are "ChatGPT-obvious"
+
+## Solution — 3 Upgrades
+
+1. **Side-Door Scanner** (Step 6.8.5) — After KILL, auto-trigger power-network agents to find non-obvious paths via relationship chains, proximity engineering, and value fabrication
+2. **Operator Voice** (`--voice operator` flag) — Transform output from analyst report to mentor-style conversational guidance with specific names, places, scripts
+3. **Anti-Orthodox Gate** (Step 7.1) — Reject any recommendation that Google's top 3 results would also suggest
+
+## Target Files (all in master_investments repo)
+
+- `.claude/commands/stage0.md` — main pipeline spec
+- `.claude/commands/stage0-checklist.md` — compact checklist
+- `.claude/skills/business/transaction-layer/nui-hunter/scripts/` — new Python scripts
+- `.claude/agents/business/` — power-network agents (read-only, already exist)
+
+## Phases
+
+| Phase | Name | Status | Effort |
+|-------|------|--------|--------|
+| 1 | [Side-Door Scanner Integration](./phase-01-side-door-scanner-integration.md) | Completed | 4h |
+| 2 | [Operator Voice Output Mode](./phase-02-operator-voice-output-mode.md) | Completed | 3h |
+| 3 | [Anti-Orthodox Quality Gate](./phase-03-anti-orthodox-quality-gate.md) | Completed | 2h |
+| 4 | [Integration Testing and Validation](./phase-04-integration-testing-and-validation.md) | Completed | 2h |

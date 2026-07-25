@@ -1,0 +1,93 @@
+"""
+Claim Classifier — categorize [K]-tagged facts into KB categories.
+
+Input: list of claim strings (already [K]-tagged)
+Output: list of {claim, category, confidence, keywords_matched}
+
+Categories:
+  failure_case   — business/product failures, shutdown stories, loss amounts
+  margin_data    — unit economics, revenue numbers, cost structures, pricing
+  pattern        — recurring business patterns, success formulas, frameworks
+  base_rate      — statistical rates, percentages, survival/failure rates
+  mechanism      — causal explanations, how/why something works or breaks
+"""
+
+from typing import List, Tuple
+
+CATEGORY_KEYWORDS = {
+    "failure_case": [
+        "failed", "shut down", "closed", "bankrupt", "lost", "collapsed",
+        "pivoted away", "didn't work", "killed", "sunset", "discontinued",
+        "went under", "folded", "burned through", "write-off",
+    ],
+    "margin_data": [
+        "margin", "revenue", "cost", "price", "profit", "arpu", "aov",
+        "ltv", "cac", "mrr", "arr", "gmv", "take rate", "commission",
+        "unit economics", "break-even", "burn rate", "runway",
+    ],
+    "pattern": [
+        "pattern", "playbook", "framework", "strategy", "approach",
+        "typically", "common approach", "best practice", "formula",
+        "model", "template", "recipe", "method",
+    ],
+    "base_rate": [
+        "% of", "percent", "rate", "median", "average", "typical",
+        "survival rate", "failure rate", "conversion rate", "base rate",
+        "statistic", "benchmark", "percentile",
+    ],
+    "mechanism": [
+        "because", "caused by", "driven by", "leads to", "results in",
+        "mechanism", "due to", "effect of", "consequence", "triggers",
+        "enables", "prevents", "blocks", "accelerates",
+    ],
+}
+
+CATEGORY_ORDER = ["failure_case", "margin_data", "base_rate", "pattern", "mechanism"]
+
+
+def classify_claim(claim: str) -> Tuple[str, float, list]:
+    claim_lower = claim.lower()
+    scores = {}
+    matched = {}
+
+    for category, keywords in CATEGORY_KEYWORDS.items():
+        hits = [kw for kw in keywords if kw in claim_lower]
+        scores[category] = len(hits)
+        matched[category] = hits
+
+    if not any(scores.values()):
+        return "mechanism", 0.3, []
+
+    best = max(CATEGORY_ORDER, key=lambda c: scores[c])
+    total_possible = len(CATEGORY_KEYWORDS[best])
+    confidence = min(0.95, 0.5 + (scores[best] / total_possible) * 0.5)
+
+    return best, confidence, matched[best]
+
+
+def classify_claims(claims: List[str]) -> List[dict]:
+    results = []
+    for claim in claims:
+        category, confidence, keywords = classify_claim(claim)
+        results.append({
+            "claim": claim,
+            "category": category,
+            "confidence": round(confidence, 2),
+            "keywords_matched": keywords,
+        })
+    return results
+
+
+if __name__ == "__main__":
+    import json
+    import sys
+
+    if len(sys.argv) > 1:
+        input_file = sys.argv[1]
+        with open(input_file, "r", encoding="utf-8") as f:
+            claims = json.load(f)
+    else:
+        claims = [line.strip() for line in sys.stdin if line.strip()]
+
+    results = classify_claims(claims)
+    print(json.dumps(results, indent=2, ensure_ascii=False))

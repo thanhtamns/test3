@@ -1,0 +1,95 @@
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import Link from "next/link";
+import { UserNav, DemoUserNav } from "@/components/user-nav";
+import { ErrorBoundary } from "@/components/error-boundary";
+import "./globals.css";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "CODEFLOW Dashboard",
+  description: "AI coding cost intelligence — see your token savings",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+    >
+      <body className="min-h-full flex">
+        <AuthWrapper>
+          <Sidebar />
+          <main className="flex-1 p-6 bg-background">
+            <ErrorBoundary>{children}</ErrorBoundary>
+          </main>
+        </AuthWrapper>
+      </body>
+    </html>
+  );
+}
+
+async function AuthWrapper({ children }: { children: React.ReactNode }) {
+  if (process.env.CODEFLOW_AUTH_DISABLED === "true") {
+    return <>{children}</>;
+  }
+  const { AuthKitProvider } = await import(
+    "@workos-inc/authkit-nextjs/components"
+  );
+  return <AuthKitProvider>{children}</AuthKitProvider>;
+}
+
+const authDisabled = process.env.CODEFLOW_AUTH_DISABLED === "true";
+
+function Sidebar() {
+  return (
+    <aside className="w-56 border-r bg-muted/40 p-4 flex flex-col">
+      <div className="font-bold text-lg mb-4 tracking-tight">CODEFLOW</div>
+      <nav className="flex flex-col gap-1 flex-1">
+        <NavLink href="/">Overview</NavLink>
+        <NavLink href="/projects">Projects</NavLink>
+        <NavLink href="/cost">Cost</NavLink>
+        <NavLink href="/provenance">Provenance</NavLink>
+        <NavLink href="/budget">Budget</NavLink>
+        <NavLink href="/quality">Quality</NavLink>
+        <NavLink href="/waste">Waste</NavLink>
+        <NavLink href="/roi">ROI</NavLink>
+        <NavLink href="/security">Security</NavLink>
+        <NavLink href="/compliance">Compliance</NavLink>
+        <NavLink href="/billing">Billing</NavLink>
+        <NavLink href="/settings">Settings</NavLink>
+      </nav>
+      {authDisabled ? <DemoUserNav /> : <UserNav />}
+    </aside>
+  );
+}
+
+function NavLink({
+  href,
+  children,
+}: {
+  href: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      className="block px-3 py-2 rounded-md text-sm hover:bg-accent hover:text-accent-foreground transition-colors"
+    >
+      {children}
+    </Link>
+  );
+}

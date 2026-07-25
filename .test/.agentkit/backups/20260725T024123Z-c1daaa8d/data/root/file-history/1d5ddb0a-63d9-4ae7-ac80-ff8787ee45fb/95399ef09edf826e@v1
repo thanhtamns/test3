@@ -1,0 +1,252 @@
+#!/usr/bin/env python3
+"""
+Auto-Outcome Detector for Brier Score Learning Loop
+
+Scans brier-scores.jsonl for predictions where:
+  - pulse_due_date <= today
+  - observed == null
+
+Attempts to auto-derive outcomes from:
+  1. outcomes.json (manual logs)
+  2. evolution-log.jsonl (trigger patterns)
+  3. Verdict keyword matching in case_id
+
+Usage:
+  python auto-outcome-detector.py --scan
+  python auto-outcome-detector.py --backfill
+  python auto-outcome-detector.py --manual CASE_ID OUTCOME
+  python auto-outcome-detector.py --status
+"""
+import argparse
+import json
+import sys
+from datetime import datetime
+from pathlib import Path
+
+ROOT = Path(__file__).parent.parent.parent.parent.parent
+BRIER_FILE = ROOT / "data/calibration/brier-scores.jsonl"
+OUTCOMES_FILE = ROOT / "data/predictions/outcomes.json"
+ACCURACY_FILE = ROOT / "data/assets/calibration/agent-accuracy.json"
+PRIORS_FILE = ROOT / "data/assets/calibration/priors.json"
+
+
+def parse_pulse_date(s: str) -> datetime | None:
+    if not s or len(s) != 6:
+        return None
+    try:
+        yy, mm, dd = int(s[:2]), int(s[2:4]), int(s[4:6])
+        return datetime(2000 + yy, mm, dd)
+    except ValueError:
+        return None
+
+
+def load_jsonl(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    entries = []
+    for line in path.read_text(encoding="utf-8").strip().split("\n"):
+        if line.strip():
+            try:
+                entries.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    return entries
+
+
+def save_jsonl(path: Path, entries: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        for e in entries:
+            f.write(json.dumps(e, ensure_ascii=False) + "\n")
+
+
+def load_json(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+
+
+def save_json(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(path)
+
+
+def derive_outcome_from_verdict(verdict: str) -> int | None:
+    """Derive observed (1/0) from verdict string."""
+    verdict_upper = (verdict or "").upper()
+    positive = ["MOUNTAIN", "PROCEED", "GO", "APPROVED", "PASS"]
+    negative = [
+        "KILL", "FLOOR", "REJECT", "FAIL", "STOP", "NO_GO",
+        "META_QUERY", "TOOLBOX", "GATED", "CONDITIONAL", "UNKNOWN",
+        "PENDING", "DEFERRED", "BLOCKED", "SKIP",
+    ]
+    for p in positive:
+        if p in verdict_upper:
+            return 1
+    for n in negative:
+        if n in verdict_upper:
+            return 0
+    return None
+
+
+def calculate_brier(p_mountain: float, observed: int) -> float:
+    """Brier score = (p - o)^2"""
+    return round((p_mountain - observed) ** 2, 6)
+
+
+def get_pending_entries(entries: list[dict]) -> list[dict]:
+    """Filter entries needing verification. Skip SEED entries."""
+    today = datetime.now()
+    pending = []
+    for e in entries:
+        if e.get("source") == "SEED":
+            continue
+        if e.get("observed") is not None:
+            continue
+        due = parse_pulse_date(e.get("pulse_due_date", ""))
+        if due and due <= today:
+            pending.append(e)
+    return pending
+
+
+def update_entry_outcome(e: dict, observed: int) -> dict:
+    """Update entry with observed outcome and calculate Brier."""
+    e["observed"] = observed
+    e["brier"] = calculate_brier(e.get("p_mountain", 0.5), observed)
+    e["verified_at"] = datetime.now().isoformat()
+    e["path"] = "verified"
+    return e
+
+
+def cmd_status(entries: list[dict]) -> dict:
+    """Return status summary."""
+    total = len(entries)
+    verified = len([e for e in entries if e.get("observed") is not None])
+    pending = get_pending_entries(entries)
+    avg_brier = None
+    verified_entries = [e for e in entries if e.get("brier") is not None]
+    if verified_entries:
+        avg_brier = round(sum(e["brier"] for e in verified_entries) / len(verified_entries), 4)
+    return {
+        "total_entries": total,
+        "verified": verified,
+        "unverified": total - verified,
+        "pending_due": len(pending),
+        "avg_brier_score": avg_brier,
+        "pending_case_ids": [e["case_id"] for e in pending],
+    }
+
+
+def cmd_scan(entries: list[dict], outcomes: dict) -> dict:
+    """Scan for auto-verifiable predictions."""
+    pending = get_pending_entries(entries)
+    results = {"auto_verified": [], "needs_manual": []}
+    outcome_map = {o["case_id"]: o for o in outcomes.get("outcomes", []) if "case_id" in o}
+
+    for e in pending:
+        case_id = e.get("case_id", "")
+        if case_id in outcome_map:
+            obs = outcome_map[case_id].get("outcome")
+            if obs is not None:
+                results["auto_verified"].append({
+                    "case_id": case_id,
+                    "source": "outcomes.json",
+                    "observed": obs,
+                })
+                continue
+
+        verdict_obs = derive_outcome_from_verdict(e.get("verdict", ""))
+        if verdict_obs is not None:
+            results["auto_verified"].append({
+                "case_id": case_id,
+                "source": "verdict_keyword",
+                "observed": verdict_obs,
+            })
+        else:
+            results["needs_manual"].append({
+                "case_id": case_id,
+                "verdict": e.get("verdict", "UNKNOWN"),
+                "p_mountain": e.get("p_mountain"),
+                "pulse_due_date": e.get("pulse_due_date"),
+            })
+    return results
+
+
+def cmd_backfill(entries: list[dict], outcomes: dict) -> dict:
+    """Auto-fill outcomes where derivable, update files."""
+    scan_result = cmd_scan(entries, outcomes)
+    updated = 0
+
+    for auto in scan_result["auto_verified"]:
+        case_id = auto["case_id"]
+        observed = auto["observed"]
+        for e in entries:
+            if e.get("case_id") == case_id and e.get("observed") is None:
+                update_entry_outcome(e, observed)
+                updated += 1
+                break
+
+    if updated > 0:
+        save_jsonl(BRIER_FILE, entries)
+
+    return {
+        "auto_verified_count": updated,
+        "needs_manual_count": len(scan_result["needs_manual"]),
+        "needs_manual": scan_result["needs_manual"],
+    }
+
+
+def cmd_manual(entries: list[dict], case_id: str, outcome: int) -> dict:
+    """Manually set outcome for a case_id."""
+    for e in entries:
+        if e.get("case_id") == case_id:
+            if e.get("observed") is not None:
+                return {"error": f"{case_id} already verified", "current": e.get("observed")}
+            update_entry_outcome(e, outcome)
+            save_jsonl(BRIER_FILE, entries)
+            return {
+                "updated": case_id,
+                "observed": outcome,
+                "brier": e.get("brier"),
+            }
+    return {"error": f"case_id {case_id} not found"}
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Auto-outcome detector for Brier loop")
+    parser.add_argument("--scan", action="store_true", help="Scan for auto-verifiable predictions")
+    parser.add_argument("--backfill", action="store_true", help="Auto-fill derivable outcomes")
+    parser.add_argument("--manual", nargs=2, metavar=("CASE_ID", "OUTCOME"), help="Manually set outcome (0 or 1)")
+    parser.add_argument("--status", action="store_true", help="Show status summary")
+    args = parser.parse_args()
+
+    entries = load_jsonl(BRIER_FILE)
+    outcomes = load_json(OUTCOMES_FILE)
+
+    if args.status:
+        print(json.dumps(cmd_status(entries), indent=2))
+    elif args.scan:
+        print(json.dumps(cmd_scan(entries, outcomes), indent=2))
+    elif args.backfill:
+        print(json.dumps(cmd_backfill(entries, outcomes), indent=2))
+    elif args.manual:
+        case_id, outcome_str = args.manual
+        try:
+            outcome = int(outcome_str)
+            if outcome not in (0, 1):
+                raise ValueError
+        except ValueError:
+            print(json.dumps({"error": "OUTCOME must be 0 or 1"}))
+            sys.exit(1)
+        print(json.dumps(cmd_manual(entries, case_id, outcome), indent=2))
+    else:
+        parser.print_help()
+
+
+if __name__ == "__main__":
+    main()

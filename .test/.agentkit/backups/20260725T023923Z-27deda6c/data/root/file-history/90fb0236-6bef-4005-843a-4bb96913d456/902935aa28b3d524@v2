@@ -1,0 +1,157 @@
+---
+phase: 2
+title: "Operator Voice Output Mode"
+status: completed
+priority: P1
+effort: "3h"
+dependencies: [1]
+completed: "2026-05-10T08:18:00.000Z"
+---
+
+# Phase 2: Operator Voice Output Mode
+
+## Overview
+
+Add `--voice operator` flag to stage0. Transforms verdict output from analyst report (tables, scores, tags) to mentor-style conversational guidance. Reads like a mentor at a coffee shop telling you exactly what to do, who to talk to, and what to say.
+
+## Requirements
+
+- Functional: New `--voice operator` flag in stage0 trigger
+- Functional: Operator voice template replaces analyst template in Step 7
+- Functional: Side-door paths (Phase 1) rendered in operator voice when flag active
+- Functional: All data (Mountain Test, P10/P50/P90, sources) preserved but embedded in narrative
+- Non-functional: Output ≤2000 words. Zero bullet lists. Zero tables. Zero technical headers.
+
+## Architecture
+
+```
+Step 7 — Verdict Synthesis
+    ├── voice_mode == "analyst" → existing template (tables, scores, tags)
+    └── voice_mode == "operator" → new template:
+        ├── SITUATION (2-3 sentences plain language)
+        ├── VERDICT (1 sentence: mountain/kill/side-hustle)
+        ├── THE MOVE (conversational paragraphs with scripts)
+        ├── TIMELINE (week-by-week)
+        ├── THE MATH (unit economics in narrative)
+        └── SOURCES (URLs only)
+```
+
+## Related Code Files
+
+- Modify: `D:/code/invesments/master_investments/.claude/commands/stage0.md` — Add flag + template
+- Modify: `D:/code/invesments/master_investments/.claude/commands/stage0-checklist.md` — Add checklist item
+
+## Implementation Steps
+
+### 1. Add --voice flag to stage0.md trigger section
+
+```
+/stage0 <topic> --voice operator    # Mentor-style output (no tables/bullets)
+/stage0 <topic> --voice analyst     # Default report format
+```
+
+### 2. Add Step 2.6 — Voice mode detection
+
+After existing mode detection, add:
+```markdown
+### Step 2.6 — Voice mode detection
+Parse --voice flag. Default: analyst.
+If operator: ALL downstream headers conversational, ALL tables → narrative, 
+ALL [K]/[T]/[?] tags dropped, scripts as dialogue, side-door paths as story.
+```
+
+### 3. Create operator voice verdict template in Step 7
+
+Add after existing FOUNDER_SPECIFIC template:
+
+**RULES:**
+- Zero bullet lists. Zero tables. Zero headers with technical names.
+- Write as mentor across coffee table. Use "you" directly.
+- Embed numbers naturally: "that's about $3K/mo if you land 3 clients"
+- Scripts as dialogue: 'Say this: "..."'
+- Kill criteria in plain language: "If nobody replies after 15 messages, stop."
+- NO zone tags, NO confidence scores, NO technical metadata
+
+**TEMPLATE:**
+
+```
+Here's what I see.
+
+{situation — 2-3 sentences. What founder wants. Landscape. Plain verdict.}
+
+{the_move — 3-5 paragraphs. Core strategy conversationally.}
+
+{For KILL with side-door paths:}
+
+The front door is locked — {why, 1 sentence}. But there's a side door.
+
+{side_door as story: Who to find → how to find → what to say → 
+what they'll say back → what to do next. Sequence of encounters.}
+
+Here's what you say when you meet {role}: "{exact script, 2-3 sentences}"
+
+If they say no: {specific fallback — not "explore alternatives" but 
+"go to person B and say..."}
+
+{timeline week by week}
+
+Week 1-2: {action}
+Week 3-4: {action}
+Week 5-8: {action}
+If by week 8 {kill criterion}: stop. Try {alternative}.
+
+{math in narrative}
+
+The math: {unit economics conversationally}. Bottom line: {plain language}.
+
+{risks — 1-2 sentences each, no bullets}
+
+Sources: {URLs, one per line}
+```
+
+### 4. Section conversion rules (analyst → operator)
+
+| Analyst Section | Operator Conversion |
+|---|---|
+| Mountain Test (Q1/Q2/scores) | Embed in situation: "The evidence says..." |
+| P10/P50/P90 | "Most people make $X. Top 10% hit $Y." |
+| Operator Mastery L1-L5 | Pick 1-2 most relevant, embed in narrative |
+| Practical Intelligence | Merge into "the_move" |
+| Short/Medium/Long track | Merge into timeline |
+| Knowledge/Research/Tool logs | Drop (internal metadata) |
+| Risk factors | 1-2 sentence narrative |
+| Sources | Keep as URL list |
+
+### 5. Side-door paths in operator voice
+
+When Step 6.8.5 fires + operator mode:
+```
+Instead of going straight to {org}, go around. Find {role A} at {company type}. 
+LinkedIn search: "{search query}". Send this: "{script}".
+
+Most won't reply. Normal. You need 1 out of 10.
+
+When {role A} responds, help them with {value exchange}. Takes {time}. 
+Don't ask for anything yet.
+
+After delivering, wait {period}. Then: "{intro request script}".
+
+{Role A} introduces you to {TARGET} because {reason}. The conversation is 
+completely different from cold outreach because {why}.
+```
+
+## Success Criteria
+
+- [x] `--voice operator` flag in trigger section
+- [x] Voice detection at Step 2.6
+- [x] Operator template in Step 7
+- [x] Conversion rules for all analyst sections
+- [x] Side-door operator voice rendering
+- [x] Same verdict renders correctly in both modes
+- [x] ≤2000 words, zero bullets/tables in operator output
+
+## Risk Assessment
+
+- **Lose data precision**: Numbers still present in narrative. Analyst mode remains default.
+- **LLM falls back to bullets**: Template has explicit ban + anti-pattern check.
+- **Verbose output**: Hard cap 2000 words.

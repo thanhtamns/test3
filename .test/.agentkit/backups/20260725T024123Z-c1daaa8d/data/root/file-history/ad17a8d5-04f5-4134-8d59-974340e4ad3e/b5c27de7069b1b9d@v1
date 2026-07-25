@@ -1,0 +1,35 @@
+---
+title: "Benchmark Intelligence Engine"
+description: ""
+status: pending
+priority: P2
+branch: "master"
+tags: []
+blockedBy: []
+blocks: []
+created: "2026-05-10T08:41:55.400Z"
+createdBy: "ck:plan"
+source: skill
+---
+
+# Benchmark Intelligence Engine
+
+## Overview
+
+<!-- Brief description -->
+
+## Phases
+
+| Phase | Name | Status |
+|-------|------|--------|
+| 1 | [Benchmark Parser](./phase-01-benchmark-parser.md) | Pending |
+| 2 | [Benchmark Decomposer + Gap Analyzer](./phase-02-benchmark-decomposer-gap-analyzer.md) | Pending |
+| 3 | [Tiered Fact Resolver](./phase-03-tiered-fact-resolver.md) | Pending |
+| 4 | [Path Matcher + Success Paths DB](./phase-04-path-matcher-success-paths-db.md) | Pending |
+| 5 | [Auto-Distiller + Evolution Hook](./phase-05-auto-distiller-evolution-hook.md) | Pending |
+| 6 | [Benchmark Verdict Assembler](./phase-06-benchmark-verdict-assembler.md) | Pending |
+| 7 | [End-to-End Integration Test](./phase-07-end-to-end-integration-test.md) | Pending |
+
+## Dependencies
+
+<!-- Cross-plan dependencies -->

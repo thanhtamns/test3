@@ -1,0 +1,254 @@
+#!/usr/bin/env python3
+"""Tests for Strategic Brain Principle Engine."""
+
+import json
+import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "engine"))
+from principle_engine import PrincipleEngine, PreliminaryVerdict, FinalVerdict
+from expression_evaluator import ExpressionEvaluator
+
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+PRINCIPLES_PATH = DATA_DIR / "principles.json"
+CONTRARIAN_PATH = DATA_DIR / "contrarian-rules.json"
+
+
+def test_expression_evaluator_basic():
+    ev = ExpressionEvaluator()
+    features = {"competition_count": 50, "unique_moat_score": 1}
+
+    r = ev.evaluate("competition_count > 10 AND unique_moat_score < 3", features)
+    assert r.value is True, f"Expected True, got {r.value}"
+    assert r.missing_fields == []
+
+    r = ev.evaluate("competition_count > 100", features)
+    assert r.value is False
+
+    r = ev.evaluate("competition_count == 50", features)
+    assert r.value is True
+
+
+def test_expression_evaluator_missing_fields():
+    ev = ExpressionEvaluator()
+    features = {"competition_count": "unknown"}
+
+    r = ev.evaluate("competition_count > 10", features)
+    assert r.value is False
+    assert "competition_count" in r.missing_fields
+
+
+def test_expression_evaluator_or():
+    ev = ExpressionEvaluator()
+    features = {"a": 5, "b": 1}
+
+    r = ev.evaluate("a > 10 OR b == 1", features)
+    assert r.value is True
+
+
+def test_kill_on_crowded_market():
+    engine = PrincipleEngine(PRINCIPLES_PATH, CONTRARIAN_PATH)
+    features = {
+        "competition_count": 50,
+        "unique_moat_score": 1,
+        "differentiation_signals": 1,
+        "info_advantage_score": 1,
+        "tutorial_count": 60,
+    }
+    result = engine.evaluate_pass1(features)
+    assert result.verdict == "KILL", f"Expected KILL, got {result.verdict}"
+    kill_names = [k.principle_name for k in result.kills]
+    assert "thiel_monopoly" in kill_names
+
+
+def test_mountain_on_blue_ocean():
+    engine = PrincipleEngine(PRINCIPLES_PATH, CONTRARIAN_PATH)
+    features = {
+        "competition_count": 2,
+        "unique_moat_score": 8,
+        "upside_downside_ratio": 15,
+        "time_to_first_revenue_days": 30,
+        "leverage_type_score": 8,
+        "cents_score": 40,
+        "creates_asset": 1,
+        "customer_pays_first": 1,
+        "replication_time_months": 24,
+        "switching_cost_dollars": 2000,
+        "knowledge_compounds": 1,
+        "controls_chokepoint": 1,
+        "differentiation_signals": 7,
+        "can_define_new_category": 1,
+        "disruption_benefits": 1,
+        "exit_paths": 4,
+        "info_advantage_score": 7,
+        "network_effect_real": 1,
+        "tutorial_count": 3,
+        "language_barrier_protects": 1,
+        "regulatory_arbitrage_exists": 0,
+        "guru_count": 2,
+        "perceived_attractiveness": 3,
+        "solves_pain": 1,
+        "is_meta_opportunity": 1,
+        "entry_friction_score": 7,
+        "has_distribution_channel": 1,
+        "arbitrage_visibility": 2,
+    }
+    result = engine.evaluate_pass1(features)
+    assert result.verdict == "MOUNTAIN_CANDIDATE", f"Expected MOUNTAIN_CANDIDATE, got {result.verdict}"
+    assert result.confidence >= 0.7
+
+
+def test_needs_data_on_unknown():
+    engine = PrincipleEngine(PRINCIPLES_PATH, CONTRARIAN_PATH)
+    features = {"competition_count": "unknown", "unique_moat_score": "unknown"}
+    result = engine.evaluate_pass1(features)
+    assert result.verdict == "NEEDS_DEEPER_ANALYSIS", f"Expected NEEDS_DEEPER_ANALYSIS, got {result.verdict}"
+    assert len(result.micro_questions) > 0
+
+
+def test_pass2_overrides_pass1():
+    engine = PrincipleEngine(PRINCIPLES_PATH, CONTRARIAN_PATH)
+    features = {"competition_count": "unknown"}
+    pass1 = engine.evaluate_pass1(features)
+    assert pass1.verdict == "NEEDS_DEEPER_ANALYSIS"
+
+    facts = {
+        "competition_count": 3,
+        "unique_moat_score": 7,
+        "upside_downside_ratio": 10,
+        "time_to_first_revenue_days": 20,
+        "leverage_type_score": 7,
+        "cents_score": 35,
+        "creates_asset": 1,
+        "customer_pays_first": 1,
+        "replication_time_months": 12,
+        "switching_cost_dollars": 1000,
+        "knowledge_compounds": 1,
+        "controls_chokepoint": 1,
+        "differentiation_signals": 6,
+        "exit_paths": 3,
+        "info_advantage_score": 6,
+        "tutorial_count": 5,
+    }
+    pass2 = engine.evaluate_pass2(features, facts)
+    assert pass2.verdict in ["MOUNTAIN_CANDIDATE", "SIDE_HUSTLE"], f"Got {pass2.verdict}"
+
+
+def test_contrarian_guru_signal():
+    engine = PrincipleEngine(PRINCIPLES_PATH, CONTRARIAN_PATH)
+    features = {"guru_count": 50, "competition_count": 30, "unique_moat_score": 2}
+    result = engine.evaluate_pass1(features)
+    kill_names = [k.principle_name for k in result.kills]
+    assert "inverse_guru_signal" in kill_names
+
+
+def test_performance_under_100ms():
+    engine = PrincipleEngine(PRINCIPLES_PATH, CONTRARIAN_PATH)
+    features = {
+        "competition_count": 5,
+        "unique_moat_score": 6,
+        "upside_downside_ratio": 8,
+        "time_to_first_revenue_days": 45,
+        "leverage_type_score": 6,
+    }
+
+    start = time.perf_counter()
+    for _ in range(100):
+        engine.evaluate_pass1(features)
+    elapsed = (time.perf_counter() - start) * 1000 / 100
+
+    assert elapsed < 100, f"Average {elapsed:.2f}ms exceeds 100ms limit"
+
+
+def test_side_hustle_moderate_features():
+    engine = PrincipleEngine(PRINCIPLES_PATH, CONTRARIAN_PATH)
+    features = {
+        "competition_count": 8,
+        "unique_moat_score": 4,
+        "upside_downside_ratio": 4,
+        "time_to_first_revenue_days": 60,
+        "leverage_type_score": 4,
+        "cents_score": 20,
+        "creates_asset": 0,
+        "differentiation_signals": 4,
+        "exit_paths": 2,
+        "info_advantage_score": 3,
+        "tutorial_count": 15,
+        "guru_count": 10,
+        "perceived_attractiveness": 5,
+        "has_distribution_channel": 1,
+        "arbitrage_visibility": 5,
+    }
+    result = engine.evaluate_pass1(features)
+    assert result.verdict == "SIDE_HUSTLE", f"Expected SIDE_HUSTLE, got {result.verdict}"
+
+
+def test_json_data_integrity():
+    with open(PRINCIPLES_PATH) as f:
+        principles = json.load(f)
+    assert len(principles) == 20, f"Expected 20 principles, got {len(principles)}"
+
+    with open(CONTRARIAN_PATH) as f:
+        rules = json.load(f)
+    assert len(rules) == 8, f"Expected 8 contrarian rules, got {len(rules)}"
+
+    for p in principles:
+        assert "id" in p
+        assert "name" in p
+        assert "rule" in p
+        assert "expression" in p["rule"]
+        assert "scoring" in p
+        assert "weight" in p
+
+    for r in rules:
+        assert "id" in r
+        assert "name" in r
+        assert "rule" in r
+        assert "scoring" in r
+
+
+def test_cli_output_format():
+    """Verify engine produces JSON-serializable output."""
+    engine = PrincipleEngine(PRINCIPLES_PATH, CONTRARIAN_PATH)
+    features = {"competition_count": 5, "unique_moat_score": 6}
+    result = engine.evaluate_pass1(features)
+    output = result.to_dict()
+    serialized = json.dumps(output)
+    assert isinstance(serialized, str)
+    parsed = json.loads(serialized)
+    assert "verdict" in parsed
+    assert "confidence" in parsed
+
+
+if __name__ == "__main__":
+    tests = [
+        test_expression_evaluator_basic,
+        test_expression_evaluator_missing_fields,
+        test_expression_evaluator_or,
+        test_kill_on_crowded_market,
+        test_mountain_on_blue_ocean,
+        test_needs_data_on_unknown,
+        test_pass2_overrides_pass1,
+        test_contrarian_guru_signal,
+        test_performance_under_100ms,
+        test_side_hustle_moderate_features,
+        test_json_data_integrity,
+        test_cli_output_format,
+    ]
+
+    passed = 0
+    failed = 0
+    for test in tests:
+        try:
+            test()
+            print(f"  PASS {test.__name__}")
+            passed += 1
+        except Exception as e:
+            print(f"  FAIL {test.__name__}: {e}")
+            failed += 1
+
+    print(f"\n{'='*50}")
+    print(f"Results: {passed} passed, {failed} failed, {len(tests)} total")
+    if failed > 0:
+        sys.exit(1)

@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "nui-hunter-case-v1",
+  "title": "Núi Tiền Case Schema",
+  "description": "Each case is a verifiable opportunity with causal mechanism + replication path. NEVER write a case without provenance URLs.",
+  "type": "object",
+  "required": [
+    "case_id",
+    "title_vn",
+    "domain",
+    "founder_profile_fit",
+    "causal_mechanism",
+    "replication_path",
+    "failure_modes",
+    "real_references",
+    "evidence_sources",
+    "last_verified",
+    "confidence"
+  ],
+  "properties": {
+    "case_id": {"type": "string", "description": "kebab-case unique id"},
+    "title_vn": {"type": "string"},
+    "title_en": {"type": "string"},
+    "domain": {"type": "string", "description": "free-form, NOT a fixed taxonomy"},
+    "founder_profile_fit": {
+      "type": "object",
+      "properties": {
+        "capital_min_usd": {"type": "number"},
+        "capital_max_usd": {"type": "number"},
+        "skill_required": {"type": "array", "items": {"type": "string"}},
+        "geo_advantage": {"type": "array", "items": {"type": "string"}},
+        "geo_disadvantage": {"type": "array", "items": {"type": "string"}},
+        "language_required": {"type": "string"},
+        "network_required": {"type": "array", "items": {"type": "string"}},
+        "time_to_first_dollar_days": {"type": "number"},
+        "monthly_time_required_hours": {"type": "number"}
+      }
+    },
+    "causal_mechanism": {
+      "type": "string",
+      "description": "WHY this works. NOT what — why. Mechanism + prerequisites + how revenue is captured."
+    },
+    "mountain_test_v2": {
+      "type": "object",
+      "description": "Binary mountain test. Supersedes five_property_test. Mountain = >=$10K/mo NET + compounding component + real pulse reply.",
+      "required": ["q1_existing_10k_proof", "q2_unfair_advantage", "asymmetry_ratio", "verdict"],
+      "properties": {
+        "q1_existing_10k_proof": {
+          "type": "object",
+          "required": ["answer", "evidence_url", "monthly_net_usd"],
+          "properties": {
+            "answer": {"enum": ["yes", "no", "insufficient_data"]},
+            "evidence_url": {"type": "string"},
+            "monthly_net_usd": {"type": "number", "description": ">=10000 to qualify"},
+            "founder_name": {"type": "string"}
+          }
+        },
+        "q2_unfair_advantage": {
+          "type": "object",
+          "required": ["answer", "advantage", "why_99pct_lack"],
+          "properties": {
+            "answer": {"enum": ["yes", "no", "weak"]},
+            "advantage": {"type": "string"},
+            "why_99pct_lack": {"type": "string"}
+          }
+        },
+        "asymmetry_ratio": {
+          "type": "object",
+          "required": ["upside_p50_usd", "downside_p50_usd", "ratio"],
+          "properties": {
+            "upside_p50_usd": {"type": "number"},
+            "downside_p50_usd": {"type": "number"},
+            "ratio": {"type": "number", "description": ">=10 = mountain candidate"}
+          }
+        },
+        "compounding_component": {
+          "type": "object",
+          "required": ["type", "evidence"],
+          "properties": {
+            "type": {"enum": ["data", "relationship", "distribution-lock", "ip", "rare-skill", "none"]},
+            "evidence": {"type": "string"}
+          }
+        },
+        "verdict": {"enum": ["MOUNTAIN", "PROVISIONAL_MOUNTAIN", "SIDE_HUSTLE", "INSUFFICIENT_SIGNAL", "KILL"]}
+      }
+    },
+    "pulse_replies": {
+      "type": "array",
+      "description": "Real outside-in inquiry replies. Required for MOUNTAIN verdict.",
+      "items": {
+        "type": "object",
+        "required": ["channel", "sent_date", "received_date", "reply_text", "buyer_intent"],
+        "properties": {
+          "channel": {"enum": ["alibaba_rfq", "etsy_dm", "reddit", "facebook_group", "zalo_group", "linkedin", "cold_email", "phone", "other"]},
+          "sent_date": {"type": "string", "format": "date"},
+          "received_date": {"type": "string", "format": "date"},
+          "reply_text": {"type": "string"},
+          "buyer_intent": {"enum": ["buying_now", "researching", "tire_kicker", "no_intent", "spam"]}
+        }
+      }
+    },
+    "five_property_test": {
+      "type": "object",
+      "description": "DEPRECATED — superseded by mountain_test_v2. Kept for back-compat with existing cases.",
+      "required": ["tam", "trajectory_5y", "moat", "achievability", "saturation"],
+      "properties": {
+        "tam": {"type": "object", "properties": {"score_0_10": {"type": "number"}, "evidence": {"type": "string"}, "source_urls": {"type": "array"}}},
+        "trajectory_5y": {"type": "object", "properties": {"direction": {"enum": ["RISING", "STABLE", "DECLINING", "VOLATILE"]}, "score_0_10": {"type": "number"}, "evidence": {"type": "string"}, "source_urls": {"type": "array"}}},
+        "moat": {"type": "object", "properties": {"types": {"type": "array", "items": {"enum": ["geographic", "supplier-lock", "brand", "ip", "network-effect", "switching-cost", "regulatory", "data", "distribution", "founder-skill"]}}, "score_0_10": {"type": "number"}, "evidence": {"type": "string"}}},
+        "achievability": {"type": "object", "properties": {"score_0_10": {"type": "number"}, "fits_profile": {"type": "boolean"}, "blockers": {"type": "array"}}},
+        "saturation": {"type": "object", "properties": {"score_0_10": {"type": "number"}, "current_competitor_count": {"type": "string"}, "evidence": {"type": "string"}}}
+      }
+    },
+    "overall_score": {"type": "number", "description": "0-50, sum of 5 properties (0-10 each)"},
+    "replication_path": {
+      "type": "array",
+      "items": {"type": "object", "properties": {"step": {"type": "number"}, "action": {"type": "string"}, "duration_days": {"type": "number"}, "cost_usd": {"type": "number"}}}
+    },
+    "failure_modes": {
+      "type": "array",
+      "items": {"type": "object", "properties": {"mode": {"type": "string"}, "probability": {"enum": ["low", "medium", "high"]}, "mitigation": {"type": "string"}}}
+    },
+    "real_references": {
+      "type": "array",
+      "description": "Real founders/companies who proved this. EACH must have name + url + monthly_rev_estimate or other proof.",
+      "items": {"type": "object", "properties": {"name": {"type": "string"}, "url": {"type": "string"}, "monthly_rev_usd_estimate": {"type": "string"}, "verified_via": {"type": "string"}}}
+    },
+    "evidence_sources": {
+      "type": "array",
+      "description": "URLs of trend data, market reports, founder interviews. ZERO fabrication tolerated."
+    },
+    "kill_criteria_7d": {"type": "array", "items": {"type": "string"}},
+    "kill_criteria_30d": {"type": "array", "items": {"type": "string"}},
+    "first_query": {"type": "string", "description": "User query that birthed this case"},
+    "first_user_profile_hash": {"type": "string"},
+    "last_verified": {"type": "string", "format": "date"},
+    "verification_count": {"type": "number"},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "anti_patterns": {"type": "array", "items": {"type": "string"}, "description": "What this case is NOT, common mis-applications"},
+    "agents_fired": {
+      "type": "array",
+      "description": "RC-6: Track which specialist agents contributed to this case. Used for calibration and evolution quality assessment.",
+      "items": {
+        "type": "object",
+        "required": ["agent_id", "fired_at"],
+        "properties": {
+          "agent_id": {"type": "string", "description": "Agent name (e.g., marc-rich, robert-kuok, chris-voss)"},
+          "fired_at": {"type": "string", "format": "date-time"},
+          "contribution_type": {"enum": ["analysis", "framework", "playbook", "negotiation", "verification"]},
+          "key_insight": {"type": "string", "maxLength": 200}
+        }
+      }
+    },
+    "knowledge_fired": {
+      "type": "array",
+      "description": "Knowledge base entries (MM-*, SCH-*, etc.) that contributed to this case.",
+      "items": {"type": "string"}
+    },
+    "side_door_paths": {
+      "type": "array",
+      "description": "Power-network side-door paths generated by Step 6.8.5 when KILL has relationship barriers.",
+      "items": {
+        "type": "object",
+        "required": ["path_name", "chain", "timeline_weeks", "probability"],
+        "properties": {
+          "path_name": {"type": "string"},
+          "chain": {"type": "array", "items": {"type": "string"}, "description": "Sequence: ['Founder', 'Role A at Org', 'TARGET Role']"},
+          "scripts": {"type": "array", "items": {"type": "string"}, "description": "Exact script per chain link"},
+          "value_exchanges": {"type": "array", "items": {"type": "string"}, "description": "What founder gives BEFORE asking, per link"},
+          "timeline_weeks": {"type": "integer"},
+          "kill_criterion": {"type": "string", "description": "If X doesn't happen by week Y, abandon"},
+          "probability": {"type": "number", "minimum": 0, "maximum": 1, "description": "Honest estimate, most paths 0.10-0.30"}
+        }
+      }
+    },
+    "side_door_fired": {
+      "type": "boolean",
+      "description": "Whether Step 6.8.5 side-door scanner triggered for this case"
+    },
+    "voice_mode": {
+      "type": "string",
+      "enum": ["analyst", "operator"],
+      "description": "Output voice mode used for this verdict",
+      "default": "analyst"
+    }
+  }
+}

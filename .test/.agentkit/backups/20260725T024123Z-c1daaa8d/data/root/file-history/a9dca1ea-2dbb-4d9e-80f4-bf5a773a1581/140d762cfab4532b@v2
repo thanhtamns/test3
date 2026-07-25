@@ -1,0 +1,236 @@
+---
+phase: 4
+title: "Meta-Edit Controller"
+status: pending
+priority: P1
+effort: "5d"
+dependencies: [1, 2, 3]
+---
+
+# Phase 4: Meta-Edit Controller
+
+## Overview
+
+The CORE of this plan. The meta-edit controller is the OUTER LOOP that observes accumulated evidence (mechanism errors from Phase 2 + outcomes from Phase 3), decides which knobs to modify, applies changes, and evaluates results over subsequent verdicts.
+
+**AEVO parallel:** This IS the meta-agent. It does: Observe → Meta-Edit → Run Segment → Evaluate → Repeat.
+
+## Requirements
+
+**Functional:**
+- Reads mechanism-errors.jsonl and identifies knobs with highest error attribution
+- Proposes knob modifications using Bayesian posterior update
+- Applies modifications to mechanism-knobs.json (within safety bounds from Phase 5)
+- Tracks "meta-edit segments" — N verdicts after each edit — to evaluate effect
+- Decides: keep edit, revert edit, or amplify edit based on segment results
+
+**Non-functional:**
+- Runs after every 5th outcome logged (not every session — too noisy)
+- No LLM calls in core loop (deterministic Bayesian math)
+- Optional LLM call for "creative meta-edits" (composition knobs — agent selection)
+- Total execution <60s
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│  META-EDIT CONTROLLER (outer loop)                   │
+│                                                       │
+│  ┌──────────┐   ┌──────────┐   ┌───────────────┐   │
+│  │ OBSERVE  │ → │META-EDIT │ → │ RUN SEGMENT   │   │
+│  │          │   │          │   │ (next N cases) │   │
+│  │ - errors │   │ - select │   │               │   │
+│  │ - Brier  │   │   knob   │   │ Evaluate:     │   │
+│  │ - trends │   │ - calc   │   │ Brier before  │   │
+│  │          │   │   delta  │   │ vs after      │   │
+│  └──────────┘   └──────────┘   └───────────────┘   │
+│       ↑                                ↓             │
+│       └──── EVALUATE SEGMENT ──────────┘             │
+│             keep / revert / amplify                   │
+└─────────────────────────────────────────────────────┘
+```
+
+## Related Code Files
+
+**Target repo:** `D:/code/invesments/master_investments`
+
+- Create: `.claude/lib/intelligence/mechanism/meta_edit_controller.py` — main controller
+- Create: `.claude/lib/intelligence/mechanism/bayesian_knob_updater.py` — Bayesian update logic
+- Create: `.claude/lib/intelligence/mechanism/segment_evaluator.py` — segment evaluation
+- Create: `data/config/meta-edit-history.jsonl` — edit history with segments
+- Create: `data/config/meta-edit-state.json` — current controller state
+- Modify: `.claude/lib/intelligence/mechanism/knob_registry.py` — add meta-edit API
+
+## Implementation Steps
+
+### Step 1: Design meta-edit state machine
+
+States:
+```
+IDLE → OBSERVING → PROPOSING → EDITING → SEGMENT_RUNNING → EVALUATING → IDLE
+```
+
+State transitions:
+- IDLE → OBSERVING: Triggered after every 5th outcome
+- OBSERVING → PROPOSING: If ≥3 mechanism errors point to same knob
+- PROPOSING → EDITING: If proposed change passes safety bounds (Phase 5)
+- EDITING → SEGMENT_RUNNING: After knob modified, track next N verdicts
+- SEGMENT_RUNNING → EVALUATING: After N verdicts completed
+- EVALUATING → IDLE: After keep/revert/amplify decision
+
+### Step 2: Implement Bayesian knob updater
+
+For each knob with errors attributed:
+
+```python
+class BayesianKnobUpdater:
+    def propose_edit(self, knob_id: str, errors: list[MechanismError]) -> KnobEdit:
+        """
+        Bayesian posterior update:
+        - Prior: current knob value (assumed "correct" with some variance)
+        - Evidence: mechanism errors where this knob was attributed
+        - Posterior: updated belief about optimal knob value
+        
+        For threshold knobs (numeric):
+          If errors say "too aggressive" (kills correct GO) → lower threshold
+          If errors say "too permissive" (passes wrong KILL) → raise threshold
+          
+        For composition knobs (agent lists):
+          If errors say "missing signal" → add agent
+          If errors say "wrong direction from agent X" → remove/replace agent
+        """
+        
+        # Calculate direction from error patterns
+        direction = self._infer_direction(knob_id, errors)
+        
+        # Calculate magnitude (Bayesian — more evidence = larger edit)
+        magnitude = self._bayesian_magnitude(
+            n_errors=len(errors),
+            avg_severity=mean(e.severity for e in errors),
+            knob_range=self.registry.get_range(knob_id)
+        )
+        
+        # Propose new value
+        current = self.registry.get(knob_id)
+        proposed = current + (direction * magnitude)
+        
+        return KnobEdit(knob_id=knob_id, old_value=current, 
+                       new_value=proposed, evidence_count=len(errors),
+                       confidence=magnitude / knob_range)
+```
+
+### Step 3: Implement segment evaluator
+
+```python
+class SegmentEvaluator:
+    def __init__(self, segment_size: int = 5):
+        self.segment_size = segment_size
+    
+    def start_segment(self, edit: KnobEdit) -> str:
+        """Record segment start. Returns segment_id."""
+        # Save: which edit, Brier baseline before edit, timestamp
+    
+    def check_segment(self, segment_id: str) -> SegmentResult:
+        """Check if segment has enough verdicts to evaluate."""
+        # Count verdicts since segment start
+        # If >= segment_size → evaluate
+    
+    def evaluate(self, segment_id: str) -> EvalDecision:
+        """Compare Brier before vs after edit."""
+        # Brier improved by >5% → KEEP
+        # Brier unchanged (±5%) → KEEP (may need more data)
+        # Brier worsened by >10% → REVERT
+        # Brier improved by >15% → AMPLIFY (double the edit magnitude)
+```
+
+### Step 4: Implement meta_edit_controller.py
+
+```python
+class MetaEditController:
+    def __init__(self):
+        self.registry = KnobRegistry(...)
+        self.updater = BayesianKnobUpdater(self.registry)
+        self.evaluator = SegmentEvaluator(segment_size=5)
+        self.state = self._load_state()
+    
+    def run(self) -> MetaEditResult:
+        """Main entry point — called after every 5th outcome."""
+        
+        if self.state.status == "SEGMENT_RUNNING":
+            result = self.evaluator.check_segment(self.state.segment_id)
+            if result.ready:
+                decision = self.evaluator.evaluate(self.state.segment_id)
+                self._apply_decision(decision)
+                self.state.status = "IDLE"
+        
+        if self.state.status == "IDLE":
+            # Observe: load recent mechanism errors
+            errors = self._load_recent_errors(since=self.state.last_edit_time)
+            
+            # Find knob with most attributed errors
+            knob_errors = self._group_by_knob(errors)
+            if not knob_errors:
+                return MetaEditResult(action="no_edit", reason="insufficient_evidence")
+            
+            top_knob, its_errors = max(knob_errors.items(), 
+                                        key=lambda x: len(x[1]))
+            
+            if len(its_errors) < 3:
+                return MetaEditResult(action="no_edit", 
+                                     reason=f"only {len(its_errors)} errors for {top_knob}")
+            
+            # Propose edit
+            edit = self.updater.propose_edit(top_knob, its_errors)
+            
+            # Apply (Phase 5 safety check happens inside registry.set)
+            self.registry.set(edit.knob_id, edit.new_value,
+                            reason=f"meta-edit: {len(its_errors)} errors attributed",
+                            source="meta_edit_controller")
+            
+            # Start segment
+            segment_id = self.evaluator.start_segment(edit)
+            self.state.status = "SEGMENT_RUNNING"
+            self.state.segment_id = segment_id
+            self._save_state()
+            
+            return MetaEditResult(action="edit_applied", edit=edit, 
+                                 segment_id=segment_id)
+```
+
+### Step 5: Trigger mechanism
+
+Wire into existing feedback loop. In `feedback-cycle-runner.py` or new hook:
+```python
+# After every 5th outcome logged
+outcome_count = count_outcomes_since_last_meta_edit()
+if outcome_count >= 5:
+    controller = MetaEditController()
+    result = controller.run()
+    log_meta_edit_result(result)
+```
+
+### Step 6: Tests
+
+- Bayesian updater proposes correct direction for threshold errors
+- Segment evaluator correctly identifies improvement/regression
+- Controller state machine transitions correctly
+- Revert actually restores previous knob value
+- Amplify doubles the edit magnitude (within bounds)
+
+## Success Criteria
+
+- [ ] Meta-edit controller runs after every 5th outcome
+- [ ] Bayesian updater proposes edits with correct direction and bounded magnitude
+- [ ] Segment evaluator tracks before/after Brier across N verdicts
+- [ ] Keep/revert/amplify decisions are deterministic and auditable
+- [ ] meta-edit-history.jsonl records every edit with full context
+- [ ] State machine survives session boundaries (persistent state)
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|------|------------|
+| Overfitting on small N | Minimum 3 errors before proposing edit; segment size 5 |
+| Oscillating edits | Max 1 active edit at a time; no new edit during segment |
+| Wrong direction | Bayesian prior anchored to current value; small magnitude |
+| Composition knobs hard to edit | Start with numeric knobs only; composition in V2 |

@@ -1,0 +1,66 @@
+---
+phase: 5
+title: "Validation and Kill Gate"
+status: pending
+priority: P1
+effort: "1d"
+dependencies: [4]
+---
+
+# Phase 5: Validation and Kill Gate
+
+## Overview
+Run the empire pipeline on 5 real opportunities to validate it works. Set up kill gates for the redesign itself. This is NOT a test phase — it's a live validation that determines if we keep or kill the entire empire pipeline.
+
+## Requirements
+- Functional: 5 real opportunities processed, verdicts reviewed, kill gate evaluated
+- Non-functional: Must complete within 2 days of Phase 4
+
+## Implementation Steps
+
+1. Select 5 real test opportunities (mix of types):
+   - 1x SaaS idea (from pain signals or existing backlog)
+   - 1x Freelance/service (from hunt output — should get GO_BRIDGE or KILL)
+   - 1x Template/digital product (should get DOWNGRADE)
+   - 1x Platform-shift opportunity (from detector)
+   - 1x Deliberately bad idea (should get KILL — validates filter works)
+
+2. Run empire pipeline on each:
+   ```bash
+   python empire-pipeline-runner.py --mode empire --opportunity "{description}"
+   ```
+
+3. Review verdicts against human judgment:
+   - Does compound-filter correctly identify recurring vs one-time?
+   - Does timing-scorer reflect actual market state?
+   - Does staircase-enforcer block correctly for Stair 0?
+   - Does founder-edge-matcher correctly assess skill fit?
+
+4. Calculate accuracy:
+   - Compare pipeline verdict vs your gut feeling for each opportunity
+   - If ≥4/5 match → pipeline VALIDATED
+   - If 3/5 match → ADJUST thresholds
+   - If ≤2/5 match → KILL pipeline redesign, go manual
+
+5. Record initial assets in empire registry:
+   - `python asset-registry-cli.py add --name "master_investments system" --category code --value 0 --mrr 0`
+   - `python asset-registry-cli.py add --name "Founder skills" --category data --value 0`
+   - Run compound-dashboard for baseline report
+
+6. Set up recurring kill gate check:
+   - Week 2: ≥5 opportunities processed? If no → KILL
+   - Week 4: any revenue from any source? If no → KILL all infrastructure
+   - Month 3: Stair 1 reached ($1-3K MRR)? If no → simplify to manual process
+
+## Success Criteria
+- [ ] 5 real opportunities processed through empire pipeline
+- [ ] ≥4/5 verdicts match human judgment
+- [ ] Compound dashboard baseline report generated
+- [ ] Initial assets registered in empire registry
+- [ ] Kill gate schedule documented and calendar-set
+- [ ] Pipeline produces GO_EMPIRE verdict for ≥1 SaaS opportunity
+
+## Risk Assessment
+- Risk: Pipeline gives wrong verdicts → Mitigation: this entire phase IS the mitigation. Kill if accuracy <60%
+- Risk: No SaaS opportunities found → Mitigation: pain-signal-miner should surface ≥10. If 0, the miner needs tuning
+- Risk: Spending time validating instead of selling → Mitigation: this phase is 1 day max. If it takes longer, KILL

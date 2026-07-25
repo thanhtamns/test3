@@ -1,0 +1,132 @@
+---
+phase: 4
+title: "Output Voice Revolution"
+status: completed
+priority: P1
+effort: "3h"
+dependencies: [1, 2, 3]
+completedAt: "2026-05-10T08:30:00.000Z"
+---
+
+# Phase 4: Output Voice Revolution
+
+## Overview
+
+The biggest upgrade. Current output — even in operator voice — reads like AI report: headers, bullets, framework names, meta-language. User wants: "hướng dẫn chuyên sâu như con người, loại bỏ những yếu tố thừa."
+
+Goal: output reads like private notes from experienced Vietnamese business mentor. No section headers. No bullet points. No framework names. Just: what to do, why it works, what to say, what happens next.
+
+## The Problem vs Solution
+
+**Current (AI report):**
+```
+## Side-Door Path 1: Portfolio CTO Route
+**Chain:** You → CTO → Lieutenant → Nuthaphong
+**Timeline:** 6-8 weeks
+**Script:** "Em đang nghiên cứu về..."
+**Value Exchange:**
+- Link 1: Solve hiring problem
+- Link 2: Share market data
+**Kill Criterion:** No response after 3 attempts
+```
+
+**Target (human mentor):**
+```
+Có một CTO trong portfolio đang đau đầu vì hiring ở VN — gã post than phiền
+trên LinkedIn 2 tuần trước. Đó là cửa vào.
+
+Contact gã, không nhắc KVision. Nói: "Anh ơi, em thấy anh đang tìm senior dev
+ở HCM. Em có network tech khá rộng, để em giới thiệu vài người."
+
+Giải quyết hiring cho gã. Mất 2 tuần. Gã NỢ bạn. Dùng ơn này đúng 1 lần:
+nhờ giới thiệu với Nuthaphong.
+
+Nếu gã không reply sau 2 tin nhắn — bỏ. Chuyển path khác.
+```
+
+## Related Code Files
+
+- Create: `.claude/skills/business/transaction-layer/nui-hunter/scripts/output-voice-enforcer.py`
+- Modify: `.claude/commands/stage0.md` — rewrite OPERATOR VOICE TEMPLATE
+- Modify: `.claude/skills/business/transaction-layer/nui-hunter/scripts/side-door-trigger.py` — add voice instructions
+- Modify: `.claude/skills/business/transaction-layer/nui-hunter/scripts/stage0-quality-score.py` — integrate voice score
+
+## Implementation Steps
+
+### A. Output Voice Enforcer Script
+
+1. Create `output-voice-enforcer.py`:
+   - `detect_llm_artifacts(text)` — regex for AI-report patterns:
+     ```
+     BANNED in operator voice:
+     - "## " (markdown headers)
+     - "**Label:**" (bold labels)
+     - "- " at line start (bullets)
+     - "| " (tables)
+     - "Step N:" / "Phase N:" (enumerated steps)
+     - "[K]", "[T]", "[?]" (zone tags)
+     - "framework", "methodology", "analysis", "assessment"
+     - "Let me", "I'll explain", "Here's what", "In summary"
+     - "Compound Objective", "Wound Map", "Persona Matrix" (system names)
+     ```
+   - `score_human_voice(text)` → 0-100:
+     - +points: dialogue scripts, Vietnamese terms, specific names, narrative flow
+     - -points: each LLM artifact
+     - Target: ≥70 operator, ≥40 analyst
+   - `suggest_rewrites(artifacts)` — human-voice alternatives per artifact
+
+2. Conversion rules (LLM → Human):
+   ```
+   "## Side-Door Path 1" → start telling the story
+   "**Chain:** A → B → C" → "bạn cần gặp gã qua..."
+   "**Timeline:** 6 weeks" → "Mất khoảng 6 tuần"
+   "**Script:**" → "Nói: '...'"
+   "**Kill Criterion:**" → "Nếu sau 2 tuần mà..., bỏ."
+   "**Probability:** 25%" → "Tỉ lệ khoảng 1/4"
+   ```
+
+### B. Operator Voice Template Upgrade
+
+3. Replace OPERATOR VOICE TEMPLATE in stage0.md:
+   - Remove ALL section headers
+   - Narrative flow (no structure markers):
+     ```
+     [situation — 2-3 sentences, verdict woven in naturally]
+
+     [the move — encounter by encounter as story]
+
+     [side-door — if applicable, as private advice]
+
+     [timeline — embedded naturally in narrative]
+
+     [math — conversational]
+
+     [risks — warnings woven in: "coi chừng...", "đừng..."]
+
+     [sources — URLs only at end]
+     ```
+
+4. Anti-pattern expansion: add ALL LLM artifacts to banned list
+
+### C. Agent Prompt Voice Instructions
+
+5. Add to EVERY agent prompt in side-door-trigger.py:
+   - "Write as if briefing a friend over coffee. No headers. No bullets. No 'Step 1'. Just: who, what they need, what to say, what happens next."
+   - For operator voice: "Your output will be read DIRECTLY as advice. If it sounds like a report, REJECTED."
+
+### D. Vietnamese-English Voice Calibration
+
+6. Rules:
+   - Default: English with VN business terms where natural (ơn, mặt, tin, nhậu)
+   - VN targets: mix Vietnamese dialogue scripts naturally
+   - NEVER translate VN concepts — use directly with implicit context
+
+## Success Criteria
+
+- [x] output-voice-enforcer.py detects ≥15 LLM artifact patterns (~240 lines, dead code removed)
+- [x] Current operator template scores <50 (proves detection works)
+- [x] Suggests specific rewrites per artifact
+- [x] Updated template produces score ≥70
+- [x] Agent prompts include voice instruction
+- [x] System artifact names NEVER in user-facing output
+- [x] Side-door paths read as stories, not analysis

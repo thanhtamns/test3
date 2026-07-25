@@ -1,0 +1,197 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { DateRangeSelector } from "@/components/date-range-selector";
+import { fetchSecurityAlerts, type SecurityAlert } from "@/lib/api";
+
+const SEVERITY_COLORS: Record<string, string> = {
+  critical: "bg-red-600 text-white",
+  high: "bg-orange-500 text-white",
+  medium: "bg-yellow-500 text-black",
+  low: "bg-blue-100 text-blue-700",
+};
+
+const ACTION_COLORS: Record<string, string> = {
+  block: "bg-red-100 text-red-700",
+  warn: "bg-amber-100 text-amber-700",
+};
+
+export default function SecurityPage() {
+  const [alerts, setAlerts] = useState<SecurityAlert[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [days, setDays] = useState(30);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchSecurityAlerts(days)
+      .then((a) => setAlerts(a || []))
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [days]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold">Security</h1>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-muted-foreground">
+              Could not load security data. Make sure the API is running.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const blocked = alerts.filter((a) => a.action === "block");
+  const warned = alerts.filter((a) => a.action === "warn");
+  const totalBlocked = blocked.reduce((s, a) => s + a.count, 0);
+  const totalWarned = warned.reduce((s, a) => s + a.count, 0);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Security</h1>
+        <DateRangeSelector value={days} onChange={setDays} />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <MetricCard
+          title="Secrets Blocked"
+          value={totalBlocked.toString()}
+          description="prevented from reaching LLM"
+        />
+        <MetricCard
+          title="Warnings"
+          value={totalWarned.toString()}
+          description="flagged but allowed through"
+        />
+        <MetricCard
+          title="Finding Types"
+          value={alerts.length.toString()}
+          description="unique detection patterns"
+        />
+      </div>
+
+      {alerts.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Security Alerts</CardTitle>
+            <CardDescription>
+              Detected secrets, credentials, and PII in AI tool output
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Severity</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Action</TableHead>
+                  <TableHead>Command</TableHead>
+                  <TableHead>Preview</TableHead>
+                  <TableHead className="text-right">Count</TableHead>
+                  <TableHead>Last Seen</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {alerts.map((a, i) => (
+                  <TableRow key={i}>
+                    <TableCell>
+                      <Badge
+                        className={
+                          SEVERITY_COLORS[a.severity] || "bg-gray-100"
+                        }
+                      >
+                        {a.severity}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      {a.finding_type.replace(/_/g, " ")}
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className={`text-xs px-2 py-1 rounded-full font-medium ${ACTION_COLORS[a.action] || ""}`}
+                      >
+                        {a.action}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <code className="bg-muted px-1.5 py-0.5 rounded text-sm">
+                        {a.command}
+                      </code>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground font-mono max-w-xs truncate">
+                      {a.redacted_preview}
+                    </TableCell>
+                    <TableCell className="text-right">{a.count}x</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {new Date(a.detected_at).toLocaleDateString()}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-muted-foreground">
+              No security alerts detected. The scanner checks for leaked
+              secrets, API keys, and PII in AI tool output.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function MetricCard({
+  title,
+  value,
+  description,
+}: {
+  title: string;
+  value: string;
+  description: string;
+}) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardDescription>{title}</CardDescription>
+        <CardTitle className="text-3xl">{value}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </CardContent>
+    </Card>
+  );
+}

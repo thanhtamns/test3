@@ -1,0 +1,110 @@
+---
+phase: 3
+title: "Cloud Harden (P0+P1+P2)"
+status: pending
+priority: P0
+effort: "5h"
+dependencies: []
+---
+
+# Phase 3: Cloud Harden (P0+P1+P2)
+
+## Overview
+
+Fix unverified JWT fallback AND X-Tenant-ID spoofing (P0 security), move Stripe webhook out of auth middleware, add ClickHouse healthz probe, fix CSV export tenant isolation in dashboard, parameterize SQL queries.
+
+## Requirements
+
+- Functional: Auth middleware rejects requests without verified JWT (except dev mode). X-Tenant-ID header only accepted when backed by verified JWT. Healthz reflects real DB state. Stripe webhook works without tenant auth.
+- Non-functional: No new dependencies. All existing tests pass.
+
+## Related Code Files
+
+- Modify: `cloud/internal/api/middleware_auth.go` (reject unverified JWT, restrict X-Tenant-ID)
+- Modify: `cloud/internal/api/router.go` (move webhook to root mux, healthz with ping)
+- Modify: `cloud/internal/api/storage.go` (add Ping method to Storage interface)
+- Modify: `cloud/internal/clickhouse/client.go` (implement Ping, parameterize SQL)
+- Modify: `cloud/internal/api/fake_storage_test.go` (add Ping to fakeStorage)
+- Modify: `dashboard/src/lib/api.ts` (CSV export via fetch+blob)
+- Modify: `dashboard/src/app/roi/page.tsx` (use fetch+blob for CSV download)
+
+## Implementation Steps
+
+### Step 1: Fix auth — D1 + X-Tenant-ID spoofing (P0 SECURITY)
+
+**Two vulnerabilities, one fix:**
+- D1: `extractTenantFromJWT` fallback decodes JWT without signature verification
+- NEW: `X-Tenant-ID` header accepted at `middleware_auth.go:61-63` with zero verification — any client can impersonate any tenant
+
+**Fix:**
+1. In `middleware_auth.go`: remove `extractTenantFromJWT` fallback branch (lines ~54-56). Delete the function entirely.
+2. Remove the `X-Tenant-ID` header branch (lines ~61-63) as a standalone auth path. X-Tenant-ID should only be accepted when a verified JWT is ALSO present and the tenant ID matches the JWT claim. Or remove X-Tenant-ID entirely and always derive tenant from JWT.
+3. Remove the `tenantID = "default"` fallback (line ~67-68). If no valid auth → return 401.
+4. For local dev: add `CODEFLOW_AUTH_DISABLED=true` env var. When set:
+   - Accept `X-Tenant-ID` header OR fall back to `"dev-tenant"`
+   - Log `WARN: auth disabled` on every request
+   - Guard: only enable when `WORKOS_JWKS_URL` is NOT set (presence of JWKS URL = production)
+   - Do NOT introduce `CODEFLOW_ENV` — it doesn't exist in the codebase
+
+### Step 2: Move Stripe webhook out of tenant auth
+
+1. In `router.go`: move `POST /v1/billing/webhook` registration from `apiMux` to `root` mux
+2. Stripe webhook authenticates via its own signature verification (`webhook.ConstructEvent`), it does NOT need tenant auth
+3. This prevents tightened auth (Step 1) from breaking incoming Stripe webhooks
+4. `handleCreateCheckout` stays on `apiMux` — it needs tenant auth to link checkout to tenant
+
+### Step 3: Add ClickHouse health probe — D6/F3
+
+1. Add `Ping(ctx context.Context) error` to `Storage` interface in `storage.go`
+2. Implement in `client.go`: `func (c *Client) Ping(ctx context.Context) error { return c.conn.Ping(ctx) }`
+3. Add `func (f *fakeStorage) Ping(_ context.Context) error { return nil }` to `fake_storage_test.go`
+4. Convert `handleHealthz` from standalone function to method on `handler` (lowercase, unexported — that's the actual type at `handler_events.go:23`)
+5. Update route registration: `root.HandleFunc("GET /healthz", h.handleHealthz)` — must stay on `root` mux (not `apiMux`) so K8s probes work without auth
+6. Add 2s context timeout on the ping call
+
+### Step 4: Fix CSV export tenant isolation — G6
+
+The CSV route IS already behind auth middleware (`router.go:33,41`). The issue is the dashboard using `<a href>` which sends no headers, causing tenant fallback to "default". After Step 1 removes the fallback, this will return 401 instead — correct behavior. Dashboard fix:
+
+1. In `dashboard/src/lib/api.ts`: replace `exportCSVUrl()` with:
+   ```typescript
+   export async function exportCSV(days: number = 30): Promise<Blob> {
+       const res = await apiFetch(`/v1/export/csv?days=${days}`);
+       return new Blob([JSON.stringify(res)], { type: "text/csv" });
+   }
+   ```
+   Or use raw fetch with tenant headers and return blob.
+2. In `roi/page.tsx`: replace `<a href={exportCSVUrl(days)}>` with a button that calls `exportCSV()` and triggers browser download via `URL.createObjectURL`.
+
+### Step 5: Parameterize SQL queries — D3
+
+1. In `client.go`: replace `fmt.Sprintf("... INTERVAL %d DAY", days)` with parameterized queries
+2. Locations: lines ~298, ~383, ~430, ~662, ~683
+3. If ClickHouse driver doesn't support INTERVAL parameters, keep `fmt.Sprintf` with `%d` but add validation comment and type assertion
+
+### Step 6: Verify
+
+1. `go build ./...` — clean
+2. `go test ./...` — all pass (including fakeStorage with Ping)
+3. Manual test: start server without JWKS, without AUTH_DISABLED → verify 401 response
+4. Manual test: start server with AUTH_DISABLED → verify accepts X-Tenant-ID
+5. Manual test: `/healthz` with ClickHouse down → verify 503
+6. Manual test: send Stripe webhook → verify it works without tenant auth
+
+## Success Criteria
+
+- [ ] Unverified JWT path removed; 401 returned when no valid auth
+- [ ] X-Tenant-ID header only accepted with verified JWT or in dev mode
+- [ ] Stripe webhook works without tenant auth (moved to root mux)
+- [ ] `/healthz` returns 503 when ClickHouse unreachable
+- [ ] `fakeStorage` implements `Ping` — all existing tests pass
+- [ ] CSV export uses fetch+blob in dashboard (no raw URL)
+- [ ] SQL queries parameterized or annotated with safety rationale
+- [ ] `go build` clean, `go test` all pass
+
+## Risk Assessment
+
+- **Auth tightening (high risk):** Breaking change for all clients. Mitigate with CODEFLOW_AUTH_DISABLED for dev, and test webhook path independently.
+- **Webhook move (low risk):** Stripe webhook already has its own auth. Moving to root mux only removes unnecessary middleware.
+- **Healthz change (low risk):** Adds DB dependency. 2s timeout prevents slow probes.
+- **CSV export (low risk):** Dashboard-only change.

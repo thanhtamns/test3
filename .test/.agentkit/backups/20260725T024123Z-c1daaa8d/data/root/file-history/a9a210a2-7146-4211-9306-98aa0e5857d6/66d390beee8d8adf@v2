@@ -1,0 +1,22 @@
+{
+  "name": "Thanh",
+  "location": "Thanh Hoa, Vietnam",
+  "capital_usd": 1000,
+  "capital_range": "$500-2000",
+  "hours_per_day": 8,
+  "availability": "full-time",
+  "skills": ["tech/code", "sales/negotiation", "content/marketing", "operations/logistics"],
+  "skill_level": "multi-skilled",
+  "language": ["Vietnamese (native)", "English (working)"],
+  "existing_systems": {
+    "master_investments": "stage0 V16 + hunt + blueprint + deep-intelligence",
+    "master_investments_mmo": "persona system + brainstorm"
+  },
+  "constraints": {
+    "location": "Vietnam (VN timezone, VN banking, VN market access)",
+    "risk_tolerance": "moderate - data-driven decisions only",
+    "no_bias": true
+  },
+  "_created": "2026-05-30",
+  "_needs_validation": ["exact_capital_amount", "existing_revenue_streams", "prior_business_experience"]
+}

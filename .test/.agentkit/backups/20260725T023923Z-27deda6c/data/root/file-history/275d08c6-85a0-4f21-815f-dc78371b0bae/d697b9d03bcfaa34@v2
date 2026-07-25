@@ -1,0 +1,58 @@
+---
+phase: 1
+title: "Foundation Setup"
+status: pending
+priority: P1
+effort: "3 days"
+dependencies: []
+---
+
+# Phase 1: Foundation Setup
+
+## Overview
+Validate blocking assumptions, set up tracking infrastructure, write pre-commitment kill criteria for ALL bets (Annie Duke framework). This phase is BLOCKING — nothing launches until foundations are solid.
+
+## Requirements
+- Validate Mandarin proficiency (BLOCKING for CHAOS-1)
+- Validate CN trade contacts (BLOCKING for SAFE-B fallback)
+- Set up tracking spreadsheet/Notion for all bets
+- Write kill criteria BEFORE launching any bet
+- Allocate time budget: 21h/week safe, 6h/week chaos, 3h/week learning
+
+## Implementation Steps
+
+### Day 1: Validate Blocking Assumptions
+1. **Mandarin test:** Open 1688.com, read 10 random product listings. Extract: product name, price, specs, shipping terms. If accuracy <80% → hire CN-speaking VA ($3-5/hr) OR drop 1688 angle from CHAOS-1, focus regulatory intelligence only
+2. **CN trade contacts audit:** List every CN business contact by name, relationship depth (1-5), last contact date. If 0 active contacts → mark SAFE-B (trade intermediary) as NON-VIABLE, remove from fallback
+3. **Record results** in `data/profiles/mandarin-validation-260529.json`
+
+### Day 2: Pre-Commitment Kill Criteria (Annie Duke)
+Write down IN ADVANCE for each bet:
+
+| Bet | Kill Date | Kill Metric | Action if Kill |
+|-----|-----------|-------------|----------------|
+| SAFE-A | Day 60 | 0 closed deals | Pivot to SAFE-B or intensify outreach |
+| CHAOS-1 | Day 30 | 0 Zalo group members OR 0 WTP signals | Kill, reallocate 5h to CHAOS-4 |
+| CHAOS-2 | Day 60 | <100 free users | Kill, reallocate hours to winner |
+| CHAOS-3 | Day 90 | <500 followers across all platforms | Kill or reduce to 1h/week |
+| CHAOS-4 | Per deal | Per hunt card kill criteria | Rotate to next anomaly |
+
+### Day 3: Infrastructure Setup
+1. **Tracking:** Create Notion board or Google Sheet with columns: Bet, Status, Revenue MTD, Hours This Week, Signal Score (1-10), Kill Date, Notes
+2. **Time tracking:** Set up Toggl/Clockify with projects: SAFE-A, CHAOS-1/2/3/4, LEARNING
+3. **Weekly review calendar:** Every Sunday 1h — review all bets, check kill criteria, reallocate
+4. **Monthly review calendar:** First Monday — run /hunt on new topic, deep review, allocation shifts
+
+## Success Criteria
+- [ ] Mandarin validated (pass/fail + fallback decision recorded)
+- [ ] CN contacts audited (count + depth scores)
+- [ ] Kill criteria written for ALL 5 bets (pre-committed, not retroactive)
+- [ ] Tracking spreadsheet created and bookmarked
+- [ ] Time tracking tool configured
+- [ ] Weekly + monthly review events in calendar
+- [ ] Time allocation decided: exact hours per bet per week
+
+## Risk Assessment
+- **Risk:** Mandarin fails validation → CHAOS-1 scope reduces to regulatory-only intelligence (still viable, hunt Card #2 Decree 46 scored 0.85)
+- **Risk:** Zero CN contacts → SAFE-B removed as fallback → SAFE-A becomes sole safe path (higher pressure)
+- **Mitigation:** Both risks have clear fallback paths documented

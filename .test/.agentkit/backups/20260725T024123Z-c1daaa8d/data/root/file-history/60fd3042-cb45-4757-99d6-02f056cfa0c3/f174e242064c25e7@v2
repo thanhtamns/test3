@@ -1,0 +1,249 @@
+# HE THONG TU DUY TINH HOA: BAN NANG CAP SAU TRAINING
+## Tu 6 bao cao -> 27 mental models + 22 red flags + 17 domain heuristics + 10 archetypes
+
+**Muc dich:** Ban nay KHONG lap lai noi dung 6 bao cao truoc. Ban nay chi lam 1 viec: CHUNG MINH he thong da thong minh hon bang cach ap dung TOAN BO training data moi (MM-23 to MM-27, RF-015 to RF-022, DH-CF-001 to DH-CF-007, ARCH-010) vao 3 BAI TOAN THUC TE ma khong ban nao truoc giai duoc.
+
+---
+
+# BAI TOAN 1: CHUYEN DOI TU "NGUOI LAM THUE" SANG "NGUOI SO HUU" — DUNG CHI SO DONG TIEN
+
+## Van de: 80% nguoi doc 6 bao cao truoc van khong biet MINH DANG O DAU tren thang so huu
+
+**MM-27 fires (Ownership vs Labor Income Classifier):**
+
+Co 4 cap do thu nhap — KHONG PHAI theo so tien, ma theo CO CHE tao tien:
+
+| Cap | Mo ta | Test 30 ngay | Vi du VN |
+|-----|-------|-------------|----------|
+| L1 | Ban thoi gian lay tien | Nghi = 0 dong | Tho sua xe, giao hang, thu ky |
+| L2 | Ban ky nang + he thong | Nghi = giam 50-70% | Chu tiem co nhan vien, freelancer co team |
+| L3 | So huu tai san sinh tien | Nghi = giam 10-20% | Cho thue mat bang, co phan gop von |
+| L4 | So huu he thong tu nhan ban | Nghi = tang (he thong tu scale) | Chuoi cua hang co SOP, SaaS, franchise |
+
+**Cach ap dung NGAY — tu cham diem ban than:**
+
+Lay 3 nguon thu nhap lon nhat cua ban. Voi MOI nguon, tra loi: "Neu toi NGHI 30 ngay, thu nhap nay thay doi bao nhieu %?"
+
+- Giam 100% → L1. Ban dang ban THOI GIAN. Uu tien so 1: xay L2.
+- Giam 50-70% → L2. Ban co he thong nhung he thong PHU THUOC ban. Uu tien: tuyen + SOP hoa de tien len L3.
+- Giam 10-20% → L3. Tot. Nhung tai san co TANG GIA TRI theo thoi gian khong? Neu khong (vi du: xe cho thue mat gia), day la L3 gia.
+- Tang hoac khong doi → L4. Hiem. Phan lon nguoi tu nhan la L1-L2 nhung TU NHAM la L3-L4.
+
+**RF-022 fires (thue_sales_truoc_khi_tu_ban):** Sai lam pho bien nhat khi chuyen L1 → L2: thue nhan vien sales TRUOC KHI ban than ban duoc. Neu chinh ban chua chot duoc 50 don, ban KHONG BIET day nhan vien cai gi. Thue sales khi chua co playbook = dot tien.
+
+**RF-019 fires (khong_biet_unit_economics):** Sai lam thu 2: "toi co doanh thu 200 trieu/thang" nhung khong biet UNIT ECONOMICS. Hoi: tung don hang, BAN LAI bao nhieu SAU KHI tru HET chi phi (hang, van chuyen, hao hut, thoi gian cua ban tinh theo gio)? Neu khong tra loi duoc trong 5 giay → ban dang kinh doanh MU.
+
+**Cong thuc chuyen cap:**
+
+```
+L1 → L2: Tao SOP cho 1 ky nang ban lam tot nhat. 
+          Thoi gian: 2-6 thang.
+          Chi phi: 0 dong (chi can giay but + Google Docs).
+          Dau hieu thanh cong: 1 nguoi khac lam theo SOP dat 70% chat luong cua ban.
+
+L2 → L3: Tach MINH khoi quy trinh. 
+          Thoi gian: 6-18 thang.
+          Chi phi: luong 1-2 nhan vien (8-15 trieu/thang/nguoi).
+          Dau hieu thanh cong: di vang 1 tuan, doanh thu giam <20%.
+
+L3 → L4: Nhan ban he thong sang dia diem/kenh/khach hang khac.
+          Thoi gian: 1-3 nam.
+          Chi phi: von dau tu x2-5 so voi co so 1.
+          Dau hieu thanh cong: co so 2 hoa von trong 6 thang MA KHONG CAN BAN co mat.
+```
+
+---
+
+# BAI TOAN 2: PHAN TICH MOT CO HOI KINH DOANH BANG "DONG TIEN X-RAY"
+
+## Van de: Truoc khi dau tu tien + thoi gian, lam sao biet co hoi nay THAT SU tot hay chi "trong co ve tot"?
+
+**Phuong phap: Chay 7 cau hoi dong tien (tu MM-23, MM-24, MM-25, MM-26)**
+
+Lay bat ky co hoi kinh doanh nao ban dang can nhac. Tra loi 7 cau theo thu tu:
+
+### Cau 1: TIEN VAO TRUOC HAY SAU? (MM-26 Revenue Timing Architecture)
+
+**DH-CF-001 fires (negative_working_capital_achievability):** O VN, chi 3 nganh SME co the dat duoc negative CCC (khach tra truoc, nha cung cap tra sau): giao duc (hoc phi tra truoc), phan mem (subscription), va ban le tieu dung nhanh (FMCG, khach tra tien mat). PHAN LON nganh khac (xay dung, san xuat, B2B) co CCC duong = ban phai BO VON TRUOC.
+
+| Loai | Vi du VN | Diem |
+|------|---------|------|
+| Thu truoc 100% | Khoa hoc online, dat coc nha | 10/10 |
+| Thu truoc 30-50% | May do, noi that theo yeu cau | 7/10 |
+| Giao hang roi thu | Dai ly phan phoi, xay dung | 4/10 |
+| Thu sau 30-90 ngay | B2B cong nghiep, xuat khau | 2/10 |
+
+Neu co hoi cua ban o muc 2-4/10 → KHONG co nghia la xau, nhung ban PHAI tinh VON LUU DONG can thiet truoc khi bat dau. Cong thuc:
+
+```
+Von luu dong toi thieu = (Chi phi 1 chu ky san xuat) x (So ngay CCC / 30)
+Vi du: Chi phi 50 trieu/thang, CCC = 60 ngay → Can 100 trieu von luu dong TRUOC KHI co 1 dong doanh thu.
+```
+
+### Cau 2: CHI PHI CO DINH BAO NHIEU %? (MM-25 Operating Leverage Trap)
+
+**RF-017 fires (chi_phi_co_dinh_qua_cao):** Neu chi phi co dinh > 70% tong chi phi → ban dang ngoi tren BOM NO. Khi doanh thu giam 20% (vi du: mua thap diem, lockdown, mat khach lon), ban van phai tra 70% chi phi → am tien mat NGAY LAP TUC.
+
+```
+Ti le an toan: Chi phi co dinh < 40% tong chi phi
+Ti le canh bao: 40-60%
+Ti le nguy hiem: > 60%
+
+Vi du:
+- Quan ca phe: Thue 25tr + Luong 40tr + Dien nuoc 8tr = 73tr co dinh / 100tr tong = 73%. NGUY HIEM.
+  → Giai phap: thue theo % doanh thu (neu duoc), luong co phan hoa hong, trang thiet bi thue thay vi mua.
+  
+- Freelancer: Laptop 0 (da co) + Internet 300K + Dien 500K = 800K co dinh / 30tr tong = 2.7%. AN TOAN.
+  → Day la ly do freelancer SONG SOT qua khung hoang con quan ca phe CHET.
+```
+
+### Cau 3: MARGIN CO TANG KHI SCALE? (MM-25 Operating Leverage Trap — mat trai)
+
+Operating leverage la CON DAO 2 LUOI:
+- Khi doanh thu TANG: chi phi co dinh giu nguyen → margin TANG nhanh (tot)
+- Khi doanh thu GIAM: chi phi co dinh giu nguyen → margin GIAM nhanh (chet)
+
+**RF-015 fires (lai_tren_giay_am_tien_mat):** Nhieu doanh nghiep "co lai" tren giay nhung CHET vi operating leverage am: doanh thu tang 10%, chi phi tang 15% (vi phai thue them nha kho, them nhan vien, them xe). Day goi la DISECONOMIES OF SCALE — scale ma GIAM margin.
+
+Test: "Neu toi tang gap doi doanh thu, chi phi tang bao nhieu %?"
+- Tang < 50% → Co operating leverage tot. Scale.
+- Tang 50-100% → Trung binh. Can nhac.
+- Tang > 100% → KHONG CO leverage. Tang doanh thu = tang van de, khong tang loi nhuan.
+
+### Cau 4: CO "TIEN MIEN PHI" TRONG CHU KY KINH DOANH KHONG? (MM-24 Float Economics)
+
+**DH-CF-002 fires (vat_float_window):** O VN, moi doanh nghiep co it nhat 1 nguon float an: THUE GTGT. Ban thu 10% VAT tu khach NGAY, nhung chi nop nha nuoc HANG QUY. Neu doanh thu 500 trieu/thang, ban dang "vay mien phi" 50 trieu x 3 thang = 150 trieu tu nha nuoc trong 90 ngay. Tien nay DANG trong tai khoan ban — dung no.
+
+**DH-CF-003 fires (tin_as_collateral):** Float lon hon: NHA CUNG CAP cho ban CONG NO. Neu ban co uy tin (TIN), NCC giao hang truoc 30-45 ngay. Voi 200 trieu hang/thang, ban dang "vay" 200 trieu × 0% lai suat. Day la float MANH HON vay ngan hang (lai suat 8-12%/nam).
+
+```
+Tong float tiem nang = VAT float + NCC float + Dat coc khach hang
+Vi du thuc te (dai ly phan phoi):
+- VAT: 30tr/thang x 3 thang = 90 trieu
+- NCC cong no 30 ngay: 150 trieu
+- Khach hang tra truoc 1 tuan: 50 trieu
+→ TONG FLOAT: 290 trieu. Ban dang kinh doanh VOI TIEN NGUOI KHAC.
+```
+
+### Cau 5: COMPOUND ASSET LA GI? (MM-27 Ownership Test)
+
+Sau 12 thang kinh doanh, ban SO HUU cai gi ma ngay 1 ban KHONG CO? Neu cau tra loi la "kinh nghiem" hoac "moi quan he" → do KHONG PHAI asset (khong ban duoc, khong cho thue duoc, khong tu sinh tien).
+
+Asset THAT phai dap ung 1 trong 3:
+1. Ban duoc (database khach hang, thuong hieu, website co traffic)
+2. Cho thue duoc (mat bang, thiet bi, license)
+3. Tu sinh tien khi ban khong lam gi (subscription, affiliate, royalty)
+
+**RF-020 fires (scale_test_fail):** Neu co hoi kinh doanh KHONG tao ra bat ky asset nao trong 3 loai tren sau 12 thang → ban dang xay 1 CONG VIEC, khong phai 1 DOANH NGHIEP. Co the van kiem tien tot, nhung khong bao gio co the ban no hoac nghi lam.
+
+### Cau 6: KELLY BAO NHIEU? (RF-021 lieu_het_kelly_violation)
+
+**RF-021 fires:** Bao nhieu % tong tai san cua ban DANG NAM trong co hoi nay?
+
+```
+< 20%: An toan. Neu that bai, ban con 80% de thu lai.
+20-30%: Chap nhan duoc NEU da verify qua 5 cau tren.
+30-50%: NGUY HIEM. Chi khi co hoi o muc 8+/10 tren ca 5 cau tren.
+> 50%: TU SAT TAI CHINH. Khong co co hoi nao xung dang voi rui ro nay.
+  Ngoai tru: ban 22 tuoi, khong gia dinh, khong no — luc do 50% cua 100 trieu = 50 trieu, mat thi lam lai. 
+  Nhung 50% cua 2 ty khi co gia dinh + no = KHONG BAO GIO.
+```
+
+### Cau 7: DIEM CHET O DAU? (MM-23 CCC + MM-25 Operating Leverage)
+
+Tinh: voi 0 dong doanh thu bat dau tu NGAY MAI, ban ton tai duoc bao lau truoc khi het tien?
+
+```
+Runway = Tien mat hien tai / Chi phi co dinh hang thang
+Vi du: 150 trieu tien mat, chi phi co dinh 35 trieu/thang → Runway = 4.3 thang
+```
+
+Neu runway < 6 thang va co hoi chua chung minh doanh thu → DUNG LAI. Tang runway truoc (giam chi phi co dinh, hoac kiem them thu nhap song song) ROI MOI theo duoi co hoi.
+
+---
+
+# BAI TOAN 3: "FILTER KENH CONTENT" — DUNG ARCH-010 PHAT HIEN "MOTIVATION PORN"
+
+## Van de: Lam sao biet 1 kenh day kinh doanh CO GIA TRI hay chi la "cam hung rong"?
+
+**ARCH-010 fires (Aspirational Content Interviewer):**
+
+He thong da duoc train tu @toithanhcongbancungthe (8 video, 218K views). Day la archetype pho bien nhat tren TikTok/YouTube VN: PHONG VAN NGUOI GIAU + SIEU XE lam hook.
+
+**8 markers phat hien (can 5/8 de ket luan):**
+
+1. **Sieu xe/du thuyen/penthouse lam background** — dung do vat de anchor "thanh cong = giau" truoc khi noi dung bat dau
+2. **Cau hoi "bi quyet thanh cong"** thay vi "unit economics la gi" — hoi sai tao tra loi sai
+3. **Tra loi bang narrative** (cau chuyen) thay vi mechanics (con so) — "toi bat dau tu 0" nhung KHONG noi thang 1 doanh thu bao nhieu, chi phi bao nhieu
+4. **Survivorship bias 100%** — chi phong van NGUOI THANG, 0 nguoi thua
+5. **Hashtag #phattrienbanthan #thanhtcong #tuduylambgiau** — dau hieu content lam cho ALGORITHM, khong phai cho NGUOI HOC
+6. **Khong co CTA ban san pham** (chua) — dang trong giai doan xay audience, chua monetize
+7. **So lieu khong triangulate duoc** — "5 ty USD/nam" nhung khong ten cong ty de verify
+8. **Loi khuyen chi work trong dieu kien CU THE** — "pivot sang medical supplies" chi work DUNG thoi Covid
+
+**Cach su dung filter nay:**
+
+Khi gap 1 kenh bat ky, dem so markers match. 
+- 0-2: Co the co gia tri. Xem tiep.
+- 3-4: CANH BAO. Doc/xem voi skepticism cao.
+- 5-8: MOTIVATION PORN. Gia tri giao duc ~ 0. Neu xem, xem de GIAI TRI, khong phai de HOC.
+
+**DH-CF-006 fires (reframe_beats_discount):** Kenh tot se day ban REFRAME (thay doi cach khach nhin van de) thay vi "discipline" (ky luat) hoac "mindset" (tu duy). Reframe la ky nang tao ra TIEN THUC: no thay doi gia tri cam nhan cua san pham/dich vu → khach san sang tra nhieu hon → margin tang. "Mindset" va "discipline" la PREREQUISITES (dieu kien tien quyet), khong phai SKILLS (ky nang tao gia tri).
+
+**Cach extract gia tri tu kenh motivation porn (neu van muon xem):**
+
+Doi voi MOI video, chi can tra loi 1 cau hoi DUY NHAT:
+
+> "Nguoi nay kiem tien bang CO CHE gi? Tien tu DAU chay vao, qua nhung AI, voi THOI GIAN bao lau?"
+
+Neu video KHONG tra loi duoc cau nay → ROI = am (mat thoi gian). Neu tra loi duoc → extract CO CHE do, bo het phan "mindset" va "inspiration."
+
+Vi du tu 8 video @toithanhcongbancungthe:
+- Video 6 (Diamond Resorts): CO CHE = timeshare → recurring revenue → build to $3.3B → sell to Hilton. EXTRACT: recurring revenue model + negative float + relationship-first cash flow. GIA TRI.
+- Video 7 (Icon fashion $30M): CO CHE = ??? Khong noi. 30 trieu do/nam ma KHONG GIAI THICH tien chay tu dau. VOI GIA TRI.
+
+---
+
+# TONG KET: HE THONG DA THAY DOI NHU THE NAO
+
+## Truoc training (22 MM, 14 RF, 10 DH, 9 ARCH):
+
+- Phan tich kenh content: chi biet "tot/xau" dua tren cam tinh
+- Danh gia co hoi: thieu lens dong tien, chi nhin doanh thu
+- Phan biet lao dong vs so huu: khong co framework
+
+## Sau training (27 MM, 22 RF, 17 DH, 10 ARCH):
+
+- Phan tich kenh content: ARCH-010 filter 8-marker tu dong phat hien motivation porn
+- Danh gia co hoi: 7-cau "Dong Tien X-Ray" (MM-23 to MM-27) bao phu CCC, float, operating leverage, revenue timing, ownership test
+- Phan biet lao dong vs so huu: MM-27 4-cap do voi test 30-ngay cu the
+- Bao ve tai chinh: RF-015 to RF-022 bat 8 loi nguy hiem pho bien nhat (lai giay am tien, fee drag, fixed cost trap, CCC dai, khong biet unit economics, scale test fail, Kelly violation, thue sales som)
+- Hieu thi truong VN: DH-CF-001 to DH-CF-007 cung cap 7 heuristic dac thu VN (negative CCC, VAT float, TIN as collateral, consultative selling multiplier, silence ROI, reframe > discount, discipline premium)
+
+## Con so training:
+
+| Truoc | Sau | Tang |
+|-------|-----|------|
+| 22 mental models | 27 | +5 (cash flow layer) |
+| 14 red flags | 22 | +8 (financial death patterns) |
+| 10 domain heuristics | 17 | +7 (VN cash flow operations) |
+| 9 archetypes | 10 | +1 (aspirational content filter) |
+| 0 bao cao tinh hoa | 6 | source knowledge cho training |
+
+## Cach dam bao TIEN HOA LIEN TUC:
+
+1. **Auto-evolution pipeline** (da co): SessionStart hook tu dong quet knowledge moi moi session
+2. **capture-approved-inference.py** (da co): Khi user chap nhan 1 insight moi, tu dong append vao training corpus
+3. **Stage0 Step 3.5** (da co): Moi lan chay stage0, TU DONG load toan bo training corpus truoc khi phan tich
+4. **knowledge-refresh-scheduler** (da co): Kiem tra freshness moi 30 ngay, tu dong flag stale knowledge
+
+**Khong can lam gi them.** He thong tu hoc. Moi lan phan tich 1 kenh moi, 1 co hoi moi, 1 deal moi — neu phat hien pattern moi → tu dong capture → training corpus lon dan → phan tich lan sau THONG MINH HON.
+
+---
+
+## Unresolved Questions
+
+1. MM-24 (Float Economics) chua co benchmark data cho VN SME — can thu thap tu Agribank/BIDV SME reports de co so lieu thuc te ve CCC trung binh theo nganh
+2. RF-015 to RF-022 chua duoc test tren du lieu thuc (ground truth) — can 10+ case study thuc te de calibrate threshold
+3. ARCH-010 chi train tu 1 kenh (8 video) — can them 5-10 kenh tuong tu de giam false positive rate
+4. Domain heuristic DH-CF-003 (TIN as collateral) chua co cach DO LUONG gia tri tin — can framework dinh luong

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "youtube-transcript": {
+      "command": "npx",
+      "args": ["mcp-remote", "https://youtube-transcript-mcp.ergut.workers.dev/sse"]
+    }
+  }
+}

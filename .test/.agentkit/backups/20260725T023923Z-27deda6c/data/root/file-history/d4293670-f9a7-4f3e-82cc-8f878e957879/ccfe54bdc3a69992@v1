@@ -1,0 +1,519 @@
+use anyhow::{Context, Result};
+use rusqlite::{params, Connection};
+use serde::Serialize;
+use std::path::Path;
+use std::time::{Duration, Instant};
+
+use super::constants::RTK_DATA_DIR;
+
+const DEP_CACHE_DB: &str = "dep_cache.db";
+
+/// Severity level for a validation finding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+pub enum Severity {
+    Critical,
+    High,
+    Medium,
+    Low,
+}
+
+impl Severity {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Critical => "critical",
+            Self::High => "high",
+            Self::Medium => "medium",
+            Self::Low => "low",
+        }
+    }
+}
+
+/// Result of validating a package against a registry.
+#[derive(Debug, Clone, Serialize)]
+pub struct ValidationResult {
+    pub exists: bool,
+    pub name: String,
+    pub downloads: Option<u64>,
+    pub age_days: Option<u64>,
+    pub severity: Severity,
+}
+
+/// Supported package registries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Registry {
+    Npm,
+    PyPi,
+    Crates,
+}
+
+impl Registry {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Npm => "npm",
+            Self::PyPi => "pypi",
+            Self::Crates => "crates",
+        }
+    }
+}
+
+/// Rate limiter tracking last request time per registry.
+pub(crate) struct RateLimiter {
+    last_npm: Option<Instant>,
+    last_pypi: Option<Instant>,
+    last_crates: Option<Instant>,
+    min_interval: Duration,
+}
+
+impl RateLimiter {
+    fn new(rate_per_sec: u32) -> Self {
+        let interval_ms = if rate_per_sec == 0 {
+            100
+        } else {
+            1000 / rate_per_sec as u64
+        };
+        Self {
+            last_npm: None,
+            last_pypi: None,
+            last_crates: None,
+            min_interval: Duration::from_millis(interval_ms),
+        }
+    }
+
+    fn throttle(&mut self, registry: Registry) {
+        let last = match registry {
+            Registry::Npm => &mut self.last_npm,
+            Registry::PyPi => &mut self.last_pypi,
+            Registry::Crates => &mut self.last_crates,
+        };
+        if let Some(t) = last {
+            let elapsed = t.elapsed();
+            if elapsed < self.min_interval {
+                std::thread::sleep(self.min_interval - elapsed);
+            }
+        }
+        *last = Some(Instant::now());
+    }
+}
+
+/// Persistent cache for dependency validation results.
+pub struct DepCache {
+    conn: Connection,
+    ttl_hours: u64,
+    offline: bool,
+}
+
+impl DepCache {
+    pub fn new(ttl_hours: u64, offline: bool) -> Result<Self> {
+        let db_path = get_cache_db_path()?;
+        Self::open(&db_path, ttl_hours, offline)
+    }
+
+    pub fn open(db_path: &Path, ttl_hours: u64, offline: bool) -> Result<Self> {
+        if let Some(parent) = db_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let conn = Connection::open(db_path)
+            .with_context(|| format!("open dep_cache db at {}", db_path.display()))?;
+        let _ = conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=3000;");
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS dep_cache (
+                id INTEGER PRIMARY KEY,
+                pkg_name TEXT NOT NULL,
+                registry TEXT NOT NULL,
+                pkg_exists INTEGER NOT NULL,
+                downloads INTEGER,
+                checked_at TEXT NOT NULL,
+                UNIQUE(pkg_name, registry)
+            )",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_dep_pkg ON dep_cache(pkg_name, registry)",
+            [],
+        )?;
+        Ok(Self { conn, ttl_hours, offline })
+    }
+
+    /// Returns cached result if within TTL, None otherwise.
+    pub fn get(&self, pkg: &str, registry: Registry) -> Option<bool> {
+        let cutoff = chrono::Utc::now()
+            - chrono::Duration::hours(self.ttl_hours as i64);
+        let result: rusqlite::Result<(i64, Option<i64>)> = self.conn.query_row(
+            "SELECT pkg_exists, downloads FROM dep_cache
+             WHERE pkg_name = ?1 AND registry = ?2 AND checked_at > ?3",
+            params![pkg, registry.as_str(), cutoff.to_rfc3339()],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        );
+        result.ok().map(|(e, _)| e != 0)
+    }
+
+    /// Stores a validation result in the cache.
+    pub fn set(&self, pkg: &str, registry: Registry, pkg_exists: bool, downloads: Option<u64>) {
+        let now = chrono::Utc::now().to_rfc3339();
+        let _ = self.conn.execute(
+            "INSERT OR REPLACE INTO dep_cache (pkg_name, registry, pkg_exists, downloads, checked_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                pkg,
+                registry.as_str(),
+                pkg_exists as i64,
+                downloads.map(|d| d as i64),
+                now,
+            ],
+        );
+    }
+
+    pub fn is_offline(&self) -> bool {
+        self.offline
+    }
+}
+
+/// Parse JS/TS import statements to extract package names.
+pub fn parse_js_imports(content: &str) -> Vec<String> {
+    let mut pkgs = Vec::new();
+
+    // ES module: import ... from 'pkg' or "pkg"
+    let from_re = regex::Regex::new(
+        r#"(?:import|export)\s+(?:[^'"]+\s+from\s+)?['"]([^'"./][^'"]*)['"]\s*"#,
+    )
+    .unwrap();
+    for cap in from_re.captures_iter(content) {
+        if let Some(m) = cap.get(1) {
+            pkgs.push(normalize_pkg_name(m.as_str()));
+        }
+    }
+
+    // CommonJS: require('pkg') or require("pkg")
+    let req_re =
+        regex::Regex::new(r#"require\s*\(\s*['"]([^'"./][^'"]*)['"]\s*\)"#).unwrap();
+    for cap in req_re.captures_iter(content) {
+        if let Some(m) = cap.get(1) {
+            pkgs.push(normalize_pkg_name(m.as_str()));
+        }
+    }
+
+    pkgs.sort();
+    pkgs.dedup();
+    pkgs
+}
+
+/// Parse Python import statements to extract package names.
+pub fn parse_python_imports(content: &str) -> Vec<String> {
+    let mut pkgs = Vec::new();
+
+    // `import pkg` or `import pkg.sub`
+    let import_re = regex::Regex::new(r"(?m)^import\s+([a-zA-Z0-9_]+)").unwrap();
+    for cap in import_re.captures_iter(content) {
+        if let Some(m) = cap.get(1) {
+            pkgs.push(m.as_str().to_string());
+        }
+    }
+
+    // `from pkg import ...`
+    let from_re = regex::Regex::new(r"(?m)^from\s+([a-zA-Z0-9_]+)").unwrap();
+    for cap in from_re.captures_iter(content) {
+        if let Some(m) = cap.get(1) {
+            pkgs.push(m.as_str().to_string());
+        }
+    }
+
+    pkgs.sort();
+    pkgs.dedup();
+    pkgs
+}
+
+/// Parse Cargo.toml [dependencies] section to extract crate names.
+pub fn parse_cargo_deps(content: &str) -> Vec<String> {
+    let mut pkgs = Vec::new();
+    let mut in_deps = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed == "[dependencies]"
+            || trimmed == "[dev-dependencies]"
+            || trimmed == "[build-dependencies]"
+        {
+            in_deps = true;
+            continue;
+        }
+        if trimmed.starts_with('[') {
+            in_deps = false;
+        }
+        if in_deps {
+            // pkg = "version" or pkg = { version = "..." }
+            if let Some(eq_pos) = trimmed.find('=') {
+                let name = trimmed[..eq_pos].trim();
+                // Skip workspace = true lines
+                if !name.is_empty() && !name.contains('.') {
+                    pkgs.push(name.to_string());
+                }
+            }
+        }
+    }
+
+    pkgs.sort();
+    pkgs.dedup();
+    pkgs
+}
+
+/// Validate a package against the npm registry.
+pub(crate) fn validate_npm(
+    pkg: &str,
+    cache: &DepCache,
+    limiter: &mut RateLimiter,
+) -> Result<ValidationResult> {
+    if let Some(exists) = cache.get(pkg, Registry::Npm) {
+        return Ok(build_result(pkg, exists, None, None));
+    }
+    if cache.is_offline() {
+        eprintln!("[rtk quality] offline: no cache for npm/{}", pkg);
+        return Ok(build_result(pkg, true, None, None)); // fail-open
+    }
+
+    limiter.throttle(Registry::Npm);
+
+    let url = format!("https://registry.npmjs.org/{}", pkg);
+    match ureq::get(&url).call() {
+        Ok(resp) => {
+            let raw = resp.into_string().unwrap_or_default();
+            let body: serde_json::Value = serde_json::from_str(&raw).unwrap_or_default();
+            let downloads = body
+                .get("dist-tags")
+                .and_then(|_| None::<u64>); // npm metadata doesn't expose downloads in this endpoint
+            cache.set(pkg, Registry::Npm, true, downloads);
+            Ok(build_result(pkg, true, downloads, None))
+        }
+        Err(ureq::Error::Status(404, _)) => {
+            cache.set(pkg, Registry::Npm, false, None);
+            Ok(build_result(pkg, false, None, None))
+        }
+        Err(e) => {
+            eprintln!("[rtk quality] npm registry error for {}: {}", pkg, e);
+            Ok(build_result(pkg, true, None, None)) // fail-open on network error
+        }
+    }
+}
+
+/// Validate a package against the PyPI registry.
+pub(crate) fn validate_pypi(
+    pkg: &str,
+    cache: &DepCache,
+    limiter: &mut RateLimiter,
+) -> Result<ValidationResult> {
+    if let Some(exists) = cache.get(pkg, Registry::PyPi) {
+        return Ok(build_result(pkg, exists, None, None));
+    }
+    if cache.is_offline() {
+        eprintln!("[rtk quality] offline: no cache for pypi/{}", pkg);
+        return Ok(build_result(pkg, true, None, None));
+    }
+
+    limiter.throttle(Registry::PyPi);
+
+    let url = format!("https://pypi.org/pypi/{}/json", pkg);
+    match ureq::get(&url).call() {
+        Ok(resp) => {
+            let raw = resp.into_string().unwrap_or_default();
+            let body: serde_json::Value = serde_json::from_str(&raw).unwrap_or_default();
+            let downloads = body
+                .pointer("/info/downloads/last_month")
+                .and_then(|v| v.as_u64());
+            cache.set(pkg, Registry::PyPi, true, downloads);
+            Ok(build_result(pkg, true, downloads, None))
+        }
+        Err(ureq::Error::Status(404, _)) => {
+            cache.set(pkg, Registry::PyPi, false, None);
+            Ok(build_result(pkg, false, None, None))
+        }
+        Err(e) => {
+            eprintln!("[rtk quality] pypi registry error for {}: {}", pkg, e);
+            Ok(build_result(pkg, true, None, None))
+        }
+    }
+}
+
+/// Validate a package against the crates.io registry.
+pub(crate) fn validate_crates(
+    pkg: &str,
+    cache: &DepCache,
+    limiter: &mut RateLimiter,
+) -> Result<ValidationResult> {
+    if let Some(exists) = cache.get(pkg, Registry::Crates) {
+        return Ok(build_result(pkg, exists, None, None));
+    }
+    if cache.is_offline() {
+        eprintln!("[rtk quality] offline: no cache for crates/{}", pkg);
+        return Ok(build_result(pkg, true, None, None));
+    }
+
+    limiter.throttle(Registry::Crates);
+
+    let url = format!("https://crates.io/api/v1/crates/{}", pkg);
+    match ureq::get(&url)
+        .set("User-Agent", "rtk-quality-gate/1.0 (https://rtk-ai.app)")
+        .call()
+    {
+        Ok(resp) => {
+            let raw = resp.into_string().unwrap_or_default();
+            let body: serde_json::Value = serde_json::from_str(&raw).unwrap_or_default();
+            let downloads = body
+                .pointer("/crate/downloads")
+                .and_then(|v| v.as_u64());
+            cache.set(pkg, Registry::Crates, true, downloads);
+            Ok(build_result(pkg, true, downloads, None))
+        }
+        Err(ureq::Error::Status(404, _)) => {
+            cache.set(pkg, Registry::Crates, false, None);
+            Ok(build_result(pkg, false, None, None))
+        }
+        Err(e) => {
+            eprintln!("[rtk quality] crates.io registry error for {}: {}", pkg, e);
+            Ok(build_result(pkg, true, None, None))
+        }
+    }
+}
+
+fn build_result(
+    name: &str,
+    exists: bool,
+    downloads: Option<u64>,
+    age_days: Option<u64>,
+) -> ValidationResult {
+    let severity = if !exists {
+        Severity::High
+    } else if downloads.map(|d| d < 100).unwrap_or(false) {
+        Severity::Medium
+    } else {
+        Severity::Low
+    };
+    ValidationResult { exists, name: name.to_string(), downloads, age_days, severity }
+}
+
+/// Strip scope prefix and sub-path from npm package names.
+/// e.g. `@scope/pkg` → `@scope/pkg`, `pkg/dist/index` → `pkg`
+fn normalize_pkg_name(raw: &str) -> String {
+    // For scoped packages keep @scope/name, strip deeper paths
+    if raw.starts_with('@') {
+        let parts: Vec<&str> = raw.splitn(3, '/').collect();
+        if parts.len() >= 2 {
+            return format!("{}/{}", parts[0], parts[1]);
+        }
+        return raw.to_string();
+    }
+    // For unscoped, take only the first path segment
+    raw.split('/').next().unwrap_or(raw).to_string()
+}
+
+pub(crate) fn make_rate_limiter(rate_per_sec: u32) -> RateLimiter {
+    RateLimiter::new(rate_per_sec)
+}
+
+fn get_cache_db_path() -> Result<std::path::PathBuf> {
+    if let Ok(custom) = std::env::var("RTK_DEP_CACHE_DB") {
+        return Ok(std::path::PathBuf::from(custom));
+    }
+    let data_dir = dirs::data_local_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    Ok(data_dir.join(RTK_DATA_DIR).join(DEP_CACHE_DB))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_cache() -> (DepCache, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("test_dep.db");
+        let cache = DepCache::open(&db, 24, false).unwrap();
+        (cache, dir)
+    }
+
+    #[test]
+    fn parse_js_es_imports() {
+        let src = r#"
+import React from 'react';
+import { useState } from 'react';
+import axios from "axios";
+import './local-file';
+import '../relative';
+"#;
+        let pkgs = parse_js_imports(src);
+        assert!(pkgs.contains(&"react".to_string()), "should find react");
+        assert!(pkgs.contains(&"axios".to_string()), "should find axios");
+        assert!(!pkgs.iter().any(|p| p.starts_with('.')), "no relative paths");
+    }
+
+    #[test]
+    fn parse_js_require() {
+        let src = r#"
+const express = require('express');
+const path = require('path');
+const lodash = require("lodash");
+"#;
+        let pkgs = parse_js_imports(src);
+        assert!(pkgs.contains(&"express".to_string()));
+        assert!(pkgs.contains(&"lodash".to_string()));
+        // 'path' is a built-in, but parsing doesn't filter stdlib — that's fine
+    }
+
+    #[test]
+    fn parse_python_imports() {
+        let src = r#"
+import requests
+import numpy as np
+from flask import Flask
+from os import path
+import sys
+"#;
+        let pkgs = super::parse_python_imports(src);
+        assert!(pkgs.contains(&"requests".to_string()));
+        assert!(pkgs.contains(&"numpy".to_string()));
+        assert!(pkgs.contains(&"flask".to_string()));
+    }
+
+    #[test]
+    fn parse_cargo_deps_basic() {
+        let toml = r#"
+[package]
+name = "test"
+
+[dependencies]
+serde = "1"
+tokio = { version = "1", features = ["full"] }
+
+[dev-dependencies]
+tempfile = "3"
+"#;
+        let pkgs = parse_cargo_deps(toml);
+        assert!(pkgs.contains(&"serde".to_string()));
+        assert!(pkgs.contains(&"tokio".to_string()));
+        assert!(pkgs.contains(&"tempfile".to_string()));
+    }
+
+    #[test]
+    fn cache_hit_and_miss() {
+        let (cache, _dir) = temp_cache();
+        // miss before insert
+        assert_eq!(cache.get("lodash", Registry::Npm), None);
+        // store
+        cache.set("lodash", Registry::Npm, true, Some(1_000_000));
+        // hit
+        assert_eq!(cache.get("lodash", Registry::Npm), Some(true));
+    }
+
+    #[test]
+    fn cache_offline_returns_cached() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("offline.db");
+        let cache = DepCache::open(&db, 24, true).unwrap();
+        cache.set("requests", Registry::PyPi, true, None);
+        assert_eq!(cache.get("requests", Registry::PyPi), Some(true));
+        assert!(cache.is_offline());
+    }
+
+    #[test]
+    fn normalize_scoped_package() {
+        assert_eq!(normalize_pkg_name("@scope/pkg"), "@scope/pkg");
+        assert_eq!(normalize_pkg_name("@scope/pkg/dist/index"), "@scope/pkg");
+        assert_eq!(normalize_pkg_name("lodash/fp"), "lodash");
+    }
+}

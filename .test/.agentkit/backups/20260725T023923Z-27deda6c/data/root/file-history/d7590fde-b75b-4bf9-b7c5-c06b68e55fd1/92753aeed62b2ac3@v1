@@ -1,0 +1,291 @@
+#!/usr/bin/env python3
+"""
+Tier-adjusted decision question generator for stage0 local orchestration.
+
+Generates decision questions appropriate for founder's capital tier.
+TIER_0/TIER_1 get different questions than standard WINNER/KILL/CUSTOMER/ECONOMICS/MOAT.
+
+Input:  --tier <TIER_X> [--topic <topic>]
+Output: JSON {tier, questions: [{code, question, question_vi, kill_signal}]}
+
+Decision Question Sets:
+- TIER_0: FIRST_500, TIME_TO_CASH, SKILL_MATCH, NETWORK_ENTRY, RISK_CAP
+- TIER_1: SERVICE_FLOOR, PRODUCT_SEED, REINVESTMENT, NETWORK_LEVERAGE, KILL_CRITERIA
+- TIER_2: WINNER, KILL, CUSTOMER, ECONOMICS, MOAT, SERVICE_FLOOR
+- TIER_3: ACQUISITION_TARGET, INTEGRATION_COST, OPERATOR_FIT, COMPOUNDING, EXIT_PATH
+
+Plan ref: plans/260419-0828-stage0-capital-path-upgrade/phase-01-core-scripts.md
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+
+# ---------------------------------------------------------------------------
+# Decision questions by code
+# ---------------------------------------------------------------------------
+
+DECISION_QUESTIONS = {
+    # TIER_0 questions — first dollar focus
+    "FIRST_500": {
+        "question": "How to earn first $500 from this ecosystem?",
+        "question_vi": "Làm sao kiếm $500 đầu tiên từ ecosystem này?",
+        "kill_signal": "0 ideas after 2 hours research",
+        "tiers": ["TIER_0"],
+    },
+    "TIME_TO_CASH": {
+        "question": "Days from today to first payment?",
+        "question_vi": "Từ hôm nay đến ngày nhận tiền là bao lâu?",
+        "kill_signal": ">90 days = too slow for TIER_0",
+        "tiers": ["TIER_0"],
+    },
+    "SKILL_MATCH": {
+        "question": "What skill can you rent TODAY?",
+        "question_vi": "Skill nào của bạn có thể cho thuê NGAY?",
+        "kill_signal": "No skill matches ecosystem need",
+        "tiers": ["TIER_0", "TIER_1"],
+    },
+    "NETWORK_ENTRY": {
+        "question": "Who do you know in this space? (name, role)",
+        "question_vi": "Bạn quen ai trong space này? (tên, vai trò)",
+        "kill_signal": "COLD network, no warm intro path",
+        "tiers": ["TIER_0", "TIER_1"],
+    },
+    "RISK_CAP": {
+        "question": "Max $ you can lose without stress?",
+        "question_vi": "Max $ bạn có thể mất mà không stress?",
+        "kill_signal": ">50% capital at risk",
+        "tiers": ["TIER_0", "TIER_1"],
+    },
+
+    # TIER_0 SOPHISTICATED questions — Fix #4 2026-04-19
+    "P90_MECHANISM": {
+        "question": "What do top 10% earners in this space do differently?",
+        "question_vi": "Top 10% earners làm gì khác so với phần còn lại?",
+        "kill_signal": "No mechanism identified — luck-based distribution",
+        "tiers": ["TIER_0", "TIER_1"],
+    },
+    "ARBITRAGE_WINDOW": {
+        "question": "How long until this opportunity commoditizes?",
+        "question_vi": "Cơ hội này commoditize trong bao lâu?",
+        "kill_signal": "<6 months window = too late",
+        "tiers": ["TIER_0", "TIER_1"],
+    },
+    "COMPOUND_ASSET": {
+        "question": "What asset compounds AFTER you stop working?",
+        "question_vi": "Asset nào compound SAU KHI bạn ngừng làm việc?",
+        "kill_signal": "No asset — pure labor trade",
+        "tiers": ["TIER_0", "TIER_1"],
+    },
+    "STAIR_STEP_PATH": {
+        "question": "Which labor → asset → leverage sequence applies?",
+        "question_vi": "Sequence labor → asset → leverage nào áp dụng?",
+        "kill_signal": "No clear sequence — stuck in labor phase",
+        "tiers": ["TIER_0", "TIER_1"],
+    },
+    "SURVIVORSHIP_DELTA": {
+        "question": "What separates survivors from failures? (mechanism, not luck)",
+        "question_vi": "Điều gì tách survivors khỏi failures? (mechanism, không phải luck)",
+        "kill_signal": "Only luck differentiates — no learnable mechanism",
+        "tiers": ["TIER_0", "TIER_1"],
+    },
+    "BRIDGE_CAPITAL": {
+        "question": "How to bootstrap from $0 to fund the REAL opportunity?",
+        "question_vi": "Làm sao bootstrap từ $0 để fund cơ hội THẬT?",
+        "kill_signal": "No bridge — requires external capital",
+        "tiers": ["TIER_0"],
+    },
+
+    # TIER_1 questions — hybrid service+product
+    "SERVICE_FLOOR": {
+        "question": "Service path to $2K/mo in 60 days?",
+        "question_vi": "Service path nào đạt $2K/mo trong 60 ngày?",
+        "kill_signal": "No viable service identified",
+        "tiers": ["TIER_1", "TIER_2"],
+    },
+    "PRODUCT_SEED": {
+        "question": "Minimal product to validate with <$1K?",
+        "question_vi": "Minimal product nào validate demand với <$1K?",
+        "kill_signal": "Requires >$2K to build",
+        "tiers": ["TIER_1"],
+    },
+    "REINVESTMENT": {
+        "question": "How does $1 service fund product?",
+        "question_vi": "$1 từ service fund product thế nào?",
+        "kill_signal": "No reinvestment path",
+        "tiers": ["TIER_1"],
+    },
+    "NETWORK_LEVERAGE": {
+        "question": "Contacts that accelerate both service and product?",
+        "question_vi": "Contact nào accelerate cả service lẫn product?",
+        "kill_signal": "No leverage contacts",
+        "tiers": ["TIER_1"],
+    },
+    "KILL_CRITERIA": {
+        "question": "Signal to abandon in 60 days?",
+        "question_vi": "Signal gì để abandon trong 60 ngày?",
+        "kill_signal": "Unclear kill criteria",
+        "tiers": ["TIER_1"],
+    },
+
+    # TIER_2 questions — standard stage0 (with SERVICE_FLOOR added)
+    "WINNER": {
+        "question": "Who's winning? How?",
+        "question_vi": "Ai đang thắng? Cơ chế gì?",
+        "kill_signal": "No winner identified",
+        "tiers": ["TIER_2", "TIER_3"],
+    },
+    "KILL": {
+        "question": "What kills this fastest in 6 months?",
+        "question_vi": "Điều gì giết idea nhanh nhất trong 6 tháng?",
+        "kill_signal": "Multiple critical kill factors",
+        "tiers": ["TIER_2", "TIER_3"],
+    },
+    "CUSTOMER": {
+        "question": "1 specific buyer = who? (name, title, budget)",
+        "question_vi": "1 người cụ thể sẽ mua = ai? (tên, chức vụ, budget)",
+        "kill_signal": "Cannot name specific person",
+        "tiers": ["TIER_2", "TIER_3"],
+    },
+    "ECONOMICS": {
+        "question": "Units × price to reach target?",
+        "question_vi": "Cần bán bao nhiêu @ price nào để đạt target?",
+        "kill_signal": "Math doesn't work",
+        "tiers": ["TIER_2", "TIER_3"],
+    },
+    "MOAT": {
+        "question": "Asset after 12mo that competitor lacks?",
+        "question_vi": "Sau 12 tháng sở hữu asset gì competitor không có?",
+        "kill_signal": "No compounding asset",
+        "tiers": ["TIER_2", "TIER_3"],
+    },
+
+    # TIER_3 questions — acquisition focus
+    "ACQUISITION_TARGET": {
+        "question": "What to buy at 2-3x revenue?",
+        "question_vi": "Mua gì ở 2-3x revenue?",
+        "kill_signal": "No targets in price range",
+        "tiers": ["TIER_3"],
+    },
+    "INTEGRATION_COST": {
+        "question": "Total cost beyond purchase?",
+        "question_vi": "Total cost ngoài purchase price?",
+        "kill_signal": "Integration >50% of purchase",
+        "tiers": ["TIER_3"],
+    },
+    "OPERATOR_FIT": {
+        "question": "Can founder operate this?",
+        "question_vi": "Founder có thể operate không?",
+        "kill_signal": "Skills mismatch",
+        "tiers": ["TIER_3"],
+    },
+    "COMPOUNDING": {
+        "question": "How does asset compound?",
+        "question_vi": "Asset compound thế nào?",
+        "kill_signal": "No compounding mechanism",
+        "tiers": ["TIER_3"],
+    },
+    "EXIT_PATH": {
+        "question": "3-5 year exit scenario?",
+        "question_vi": "Exit scenario 3-5 năm?",
+        "kill_signal": "No clear exit",
+        "tiers": ["TIER_3"],
+    },
+}
+
+# Tier → question codes mapping
+# Fix #4 2026-04-19: Added sophisticated questions for TIER_0/TIER_1
+TIER_QUESTION_CODES = {
+    "TIER_0": [
+        # Basic first-dollar questions
+        "FIRST_500", "TIME_TO_CASH", "SKILL_MATCH", "NETWORK_ENTRY", "RISK_CAP",
+        # Sophisticated questions (Fix #4)
+        "P90_MECHANISM", "ARBITRAGE_WINDOW", "COMPOUND_ASSET", "STAIR_STEP_PATH", "SURVIVORSHIP_DELTA", "BRIDGE_CAPITAL",
+    ],
+    "TIER_1": [
+        # Original TIER_1 questions
+        "SERVICE_FLOOR", "PRODUCT_SEED", "REINVESTMENT", "NETWORK_LEVERAGE", "KILL_CRITERIA",
+        # Sophisticated questions from TIER_0 (also relevant)
+        "P90_MECHANISM", "ARBITRAGE_WINDOW", "COMPOUND_ASSET", "STAIR_STEP_PATH", "SURVIVORSHIP_DELTA",
+    ],
+    "TIER_2": ["WINNER", "KILL", "CUSTOMER", "ECONOMICS", "MOAT", "SERVICE_FLOOR"],
+    "TIER_3": ["ACQUISITION_TARGET", "INTEGRATION_COST", "OPERATOR_FIT", "COMPOUNDING", "EXIT_PATH"],
+}
+
+
+def generate(tier: str, topic: str | None = None) -> dict:
+    """Generate decision questions for capital tier.
+
+    Args:
+        tier: Capital tier (TIER_0, TIER_1, TIER_2, TIER_3)
+        topic: Optional topic for context injection
+
+    Returns:
+        dict with tier and questions list.
+    """
+    if tier not in TIER_QUESTION_CODES:
+        return {
+            "error": f"invalid tier: {tier}",
+            "valid_tiers": list(TIER_QUESTION_CODES.keys()),
+        }
+
+    codes = TIER_QUESTION_CODES[tier]
+    questions = []
+
+    for code in codes:
+        q = DECISION_QUESTIONS.get(code)
+        if q:
+            entry = {
+                "code": code,
+                "question": q["question"],
+                "question_vi": q["question_vi"],
+                "kill_signal": q["kill_signal"],
+            }
+
+            # Inject topic into question if provided
+            if topic:
+                entry["question_with_topic"] = q["question"].replace(
+                    "this", f"'{topic}'"
+                ).replace(
+                    "ecosystem", f"'{topic}' ecosystem"
+                )
+
+            questions.append(entry)
+
+    return {
+        "tier": tier,
+        "topic": topic,
+        "question_count": len(questions),
+        "questions": questions,
+        "note": f"Use ONLY these questions for {tier} analysis. Do NOT use standard WINNER/KILL/etc if tier is TIER_0 or TIER_1."
+        if tier in ("TIER_0", "TIER_1")
+        else None,
+    }
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(
+        description="Generate tier-adjusted decision questions for stage0"
+    )
+    ap.add_argument(
+        "--tier",
+        required=True,
+        choices=["TIER_0", "TIER_1", "TIER_2", "TIER_3"],
+        help="Capital tier",
+    )
+    ap.add_argument(
+        "--topic",
+        default=None,
+        help="Topic for context injection (optional)",
+    )
+    args = ap.parse_args()
+
+    result = generate(tier=args.tier, topic=args.topic)
+    # Use ensure_ascii=True for Windows console compatibility
+    print(json.dumps(result, ensure_ascii=True, indent=2))
+
+
+if __name__ == "__main__":
+    main()

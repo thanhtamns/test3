@@ -1,0 +1,266 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import {
+  fetchWasteReport,
+  fetchProjectWasteScores,
+  formatTokens,
+  estimateCost,
+  shortProjectName,
+  type WasteReport,
+  type ProjectWasteScore,
+} from "@/lib/api";
+import { DateRangeSelector } from "@/components/date-range-selector";
+
+const PATTERN_LABELS: Record<string, { label: string; color: string }> = {
+  redundant_command: { label: "Redundant", color: "bg-red-100 text-red-700" },
+  re_read_waste: { label: "Re-read", color: "bg-amber-100 text-amber-700" },
+  build_loop: { label: "Build Loop", color: "bg-orange-100 text-orange-700" },
+};
+
+export default function WastePage() {
+  const [report, setReport] = useState<WasteReport[]>([]);
+  const [scores, setScores] = useState<ProjectWasteScore[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [days, setDays] = useState(30);
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([fetchWasteReport(days), fetchProjectWasteScores(days)])
+      .then(([r, s]) => {
+        setReport(r || []);
+        setScores(s || []);
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [days]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold">Waste Analysis</h1>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-muted-foreground">
+              Could not load waste data. Make sure the API is running.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const totalWasted = report.reduce((sum, r) => sum + r.total_wasted, 0);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Waste Analysis</h1>
+        <DateRangeSelector value={days} onChange={setDays} />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <MetricCard
+          title="Total Tokens Wasted"
+          value={formatTokens(totalWasted)}
+          description={`${estimateCost(totalWasted)} estimated waste`}
+        />
+        <MetricCard
+          title="Waste Patterns"
+          value={report.length.toString()}
+          description="unique patterns detected"
+        />
+        <MetricCard
+          title="Projects Affected"
+          value={scores.length.toString()}
+          description="projects with waste"
+        />
+      </div>
+
+      {scores.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Waste by Project</CardTitle>
+            <CardDescription>
+              Higher waste % = more optimization opportunity
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Project</TableHead>
+                  <TableHead className="text-right">Tokens Wasted</TableHead>
+                  <TableHead className="text-right">Waste %</TableHead>
+                  <TableHead className="text-right">Patterns</TableHead>
+                  <TableHead className="text-right">Est. Cost Wasted</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {scores.map((s) => (
+                  <TableRow key={s.project_dir}>
+                    <TableCell>
+                      <span className="font-medium">
+                        {shortProjectName(s.project_dir)}
+                      </span>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {s.project_dir}
+                      </p>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Badge variant="secondary">
+                        {formatTokens(s.total_wasted)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span
+                        className={
+                          s.waste_pct > 20
+                            ? "text-red-600 font-medium"
+                            : s.waste_pct > 10
+                              ? "text-amber-600"
+                              : "text-green-600"
+                        }
+                      >
+                        {s.waste_pct.toFixed(1)}%
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {s.pattern_count}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {estimateCost(s.total_wasted)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {report.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Waste Patterns</CardTitle>
+            <CardDescription>
+              Top patterns by tokens wasted — with actionable recommendations
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Pattern</TableHead>
+                  <TableHead>Command</TableHead>
+                  <TableHead className="text-right">Tokens Wasted</TableHead>
+                  <TableHead className="text-right">Occurrences</TableHead>
+                  <TableHead className="text-right">Sessions</TableHead>
+                  <TableHead>Recommendation</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {report.map((r, i) => {
+                  const pt = PATTERN_LABELS[r.pattern_type] || {
+                    label: r.pattern_type,
+                    color: "bg-gray-100 text-gray-700",
+                  };
+                  return (
+                    <TableRow key={i}>
+                      <TableCell>
+                        <span
+                          className={`text-xs px-2 py-1 rounded-full font-medium ${pt.color}`}
+                        >
+                          {pt.label}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <code className="bg-muted px-1.5 py-0.5 rounded text-sm">
+                          {r.command}
+                        </code>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Badge variant="secondary">
+                          {formatTokens(r.total_wasted)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {r.occurrences}x
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {r.session_count}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground max-w-xs truncate">
+                        {r.suggestion}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {report.length === 0 && (
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-muted-foreground">
+              No waste patterns detected yet. Run the waste detector:{" "}
+              <code className="bg-muted px-1 rounded">
+                cd cloud && go run ./cmd/waste-detector
+              </code>
+            </p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function MetricCard({
+  title,
+  value,
+  description,
+}: {
+  title: string;
+  value: string;
+  description: string;
+}) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardDescription>{title}</CardDescription>
+        <CardTitle className="text-3xl">{value}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </CardContent>
+    </Card>
+  );
+}

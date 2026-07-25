@@ -1,0 +1,511 @@
+'use strict';
+
+const { audit, detectType } = require('../../lib/audit-engine.cjs');
+const { reset } = require('../../lib/audit-history.cjs');
+
+beforeEach(() => reset());
+
+// ═══════════════════════════════════════════════════════════════
+// STAGE0 TESTS
+// ═══════════════════════════════════════════════════════════════
+
+describe('Stage0 schema — real data', () => {
+  test('GOOD stage0 output passes', () => {
+    const text = [
+      '# Stage 0 Analysis: AI-Powered Invoice SaaS',
+      '',
+      '## Profile / Constraints',
+      'Founder: Solo dev, $5K capital, 3 years Python/React. Location: Vietnam.',
+      '',
+      '## Verdict',
+      '**GO** — Conditional on validating 10 paying customers in 30 days.',
+      'Kill Probability: 25% [K]',
+      '',
+      '## Risk Assessment',
+      '- Competition from Xero/QuickBooks is real but they dont serve SMB Vietnam [T]',
+      '- 60% of SaaS startups fail within 18 months due to churn [K]',
+      '- Currency risk affects margins because payment in USD, costs in VND',
+      '',
+      '## Execution Path',
+      'Next step 1: Build landing page, drive 100 signups in 2 weeks.',
+      'Revenue model: $29/mo per seat, unit economics margin 70%.',
+      '',
+      'Analysis by Warren Buffett persona: 6/10',
+      'Analysis by Naval Ravikant persona: 7/10',
+      'Analysis by Peter Thiel persona: 5/10',
+      'Analysis by Alex Hormozi persona: 8/10',
+      'Analysis by Charlie Munger persona: 6/10',
+      'Post-mortem: 3 similar SaaS tools failed in VN market due to payment friction.',
+      'Similar product InvoiceNinja shut down Vietnam operations.',
+    ].join('\n');
+
+    const r = audit(text);
+    expect(r.type).toBe('stage0');
+    expect(r.passed).toBe(true);
+  });
+
+  test('BAD stage0 output blocks — missing profile, no failure arch, no agents', () => {
+    const text = [
+      '# Stage 0 Analysis: Dropshipping Store',
+      '',
+      '## Stage 0',
+      'VERDICT: GO',
+      'Kill Probability: unclear',
+      '',
+      'The opportunity looks promising. Market size is large.',
+      'There are many potential customers.',
+      'Competition exists but we can differentiate.',
+      'The technology stack is standard.',
+      'Implementation should take about 3 months.',
+      'Overall assessment: positive.',
+      '',
+    ].join('\n') + '\n' + 'More analysis text. '.repeat(40);
+
+    const r = audit(text);
+    expect(r.type).toBe('stage0');
+    expect(r.passed).toBe(false);
+    const gapIds = [...r.gaps.critical, ...r.gaps.major].map(g => g.id);
+    expect(gapIds).toContain('s0_profile');
+    expect(gapIds).toContain('s0_failure_arch');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// BRAINSTORM TESTS
+// ═══════════════════════════════════════════════════════════════
+
+describe('Brainstorm schema — real data', () => {
+  test('GOOD brainstorm passes', () => {
+    const text = [
+      '# Brainstorm: Authentication Architecture',
+      '',
+      '## Problem',
+      'Current auth uses session cookies which dont support mobile apps.',
+      '',
+      '## Approach 1: JWT Tokens',
+      'Use stateless JWT tokens for API authentication.',
+      'Pro: Scalable, works across services.',
+      'Con: Token revocation is complex because JWTs are stateless.',
+      'Risk: Token leakage if not stored securely.',
+      '',
+      '## Approach 2: OAuth2 with Refresh Tokens',
+      'Standard OAuth2 flow with short-lived access + long-lived refresh.',
+      'Pro: Industry standard, libraries exist.',
+      'Con: More complexity in implementation.',
+      'Tradeoff: Security vs implementation speed.',
+      '',
+      '## Recommendation',
+      'Recommend Approach 2 because it handles token rotation natively.',
+      'Next step: Evaluate passport.js vs custom implementation.',
+      'Action item: Prototype refresh flow in staging.',
+    ].join('\n');
+
+    const r = audit(text);
+    expect(r.type).toBe('brainstorm');
+    expect(r.passed).toBe(true);
+  });
+
+  test('BAD brainstorm blocks — single approach, no tradeoffs', () => {
+    const text = [
+      '# Brainstorm: Payment Integration',
+      '',
+      'We should use Stripe. Stripe is the best payment processor.',
+      'It has good documentation and SDKs for all platforms.',
+      'The pricing is 2.9% + 30 cents per transaction.',
+      'Integration takes about 2 weeks with a developer.',
+      'We can use their hosted checkout page for simplicity.',
+      '',
+      'Perhaps we could also look into other options later.',
+      'It might be worth considering alternatives in the future.',
+      'Could potentially explore more possibilities.',
+      '',
+    ].join('\n') + '\n' + 'Additional context. '.repeat(40);
+
+    const r = audit(text);
+    expect(r.type).toBe('brainstorm');
+    expect(r.passed).toBe(false);
+    const gapIds = [...r.gaps.critical, ...r.gaps.major].map(g => g.id);
+    expect(gapIds).toContain('bs_problem_stated');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// INVEST TESTS
+// ═══════════════════════════════════════════════════════════════
+
+describe('Invest schema — real data', () => {
+  test('GOOD investment analysis passes', () => {
+    const text = [
+      '# Investment Analysis: EdTech SaaS Platform',
+      '',
+      '## Thesis',
+      'Online education market growing 15% CAGR [K]. Opportunity in B2B corporate training.',
+      'Mechanism: companies pay because employee turnover costs 150% of salary.',
+      '',
+      '## Competitive Landscape',
+      'Competitor: Coursera for Business (market share leader)',
+      'Competitor: Udemy Business (alternative, cheaper)',
+      'Our moat: Vietnamese language content + local corporate relationships = switching cost.',
+      '',
+      '## Financial Model',
+      'Revenue: $200/seat/year, target 500 seats year 1 = $100K ARR.',
+      'Margin: 80% gross (content creation is one-time cost).',
+      'CAC payback: 6 months based on LTV/CAC ratio of 4:1.',
+      '',
+      '## Risk Assessment',
+      '- Platform risk: if partnership breaks [T]',
+      '- Similar edtech startup LearnVN failed 2023 due to undercapitalization [K]',
+      '- Competition from free YouTube content is threat to retention',
+      '',
+      '## Verdict',
+      'Recommend GO with $10K initial investment.',
+      'Next step: Validate with 5 corporate HR departments.',
+      'Due diligence: Check churn rates of existing players.',
+    ].join('\n');
+
+    const r = audit(text);
+    expect(r.type).toBe('invest');
+    expect(r.passed).toBe(true);
+  });
+
+  test('BAD investment analysis blocks — no thesis, no competitors, no failure', () => {
+    const text = [
+      '# Investment Analysis: Crypto Trading Bot',
+      '',
+      'This looks like a good opportunity.',
+      'The market is growing fast.',
+      'Many people are making money from crypto.',
+      'We can build a bot that trades automatically.',
+      'Returns could be 50% monthly.',
+      'Technology is straightforward to build.',
+      '',
+      'The ROI would be excellent.',
+      'Timeline: 2 months to launch.',
+    ].join('\n') + '\n' + 'More analysis text. '.repeat(50);
+
+    const r = audit(text);
+    expect(r.type).toBe('invest');
+    expect(r.passed).toBe(false);
+    const gapIds = [...r.gaps.critical, ...r.gaps.major].map(g => g.id);
+    expect(gapIds).toContain('inv_thesis');
+    expect(gapIds).toContain('inv_failure_arch');
+    expect(gapIds).toContain('inv_decision');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// COFFEE TESTS
+// ═══════════════════════════════════════════════════════════════
+
+describe('Coffee schema — real data', () => {
+  test('GOOD coffee export analysis passes', () => {
+    const text = [
+      '# Coffee Export Analysis: Robusta to South Korea',
+      '',
+      '## Market',
+      'South Korea import demand: 150K tons/year [K]. Buyer preference: washed Robusta.',
+      'Target buyer type: specialty roasters seeking single-origin.',
+      '',
+      '## Quality Spec',
+      'SCA score target: 80+ for specialty segment.',
+      'Screen size 16+, max 5 defects/300g, moisture 11-12.5%.',
+      'Cupping notes: chocolate, nutty, low acidity.',
+      '',
+      '## Pricing',
+      'FOB Ho Chi Minh: $2,400/ton (differential +$200 over ICE).',
+      'Cost breakdown: farm gate $1,800 + processing $200 + logistics $150 + margin $250.',
+      '',
+      '## Logistics',
+      'Shipping: FCL 20ft container = 18 tons. Port: Cat Lai.',
+      'Transit time: 7 days to Busan.',
+      '',
+      '## Supply Chain',
+      'Source from cooperative in Dak Lak, direct farmer relationships.',
+      'Risk: weather during harvest season (Nov-Feb) affects yield.',
+      'Currency risk: VND depreciation vs KRW because payment in KRW.',
+      '',
+      '## Next Steps',
+      'Action: Send 5kg sample to 3 Korean roasters next week.',
+      'Timeline: First container shipment target March 2027.',
+      'Contact: Visit Dak Lak cooperative in January.',
+    ].join('\n');
+
+    const r = audit(text);
+    expect(r.type).toBe('coffee');
+    expect(r.passed).toBe(true);
+  });
+
+  test('BAD coffee analysis blocks — no pricing, no logistics', () => {
+    const text = [
+      '# Coffee Export Plan for Robusta',
+      '',
+      'Vietnam produces a lot of Robusta coffee.',
+      'We can export it to overseas destinations.',
+      'The quality is generally good.',
+      'There are many farmers we can work with.',
+      'The green coffee industry is growing.',
+      '',
+      'We should start by finding some partners.',
+      'Processing can be done locally.',
+    ].join('\n') + '\n' + 'Additional text for length. '.repeat(30);
+
+    const r = audit(text);
+    expect(r.type).toBe('coffee');
+    expect(r.passed).toBe(false);
+    const gapIds = [...r.gaps.critical, ...r.gaps.major].map(g => g.id);
+    expect(gapIds).toContain('cof_pricing');
+    expect(gapIds).toContain('cof_logistics');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// CODE-IMPL TESTS
+// ═══════════════════════════════════════════════════════════════
+
+describe('Code-impl schema — real data', () => {
+  test('GOOD code output passes', () => {
+    const text = [
+      'Here is the authentication middleware:',
+      '',
+      '```javascript',
+      "const jwt = require('jsonwebtoken');",
+      '',
+      'function authMiddleware(req, res, next) {',
+      "  const token = req.headers.authorization?.split(' ')[1];",
+      '  if (!token) {',
+      "    return res.status(401).json({ error: 'No token provided' });",
+      '  }',
+      '  try {',
+      '    const decoded = jwt.verify(token, process.env.JWT_SECRET);',
+      '    req.user = decoded;',
+      '    next();',
+      '  } catch (err) {',
+      "    return res.status(403).json({ error: 'Invalid token' });",
+      '  }',
+      '}',
+      '',
+      'module.exports = { authMiddleware };',
+      '```',
+      '',
+      'This handles token extraction, verification, and error cases.',
+    ].join('\n');
+
+    const r = audit(text);
+    expect(r.type).toBe('code-impl');
+    expect(r.passed).toBe(true);
+  });
+
+  test('BAD code with TODO blocks', () => {
+    const text = [
+      'Here is the payment processor:',
+      '',
+      '```javascript',
+      "const stripe = require('stripe');",
+      '',
+      'function processPayment(amount, currency) {',
+      '  // TODO: implement actual Stripe integration',
+      '  // FIXME: handle error cases',
+      '  return { success: true };',
+      '}',
+      '',
+      'module.exports = { processPayment };',
+      '```',
+      '',
+      'The function handles payment processing via Stripe API.',
+    ].join('\n') + '\n' + 'More explanation. '.repeat(20);
+
+    const r = audit(text);
+    expect(r.type).toBe('code-impl');
+    expect(r.passed).toBe(false);
+    expect(r.gaps.critical.some(g => g.id === 'code_no_todo')).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// PLAN TESTS
+// ═══════════════════════════════════════════════════════════════
+
+describe('Plan schema — real data', () => {
+  test('GOOD plan output passes', () => {
+    const text = [
+      '# Implementation Plan: User Dashboard',
+      '',
+      '## Phase 1: Database Schema',
+      '1. Create migration file `src/db/migrations/004_dashboard.sql`',
+      '2. Add user_stats table with columns: user_id, total_orders, last_active',
+      '3. Write seed script for test data',
+      '',
+      '## Phase 2: API Endpoints',
+      '1. Create `src/api/dashboard.ts` with GET /api/dashboard',
+      '2. Add query to aggregate user stats from orders table',
+      '3. Implement caching with 5-minute TTL',
+      '',
+      '## Success Criteria',
+      '- Dashboard loads in < 200ms for 95th percentile',
+      '- All existing tests continue to pass',
+      '- API returns correct aggregate data',
+      '',
+      '## Risk Assessment',
+      '- Risk: N+1 queries if not careful with joins',
+      '- Mitigation: Use materialized view for heavy aggregations',
+    ].join('\n');
+
+    const r = audit(text);
+    expect(r.type).toBe('plan');
+    expect(r.passed).toBe(true);
+  });
+
+  test('BAD plan blocks — vague steps, no success criteria', () => {
+    const text = [
+      '## Phase 1: Setup',
+      'Consider setting up the project.',
+      'Perhaps look into the best framework.',
+      'Might want to explore options.',
+      'Could potentially use React or Vue.',
+      'It depends on the requirements.',
+      'Look into what others have done.',
+      '',
+      '## Implementation Steps',
+      '1. Research the problem',
+      '2. Think about solutions',
+      '3. Start coding',
+    ].join('\n') + '\n' + 'More content for length. '.repeat(25);
+
+    const r = audit(text);
+    expect(r.type).toBe('plan');
+    expect(r.passed).toBe(false);
+    const gapIds = [...r.gaps.critical, ...r.gaps.major].map(g => g.id);
+    expect(gapIds).toContain('plan_not_vague');
+    expect(gapIds).toContain('plan_success_criteria');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// THINK TESTS
+// ═══════════════════════════════════════════════════════════════
+
+describe('Think schema — real data', () => {
+  test('GOOD think output passes', () => {
+    const text = [
+      '## Sequential Thinking: Should we use microservices?',
+      '',
+      'Step 1: Current state analysis.',
+      'The monolith handles 1000 req/s. Given that our team is 3 people,',
+      'microservices add operational overhead per service.',
+      '',
+      'Step 2: Growth projection.',
+      'Since we expect 5x growth in 12 months, therefore the monolith',
+      'will hit CPU limits because single-process cant parallelize.',
+      '',
+      'Step 3: Alternative — modular monolith.',
+      'Because we need isolation without operational overhead,',
+      'a modular monolith gives us boundaries without deployment complexity.',
+      '',
+      'In conclusion, we should adopt modular monolith architecture.',
+      'This means extracting modules with clear interfaces now,',
+      'which makes future microservice extraction possible when team grows.',
+      'Recommend: implement module boundaries in current codebase.',
+    ].join('\n');
+
+    const r = audit(text);
+    expect(r.type).toBe('think');
+    expect(r.passed).toBe(true);
+  });
+
+  test('BAD think output blocks — no conclusion', () => {
+    const text = [
+      'Let me think about this step 1.',
+      'There are many factors to consider.',
+      'The market is complex with many players.',
+      'Technology choices are varied.',
+      'Resources are limited but opportunities exist.',
+      'Competition is present in all segments.',
+      'Timing might matter for launch decisions.',
+    ].join('\n') + '\n' + 'More thinking text. '.repeat(40);
+
+    const r = audit(text);
+    expect(r.type).toBe('think');
+    expect(r.passed).toBe(false);
+    expect(r.gaps.critical.some(g => g.id === 'think_conclusion')).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// FIX-COST & HYBRID EXECUTION MODEL
+// ═══════════════════════════════════════════════════════════════
+
+describe('Fix-cost classification', () => {
+  test('gaps include fix_cost field', () => {
+    const text = [
+      '# Investment Analysis: Quick Opportunity',
+      '',
+      'This looks promising with good ROI potential.',
+      'Market growing fast. Technology ready.',
+      'We can capture value quickly.',
+    ].join('\n') + '\n' + 'Padding text. '.repeat(60);
+
+    const r = audit(text);
+    const allGaps = [...r.gaps.critical, ...r.gaps.major, ...r.gaps.minor];
+    // Every gap should have fix_cost
+    for (const gap of allGaps) {
+      expect(['auto', 'medium', 'large']).toContain(gap.fix_cost);
+    }
+  });
+
+  test('invest schema has large fix_cost on failure_arch and competitors', () => {
+    const text = [
+      '# Investment Analysis: SaaS Tool',
+      '',
+      '## Thesis',
+      'Opportunity exists because market mechanism drives growth.',
+      '',
+      '## Risk Assessment',
+      'Some risk exists in the approach.',
+      '',
+      '## Verdict',
+      'Recommend proceeding with caution.',
+      'Next step: validate with customers.',
+      '',
+      'Revenue projection: year 1 target.',
+      'Moat: defensibility through network effect and switching cost.',
+    ].join('\n') + '\n' + 'Additional analysis. '.repeat(40);
+
+    const r = audit(text);
+    expect(r.type).toBe('invest');
+    // Should have failure_arch and competitors as gaps with large fix_cost
+    const allGaps = [...r.gaps.critical, ...r.gaps.major];
+    const largeGaps = allGaps.filter(g => g.fix_cost === 'large');
+    const largeIds = largeGaps.map(g => g.id);
+    expect(largeIds).toContain('inv_failure_arch');
+    expect(largeIds).toContain('inv_competitors');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// CONVERGENCE E2E
+// ═══════════════════════════════════════════════════════════════
+
+describe('Convergence system E2E', () => {
+  test('same gap on 2nd call is marked unfillable and passes', () => {
+    reset();
+    // Use default schema (simpler, guaranteed to trigger)
+    // Text with TODO that can't be fixed by re-auditing
+    const text = 'Here is a detailed implementation plan for the system.\n\n' +
+      'The architecture uses microservices. TODO: define service boundaries.\n\n' +
+      'We need to handle authentication and authorization properly.\n' +
+      'Additional context about the system design and requirements.\n' +
+      'The deployment strategy involves Docker containers.\n' +
+      'More explanation text here for padding. '.repeat(20);
+
+    const r1 = audit(text);
+    expect(r1.passed).toBe(false);
+    expect(r1.iteration).toBe(1);
+    expect(r1.gaps.critical.some(g => g.id === 'default_no_todo')).toBe(true);
+
+    // Same output again (simulating Claude couldn't fix it)
+    const r2 = audit(text);
+    expect(r2.passed).toBe(true);
+    expect(r2.converged).toBe(true);
+    expect(r2.reason).toMatch(/unfillable|stagnating/);
+  });
+});

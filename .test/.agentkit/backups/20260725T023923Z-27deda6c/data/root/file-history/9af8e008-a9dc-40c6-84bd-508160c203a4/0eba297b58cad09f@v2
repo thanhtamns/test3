@@ -1,0 +1,461 @@
+# /hunt — Anomaly-First Intelligence Engine (v5)
+
+## PURPOSE
+
+Find SPECIFIC money-making positions by detecting ANOMALIES — price deltas, forced regulatory flows, and their intersections — that create windows where a founder can broker, arbitrage, or aggregate.
+
+**This is NOT a "business idea generator."** The system finds CROSS-REFERENCED ANOMALIES in real data, calculates margins, and outputs DEAL CARDS with contacts and scripts. If it can't find anomalies with real numbers, it says so — it does not fill the gap with generic advice.
+
+**Philosophy:**
+- **Anomaly, not opportunity.** Opportunities are opinions. Anomalies are math: price_A != price_B, regulation forces $X spend, founder has access others don't.
+- **3 brains, 1 graph.** Brain 1 finds price deltas. Brain 2 finds forced flows. Brain 3 cross-references + scores. All feed into a MoneyFlowGraph that accumulates knowledge across runs.
+- **Python controls, LLM reasons.** Deterministic search templates, budget enforcement, and scoring formulas live in Python. LLM only extracts structured data from raw text.
+- **Compound knowledge.** Every run persists anomalies to DuckDB. Next run loads history, detects trends (GROWING/STABLE/SHRINKING), and boosts persistent signals.
+- **Position, not build.** Output is BROKER/ARBITRAGE/INTELLIGENCE/AGGREGATOR positions. Never "build X."
+
+## INPUTS
+
+```
+/hunt <topic>              # "/hunt coffee export VN->EU"
+/hunt                      # Interactive: asks 3 questions
+/hunt continue <hunt_id>   # Resume after human action
+```
+
+**No separate modes.** V4's --pain, --flow, --asym are unified. Brain 1 IS the cross-price scanner. Brain 2 IS the regulatory scanner. Brain 3 IS the cross-reference + founder-fit filter.
+
+## EXECUTION CONTRACT
+
+Follow `hunt-checklist.md` step by step. This file provides detailed instructions per step.
+
+**Budget: 75 web calls maximum** (30 Brain 1 + 30 Brain 2 + 15 Graph/hypothesis)
+
+---
+
+## STEP 1: LOAD — Founder profile + historical anomalies
+
+### 1.1 Founder Profile
+
+Load from `data/profiles/` or `kb/profiles/`. Extract:
+- `industries`: seed products for Brain 1
+- `languages`: market access filter for Brain 3
+- `location`: geographic advantage for Brain 3
+- `domain_expertise`: expertise match for Brain 2 flows
+- `capital_range`: filters positions requiring capital
+
+If no profile exists, run 3-question interactive:
+1. "Who can you reach WITHOUT advertising?"
+2. "What problem do you understand that NORMAL PEOPLE don't?"
+3. "Where is money flowing that YOU CAN OBSERVE?"
+
+Build a `FounderProfile` from answers.
+
+### 1.2 Historical Anomalies
+
+Load from DuckDB (`data/anomalies.duckdb`):
+- Active anomaly cards (status != KILLED/EXPIRED)
+- Historical signals for trend computation
+- Previous MoneyFlowGraph state
+
+If no history exists (first run), proceed with empty history.
+
+### 1.3 Topic Extraction
+
+From `/hunt <topic>`, extract:
+- `seed_products`: commodities/services to price-scan (Brain 1)
+- `seed_markets`: geographies to compare (Brain 1)
+- `seed_industries`: sectors to regulation-scan (Brain 2)
+- `seed_geographies`: jurisdictions to check (Brain 2)
+
+If topic is vague ("make money online"), REJECT: "Provide a specific industry, product, or geography. Example: `/hunt coffee export VN->EU`"
+
+---
+
+## STEP 2: SEED — Resolve search parameters
+
+### 2.1 Brain 1 Seeds
+
+Resolve products and markets:
+1. Explicit from topic args
+2. From founder profile industries
+3. From historical anomaly products (if trending GROWING)
+4. Default seeds: coffee, pepper, cashew, rubber, seafood (for VN founder)
+
+Resolve markets:
+1. Explicit from topic args (e.g., "VN->EU" = Vietnam, EU)
+2. From founder languages -> market map (Vietnamese->Vietnam, English->US/UK/EU, etc.)
+3. Default: Vietnam + top 3 import markets for seed products
+
+### 2.2 Brain 2 Seeds
+
+Resolve geographies and industries:
+1. Explicit from topic args
+2. From founder location + languages
+3. From Brain 1 markets (same geographies)
+4. Default geographies: VN, EU, US, global
+
+Industries from founder profile or topic. Default: agriculture, food safety, trade compliance.
+
+### 2.3 Output
+
+`seed_config` dict passed to all brains:
+```json
+{
+  "products": ["coffee", "pepper"],
+  "markets": ["Vietnam", "EU", "US", "Japan"],
+  "industries": ["agriculture", "food safety"],
+  "geographies": ["VN", "EU", "US"],
+  "founder": { "...FounderProfile..." },
+  "historical_cards": []
+}
+```
+
+---
+
+## STEP 3: BRAIN 1 — Price Delta Engine (30 calls max)
+
+**Engine:** `intelligence/brains/price_delta_engine.py :: PriceDeltaEngine`
+
+### 3.1 Execution
+
+```python
+engine = PriceDeltaEngine(research_fn, llm_fn, max_calls=30, spread_threshold=30.0)
+deltas = engine.scan(
+    seed_products=seed_config["products"],
+    markets=seed_config["markets"],
+    founder=seed_config["founder"]
+)
+```
+
+### 3.2 What It Does
+
+For each product x market pair:
+1. Search for wholesale/FOB price in market A (deterministic query template)
+2. Search for import/retail price in market B
+3. LLM extracts structured price data from raw search text
+4. Normalize to USD/kg
+5. Calculate spread: `(price_b - price_a) / price_a x 100`
+6. Filter: spread >= 30% threshold
+7. Enrich with bridge costs (shipping, tariffs, certification)
+8. Calculate net margin: `price_b - price_a - bridge_cost`
+
+### 3.3 Output
+
+`list[PriceDelta]` — each containing:
+- product, market_a, market_b, price_a, price_b, currency, unit
+- spread_pct, bridge_cost, net_margin
+- confidence tag, sources
+
+### 3.4 Quality Gate
+
+| Condition | Action |
+|-----------|--------|
+| 0 deltas found | WARN: "No price spreads >30% found. Brain 2 may still find forced flows." |
+| All deltas confidence=[?] | WARN: "Price data unverified. Tag as speculative in output." |
+| Budget exhausted before all pairs scanned | Log: "Scanned X of Y pairs within budget." |
+
+---
+
+## STEP 4: BRAIN 2 — Forced Flow Engine (30 calls max)
+
+**Engine:** `intelligence/brains/forced_flow_engine.py :: ForcedFlowEngine`
+
+### 4.1 Execution
+
+```python
+engine = ForcedFlowEngine(research_fn, llm_fn, max_calls=30)
+flows = engine.scan(
+    geographies=seed_config["geographies"],
+    industries=seed_config["industries"],
+    founder=seed_config["founder"]
+)
+```
+
+### 4.2 What It Does
+
+For each geography x industry:
+1. Search for new/upcoming regulations (deterministic query template)
+2. LLM extracts: regulation name, jurisdiction, effective date, who must comply, entity count, compliance cost, penalty
+3. Search for compliance providers + identify gaps
+4. Calculate total forced spend: entity_count x compliance_cost
+5. Recommend position: BROKER (large gap), INTELLIGENCE (technical gap), AGGREGATOR (many entities)
+6. Calculate urgency from deadline proximity
+
+### 4.3 Output
+
+`list[ForcedFlow]` — each containing:
+- regulation, jurisdiction, effective_date, who_must_comply
+- entity_count, compliance_cost, total_forced_spend
+- provider_gap, position_opportunity
+- urgency_score, priority_score, confidence
+
+### 4.4 Quality Gate
+
+| Condition | Action |
+|-----------|--------|
+| 0 flows found | WARN: "No regulatory mandates found. Relying on Brain 1 deltas only." |
+| All flows deadline > 1 year | Note: "No urgent deadlines. Positions are speculative." |
+| No provider gaps | Note: "Market well-served. Position opportunity is thin." |
+
+---
+
+## STEP 5: GRAPH — MoneyFlowGraph with anomaly overlay (15 calls max)
+
+**Engine:** `intelligence/controller/money_flow_graph.py :: MoneyFlowGraph`
+
+### 5.1 Execution
+
+```python
+graph = MoneyFlowGraph()
+
+# Pre-seed with historical entities
+if seed_config.get("historical_entities"):
+    graph.pre_seed(seed_config["historical_entities"])
+
+# Add anomaly overlay from Brain 1 + Brain 2
+graph.add_anomaly_overlay(
+    deltas=[d.to_dict() for d in deltas],
+    flows=[f.to_dict() for f in flows]
+)
+
+# Optional: run IntelligenceController hypothesis loop (15 calls)
+controller = IntelligenceController(research_fn, llm_fn, graph, max_cycles=3)
+controller.run()
+```
+
+### 5.2 What It Does
+
+1. Create PRICE_DELTA nodes for each Brain 1 delta
+2. Create FORCED_FLOW nodes for each Brain 2 flow
+3. Create ENABLES_ARBITRAGE edges between supply and delta nodes
+4. Create CREATES_DEMAND edges between flow and compliance nodes
+5. Link deltas and flows that share markets/industries -> INTERSECTION nodes
+6. Run hypothesis loop to verify/refine graph edges
+7. Identify bottleneck positions (HUB, AGGREGATOR, DISTRIBUTOR, MISSING_BROKER)
+
+### 5.3 Output
+
+`MoneyFlowGraph` with:
+- Standard nodes (PAYER, PROVIDER, BROKER, etc.)
+- Anomaly nodes (PRICE_DELTA, FORCED_FLOW, INTERSECTION)
+- Anomaly edges (CREATES_DEMAND, ENABLES_ARBITRAGE, FOUNDER_ACCESS)
+- Bottleneck positions
+- Graph statistics (confidence, verified edges, total monthly flow)
+
+---
+
+## STEP 6: BRAIN 3 — Cross-Reference Engine (0 web calls)
+
+**Engine:** `intelligence/brains/anomaly_crossref.py :: AnomalyCrossReferencer`
+
+### 6.1 Execution
+
+```python
+xref = AnomalyCrossReferencer(historical=historical_cards)
+cards = xref.cross_reference(
+    deltas=deltas,
+    flows=flows,
+    founder=seed_config["founder"]
+)
+```
+
+### 6.2 What It Does (5 rules, pure computation)
+
+1. **Rule 1: Forced Creates Delta** — regulation in same market as price gap -> INTERSECTION card
+2. **Rule 2: Delta + Founder Access** — founder language/location matches delta market -> PRICE_DELTA card
+3. **Rule 3: Flow + Founder Expertise** — founder domain matches flow regulation -> FORCED_FLOW card
+4. **Rule 4: Historical Persistence** — same anomaly seen before + not shrinking -> boost score
+5. **Rule 5: Convergence** — 3+ signals pointing to same product/regulation -> boost score
+
+For each card:
+- Score: anomaly_score x (margin/1000) x founder_fit x urgency = final_rank
+- Design position: BROKER, ARBITRAGE, INTELLIGENCE, AGGREGATOR
+- Generate 5 contacts (3 demand + 2 supply) with outreach scripts
+- Set kill criteria and deadline
+
+### 6.3 Output
+
+`list[AnomalyCard]` sorted by final_rank, each containing:
+- anomaly_type (INTERSECTION > PRICE_DELTA > FORCED_FLOW)
+- title, delta dict, flow dict, intersection_rule
+- position_type, action, supply_side, demand_side, channel
+- price_per_unit, cost_per_unit, margin calculations
+- anomaly_score, founder_fit, urgency, final_rank
+- 5 contacts with scripts, kill_criteria, deadline
+
+### 6.4 Quality Gate
+
+| Condition | Action |
+|-----------|--------|
+| 0 cards produced | KILL hunt: "No anomalies detected. Try different topic or broader geography." |
+| < 3 cards | WARN: "Limited anomalies. Results are thin." |
+| Top card final_rank < 0.1 | WARN: "Weak signals. Low confidence in opportunities." |
+| No INTERSECTION cards | Note: "No delta x flow intersections. Cards are single-signal." |
+
+---
+
+## STEP 7: OUTPUT — Money Flow Map + Anomaly Cards
+
+### 7.1 Page 1: Money Flow Map (ASCII)
+
+Render the MoneyFlowGraph as ASCII showing:
+- Entity nodes with types
+- Money flow edges with amounts
+- Anomaly overlay (PRICE_DELTA, FORCED_FLOW nodes highlighted)
+- Bottleneck positions marked
+- Graph statistics summary
+
+```
+=== MONEY FLOW MAP ===
+[Nodes: 12 | Edges: 8 | Confidence: 0.65 | Monthly Flow: $45,000]
+
+  [VN Farmers] --$2.50/kg--> [DELTA: coffee VN->EU] --$4.00/kg--> [EU Importers]
+       |                           |
+       |                    [FLOW: EUDR]
+       |                    compliance gap
+       |                           |
+  [Cooperatives] -----> [* BROKER POSITION *] -----> [Compliance Buyers]
+
+Bottlenecks: 1 HUB, 1 MISSING_BROKER
+Anomaly Nodes: 2 PRICE_DELTA, 1 FORCED_FLOW, 1 INTERSECTION
+```
+
+### 7.2 Page 2: Anomaly Cards (top 5-10)
+
+For each card, display:
+
+```
+===================================================
+ANOMALY CARD #1 -- [title]
+Type: [INTERSECTION|PRICE_DELTA|FORCED_FLOW] | Score: [0.XX] | Rank: [0.XX]
+===================================================
+
+DELTA (if applicable):
+  Product: [X] | Market A: [Y] ($[price_a]/kg) -> Market B: [Z] ($[price_b]/kg)
+  Spread: [XX]% | Bridge cost: $[X]/kg | Net margin: $[X]/kg [confidence]
+
+FORCED FLOW (if applicable):
+  Regulation: [X] | Jurisdiction: [Y] | Deadline: [date]
+  Who must comply: [X] | Entity count: [N] | Compliance cost: $[X]
+  Total forced spend: $[X] | Provider gap: [description]
+
+POSITION DESIGN:
+  Type: [BROKER|ARBITRAGE|INTELLIGENCE|AGGREGATOR]
+  Action: [CONNECT|BUY-SELL|CURATE]
+  Supply side: [who]
+  Demand side: [who]
+  Channel: [how]
+
+ECONOMICS:
+  Revenue per unit: $[price] | Cost per unit: $[cost]
+  Margin per unit: $[margin] | Monthly target: [N] units x $[margin] = $[income]/mo
+
+FOUNDER FIT: [0.XX] | URGENCY: [0.XX]
+
+CONTACTS (5):
+  1. [side] [role] via [channel]: "[script]"
+  2. ...
+
+KILL CRITERIA: [conditions]
+DEADLINE: [date or "30 days from discovery"]
+===================================================
+```
+
+### 7.3 Page 3: Persistence Summary
+
+```
+=== PERSISTENCE ===
+New anomalies: [N] | Updated: [N] | Unchanged: [N]
+Delta trends: [N] GROWING, [N] STABLE, [N] SHRINKING
+Historical cards loaded: [N] | Active cards total: [N]
+```
+
+---
+
+## STEP 8: PERSIST — Save to DuckDB + data/hunts/
+
+### 8.1 DuckDB Persistence
+
+```python
+store = AnomalyStore("data/anomalies.duckdb")
+for card in cards:
+    store.save_card(card)  # upsert
+    store.record_history(card.id, card.anomaly_score,
+                         card.delta.get("net_margin") if card.delta else None)
+# Compute trends for next run
+for card in cards:
+    card.delta_trend = store.compute_delta_trend(card.id)
+store.close()
+```
+
+### 8.2 File Persistence
+
+```
+data/hunts/HUNT-<YYMMDD-HHMM>/
+  report.md         # Human-readable report (Pages 1-3)
+  anomalies.json    # Machine-readable AnomalyCard list
+  graph.json        # Serialized MoneyFlowGraph
+  hunt-meta.json    # Execution metadata
+```
+
+### 8.3 hunt-meta.json
+
+```json
+{
+  "hunt_id": "HUNT-260524-1430",
+  "version": "v5",
+  "created": "2026-05-24T14:30:00Z",
+  "topic": "coffee export VN->EU",
+  "founder_profile": "phamt-260507",
+  "budget": { "brain1": 30, "brain2": 30, "graph": 15, "total": 75 },
+  "calls_used": { "brain1": 22, "brain2": 18, "graph": 8, "total": 48 },
+  "results": {
+    "deltas_found": 3,
+    "flows_found": 2,
+    "cards_produced": 5,
+    "intersection_cards": 2,
+    "top_rank": 0.85
+  },
+  "status": "COMPLETE"
+}
+```
+
+---
+
+## STEP 9: STOP
+
+Display results. Do not chain to other commands.
+
+**Suggest (do not auto-run):**
+- `/hunt continue <hunt_id>` — after human action on contacts
+- `/blueprint` — if user wants to build execution plan for top card
+- `/exec` — if user wants to track outreach execution
+
+---
+
+## ANTI-PATTERNS (things /hunt V5 must NEVER do)
+
+1. **No generic "business model" lists.** Output is ANOMALY CARDS with specific margins, not "15 ways to make money."
+2. **No Google "opportunity" searches.** Brains use deterministic price/regulation query templates.
+3. **No untagged numbers.** Every $ amount traces to a search result or calculation.
+4. **No "build X" as action.** Position types only: BROKER, ARBITRAGE, INTELLIGENCE, AGGREGATOR.
+5. **No skipping brains.** All 3 brains run every time. If Brain 1 finds nothing, Brain 2 may still find flows.
+6. **No exceeding budget.** 75 calls max. BudgetTracker enforces per-brain limits.
+7. **No hand-waved margins.** Every card has: price_per_unit, cost_per_unit, margin = price - cost. If data missing, tag [?].
+8. **No contacts without scripts.** Every contact has a copy-paste outreach script.
+9. **No cards without kill criteria.** Every card states when to abandon.
+10. **No ignoring history.** If DuckDB has prior runs, load and use for trend detection + score boosting.
+11. **No ChatGPT-style advice.** If the system can't find anomalies, say "No anomalies found" — don't fill with generic recommendations.
+12. **No separate modes.** V4's --pain/--flow/--asym are dead. One unified anomaly flow.
+
+---
+
+## BRIDGES
+
+### Stage0 -> Hunt
+Stage0 verdict can suggest `/hunt <topic>` for MOUNTAIN/SIDE_HUSTLE verdicts. Hunt runs independently.
+
+### Hunt -> Blueprint
+After reviewing anomaly cards, user can run `/blueprint` with top card as input.
+
+### Hunt -> Hunt (compound)
+Each run loads previous run's anomalies from DuckDB. Trends compound. Persistent anomalies get boosted. Shrinking anomalies get flagged.

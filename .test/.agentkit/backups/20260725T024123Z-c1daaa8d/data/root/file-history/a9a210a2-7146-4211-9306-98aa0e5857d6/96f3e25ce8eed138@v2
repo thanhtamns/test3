@@ -1,0 +1,203 @@
+#!/usr/bin/env python3
+"""
+Asset Registry CLI — Track all compound assets on the path to $50K/mo.
+SQLite-backed, CLI-first. Auto-creates DB on first run.
+"""
+
+import argparse
+import json
+import sqlite3
+import sys
+from datetime import datetime
+from pathlib import Path
+
+DB_PATH = Path(__file__).parent.parent.parent.parent.parent / "data" / "empire" / "assets.db"
+CATEGORIES = ("code", "audience", "data", "relationship", "revenue")
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS assets (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    category TEXT CHECK(category IN ('code','audience','data','relationship','revenue')),
+    description TEXT DEFAULT '',
+    estimated_value_usd REAL DEFAULT 0,
+    recurring_monthly_usd REAL DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    metadata TEXT DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS staircase_log (
+    id INTEGER PRIMARY KEY,
+    stair INTEGER CHECK(stair BETWEEN 0 AND 5),
+    entered_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    monthly_revenue_usd REAL,
+    notes TEXT
+);
+
+CREATE TABLE IF NOT EXISTS compound_snapshots (
+    id INTEGER PRIMARY KEY,
+    snapshot_date TEXT DEFAULT CURRENT_TIMESTAMP,
+    total_assets INTEGER,
+    total_value_usd REAL,
+    total_mrr_usd REAL,
+    compound_rate REAL,
+    gap_to_target_usd REAL
+);
+"""
+
+
+def get_db() -> sqlite3.Connection:
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    conn.executescript(SCHEMA)
+    return conn
+
+
+def cmd_add(args):
+    db = get_db()
+    db.execute(
+        "INSERT INTO assets (name, category, description, estimated_value_usd, recurring_monthly_usd, metadata) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (args.name, args.category, args.description or "", args.value, args.mrr, json.dumps({})),
+    )
+    db.commit()
+    print(f"Added: {args.name} ({args.category}) value=${args.value} mrr=${args.mrr}")
+    db.close()
+
+
+def cmd_update(args):
+    db = get_db()
+    sets = []
+    vals = []
+    if args.name:
+        sets.append("name = ?")
+        vals.append(args.name)
+    if args.value is not None:
+        sets.append("estimated_value_usd = ?")
+        vals.append(args.value)
+    if args.mrr is not None:
+        sets.append("recurring_monthly_usd = ?")
+        vals.append(args.mrr)
+    if args.description:
+        sets.append("description = ?")
+        vals.append(args.description)
+    sets.append("updated_at = ?")
+    vals.append(datetime.now().isoformat())
+    vals.append(args.id)
+    db.execute(f"UPDATE assets SET {', '.join(sets)} WHERE id = ?", vals)
+    db.commit()
+    print(f"Updated asset #{args.id}")
+    db.close()
+
+
+def cmd_list(args):
+    db = get_db()
+    if args.category:
+        rows = db.execute("SELECT * FROM assets WHERE category = ? ORDER BY id", (args.category,)).fetchall()
+    else:
+        rows = db.execute("SELECT * FROM assets ORDER BY category, id").fetchall()
+
+    if not rows:
+        print("No assets found.")
+        return
+
+    print(f"{'ID':>4} {'Category':>12} {'Name':<30} {'Value':>10} {'MRR':>10}")
+    print("-" * 70)
+    for r in rows:
+        print(f"{r['id']:>4} {r['category']:>12} {r['name']:<30} ${r['estimated_value_usd']:>9,.0f} ${r['recurring_monthly_usd']:>9,.0f}")
+    db.close()
+
+
+def cmd_delete(args):
+    db = get_db()
+    row = db.execute("SELECT name FROM assets WHERE id = ?", (args.id,)).fetchone()
+    if not row:
+        print(f"Asset #{args.id} not found.")
+        sys.exit(1)
+    db.execute("DELETE FROM assets WHERE id = ?", (args.id,))
+    db.commit()
+    print(f"Deleted: {row['name']} (#{args.id})")
+    db.close()
+
+
+def cmd_summary(args):
+    db = get_db()
+    rows = db.execute(
+        "SELECT category, COUNT(*) as cnt, SUM(estimated_value_usd) as total_val, "
+        "SUM(recurring_monthly_usd) as total_mrr FROM assets GROUP BY category"
+    ).fetchall()
+
+    total_val = 0
+    total_mrr = 0
+    total_cnt = 0
+
+    print("=== Empire Asset Summary ===\n")
+    print(f"{'Category':>12} {'Count':>6} {'Value':>12} {'MRR':>12}")
+    print("-" * 46)
+    for r in rows:
+        v = r["total_val"] or 0
+        m = r["total_mrr"] or 0
+        print(f"{r['category']:>12} {r['cnt']:>6} ${v:>11,.0f} ${m:>11,.0f}")
+        total_val += v
+        total_mrr += m
+        total_cnt += r["cnt"]
+
+    print("-" * 46)
+    print(f"{'TOTAL':>12} {total_cnt:>6} ${total_val:>11,.0f} ${total_mrr:>11,.0f}")
+    print(f"\nGap to $50K/mo: ${50000 - total_mrr:,.0f}/mo")
+
+    if total_mrr > 0:
+        months = (50000 - total_mrr) / total_mrr if total_mrr < 50000 else 0
+        print(f"At current MRR growth: ~{months:.0f} months to target (linear, not compound)")
+
+    if args.json:
+        result = {
+            "total_assets": total_cnt,
+            "total_value_usd": total_val,
+            "total_mrr_usd": total_mrr,
+            "gap_to_target": 50000 - total_mrr,
+        }
+        print(f"\n{json.dumps(result, indent=2)}")
+
+    db.close()
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Empire Asset Registry")
+    sub = parser.add_subparsers(dest="command")
+
+    p_add = sub.add_parser("add")
+    p_add.add_argument("--name", required=True)
+    p_add.add_argument("--category", required=True, choices=CATEGORIES)
+    p_add.add_argument("--description", default="")
+    p_add.add_argument("--value", type=float, default=0)
+    p_add.add_argument("--mrr", type=float, default=0)
+
+    p_update = sub.add_parser("update")
+    p_update.add_argument("--id", type=int, required=True)
+    p_update.add_argument("--name")
+    p_update.add_argument("--value", type=float)
+    p_update.add_argument("--mrr", type=float)
+    p_update.add_argument("--description")
+
+    p_list = sub.add_parser("list")
+    p_list.add_argument("--category", choices=CATEGORIES)
+
+    p_del = sub.add_parser("delete")
+    p_del.add_argument("--id", type=int, required=True)
+
+    p_sum = sub.add_parser("summary")
+    p_sum.add_argument("--json", action="store_true")
+
+    args = parser.parse_args()
+    if not args.command:
+        parser.print_help()
+        sys.exit(1)
+
+    {"add": cmd_add, "update": cmd_update, "list": cmd_list, "delete": cmd_delete, "summary": cmd_summary}[args.command](args)
+
+
+if __name__ == "__main__":
+    main()

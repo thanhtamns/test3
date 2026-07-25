@@ -1,0 +1,192 @@
+use anyhow::Result;
+use serde::Deserialize;
+use std::collections::HashMap;
+use std::path::Path;
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModelPricing {
+    pub input_per_mtok: f64,
+    pub output_per_mtok: f64,
+    #[serde(default)]
+    pub cache_read_per_mtok: f64,
+    #[serde(default)]
+    pub cache_write_per_mtok: f64,
+}
+
+#[derive(Debug, Deserialize)]
+struct PricingFile {
+    models: HashMap<String, ModelPricing>,
+}
+
+pub struct PricingTable {
+    models: HashMap<String, ModelPricing>,
+}
+
+impl PricingTable {
+    pub fn bundled() -> Self {
+        let mut models = HashMap::new();
+
+        models.insert("claude-opus-4".into(), ModelPricing {
+            input_per_mtok: 15.0, output_per_mtok: 75.0,
+            cache_read_per_mtok: 1.875, cache_write_per_mtok: 18.75,
+        });
+        models.insert("claude-sonnet-4".into(), ModelPricing {
+            input_per_mtok: 3.0, output_per_mtok: 15.0,
+            cache_read_per_mtok: 0.375, cache_write_per_mtok: 3.75,
+        });
+        models.insert("claude-haiku-3.5".into(), ModelPricing {
+            input_per_mtok: 0.80, output_per_mtok: 4.0,
+            cache_read_per_mtok: 0.08, cache_write_per_mtok: 1.0,
+        });
+        models.insert("gpt-4o".into(), ModelPricing {
+            input_per_mtok: 2.50, output_per_mtok: 10.0,
+            cache_read_per_mtok: 1.25, cache_write_per_mtok: 0.0,
+        });
+        models.insert("gemini-2.5-pro".into(), ModelPricing {
+            input_per_mtok: 1.25, output_per_mtok: 10.0,
+            cache_read_per_mtok: 0.315, cache_write_per_mtok: 0.0,
+        });
+
+        Self { models }
+    }
+
+    pub fn load_from_file(path: &Path) -> Result<Self> {
+        let content = std::fs::read_to_string(path)?;
+        let file: PricingFile = toml::from_str(&content)?;
+        Ok(Self { models: file.models })
+    }
+
+    pub fn merge_user_overrides(&mut self, path: &Path) -> Result<()> {
+        let content = std::fs::read_to_string(path)?;
+        let file: PricingFile = toml::from_str(&content)?;
+        for (k, v) in file.models {
+            self.models.insert(k, v);
+        }
+        Ok(())
+    }
+
+    pub fn cost_for_tokens(
+        &self,
+        model_id: &str,
+        input_tokens: u64,
+        output_tokens: u64,
+        cache_read_tokens: u64,
+        cache_write_tokens: u64,
+    ) -> f64 {
+        let pricing = self.resolve(model_id);
+        let input_cost = input_tokens as f64 * pricing.input_per_mtok / 1_000_000.0;
+        let output_cost = output_tokens as f64 * pricing.output_per_mtok / 1_000_000.0;
+        let cache_r = cache_read_tokens as f64 * pricing.cache_read_per_mtok / 1_000_000.0;
+        let cache_w = cache_write_tokens as f64 * pricing.cache_write_per_mtok / 1_000_000.0;
+        input_cost + output_cost + cache_r + cache_w
+    }
+
+    pub fn resolve(&self, model_id: &str) -> &ModelPricing {
+        if let Some(p) = self.models.get(model_id) {
+            return p;
+        }
+        let normalized = normalize_model_id(model_id);
+        if let Some(p) = self.models.get(&normalized) {
+            return p;
+        }
+        let mut keys: Vec<&String> = self.models.keys().collect();
+        keys.sort_by(|a, b| b.len().cmp(&a.len()));
+        for key in keys {
+            if model_id.starts_with(key.as_str()) || normalized.starts_with(key.as_str()) {
+                return &self.models[key];
+            }
+        }
+        tracing::warn!("unknown model '{}', using median pricing", model_id);
+        self.median_pricing()
+    }
+
+    fn median_pricing(&self) -> &ModelPricing {
+        static MEDIAN: ModelPricing = ModelPricing {
+            input_per_mtok: 3.0,
+            output_per_mtok: 15.0,
+            cache_read_per_mtok: 0.375,
+            cache_write_per_mtok: 3.75,
+        };
+        &MEDIAN
+    }
+}
+
+fn normalize_model_id(id: &str) -> String {
+    let id = id.trim();
+    let id = id.split(':').last().unwrap_or(id);
+    let parts: Vec<&str> = id.rsplitn(2, '-').collect();
+    if parts.len() == 2 && parts[0].len() == 8 && parts[0].chars().all(|c| c.is_ascii_digit()) {
+        parts[1].to_string()
+    } else {
+        id.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_bundled_has_models() {
+        let table = PricingTable::bundled();
+        assert!(table.models.len() >= 5);
+        assert!(table.models.contains_key("claude-opus-4"));
+        assert!(table.models.contains_key("gpt-4o"));
+    }
+
+    #[test]
+    fn test_cost_calculation() {
+        let table = PricingTable::bundled();
+        let cost = table.cost_for_tokens("claude-opus-4", 1_000_000, 0, 0, 0);
+        assert!((cost - 15.0).abs() < 0.001);
+
+        let cost2 = table.cost_for_tokens("claude-opus-4", 0, 1_000_000, 0, 0);
+        assert!((cost2 - 75.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_resolve_with_date_suffix() {
+        let table = PricingTable::bundled();
+        let p = table.resolve("claude-opus-4-20250514");
+        assert!((p.input_per_mtok - 15.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_resolve_prefix_match() {
+        let table = PricingTable::bundled();
+        let p = table.resolve("claude-sonnet-4-latest");
+        assert!((p.input_per_mtok - 3.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_resolve_unknown_returns_median() {
+        let table = PricingTable::bundled();
+        let p = table.resolve("totally-unknown-model");
+        assert!((p.input_per_mtok - 3.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_normalize_strips_date() {
+        assert_eq!(normalize_model_id("claude-opus-4-20250514"), "claude-opus-4");
+    }
+
+    #[test]
+    fn test_normalize_no_date() {
+        assert_eq!(normalize_model_id("gpt-4o"), "gpt-4o");
+    }
+
+    #[test]
+    fn test_load_from_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pricing.toml");
+        std::fs::write(&path, r#"
+[models.custom-model]
+input_per_mtok = 5.0
+output_per_mtok = 25.0
+"#).unwrap();
+        let table = PricingTable::load_from_file(&path).unwrap();
+        assert!(table.models.contains_key("custom-model"));
+        let p = table.resolve("custom-model");
+        assert!((p.input_per_mtok - 5.0).abs() < 0.001);
+    }
+}

@@ -1,0 +1,73 @@
+---
+phase: 5
+title: Smoke Test
+status: completed
+priority: P2
+effort: 1h
+dependencies:
+  - 4
+---
+
+# Phase 5: Smoke Test
+
+## Overview
+
+End-to-end validation of the full auto-hunt pipeline. Run each phase independently, then run the hook integration, verify output matches spec.
+
+## Requirements
+
+- Functional: Full pipeline produces a valid auto-hunt report with ≥1 niche verdict
+- Non-functional: Total runtime <2 min. No manual intervention required.
+
+## Implementation Steps
+
+1. **Unit test Phase 1** — Run signal scanner against real KB:
+   ```bash
+   python auto-hunt-signal-scanner.py --kb-dir ../kb/cases --profile-dir ../kb/profiles --json
+   ```
+   Verify: JSON output, ≥1 candidate, scores in valid range (0-100)
+
+2. **Unit test Phase 2** — Run hypothesis adapter with Phase 1 output:
+   ```bash
+   python auto-hunt-hypothesis-adapter.py --signals-json <phase1_output> --kb-dir ../kb/cases
+   ```
+   Verify: ≥0 hypotheses (0 is valid if all deduped), no crashes
+
+3. **Unit test Phase 3** — Run mini stage0 prompt generator:
+   ```bash
+   python auto-hunt-mini-stage0.py --hypotheses-json <phase2_output> --prompt-only
+   ```
+   Verify: prompt text output, valid template with hypothesis data filled
+
+4. **Integration test** — Run hook directly:
+   ```bash
+   node .claude/hooks/auto-hunt-session-start.cjs
+   ```
+   Verify: exit code 0, context output printed, cooldown state updated
+
+5. **Cooldown test** — Run hook twice within 12h:
+   - First run → should execute pipeline
+   - Second run → should exit early with "cooldown" log
+
+6. **Failure test** — Rename KB dir, run hook:
+   - Should fail-open (exit 0, log error, no crash)
+
+7. **Report validation** — If full pipeline produces report:
+   - Check file exists at expected path
+   - Check format: has Top 3 table, has Day 1 actions, has kill criteria
+   - Check cases persisted (KB case count increased)
+
+## Success Criteria
+
+- [ ] Phase 1 standalone: returns valid JSON with candidates
+- [ ] Phase 2 standalone: correctly dedupes and outputs hypotheses
+- [ ] Phase 3 standalone: generates valid prompt template
+- [ ] Hook integration: runs without blocking, exits 0
+- [ ] Cooldown: prevents re-run within 12h
+- [ ] Fail-open: no crash on missing KB/profile/venv
+- [ ] Full pipeline: produces report with ≥1 verdict (when run with LLM)
+
+## Risk Assessment
+
+- Real KB has inconsistent schemas → smoke test reveals parsing issues early
+- DuckDuckGo blocked in test env → acceptable: external scan returns 0 signals, pipeline continues with KB-only

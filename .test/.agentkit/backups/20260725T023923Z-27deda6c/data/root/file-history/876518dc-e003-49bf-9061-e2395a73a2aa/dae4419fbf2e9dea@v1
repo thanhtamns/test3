@@ -1,0 +1,212 @@
+package api
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
+
+func TestExtractTenantFromJWT_ValidTenantID(t *testing.T) {
+	// {"tenant_id":"my-tenant"} base64url-encoded
+	token := "eyJhbGciOiJIUzI1NiJ9.eyJ0ZW5hbnRfaWQiOiJteS10ZW5hbnQifQ.sig"
+	tid := extractTenantFromJWT(token)
+	if tid != "my-tenant" {
+		t.Fatalf("expected 'my-tenant', got '%s'", tid)
+	}
+}
+
+func TestExtractTenantFromJWT_OrgIDFallback(t *testing.T) {
+	// {"org_id":"org-123"} base64url-encoded
+	token := "eyJhbGciOiJIUzI1NiJ9.eyJvcmdfaWQiOiJvcmctMTIzIn0.sig"
+	tid := extractTenantFromJWT(token)
+	if tid != "org-123" {
+		t.Fatalf("expected 'org-123', got '%s'", tid)
+	}
+}
+
+func TestExtractTenantFromJWT_TenantIDPriority(t *testing.T) {
+	// {"tenant_id":"t1","org_id":"o1"} — tenant_id takes precedence
+	token := "eyJhbGciOiJIUzI1NiJ9.eyJ0ZW5hbnRfaWQiOiJ0MSIsIm9yZ19pZCI6Im8xIn0.sig"
+	tid := extractTenantFromJWT(token)
+	if tid != "t1" {
+		t.Fatalf("expected 't1', got '%s'", tid)
+	}
+}
+
+func TestExtractTenantFromJWT_InvalidToken(t *testing.T) {
+	cases := []string{
+		"",
+		"not-a-jwt",
+		"one.two",
+		"a.!!!invalid-base64!!!.c",
+		"a.e30.c", // {} — no tenant_id or org_id
+	}
+	for _, tc := range cases {
+		tid := extractTenantFromJWT(tc)
+		if tid != "" {
+			t.Errorf("token %q: expected empty, got '%s'", tc, tid)
+		}
+	}
+}
+
+func TestWithTenantAuth_BearerToken(t *testing.T) {
+	var gotTenant string
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotTenant = tenantFromCtx(r)
+		w.WriteHeader(200)
+	})
+
+	handler := withTenantAuth(inner)
+	req := httptest.NewRequest("GET", "/test", nil)
+	// {"tenant_id":"bearer-tenant"}
+	req.Header.Set("Authorization", "Bearer eyJhbGciOiJIUzI1NiJ9.eyJ0ZW5hbnRfaWQiOiJiZWFyZXItdGVuYW50In0.sig")
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if gotTenant != "bearer-tenant" {
+		t.Fatalf("expected 'bearer-tenant', got '%s'", gotTenant)
+	}
+}
+
+func TestWithTenantAuth_XTenantIDHeader(t *testing.T) {
+	var gotTenant string
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotTenant = tenantFromCtx(r)
+		w.WriteHeader(200)
+	})
+
+	handler := withTenantAuth(inner)
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("X-Tenant-ID", "header-tenant")
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if gotTenant != "header-tenant" {
+		t.Fatalf("expected 'header-tenant', got '%s'", gotTenant)
+	}
+}
+
+func TestWithTenantAuth_DefaultTenant(t *testing.T) {
+	var gotTenant string
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotTenant = tenantFromCtx(r)
+		w.WriteHeader(200)
+	})
+
+	handler := withTenantAuth(inner)
+	req := httptest.NewRequest("GET", "/test", nil)
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if gotTenant != "default" {
+		t.Fatalf("expected 'default', got '%s'", gotTenant)
+	}
+}
+
+func TestWithTenantAuth_BearerOverridesHeader(t *testing.T) {
+	var gotTenant string
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotTenant = tenantFromCtx(r)
+		w.WriteHeader(200)
+	})
+
+	handler := withTenantAuth(inner)
+	req := httptest.NewRequest("GET", "/test", nil)
+	// {"tenant_id":"jwt-wins"}
+	req.Header.Set("Authorization", "Bearer eyJhbGciOiJIUzI1NiJ9.eyJ0ZW5hbnRfaWQiOiJqd3Qtd2lucyJ9.sig")
+	req.Header.Set("X-Tenant-ID", "header-loses")
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if gotTenant != "jwt-wins" {
+		t.Fatalf("expected 'jwt-wins', got '%s'", gotTenant)
+	}
+}
+
+func TestRateLimiter_AllowsBurst(t *testing.T) {
+	rl := newRateLimiter()
+	for i := 0; i < 100; i++ {
+		if !rl.allow("tenant-1") {
+			t.Fatalf("expected allow on request %d", i+1)
+		}
+	}
+}
+
+func TestRateLimiter_DeniesExcess(t *testing.T) {
+	rl := newRateLimiter()
+	// Free tier: 100/min bucket capacity. Drain it.
+	for i := 0; i < 101; i++ {
+		rl.allow("tenant-1")
+	}
+	if rl.allow("tenant-1") {
+		t.Fatal("expected rate limit denial after exceeding capacity")
+	}
+}
+
+func TestRateLimiter_TenantIsolation(t *testing.T) {
+	rl := newRateLimiter()
+	// Drain tenant-1
+	for i := 0; i < 101; i++ {
+		rl.allow("tenant-1")
+	}
+	// tenant-2 should still be allowed
+	if !rl.allow("tenant-2") {
+		t.Fatal("tenant-2 should not be rate limited")
+	}
+}
+
+func TestCORS_PreflightResponse(t *testing.T) {
+	store := newFakeStorage()
+	router := newTestRouter(store)
+
+	req := httptest.NewRequest("OPTIONS", "/v1/overview", nil)
+	req.Header.Set("Origin", "http://localhost:3000")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", w.Code)
+	}
+	if w.Header().Get("Access-Control-Allow-Origin") != "http://localhost:3000" {
+		t.Fatalf("missing CORS allow origin header")
+	}
+	if w.Header().Get("Access-Control-Allow-Methods") == "" {
+		t.Fatal("missing CORS allow methods header")
+	}
+}
+
+func TestCORS_DisallowedOrigin(t *testing.T) {
+	store := newFakeStorage()
+	router := newTestRouter(store)
+
+	req := httptest.NewRequest("OPTIONS", "/v1/overview", nil)
+	req.Header.Set("Origin", "http://evil.com")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Fatal("should not set CORS headers for disallowed origin")
+	}
+}
+
+func TestHealthz(t *testing.T) {
+	store := newFakeStorage()
+	router := newTestRouter(store)
+
+	req := httptest.NewRequest("GET", "/healthz", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if w.Body.String() != `{"status":"ok"}` {
+		t.Fatalf("unexpected body: %s", w.Body.String())
+	}
+}

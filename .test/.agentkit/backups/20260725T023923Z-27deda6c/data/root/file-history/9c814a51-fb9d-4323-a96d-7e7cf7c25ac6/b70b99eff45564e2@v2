@@ -1,0 +1,369 @@
+"""Tests for ClaimParser and AgentOutputAdapter — Phase 1 hunger engine."""
+
+import json
+import sqlite3
+import sys
+import tempfile
+from pathlib import Path
+
+import pytest
+
+LIB = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(LIB))
+
+from intelligence.hunger.claim_parser import ClaimParser, ParsedClaim, StructuredOutput
+from intelligence.hunger.agent_output_adapter import AgentOutputAdapter
+
+
+SAMPLE_JSON_OUTPUT = json.dumps({
+    "agent": "failure-archaeologist",
+    "domain": "micro_saas",
+    "claims": [
+        {
+            "fact": "30% of micro-SaaS never reach $1K MRR",
+            "value": 0.30,
+            "dimension": "failure_rates",
+            "source_url": "https://microconf.com/data/2024",
+            "source_date": "2024-06",
+            "mechanism": "undercapitalization + no distribution",
+            "confidence": 0.85,
+            "zone_tag": "K",
+        },
+        {
+            "fact": "Average CAC for B2B SaaS is $205",
+            "value": 205,
+            "dimension": "unit_economics",
+            "confidence": 0.7,
+            "zone_tag": "T",
+        },
+    ],
+    "mechanisms": [
+        {
+            "cause": "no_existing_audience",
+            "effect": "slow_initial_traction",
+            "strength": 0.7,
+            "evidence": "82% of failed founders had <1000 followers",
+        }
+    ],
+    "contradictions": [
+        {
+            "claim_a": "SaaS margins are 80%+",
+            "claim_b": "Infra costs eat 40% for AI SaaS",
+            "resolution_needed": True,
+        }
+    ],
+    "gaps": ["no data on Vietnamese micro-SaaS"],
+    "sources_checked": 8,
+    "sources_with_data": 5,
+})
+
+SAMPLE_PROSE_OUTPUT = """
+Based on our research, 30% of micro-SaaS businesses never reach $1K MRR.
+The failure rate is particularly high in the first year. Source: https://microconf.com/data/2024
+
+Revenue analysis shows $2.5M total addressable market for this niche (2024-03).
+However, this contradicts earlier estimates of much larger TAM.
+
+The primary cause is undercapitalization, which leads to inability to sustain growth.
+Additionally, 65% of solo founders report burnout within 18 months due to lack of delegation.
+
+No data on Vietnamese market specifically. No information about regulatory requirements in SEA.
+
+$500K average seed round for SaaS startups in 2024.
+"""
+
+
+@pytest.fixture
+def tmp_db():
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = Path(f.name)
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("""
+        CREATE TABLE decision_vectors (
+            id TEXT PRIMARY KEY,
+            industry TEXT,
+            business_model TEXT,
+            features_json TEXT,
+            outcome TEXT,
+            source TEXT,
+            created_at TEXT
+        )
+    """)
+    conn.execute(
+        "INSERT INTO decision_vectors VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("v1", "saas", "subscription", '{"fact": "30% of micro-SaaS never reach $1K MRR"}', "failure", "test", "2026-01-01"),
+    )
+    conn.execute(
+        "INSERT INTO decision_vectors VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("v2", "saas", "subscription", '{"fact": "SaaS churn averages 5-7% monthly"}', "info", "test", "2026-01-01"),
+    )
+    conn.commit()
+    conn.close()
+    yield db_path
+    try:
+        db_path.unlink(missing_ok=True)
+    except PermissionError:
+        pass
+
+
+@pytest.fixture
+def parser(tmp_db):
+    return ClaimParser(db_path=tmp_db)
+
+
+@pytest.fixture
+def parser_no_db():
+    return ClaimParser(db_path=Path("/nonexistent/path.db"))
+
+
+@pytest.fixture
+def adapter():
+    return AgentOutputAdapter()
+
+
+class TestClaimParserJSON:
+    def test_parse_valid_json(self, parser):
+        result = parser.parse_agent_output(SAMPLE_JSON_OUTPUT)
+        assert result.parse_mode == "json"
+        assert result.agent == "failure-archaeologist"
+        assert result.domain == "micro_saas"
+        assert len(result.claims) == 2
+
+    def test_parse_json_claims_fields(self, parser):
+        result = parser.parse_agent_output(SAMPLE_JSON_OUTPUT)
+        c = result.claims[0]
+        assert c.fact == "30% of micro-SaaS never reach $1K MRR"
+        assert c.value == 0.30
+        assert c.dimension == "failure_rates"
+        assert c.confidence == 0.85
+        assert c.zone_tag == "K"
+
+    def test_parse_json_mechanisms(self, parser):
+        result = parser.parse_agent_output(SAMPLE_JSON_OUTPUT)
+        assert len(result.mechanisms) == 1
+        assert result.mechanisms[0].cause == "no_existing_audience"
+        assert result.mechanisms[0].strength == 0.7
+
+    def test_parse_json_contradictions(self, parser):
+        result = parser.parse_agent_output(SAMPLE_JSON_OUTPUT)
+        assert len(result.contradictions) == 1
+        assert result.contradictions[0].resolution_needed is True
+
+    def test_parse_json_gaps(self, parser):
+        result = parser.parse_agent_output(SAMPLE_JSON_OUTPUT)
+        assert "no data on Vietnamese micro-SaaS" in result.gaps
+
+    def test_parse_json_metadata(self, parser):
+        result = parser.parse_agent_output(SAMPLE_JSON_OUTPUT)
+        assert result.sources_checked == 8
+        assert result.sources_with_data == 5
+
+    def test_agent_domain_override(self, parser):
+        result = parser.parse_agent_output(SAMPLE_JSON_OUTPUT, agent="custom-agent", domain="custom_domain")
+        assert result.agent == "custom-agent"
+        assert result.domain == "custom_domain"
+
+    def test_parse_json_embedded_in_prose(self, parser):
+        text = "Here is my analysis:\n" + SAMPLE_JSON_OUTPUT + "\nEnd of analysis."
+        result = parser.parse_agent_output(text)
+        assert result.parse_mode == "json"
+        assert len(result.claims) == 2
+
+
+class TestClaimParserValidation:
+    def test_reject_empty_facts(self, parser):
+        claims = [ParsedClaim(fact=""), ParsedClaim(fact="ok fact here")]
+        valid = parser.validate_claims(claims)
+        assert len(valid) == 1
+
+    def test_reject_short_facts(self, parser):
+        claims = [ParsedClaim(fact="hi"), ParsedClaim(fact="This is a real fact")]
+        valid = parser.validate_claims(claims)
+        assert len(valid) == 1
+
+    def test_fix_invalid_dimension(self, parser):
+        claims = [ParsedClaim(fact="50% failure rate in first year", dimension="invalid_dim")]
+        valid = parser.validate_claims(claims)
+        assert valid[0].dimension in [
+            "failure_rates", "unit_economics", "competitive_landscape",
+            "moat_patterns", "founder_paths", "timing_windows",
+            "regulatory_risks", "compounding_mechanisms",
+        ]
+
+    def test_zone_tag_confidence_alignment(self, parser):
+        claims = [
+            ParsedClaim(fact="High confidence fact here", confidence=0.9, zone_tag="T"),
+            ParsedClaim(fact="Medium confidence fact here", confidence=0.6, zone_tag="K"),
+            ParsedClaim(fact="Low confidence fact here very uncertain", confidence=0.3, zone_tag="K"),
+        ]
+        valid = parser.validate_claims(claims)
+        assert valid[0].zone_tag == "K"
+        assert valid[1].zone_tag == "T"
+        assert valid[2].zone_tag == "?"
+
+    def test_clamp_confidence(self, parser):
+        claims = [ParsedClaim(fact="Over-confident claim here", confidence=1.5)]
+        valid = parser.validate_claims(claims)
+        assert valid[0].confidence == 1.0
+
+    def test_invalid_zone_tag_reset(self, parser):
+        claims = [ParsedClaim(fact="Bad zone tag claim here", zone_tag="X", confidence=0.6)]
+        valid = parser.validate_claims(claims)
+        assert valid[0].zone_tag == "T"
+
+
+class TestClaimParserDedup:
+    def test_dedup_exact_match(self, parser):
+        claims = [
+            ParsedClaim(fact="Totally unique claim about quantum computing startups"),
+            ParsedClaim(fact="Totally unique claim about quantum computing startups"),
+        ]
+        unique = parser.deduplicate_claims(claims)
+        assert len(unique) == 1
+
+    def test_dedup_against_db(self, tmp_db):
+        p = ClaimParser(db_path=tmp_db)
+        claims = [ParsedClaim(fact="30% of micro-SaaS never reach $1K MRR")]
+        unique = p.deduplicate_claims(claims, threshold=0.85)
+        assert len(unique) == 0
+
+    def test_dedup_keeps_unique(self, tmp_db):
+        p = ClaimParser(db_path=tmp_db)
+        claims = [ParsedClaim(fact="Completely novel fact about quantum computing startups")]
+        unique = p.deduplicate_claims(claims)
+        assert len(unique) == 1
+
+    def test_dedup_no_db(self, parser_no_db):
+        claims = [ParsedClaim(fact="Some new claim about markets")]
+        unique = parser_no_db.deduplicate_claims(claims)
+        assert len(unique) == 1
+
+
+class TestAgentOutputAdapter:
+    def test_extract_percentage_claims(self, adapter):
+        text = "About 30% of startups fail in year one. Also 65% of founders report burnout."
+        claims = adapter.extract_claims_from_prose(text)
+        assert len(claims) >= 2
+        assert all(c.from_prose for c in claims)
+
+    def test_extract_dollar_claims(self, adapter):
+        text = "$2.5M total addressable market. Seed rounds average $500K in 2024."
+        claims = adapter.extract_claims_from_prose(text)
+        assert len(claims) >= 2
+        dollar_claims = [c for c in claims if c.dimension == "unit_economics"]
+        assert len(dollar_claims) >= 1
+
+    def test_dollar_multiplier_k(self, adapter):
+        text = "$50K average revenue per customer annually."
+        claims = adapter.extract_claims_from_prose(text)
+        assert any(c.value == 50_000 for c in claims)
+
+    def test_dollar_multiplier_b(self, adapter):
+        text = "$1.2B market size for AI tools globally."
+        claims = adapter.extract_claims_from_prose(text)
+        assert any(c.value == 1_200_000_000 for c in claims)
+
+    def test_prose_confidence_penalty(self, adapter):
+        text = "42% of bootstrapped SaaS founders are solo operators."
+        claims = adapter.extract_claims_from_prose(text)
+        assert all(c.confidence == 0.5 for c in claims)
+
+    def test_extract_nearby_url(self, adapter):
+        text = "Source: https://example.com/data — 30% of businesses fail quickly."
+        claims = adapter.extract_claims_from_prose(text)
+        url_claims = [c for c in claims if c.source_url]
+        assert len(url_claims) >= 1
+
+    def test_extract_nearby_date(self, adapter):
+        text = "In 2024-06, about 30% of SaaS companies reported declining growth."
+        claims = adapter.extract_claims_from_prose(text)
+        dated = [c for c in claims if c.source_date]
+        assert len(dated) >= 1
+
+    def test_extract_gaps(self, adapter):
+        text = "No data on Vietnamese market specifically. No information about regulatory costs."
+        output = adapter.extract_structured_output(text)
+        assert len(output.gaps) >= 1
+
+    def test_extract_contradictions(self, adapter):
+        text = "SaaS margins are very high. However, AI SaaS has infrastructure costs eating 40%."
+        output = adapter.extract_structured_output(text)
+        assert len(output.contradictions) >= 1
+
+    def test_extract_mechanisms(self, adapter):
+        text = "Many startups lack distribution because of no existing audience, which leads to slow initial traction."
+        output = adapter.extract_structured_output(text)
+        assert len(output.mechanisms) >= 1
+
+    def test_full_prose_extraction(self, adapter):
+        output = adapter.extract_structured_output(SAMPLE_PROSE_OUTPUT)
+        assert len(output.claims) >= 3
+        assert len(output.gaps) >= 1
+        assert output.parse_mode == "prose"
+
+    def test_dedup_within_prose(self, adapter):
+        text = "30% of startups fail. About 30% of startups fail in the first year."
+        claims = adapter.extract_claims_from_prose(text)
+        facts = [c.fact.lower() for c in claims]
+        assert len(facts) == len(set(facts))
+
+
+class TestStructuredOutputSerialization:
+    def test_to_dict_roundtrip(self, parser):
+        result = parser.parse_agent_output(SAMPLE_JSON_OUTPUT)
+        d = result.to_dict()
+        assert d["agent"] == "failure-archaeologist"
+        assert len(d["claims"]) == 2
+        assert d["claims"][0]["fact"] == "30% of micro-SaaS never reach $1K MRR"
+        assert len(d["mechanisms"]) == 1
+        assert len(d["contradictions"]) == 1
+
+    def test_empty_output_serializes(self):
+        output = StructuredOutput()
+        d = output.to_dict()
+        assert d["claims"] == []
+        assert d["gaps"] == []
+
+
+class TestDimensionInference:
+    def test_infer_failure(self, parser):
+        claims = [ParsedClaim(fact="50% of e-commerce stores fail within 2 years", dimension="invalid")]
+        valid = parser.validate_claims(claims)
+        assert valid[0].dimension == "failure_rates"
+
+    def test_infer_unit_economics(self, parser):
+        claims = [ParsedClaim(fact="Average CAC is $150 with LTV of $900", dimension="invalid")]
+        valid = parser.validate_claims(claims)
+        assert valid[0].dimension == "unit_economics"
+
+    def test_infer_competitive(self, parser):
+        claims = [ParsedClaim(fact="Top competitor has 60% market share", dimension="invalid")]
+        valid = parser.validate_claims(claims)
+        assert valid[0].dimension == "competitive_landscape"
+
+    def test_infer_moat(self, parser):
+        claims = [ParsedClaim(fact="Strong network effect creates defensible moat", dimension="invalid")]
+        valid = parser.validate_claims(claims)
+        assert valid[0].dimension == "moat_patterns"
+
+    def test_infer_regulatory(self, parser):
+        claims = [ParsedClaim(fact="GDPR compliance requires significant investment", dimension="invalid")]
+        valid = parser.validate_claims(claims)
+        assert valid[0].dimension == "regulatory_risks"
+
+
+class TestEdgeCases:
+    def test_malformed_json_falls_to_prose(self, parser):
+        text = '{"claims": [{"fact": "incomplete json'
+        result = parser.parse_agent_output(text)
+        assert result.parse_mode == "prose"
+
+    def test_empty_input(self, parser):
+        result = parser.parse_agent_output("")
+        assert result.parse_mode == "prose"
+        assert len(result.claims) == 0
+
+    def test_pure_text_no_numbers(self, adapter):
+        text = "The market is growing quickly and there are many opportunities."
+        claims = adapter.extract_claims_from_prose(text)
+        assert len(claims) == 0

@@ -1,0 +1,102 @@
+---
+phase: 3
+title: "Persona Matrix and Info Asymmetry"
+status: completed
+priority: P1
+effort: "2h"
+dependencies: [1, 2]
+completedAt: "2026-05-10T07:55:00.000Z"
+---
+
+# Phase 3: Persona Matrix and Info Asymmetry
+
+## Overview
+
+Two modules: (A) Persona Matrix — auto-generate different founder-persona per chain link. No one sees the same person. (B) Info Asymmetry Tracker — map what each party knows/doesn't know, design revelation timing (share 80%, keep 20%).
+
+## Architecture
+
+```
+wound_map + chain links + founder profile
+         ↓
+persona-matrix-generator.py
+         ↓
+Per chain link:
+{
+  "target": "Portfolio CTO",
+  "persona": {
+    "identity": "Technical operator who ships",
+    "never_mention": ["wanting to join KVision"],
+    "lead_with": ["technical competence", "problem-solving"],
+    "energy": "builder, not networker"
+  },
+  "info_state": {
+    "they_know": ["name", "LinkedIn"],
+    "you_know": ["portfolio problems", "fund pressure"],
+    "reveal_sequence": [
+      {"week": 1, "reveal": "technical skills", "why": "establish competence"},
+      {"week": 3, "reveal": "Vietnam market knowledge", "why": "create need"},
+      {"week": 6, "reveal": "LP connections", "why": "escalate value suddenly"}
+    ],
+    "never_reveal": ["wound map knowledge", "chain design"],
+    "asymmetry_advantage": "You know their portfolio struggles; they don't know you know"
+  }
+}
+```
+
+## Related Code Files
+
+- Create: `.claude/skills/business/transaction-layer/nui-hunter/scripts/persona-matrix-generator.py`
+- Modify: `.claude/skills/business/transaction-layer/nui-hunter/scripts/side-door-trigger.py` — add persona + info asymmetry to agent prompts
+
+## Implementation Steps
+
+### Part A: Persona Matrix
+
+1. `generate_persona(founder_profile, target_role, wound_map, chain_position)`:
+   - chain_position drives archetype:
+     - "introducer" → helpful peer who solves problems
+     - "lieutenant" → respectful student with unique data
+     - "target" → peer builder, not applicant
+     - "LP" → Vietnam market specialist
+   - `calculate_never_mention(target_role)` — things that break the persona
+   - `calculate_lead_with(founder_assets, target_wounds)` — match strength to pain
+
+2. Persona consistency checker:
+   - All personas COMPATIBLE if targets compare notes
+   - Each emphasizes DIFFERENT aspects of same founder
+   - Same light through prism — different colors
+
+### Part B: Information Asymmetry
+
+3. `map_info_state(founder, target, wound_map)`:
+   - `they_know` — what target finds via LinkedIn/Google
+   - `you_know` — wound map + research + portfolio intel
+   - `asymmetry_advantage` — the gap = your leverage
+
+4. `design_revelation_sequence(info_state, timeline_weeks)`:
+   - Week 1-2: reveal competence (low risk, builds trust)
+   - Week 3-4: reveal market knowledge (creates need)
+   - Week 5-6: reveal connections (escalates value, "discovery" illusion)
+   - NEVER: wound knowledge, chain design, strategic intent
+
+5. 80/20 Rule:
+   - 80% shared freely = trust (market data, intros, analysis)
+   - 20% kept = dependency (exclusive access, unique relationships)
+   - The 20% = things only you have from ground-level relationships
+
+6. `check_info_leaks(persona_matrix)` — ensure what you tell A doesn't contradict B
+
+### CLI
+
+7. `--wound-map` (JSON), `--chain` (JSON), `--profile-file`
+
+## Success Criteria
+
+- [x] Distinct persona per chain link
+- [x] Personas compatible (no contradictions)
+- [x] Info asymmetry maps what each party knows/doesn't (272 lines, created)
+- [x] Revelation sequence has timing + rationale
+- [x] 80/20 share/keep ratio calculated
+- [x] Never-reveal list includes strategic artifacts
+- [x] Cross-party firewall check passes

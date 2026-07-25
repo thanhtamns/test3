@@ -1,0 +1,87 @@
+package api
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strconv"
+	"time"
+)
+
+func (h *handler) handleExportCSV(w http.ResponseWriter, r *http.Request) {
+	tenantID := tenantFromCtx(r)
+
+	days := 30
+	if d := r.URL.Query().Get("days"); d != "" {
+		if parsed, err := strconv.Atoi(d); err == nil && parsed > 0 && parsed <= 365 {
+			days = parsed
+		}
+	}
+
+	project := r.URL.Query().Get("project")
+
+	rows, err := h.store.GetExportData(r.Context(), tenantID, days, project)
+	if err != nil {
+		h.logger.Error("export query failed", "error", err)
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+
+	filename := fmt.Sprintf("codeflow-export-%s.csv", time.Now().Format("2006-01-02"))
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+
+	fmt.Fprintln(w, "date,project,command,event_type,input_tokens,output_tokens,tokens_saved,filter_name")
+	for _, row := range rows {
+		fmt.Fprintf(w, "%s,%s,%s,%s,%d,%d,%d,%s\n",
+			row.Date, csvQuote(row.Project), csvQuote(row.Command), row.EventType,
+			row.InputTokens, row.OutputTokens, row.TokensSaved, csvQuote(row.FilterName),
+		)
+	}
+}
+
+func (h *handler) handleROISummary(w http.ResponseWriter, r *http.Request) {
+	tenantID := tenantFromCtx(r)
+
+	days := 90
+	if d := r.URL.Query().Get("days"); d != "" {
+		if parsed, err := strconv.Atoi(d); err == nil && parsed > 0 && parsed <= 365 {
+			days = parsed
+		}
+	}
+
+	summary, err := h.store.GetROISummary(r.Context(), tenantID, days)
+	if err != nil {
+		h.logger.Error("roi summary query failed", "error", err)
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(summary)
+}
+
+func csvQuote(s string) string {
+	if len(s) == 0 {
+		return ""
+	}
+	needsQuote := false
+	for _, c := range s {
+		if c == ',' || c == '"' || c == '\n' || c == '\r' {
+			needsQuote = true
+			break
+		}
+	}
+	if !needsQuote {
+		return s
+	}
+	quoted := "\""
+	for _, c := range s {
+		if c == '"' {
+			quoted += "\"\""
+		} else {
+			quoted += string(c)
+		}
+	}
+	return quoted + "\""
+}

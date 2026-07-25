@@ -1,0 +1,122 @@
+---
+phase: 4
+title: "Template Evolver + Compound Learning"
+status: pending
+priority: P2
+effort: "1-2d"
+dependencies: [2, 3]
+---
+
+# Phase 4: Template Evolver + Compound Learning
+
+## Overview
+
+Track which decomposition templates produce useful facts. Evolve templates over time: promote high-yield dimensions, demote low-yield ones, refine query wording. Every decomposition run feeds the evolution loop.
+
+## Requirements
+
+- Functional: Track per-template metrics: facts_produced, avg_confidence, usefulness_score
+- Functional: Auto-adjust dimension weights based on historical yield
+- Functional: Auto-refine query templates based on parse success rate
+- Functional: Fact compounding — reuse accumulated facts to skip redundant queries
+- Non-functional: Evolution stored in SQLite (decomposition_templates table)
+- Non-functional: Max 10% weight change per evolution cycle (stability)
+
+## Architecture
+
+```
+Post-Decomposition Metrics
+  → TemplateEvolver.evolve(decomposition_id, results)
+    → Per dimension: yield = facts_added / queries_fired
+    → Per template: parse_success_rate, avg_confidence
+    → Weight adjustment: new_weight = old_weight × (1 + yield_delta × 0.1)
+    → Template refinement: if parse_fail > 30% → flag for manual review
+  → CompoundCache: domain → pre-resolved facts → skip in next decomposition
+```
+
+### SQLite Schema
+
+```sql
+CREATE TABLE IF NOT EXISTS decomposition_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_date TEXT NOT NULL,
+    query TEXT NOT NULL,
+    query_type TEXT NOT NULL,
+    dimensions_used INTEGER,
+    queries_fired INTEGER,
+    facts_added INTEGER,
+    facts_reused INTEGER,
+    overall_score REAL,
+    duration_ms INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS template_metrics (
+    dimension TEXT NOT NULL,
+    template_text TEXT NOT NULL,
+    times_used INTEGER DEFAULT 0,
+    facts_produced INTEGER DEFAULT 0,
+    avg_confidence REAL DEFAULT 0.0,
+    parse_success_rate REAL DEFAULT 1.0,
+    current_weight REAL DEFAULT 1.0,
+    last_used TEXT,
+    PRIMARY KEY (dimension, template_text)
+);
+```
+
+## Related Code Files
+
+- Create: `.claude/lib/intelligence/decomposition/template_evolver.py`
+- Create: `.claude/lib/intelligence/decomposition/compound_cache.py`
+- Create: `.claude/lib/intelligence/decomposition/tests/test_template_evolver.py`
+- Modify: `.claude/lib/intelligence/decomposition/decomposer.py` — integrate compound cache lookup
+- Modify: `.claude/lib/intelligence/decomposition/dimension_registry.py` — load evolved weights
+- Read: `.claude/lib/intelligence/evolution/distillation_bridge.py` — storage pattern
+
+## Implementation Steps
+
+1. Create `template_evolver.py`:
+   - `TemplateEvolver(db_path: Path)`
+   - `record_run(run_id, query, query_type, metrics: dict)` — log decomposition run
+   - `record_template_usage(dimension, template, facts_produced, avg_conf, parse_success)`
+   - `evolve_weights()` — adjust dimension weights: `new = old × (1 + (yield - avg_yield) × 0.1)`, capped at ±10%
+   - `get_evolved_weights() → dict[str, float]` — current weights for dimension registry
+   - `flag_poor_templates() → list[str]` — templates with parse_success < 0.7 or yield < 0.2
+   - Ensure tables via `_ensure_tables()`
+
+2. Create `compound_cache.py`:
+   - `CompoundCache(db_path: Path)`
+   - `lookup(dimension: str, context: dict) → list[ParsedClaim]` — find existing facts
+   - `cache_hit_rate(domain: str) → float` — % of queries skippable due to cached facts
+   - Queries decision_vectors.db for matching dimension + domain
+   - Returns facts sorted by confidence DESC, freshness
+
+3. Modify `decomposer.py`:
+   - Before generating micro-queries, check CompoundCache for existing facts
+   - Mark pre-resolved queries as `status=CACHED` in DecompositionTree
+   - Track: queries_total, queries_cached, queries_to_fire
+
+4. Modify `dimension_registry.py`:
+   - `load_evolved_weights(db_path: Path)` — override default weights with evolved values
+   - Call on init if evolution DB exists
+
+5. Create `tests/test_template_evolver.py`:
+   - Test weight evolution with high/low yield scenarios
+   - Test 10% cap on weight changes
+   - Test poor template flagging
+   - Test compound cache hit/miss
+   - Test decomposer with cached facts (fewer queries fired)
+   - Target: 15+ tests
+
+## Success Criteria
+
+- [ ] Every decomposition run logged in decomposition_runs table
+- [ ] Per-template metrics tracked (times_used, facts_produced, parse_success)
+- [ ] Weights evolve ≤10% per cycle based on yield
+- [ ] Compound cache reduces queries by 30%+ after 5 similar runs
+- [ ] Poor templates flagged when parse_success < 0.7
+- [ ] All tests pass (15+)
+
+## Risk Assessment
+
+- Weight evolution oscillation → mitigation: 10% cap + exponential moving average
+- Cache returning stale facts → mitigation: freshness check (180-day max)

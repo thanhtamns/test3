@@ -1,0 +1,33 @@
+package api
+
+import (
+	"encoding/json"
+	"net/http"
+	"strconv"
+
+	"github.com/codeflow-dev/codeflow/cloud/internal/clickhouse"
+)
+
+func (h *handler) handleSecurityAlerts(w http.ResponseWriter, r *http.Request) {
+	tenantID := tenantFromCtx(r)
+
+	days := 30
+	if d := r.URL.Query().Get("days"); d != "" {
+		if parsed, err := strconv.Atoi(d); err == nil && parsed > 0 && parsed <= 365 {
+			days = parsed
+		}
+	}
+
+	alerts, err := h.store.GetSecurityAlerts(r.Context(), tenantID, days)
+	if err != nil {
+		h.logger.Error("security alerts query failed", "error", err)
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	if alerts == nil {
+		alerts = []clickhouse.SecurityAlert{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(alerts)
+}

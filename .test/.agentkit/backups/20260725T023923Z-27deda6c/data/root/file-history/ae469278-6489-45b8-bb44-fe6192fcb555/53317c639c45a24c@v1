@@ -1,0 +1,288 @@
+#!/usr/bin/env python3
+"""
+Constraint-inversion debate template generator (Phase 3 bias-fix Fix #3).
+
+Generates 3 persona prompts for /stage0 Step 6 when a rejection reason falls in
+the trigger list. Stage0.md spawns the 3 personas in parallel via Task tool,
+collects feasibility scores, and applies aggregation rules to decide whether
+to downgrade REJECTED → CONDITIONAL.
+
+Root cause from 2026-04-13 bullshit-detector audit: rejections were terminal —
+no "how do experts bypass this constraint?" step. This violates CLAUDE.md
+Execution Mindset Rule ("NEVER conclude not feasible, ALWAYS find a way").
+
+This script is a PROMPT GENERATOR, not a dispatcher. It returns the prompts
+that stage0.md uses when spawning Task agents. Separation of concerns: prompts
+are data (testable, versionable), dispatch is stage0.md imperative.
+
+Plan ref: plans/260413-1002-stage0-bias-fix/phase-03-reasoning-constraint-inversion-p90-stair-step.md
+"""
+
+import argparse
+import io
+import json
+import sys
+
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8")
+
+# Trigger reasons — rejection grounds that should fire the debate. Other grounds
+# (e.g., pure math infeasibility) bypass the debate and remain REJECTED.
+TRIGGER_REASONS = {
+    "capital_cage",
+    "entrepreneur_not_freelancer",
+    "jurisdiction_block",
+    "median_income_too_low",
+    "failure_rate_too_high",
+    "platform_dependency_too_high",
+    "market_too_saturated",
+    "time_horizon_too_long",
+    "tax_or_regulatory_friction",
+    # Early constraint triggers (Fix #5 2026-04-19)
+    "early_constraint_no_product_dev",
+    "early_constraint_no_paid_ads",
+    "early_constraint_cash_first",
+    "early_constraint_bridge_needed",
+    "early_constraint_no_hiring",
+}
+
+# 3 debate personas with distinct lenses. Each must cite ≥1 concrete precedent
+# or score feasibility ≤3 (punishes fabrication).
+PERSONAS = [
+    {
+        "name": "stair-step-advocate",
+        "target_agent": "asset-velocity-planner",
+        "lens": "Rob Walling stair-step / Pieter Levels services-first / Hormozi Gym Launch",
+        "question": (
+            "Can this labor/constraint phase compound into a revenue-generating "
+            "asset by Month 6? Cite 1+ precedent where similar transition worked."
+        ),
+    },
+    {
+        "name": "jurisdiction-arbitrageur",
+        "target_agent": "marc-rich",
+        "lens": "Marc Rich commodity arbitrage / Kuok multi-entity / Rockefeller vertical integration",
+        "question": (
+            "Can this constraint be restructured via jurisdiction arbitrage, "
+            "multi-entity structure, or offshore pathways? Cite 1+ precedent "
+            "where structural change removed an analogous constraint."
+        ),
+    },
+    {
+        "name": "power-law-hunter",
+        "target_agent": "nassim-taleb",
+        "lens": "Taleb antifragility / Munger inversion / P99 case studies",
+        "question": (
+            "What does the top 1% operator do differently that the median does not? "
+            "Is the kill criterion (median-based) irrelevant at P99 where this "
+            "founder wants to operate? Cite 1+ top-decile case with evidence URL."
+        ),
+    },
+]
+
+
+def generate_debate_prompts(
+    rejection_reason: str,
+    topic: str,
+    claim: str,
+    founder_profile: dict,
+) -> dict:
+    """Generate 3 persona prompts + aggregation rules for Step 6 debate.
+
+    Returns dict with `fires=True` and `personas=[...]` if rejection is in
+    trigger list, else `fires=False` with preservation reason.
+    """
+    rejection_reason_normalized = rejection_reason.lower().replace("-", "_").replace(" ", "_")
+
+    if rejection_reason_normalized not in TRIGGER_REASONS:
+        return {
+            "fires": False,
+            "reason": (
+                f"Rejection reason '{rejection_reason}' not in debate trigger list. "
+                f"Keep REJECTED without debate."
+            ),
+            "trigger_list": sorted(TRIGGER_REASONS),
+        }
+
+    prompts = []
+    for p in PERSONAS:
+        prompt_body = (
+            f"You are the {p['name']} in a 3-persona constraint-inversion debate "
+            f"for /stage0 Step 6.\n\n"
+            f"REJECTION BEING DEBATED:\n"
+            f"- Topic: {topic}\n"
+            f"- Specific claim: {claim}\n"
+            f"- Rejection reason: {rejection_reason}\n"
+            f"- Founder profile: {json.dumps(founder_profile, ensure_ascii=False)}\n\n"
+            f"YOUR LENS: {p['lens']}\n\n"
+            f"YOUR QUESTION: {p['question']}\n\n"
+            f"REQUIREMENTS:\n"
+            f"1. Answer in ≤600 tokens — be terse\n"
+            f"2. Cite ≥1 concrete precedent (name + URL + date + revenue/outcome)\n"
+            f"3. Score bypass feasibility 0-10 (10 = definitely viable, 0 = impossible)\n"
+            f"4. State the specific bypass path (step 1, step 2, step 3)\n"
+            f"5. Check founder-fit: does THIS founder have skills/capital/audience/language "
+            f"to execute the bypass?\n\n"
+            f"BOUNDARY RULES (HARD):\n"
+            f"- NEVER recommend fraud paths (identity fraud, tax evasion, coordinated "
+            f"inauthentic behavior at scale, KYC bypass at scale)\n"
+            f"- NEVER fabricate precedents — if you cannot find 1 real verifiable case, "
+            f"score feasibility ≤ 3 and state 'INSUFFICIENT_PRECEDENT'\n"
+            f"- Stair-step paths with labor phase REQUIRE compound asset by M6 with "
+            f"evidence URL (per stair-step-detector.py schema)\n\n"
+            f"OUTPUT FORMAT (strict JSON, no prose wrapper):\n"
+            f"{{\n"
+            f'  "persona": "{p["name"]}",\n'
+            f'  "feasibility_score": <int 0-10>,\n'
+            f'  "bypass_path": "<specific 3-step path>",\n'
+            f'  "precedent": {{"name": "...", "url": "...", "date": "...", "outcome": "..."}},\n'
+            f'  "founder_fit": {{"skills": <bool>, "capital": <bool>, '
+            f'"audience": <bool>, "language": <bool>}},\n'
+            f'  "fraud_path_detected": <bool>,\n'
+            f'  "downgrade_recommendation": "<CONDITIONAL|HARD_KILL|PRESERVE_REJECTED>"\n'
+            f"}}"
+        )
+        prompts.append({
+            "persona_name": p["name"],
+            "target_agent": p["target_agent"],
+            "lens": p["lens"],
+            "prompt": prompt_body,
+        })
+
+    return {
+        "fires": True,
+        "rejection_reason": rejection_reason,
+        "topic": topic,
+        "claim": claim,
+        "personas_count": len(prompts),
+        "personas": prompts,
+        "aggregation_rules": {
+            "downgrade_threshold_any": 7,
+            "hard_kill_threshold_all": 4,
+            "downgrade_logic": (
+                "If ANY persona feasibility_score >= 7 AND fraud_path_detected == false "
+                "AND >= 1 founder_fit dimension is true → downgrade REJECTED → CONDITIONAL"
+            ),
+            "hard_kill_logic": (
+                "If ALL personas feasibility_score < 4 → upgrade to HARD_KILL with "
+                "verified multi-persona agreement trail"
+            ),
+            "preserve_logic": (
+                "If scores in 4-6 range → keep REJECTED + attach debate trail as evidence. "
+                "Midrange scores are 'uncertain' — don't downgrade on doubt, don't hard-kill "
+                "on possibility"
+            ),
+            "fraud_override": (
+                "If ANY persona returns fraud_path_detected == true → that path is excluded "
+                "from downgrade consideration, but other persona paths still count"
+            ),
+        },
+        "dispatch_instructions_for_stage0": (
+            "Spawn 3 Task agents in parallel (single message) using personas[].target_agent "
+            "as subagent_type and personas[].prompt as the prompt body. Collect all 3 outputs, "
+            "parse each as JSON, apply aggregation_rules. Attach the debate trail to the "
+            "Step 6 verdict JSON under `constraint_inversion_debate` key."
+        ),
+    }
+
+
+def generate_early_mode_output(
+    rejection_reason: str,
+    topic: str,
+    claim: str,
+    founder_profile: dict,
+) -> dict:
+    """Generate early mode output for Step 3.4c (Fix #5 2026-04-19).
+
+    In early mode, we don't spawn agents yet. We generate pre-computed
+    alternative paths based on the constraint type that can inform Wave 1.
+    """
+    constraint_type = rejection_reason.replace("early_constraint_", "")
+
+    # Pre-computed alternative paths by constraint type
+    ALTERNATIVE_PATHS = {
+        "no_product_dev": [
+            {"path": "SERVICE_RENTAL → build audience → product later", "feasibility_score": 7},
+            {"path": "INFORMATION_ARBITRAGE → newsletter/guide → SaaS later", "feasibility_score": 6},
+            {"path": "BROKERAGE → referral network → platform later", "feasibility_score": 5},
+        ],
+        "no_paid_ads": [
+            {"path": "Content marketing → SEO → organic traffic", "feasibility_score": 7},
+            {"path": "Cold outreach → DM/email → direct sales", "feasibility_score": 6},
+            {"path": "Community building → word-of-mouth → viral", "feasibility_score": 5},
+        ],
+        "cash_first": [
+            {"path": "Micro-project → immediate payment → reinvest", "feasibility_score": 8},
+            {"path": "Consulting → retainer → product fund", "feasibility_score": 7},
+            {"path": "Template/tool sale → Gumroad → bootstrap capital", "feasibility_score": 6},
+        ],
+        "bridge_needed": [
+            {"path": "Part-time service → fund real opportunity", "feasibility_score": 7},
+            {"path": "Skill arbitrage (VN→US) → capital accumulation", "feasibility_score": 6},
+            {"path": "Info product → quick revenue → reinvest", "feasibility_score": 5},
+        ],
+        "no_hiring": [
+            {"path": "Automation-first → AI-assisted operations", "feasibility_score": 7},
+            {"path": "Contractor model → per-project → no payroll", "feasibility_score": 6},
+            {"path": "White-label reselling → no operations", "feasibility_score": 5},
+        ],
+    }
+
+    paths = ALTERNATIVE_PATHS.get(constraint_type, [])
+
+    return {
+        "mode": "early",
+        "fires": len(paths) > 0,
+        "constraint_type": constraint_type,
+        "topic": topic,
+        "claim": claim,
+        "alternative_paths": paths,
+        "injection_for_wave1": (
+            f"## EARLY_CONSTRAINT_INVERSIONS (from constraint-inversion-debate --early-mode)\n"
+            f"Detected constraint: {constraint_type}\n"
+            f"Alternative paths to explore:\n" +
+            "\n".join([f"- {p['path']} (feasibility: {p['feasibility_score']}/10)" for p in paths])
+        ) if paths else None,
+        "note": "This is pre-computed heuristic output. Full debate runs in Step 6.4 if REJECTED.",
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Constraint-inversion debate template generator (Phase 3 Fix #3)"
+    )
+    parser.add_argument("--rejection-reason", required=True,
+                        help="Rejection reason slug (e.g. 'median_income_too_low')")
+    parser.add_argument("--topic", required=True, help="Research topic verbatim")
+    parser.add_argument("--claim", required=True, help="Specific claim being rejected")
+    parser.add_argument("--founder-profile", default="{}",
+                        help="Founder profile JSON string")
+    parser.add_argument("--early-mode", action="store_true",
+                        help="Early mode: return pre-computed paths for Step 3.4c, not full debate prompts")
+    args = parser.parse_args()
+
+    try:
+        founder_profile = json.loads(args.founder_profile)
+    except json.JSONDecodeError as e:
+        print(json.dumps({"error": f"Invalid founder-profile JSON: {e}"}, indent=2))
+        sys.exit(1)
+
+    if args.early_mode:
+        result = generate_early_mode_output(
+            args.rejection_reason,
+            args.topic,
+            args.claim,
+            founder_profile,
+        )
+    else:
+        result = generate_debate_prompts(
+            args.rejection_reason,
+            args.topic,
+            args.claim,
+            founder_profile,
+        )
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,78 @@
+---
+name: coffee-meeting
+description: Log a coffee meeting with intel capture (Phase 2 Information Asymmetry). Usage: /coffee-meeting
+---
+
+# /coffee-meeting - Coffee Meeting Intel Logger
+
+Capture intel from meetings with people IN the cashflow stream. Every meeting = intel asset.
+
+## Usage
+
+```
+/coffee-meeting                    # Log a new meeting
+/coffee-meeting list               # Show all meetings
+/coffee-meeting names              # Show all names mentioned across meetings
+```
+
+## Process
+
+### Step 1: Interview (AskUserQuestion)
+
+1. **Who did you meet?** — Name, role, company
+2. **How did you connect?** — Mutual intro / cold reach / event / online
+3. **Key intel** — What did you learn? (list 3+ specific facts)
+4. **Golden Question 1** — "Ai là người quan trọng nhất trong ngành mà ít người ngoài biết?" What did they say?
+5. **Golden Question 2** — "Deal gần đây nào anh/chị thấy thú vị nhất?" What did they say?
+6. **Golden Question 3** — "Nếu mới vào ngành, bắt đầu từ đâu?" What did they say?
+7. **Names mentioned** — Who else did they mention? In what context? Potential target?
+8. **Follow-up action** — What should you do next based on this meeting?
+9. **Intel value score** — 1-10, how valuable was this meeting?
+10. **Cost** — How much did you spend? (VND)
+
+### Step 2: Save
+
+```bash
+cd "D:\code\invesments\master_investments" && python execution/scripts/positioning-crud.py add-coffee '{JSON}'
+```
+
+### Step 3: Cross-Reference
+
+Check if any names mentioned match Dream 5 targets or deal journal parties.
+Flag connections.
+
+### Step 4: Sync + Output
+
+```bash
+cd "D:\code\invesments\master_investments" && python execution/scripts/positioning-crud.py sync-gates
+```
+
+```markdown
+## ✅ Coffee Meeting Logged
+
+**ID:** {id}
+**Person:** {name} — {role} @ {company}
+**Intel Value:** {score}/10
+**Key Intel:** {top 3 facts}
+**Names Mentioned:** {names with context}
+**Follow-up:** {action}
+
+### 📊 Meeting Stats
+- Total meetings: {total}
+- Phase 2 target: 5 meetings
+- Progress: {total}/5 ({pct}%)
+- Average intel value: {avg_score}/10
+
+### 🔗 Cross-References
+{any matches with Dream 5 or Deal Journal}
+
+---
+*More meetings with `/coffee-meeting` | Check progress with `/phase-check`*
+```
+
+## Validation
+
+- MUST have person name + role
+- MUST have 3+ key intel points (vague = doesn't count)
+- Golden questions: at least 1 must be answered (if all blank → meeting was too surface-level)
+- Follow-up action is REQUIRED (no meeting without next step)

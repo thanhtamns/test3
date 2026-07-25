@@ -1,0 +1,22 @@
+package api
+
+import (
+	"encoding/json"
+	"net/http"
+)
+
+func (h *handler) handleQualitySummary(w http.ResponseWriter, r *http.Request) {
+	tenantID := tenantFromCtx(r)
+	project := r.URL.Query().Get("project")
+	days := parseDays(r.URL.Query().Get("days"), 90)
+
+	summary, err := h.store.QueryQualitySummary(r.Context(), tenantID, project, days)
+	if err != nil {
+		h.logger.Error("quality summary query failed", "error", err)
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(summary)
+}

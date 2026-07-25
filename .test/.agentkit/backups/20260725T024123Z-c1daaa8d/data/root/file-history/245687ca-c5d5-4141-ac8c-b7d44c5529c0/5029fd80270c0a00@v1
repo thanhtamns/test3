@@ -1,0 +1,79 @@
+---
+phase: 4
+title: "Integration and Recalculation"
+status: pending
+priority: P1
+effort: "1h"
+dependencies: [1, 2]
+---
+
+# Phase 4: Integration and Recalculation
+
+## Overview
+Recalculate all historical Brier scores with the corrected formula, verify brain-refresh reports show true system state, and run a smoke test proving the full loop works end-to-end.
+
+## Requirements
+- Functional: All 35 brier-scores.jsonl entries recalculated with inverted p_mountain for KILL verdicts
+- Functional: Brain-refresh dry-run produces correct bias report (no false "OVER_PREDICTING")
+- Functional: outcomes.db predictions table updated with corrected Brier values
+- Non-functional: Script idempotent — safe to run multiple times
+
+## Related Code Files
+- Create: `D:\code\invesments\master_investments\.claude\scripts\recalculate-brier-scores.py` — one-shot migration
+- Modify: `D:\code\invesments\master_investments\data\calibration\brier-scores.jsonl` — recalculated values
+- Modify: `D:\code\invesments\master_investments\data\intelligence\outcomes.db` — recalculated predictions
+
+## Implementation Steps
+
+1. Create `recalculate-brier-scores.py`:
+   ```python
+   # Read brier-scores.jsonl
+   # For each entry:
+   #   if verdict contains KILL/negative keywords:
+   #     p_mountain_corrected = 1 - p_mountain
+   #     brier_corrected = (p_mountain_corrected - observed)²
+   #     add field: _original_p_mountain = old value
+   #     update p_mountain and brier
+   #   if _synthetic: skip (already tagged in Phase 2)
+   # Rewrite file
+   ```
+
+2. Run recalculation and verify:
+   ```
+   Expected results:
+   - KILL entries: p_mountain drops from 0.85-0.96 → 0.04-0.15
+   - KILL Brier: drops from 0.72-0.92 → 0.002-0.022
+   - MOUNTAIN entries: unchanged (already correct)
+   ```
+
+3. Update `outcomes.db` predictions table:
+   - Recalculate `outcome` JSON field's `brier` value for all KILL entries
+   - Keep `_original_brier` for audit trail
+
+4. Run brain-refresh in dry-run mode:
+   ```bash
+   python .claude/skills/business/feedback_loop/auto-outcome-detector.py --dry-run
+   ```
+   - Verify: no "OVER_PREDICTING" for KILL class
+   - Verify: all classes show "insufficient_data" (due to Phase 2 synthetic purge)
+
+5. End-to-end smoke test:
+   - Manually create a test ACTION file in data/actions/
+   - Run `/stage0` → verify gate blocks
+   - Run `/action resolve` → verify outcome written to outcomes.jsonl with `source: "real_action"`
+   - Run brain-refresh → verify real outcome counted (1 real, rest synthetic excluded)
+   - Clean up test file
+
+## Success Criteria
+- [ ] All KILL entries in brier-scores.jsonl have corrected p_mountain < 0.2
+- [ ] All KILL Brier scores < 0.05 (previously 0.7-0.9)
+- [ ] Brain-refresh dry-run shows no false bias flags
+- [ ] outcomes.db shows corrected Brier in predictions table
+- [ ] Smoke test: action gate blocks → resolve → outcome recorded → calibration sees it
+- [ ] Script is idempotent (safe to rerun)
+
+## Risk Assessment
+- Risk: Recalculation script corrupts brier-scores.jsonl
+  - Mitigation: Backup file before modification, preserve `_original_p_mountain` field
+- Risk: Some downstream consumer expects high Brier for KILLs
+  - Mitigation: Grep all files for `brier` references, verify none assume KILL=high Brier

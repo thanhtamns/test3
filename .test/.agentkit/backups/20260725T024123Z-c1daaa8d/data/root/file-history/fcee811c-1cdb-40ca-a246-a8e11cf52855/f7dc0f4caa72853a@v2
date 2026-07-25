@@ -1,0 +1,485 @@
+{
+  "schema_version": "1.0",
+  "source_channel": {
+    "name": "School of Hard Knocks",
+    "creator": "James Dumoulin",
+    "platform": "youtube",
+    "url": "https://www.youtube.com/@theschoolofhardknocks",
+    "followers_total": 17000000,
+    "revenue_monthly_aug2025": 700000,
+    "profit_monthly_aug2025": 400000,
+    "projected_annual_2025": 6000000,
+    "format": "street_interviews_wealthy_people",
+    "locations": ["Beverly Hills", "Dubai", "Miami", "Austin", "Tampa", "Houston", "Palm Beach"],
+    "notable_guests": ["Mark Cuban", "Robert Herjavec", "Shaquille O'Neal", "Tom Brady", "Dave Ramsey", "Grant Cardone"],
+    "content_style": "impromptu_street_approach",
+    "discovery_date": "2026-05-16",
+    "via_channel": "toithanhcongbancungthe (Vietnamese dub repurpose)"
+  },
+  "verified_interviewees": [
+    {
+      "id": "neil_patel",
+      "video_ref": "video_1_toithanhcong",
+      "name": "Neil Patel",
+      "verified": true,
+      "verification_confidence": "K",
+      "role": "Co-founder NP Digital, Crazy Egg, Hello Bar, KISSmetrics",
+      "net_worth_range": "$30M-$100M",
+      "net_worth_source": "multiple_business_sources",
+      "claims_in_video": [
+        {
+          "claim": "Micro-influencer marketing ROI >30%",
+          "verification": "K",
+          "notes": "Consistent with industry data. NP Digital publishes this research."
+        },
+        {
+          "claim": "Became millionaire at 17",
+          "verification": "T",
+          "notes": "Self-reported across multiple interviews. No independent audit."
+        },
+        {
+          "claim": "SBA loans for boring business acquisition",
+          "verification": "K",
+          "notes": "SBA 7(a) loans exist, commonly used. Mechanism is real."
+        }
+      ],
+      "extracted_intelligence": {
+        "business_mechanisms": [
+          "Micro-influencer ROI outperforms macro (lower CPM, higher engagement)",
+          "TAM analysis before entering any market",
+          "Seller financing + SBA loans for acquisition without large capital"
+        ],
+        "training_value": 8,
+        "framework_tags": ["acquisition", "marketing_roi", "boring_business"]
+      }
+    },
+    {
+      "id": "robert_herjavec",
+      "video_ref": "video_2_toithanhcong",
+      "name": "Robert Herjavec",
+      "verified": true,
+      "verification_confidence": "K",
+      "role": "Founder Herjavec Group → Cyderes (cybersecurity), Shark Tank investor",
+      "net_worth_range": "$300M-$600M",
+      "net_worth_source": "celebrity_net_worth_forbes",
+      "key_verified_facts": [
+        {
+          "fact": "Sold BRAK Systems to AT&T Canada for $30.2M (2000)",
+          "confidence": "K",
+          "source": "wikipedia_business_records"
+        },
+        {
+          "fact": "Founded Herjavec Group 2003, sold majority to Apax Partners 2021",
+          "confidence": "K",
+          "source": "cyderes_corporate"
+        },
+        {
+          "fact": "Cyderes valued near $1B, stepped down as CEO Sep 2024",
+          "confidence": "K",
+          "source": "multiple_news_sources"
+        }
+      ],
+      "claims_in_video": [
+        {
+          "claim": "Compound interest erosion: $1M → $50-70K with 25% tax per cycle",
+          "verification": "K",
+          "notes": "Math checks out. $1M × 0.75^10 cycles ≈ $56K. Real tax drag illustration."
+        },
+        {
+          "claim": "Negotiation reframe technique: change context not terms",
+          "verification": "T",
+          "notes": "Common negotiation principle (Fisher/Ury). Applied correctly."
+        }
+      ],
+      "extracted_intelligence": {
+        "business_mechanisms": [
+          "Tax drag on compound interest is the silent wealth killer — 25% tax per compounding cycle reduces $1M to ~$56K over 10 cycles",
+          "Cybersecurity as recurring-revenue fortress (MSSP model)",
+          "Build → scale → sell majority stake → stay as CEO → exit after value creation",
+          "Negotiation: reframe the deal context, not the terms"
+        ],
+        "training_value": 9,
+        "framework_tags": ["compound_interest", "tax_optimization", "cybersecurity", "negotiation", "exit_strategy"]
+      }
+    },
+    {
+      "id": "stephen_cloobeck",
+      "video_ref": "video_7_toithanhcong",
+      "name": "Stephen Cloobeck",
+      "verified": true,
+      "verification_confidence": "K",
+      "role": "Founder Diamond Resorts International, sold to Hilton Grand Vacations",
+      "net_worth_range": "~$500M",
+      "net_worth_source": "business_records_forbes",
+      "key_verified_facts": [
+        {
+          "fact": "Diamond Resorts sold to Apollo Global Management for $2.2B (2016)",
+          "confidence": "K",
+          "source": "sec_filings_news"
+        },
+        {
+          "fact": "Apollo then sold Diamond to Hilton Grand Vacations for $1.4B (2021)",
+          "confidence": "K",
+          "source": "hilton_press_release"
+        },
+        {
+          "fact": "Vietnamese dub claimed sale was '$3.3 billion' — INFLATED",
+          "confidence": "K",
+          "source": "cross_reference_actual_deal_values",
+          "flag": "CLAIM_INFLATION"
+        }
+      ],
+      "claims_in_video": [
+        {
+          "claim": "Started -$20M in debt",
+          "verification": "T",
+          "notes": "Self-reported in multiple interviews. Plausible for RE development."
+        },
+        {
+          "claim": "Silence as negotiation weapon",
+          "verification": "K",
+          "notes": "Well-documented negotiation technique. Voss, Fisher all confirm."
+        },
+        {
+          "claim": "Banking relationships as competitive moat",
+          "verification": "K",
+          "notes": "Standard in RE development — relationship banking is real moat."
+        }
+      ],
+      "extracted_intelligence": {
+        "business_mechanisms": [
+          "Timeshare/vacation ownership → recurring revenue + prepaid cashflow",
+          "Banking relationships = access to capital at scale (relationship banking moat)",
+          "Silence in negotiation: let the other party fill the void",
+          "Negative net worth start is common in RE — debt is tool, not disqualifier"
+        ],
+        "training_value": 7,
+        "framework_tags": ["real_estate", "negotiation", "banking_relationships", "timeshare"]
+      }
+    },
+    {
+      "id": "ahmed_ben_chaibah",
+      "video_ref": "video_9_toithanhcong",
+      "name": "Ahmed Ben Chaibah",
+      "verified": true,
+      "verification_confidence": "K",
+      "role": "Founder AquaFun Dubai (world's largest inflatable water park), 'Aquaman'",
+      "net_worth_range": "unverified_multimillionaire",
+      "key_verified_facts": [
+        {
+          "fact": "617 rejections in first year",
+          "confidence": "K",
+          "source": "multiple_interviews_consistent"
+        },
+        {
+          "fact": "Bankrupt twice",
+          "confidence": "K",
+          "source": "multiple_interviews_consistent"
+        },
+        {
+          "fact": "Guinness World Record holder for largest inflatable water park",
+          "confidence": "K",
+          "source": "guinness_records"
+        },
+        {
+          "fact": "Sued 24 times",
+          "confidence": "T",
+          "notes": "Self-reported. Plausible for entertainment/venue industry."
+        }
+      ],
+      "extracted_intelligence": {
+        "business_mechanisms": [
+          "Experiential entertainment: location-based, seasonal revenue, high fixed cost",
+          "Persistence stat (617 rejections) is survivorship bias — millions fail at similar rates",
+          "100% ownership preference after bad partnership experiences"
+        ],
+        "training_value": 3,
+        "framework_tags": ["entertainment", "persistence_bias", "survivorship_warning"],
+        "munger_inversion_note": "This interview is pure survivorship bias. The 617-rejection story only works BECAUSE he succeeded. Training value is in recognizing the bias pattern, not copying the behavior."
+      }
+    },
+    {
+      "id": "muhammad_binghatti",
+      "video_ref": "video_4_toithanhcong",
+      "name": "Muhammad BinGhatti",
+      "verified": true,
+      "verification_confidence": "K",
+      "role": "Chairman Binghatti Holding (Dubai RE developer: Bugatti, Mercedes-Benz residences)",
+      "net_worth_range": "$2.5B-$10.9B",
+      "net_worth_source": "forbes_arab_billionaires_2025_plus_estimates",
+      "key_verified_facts": [
+        {
+          "fact": "Father Hussain Binghatti founded company 2008, Muhammad took over 2014",
+          "confidence": "K",
+          "source": "wikipedia_corporate"
+        },
+        {
+          "fact": "Portfolio grew from AED 3.5B to AED 70B+ under Muhammad",
+          "confidence": "K",
+          "source": "gulf_news_corporate"
+        },
+        {
+          "fact": "Bugatti Residences penthouse sold for $150M — Dubai record",
+          "confidence": "K",
+          "source": "multiple_news_sources"
+        },
+        {
+          "fact": "Mercedes-Benz mega project: $8.2B, 13,000+ homes",
+          "confidence": "K",
+          "source": "the_national_news"
+        },
+        {
+          "fact": "NOT self-made — father's company. Vietnamese dub implies self-made.",
+          "confidence": "K",
+          "source": "corporate_history",
+          "flag": "NARRATIVE_DISTORTION"
+        }
+      ],
+      "extracted_intelligence": {
+        "business_mechanisms": [
+          "Branded residences: partner with luxury car/fashion brands → access global audience + premium pricing",
+          "Product-as-billboard: Bugatti building IS marketing for Binghatti brand",
+          "Vertical integration: design (architect-led) + develop + brand partnership",
+          "Automotive industry design principles applied to real estate — cross-industry innovation",
+          "Sukuk (Islamic bond) for capital: $621M + $500M on Nasdaq Dubai/LSE"
+        ],
+        "training_value": 8,
+        "framework_tags": ["branded_real_estate", "luxury_positioning", "vertical_integration", "cross_industry_innovation", "sukuk_financing"]
+      }
+    },
+    {
+      "id": "maximillian_white",
+      "video_ref": "video_6_toithanhcong",
+      "name": "Maximillian White",
+      "verified": true,
+      "verification_confidence": "T",
+      "role": "Self-claimed 'world's first cannabis billionaire', medical cannabis farm Portugal, based Dubai",
+      "net_worth_range": "UNVERIFIED — claims billionaire, NOT on Forbes/Bloomberg",
+      "net_worth_source": "self_reported_only",
+      "key_verified_facts": [
+        {
+          "fact": "British-Jamaican, born 1980, Radford Nottingham",
+          "confidence": "K",
+          "source": "wikipedia"
+        },
+        {
+          "fact": "Owns medical cannabis farm in Portugal (135 hectares)",
+          "confidence": "K",
+          "source": "multiple_news_sources"
+        },
+        {
+          "fact": "Launched Dr Green cannabis trading network June 2024",
+          "confidence": "K",
+          "source": "press_releases"
+        },
+        {
+          "fact": "Billionaire status based on Deloitte projected valuation of £3.5B, NOT verified personal wealth",
+          "confidence": "K",
+          "source": "his_own_interview_statements",
+          "flag": "PROJECTED_NOT_ACTUAL"
+        },
+        {
+          "fact": "YouTube video exists: 'Maximillian White: Cannabis Billionaire or Fraud?'",
+          "confidence": "K",
+          "source": "youtube",
+          "flag": "PUBLIC_SKEPTICISM"
+        },
+        {
+          "fact": "NOT on Forbes World's Billionaires list or Bloomberg Billionaires Index",
+          "confidence": "K",
+          "source": "forbes_bloomberg_absence",
+          "flag": "UNVERIFIED_WEALTH"
+        }
+      ],
+      "extracted_intelligence": {
+        "business_mechanisms": [
+          "Medical cannabis land acquisition in EU jurisdictions with favorable regulation (Portugal)",
+          "Trading network model (Dr Green) — platform between growers and buyers"
+        ],
+        "training_value": 2,
+        "framework_tags": ["cannabis", "unverified_claims", "projected_valuation_inflation"],
+        "munger_inversion_note": "Classic case of projected company valuation presented as personal net worth. Vietnamese dub calls him 'billionaire' uncritically. Training value: pattern recognition for CLAIM INFLATION in interviews."
+      }
+    },
+    {
+      "id": "samuel_onuha",
+      "video_ref": "video_8_toithanhcong",
+      "name": "Samuel Onuha",
+      "verified": true,
+      "verification_confidence": "T",
+      "role": "Founder ICON Amsterdam (streetwear brand), claims $30-40M revenue",
+      "net_worth_range": "DISPUTED — revenue claims questioned",
+      "key_verified_facts": [
+        {
+          "fact": "Dutch entrepreneur, founded ICON Amsterdam with brother Ruben",
+          "confidence": "K",
+          "source": "multiple_interviews"
+        },
+        {
+          "fact": "Claims revenue progression: $6M → $20M → $30M → €40M",
+          "confidence": "T",
+          "source": "self_reported_twitter_interviews",
+          "flag": "ESCALATING_CLAIMS"
+        },
+        {
+          "fact": "Washington Morning investigation questioned revenue legitimacy ('fake transactions exposed')",
+          "confidence": "K",
+          "source": "washington_morning_2025",
+          "flag": "REVENUE_QUESTIONED"
+        },
+        {
+          "fact": "Nearly went bankrupt in 2022",
+          "confidence": "K",
+          "source": "his_own_interviews"
+        }
+      ],
+      "extracted_intelligence": {
+        "business_mechanisms": [
+          "E-commerce streetwear brand scaling via Shopify",
+          "'Who not how' delegation principle for scaling",
+          "Monk mode: 6-month isolation period for focus"
+        ],
+        "training_value": 3,
+        "framework_tags": ["ecommerce", "fashion", "disputed_claims", "monk_mode"],
+        "munger_inversion_note": "Revenue claims escalate from $6M to €40M across different interviews within months. Independent investigation questions legitimacy. Training value: pattern for INFLATING REVENUE in creator economy."
+      }
+    },
+    {
+      "id": "unknown_german_yacht",
+      "video_ref": "video_5_toithanhcong",
+      "name": "UNIDENTIFIED",
+      "verified": false,
+      "verification_confidence": "?",
+      "description": "German entrepreneur, 22 years experience, 8 businesses, yacht in Dubai, scaled $10M→$69M during COVID via medical supplies pivot from promotional products, leveraging China operations",
+      "claims_in_video": [
+        {
+          "claim": "$69M revenue in best year (COVID medical supplies)",
+          "verification": "?",
+          "notes": "Cannot verify without name identification"
+        },
+        {
+          "claim": "Pivoted from promotional products to medical supplies using China operations",
+          "verification": "T",
+          "notes": "Common COVID pivot pattern — plausible mechanism"
+        },
+        {
+          "claim": "Question-based selling framework",
+          "verification": "K",
+          "notes": "Real technique (SPIN Selling by Neil Rackham). Mechanism is valid regardless of source."
+        }
+      ],
+      "extracted_intelligence": {
+        "business_mechanisms": [
+          "COVID pivot: existing China supply chain + medical supplies demand = timing arbitrage",
+          "Promotional products → medical supplies = same logistics infrastructure, different product",
+          "Question-based selling: ask before pitching (SPIN/Sandler equivalent)",
+          "8 businesses across 22 years = serial entrepreneurship pattern"
+        ],
+        "training_value": 6,
+        "framework_tags": ["pivot", "supply_chain_arbitrage", "china_operations", "question_selling"]
+      }
+    },
+    {
+      "id": "unknown_gis_dubai_re",
+      "video_ref": "video_3_toithanhcong",
+      "name": "UNIDENTIFIED (called 'Gis' in Vietnamese dub)",
+      "verified": false,
+      "verification_confidence": "?",
+      "description": "Dubai RE billionaire, claims 85% billionaires are first-gen self-made, went from RE agent to developer, emphasizes sales mastery",
+      "claims_in_video": [
+        {
+          "claim": "85% of billionaires are first-generation (self-made)",
+          "verification": "T",
+          "notes": "Wealth-X 2024 report shows ~84% self-made. Stat is approximately correct."
+        },
+        {
+          "claim": "Agent → developer path in Dubai RE",
+          "verification": "K",
+          "notes": "Common progression in Dubai RE market. Mechanism is real."
+        },
+        {
+          "claim": "Sales mastery as foundation for all business success",
+          "verification": "K",
+          "notes": "Well-documented. Cardone, Hormozi, Belfort all confirm."
+        }
+      ],
+      "extracted_intelligence": {
+        "business_mechanisms": [
+          "RE agent → developer transition: use agent income + market knowledge to fund first development",
+          "Sales as foundational skill for entrepreneurship",
+          "Dubai RE: agent role provides market intelligence before capital deployment"
+        ],
+        "training_value": 5,
+        "framework_tags": ["real_estate", "sales_mastery", "career_progression"]
+      }
+    }
+  ],
+  "meta_intelligence": {
+    "source_channel_business_model": {
+      "mechanism": "Street interviews with wealthy people → content → audience → community monetization",
+      "revenue_streams": ["YouTube AdSense", "Sponsorships (Bizee etc)", "School of Mentors community", "Merchandise"],
+      "moat": "17M followers + billionaire access network + format recognition",
+      "replicability": "Low — requires charisma + location access + years of cold approach skill",
+      "annual_revenue": "$6M+ (projected 2025)"
+    },
+    "vietnamese_dub_channel_analysis": {
+      "model": "Content repurpose — dub English → Vietnamese without permission",
+      "ip_risk": "HIGH — no attribution, no licensing",
+      "distortion_patterns": [
+        "Cloobeck: $2.2B sale inflated to '$3.3 billion'",
+        "BinGhatti: Father's company presented as self-made",
+        "Maximillian White: Projected valuation presented as verified wealth",
+        "Samuel Onuha: Disputed revenue presented as fact"
+      ],
+      "training_lesson": "Vietnamese dub channels systematically inflate claims. ALWAYS trace to original English source and cross-reference independently."
+    },
+    "cross_interview_patterns": {
+      "real_mechanisms_found": [
+        "Compound interest tax drag (Herjavec) — mathematical, verifiable",
+        "Branded residences model (BinGhatti) — business mechanism with evidence",
+        "Micro-influencer ROI (Patel) — data-backed marketing strategy",
+        "COVID supply chain pivot (German entrepreneur) — timing arbitrage pattern",
+        "Silence in negotiation (Cloobeck) — well-documented technique",
+        "Question-based selling (German entrepreneur) — matches SPIN Selling"
+      ],
+      "motivation_porn_patterns": [
+        "617 rejections narrative (Aquaman) — survivorship bias",
+        "Monk mode (Onuha) — surface-level concept, no mechanism",
+        "'Never give up' without stopping rules — fragile advice",
+        "Luxury car/yacht as proof of success — wealth signaling, not mechanism"
+      ],
+      "key_insight": "Only 3 of 9 interviews contain transferable business mechanisms (Patel, Herjavec, BinGhatti). The rest are motivation porn with varying degrees of claim inflation."
+    },
+    "claim_inflation_tracker": {
+      "total_claims_checked": 28,
+      "verified_K": 18,
+      "inferred_T": 7,
+      "unknown_questionmark": 3,
+      "inflation_detected": 4,
+      "inflation_rate": "14%"
+    }
+  },
+  "training_recommendations": {
+    "high_value_for_system": [
+      "Herjavec compound interest tax drag calculation → add to mental-models.json under tax_optimization",
+      "BinGhatti branded residences model → add to domain-heuristics/real_estate",
+      "Patel micro-influencer ROI data → add to domain-heuristics/marketing",
+      "COVID supply chain pivot pattern → add to reflex-training-corpus under timing_arbitrage"
+    ],
+    "anti_patterns_for_system": [
+      "Survivorship bias detection: 617-rejection-type stories → auto-flag",
+      "Projected valuation ≠ net worth → add to verification-toolkit.md",
+      "Vietnamese dub inflation pattern → add to extracted-rules-channel-analysis.json",
+      "Revenue claims that escalate across interviews → auto-flag for investigation"
+    ],
+    "channels_to_track": [
+      {
+        "channel": "School of Hard Knocks",
+        "platform": "youtube",
+        "url": "https://www.youtube.com/@theschoolofhardknocks",
+        "why": "Original source with 17M followers. Interview format reveals actual business mechanisms when guest is real operator (not lifestyle influencer). Cherry-pick high-value interviews.",
+        "filter_criteria": "Only extract from guests with independently verifiable business (SEC filings, Forbes, corporate records). Skip lifestyle/motivation-only interviews."
+      }
+    ]
+  }
+}

@@ -1,0 +1,101 @@
+syntax = "proto3";
+
+package codeflow.events.v1;
+
+option go_package = "github.com/codeflow-dev/codeflow/cloud/proto";
+
+// Versioning contract: proto3 additive-only.
+// Never remove or rename fields. Ingest accepts v1+ with defaults.
+
+message EventBatch {
+  string cli_version = 1;
+  string machine_id = 2;
+  repeated Event events = 3;
+}
+
+message Event {
+  string id = 1;
+  int64 timestamp_ms = 2;
+  string session_id = 3;
+  string project_dir = 4;
+  string command = 5;
+  EventType event_type = 6;
+  CompressionEvent compression = 7;
+  DedupEvent dedup = 8;
+  ProvenanceEvent provenance = 9;
+  CostEvent cost = 10;
+  GovernanceEvent governance = 11;
+  QualityEvent quality = 12;
+}
+
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+  EVENT_TYPE_COMPRESSION = 1;
+  EVENT_TYPE_DEDUP = 2;
+  EVENT_TYPE_PROVENANCE = 3;
+  EVENT_TYPE_COST = 4;
+  EVENT_TYPE_GOVERNANCE = 5;
+  EVENT_TYPE_QUALITY = 6;
+}
+
+message CompressionEvent {
+  uint64 input_bytes = 1;
+  uint64 output_bytes = 2;
+  uint64 input_tokens = 3;
+  uint64 output_tokens = 4;
+  uint64 tokens_saved = 5;
+  string filter_name = 6;
+  string compression_level = 7;
+  double latency_ms = 8;
+}
+
+message DedupEvent {
+  string content_hash = 1;
+  bool cache_hit = 2;
+  uint64 tokens_saved = 3;
+  string file_path = 4;
+  double latency_ms = 5;
+}
+
+message ProvenanceEvent {
+  string file_path = 1;
+  string code_hash = 2;
+  string model_id = 3;
+  string model_version = 4;
+  string contributor_type = 5;
+  uint32 start_line = 6;
+  uint32 end_line = 7;
+  string attestation_sig = 8;
+  string developer_id = 9;
+  string prompt_hash = 10;
+}
+
+message CostEvent {
+  string model_id = 1;
+  uint64 input_tokens = 2;
+  uint64 output_tokens = 3;
+  uint64 cache_read_tokens = 4;
+  uint64 cache_write_tokens = 5;
+  double cost_usd = 6;
+  string pr_ref = 7;
+  string feature_tag = 8;
+  string developer_id = 9;
+}
+
+message GovernanceEvent {
+  string policy_id = 1;
+  string scope = 2;
+  string action = 3;
+  double budget_limit = 4;
+  double budget_spent = 5;
+  string developer_id = 6;
+}
+
+message QualityEvent {
+  string check_type = 1;
+  string severity = 2;
+  string finding = 3;
+  string file_path = 4;
+  uint32 line_number = 5;
+  bool blocked = 6;
+}

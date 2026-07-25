@@ -1,0 +1,326 @@
+#!/usr/bin/env python3
+"""Side-Door Scanner Trigger — Step 6.8.5
+
+Checks if KILL verdict has relationship-type barriers that power-network
+agents can bypass via side-door paths. Outputs agent prompts for 8 agents.
+
+Usage:
+  python side-door-trigger.py --verdict-file /tmp/case-xxx.json --profile-file path/to/profile.json
+  python side-door-trigger.py --verdict-file /tmp/case-xxx.json --profile-file path/to/profile.json --dry-run
+  python side-door-trigger.py --verdict-file /tmp/case-xxx.json --wound-map path/to/wound-map.json
+"""
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8")
+
+SIDE_DOOR_TRIGGERS = {
+    "network_barrier",
+    "capital_barrier",
+    "track_record_gap",
+    "entry_window_closed",
+    "no_precedent",
+    "credential_gap",
+    "network_gap",
+}
+
+SKIP_KILL_TYPES = {
+    "median_income_too_low",
+    "market_too_saturated",
+    "jurisdiction_block",
+    "regulatory_block",
+    "math_infeasible",
+    "tam_too_small",
+}
+
+
+def extract_kill_mechanisms(case: dict) -> list[str]:
+    mechs = case.get("kill_mechanisms", [])
+    if not mechs:
+        mt = case.get("mountain_test_v2", {})
+        if mt.get("verdict") in ("KILL", "HARD_KILL"):
+            mechs = case.get("kill_reasons", [])
+    return mechs
+
+
+def should_fire(kill_mechanisms: list[str]) -> tuple[bool, list[str], str]:
+    mech_set = set(kill_mechanisms)
+    matched = mech_set & SIDE_DOOR_TRIGGERS
+    skip_only = mech_set & SKIP_KILL_TYPES
+
+    if not matched:
+        if skip_only:
+            return False, [], "kill_type_not_relationship_barrier"
+        return False, [], "no_matching_kill_mechanisms"
+
+    return True, sorted(matched), "relationship_barriers_detected"
+
+
+def extract_target_context(case: dict, profile: dict) -> dict:
+    topic = case.get("first_query", case.get("topic", case.get("title_en", "")))
+    domain = case.get("domain", "")
+    kill_mechs = extract_kill_mechanisms(case)
+
+    geo = "Vietnam"
+    if profile:
+        locs = profile.get("location", profile.get("geo_advantage", []))
+        if isinstance(locs, list) and locs:
+            geo = locs[0]
+        elif isinstance(locs, str):
+            geo = locs
+
+    founder_skills = []
+    if profile:
+        founder_skills = profile.get("skills", profile.get("skill_required", []))
+        if isinstance(founder_skills, str):
+            founder_skills = [s.strip() for s in founder_skills.split(",")]
+
+    founder_assets = []
+    if profile:
+        founder_assets = profile.get("assets", profile.get("strengths", []))
+        if isinstance(founder_assets, str):
+            founder_assets = [a.strip() for a in founder_assets.split(",")]
+
+    return {
+        "topic": topic,
+        "domain": domain,
+        "kill_mechanisms": kill_mechs,
+        "geography": geo,
+        "founder_skills": founder_skills,
+        "founder_assets": founder_assets,
+        "founder_profile": profile or {},
+    }
+
+
+def generate_agent_prompts(ctx: dict, wound_context: str = "") -> dict:
+    topic = ctx["topic"]
+    domain = ctx["domain"]
+    geo = ctx["geography"]
+    kills = ", ".join(ctx["kill_mechanisms"])
+    skills = ", ".join(ctx["founder_skills"][:5]) if ctx["founder_skills"] else "unspecified"
+    assets = ", ".join(ctx["founder_assets"][:5]) if ctx["founder_assets"] else "unspecified"
+
+    base_context = (
+        f"Topic: {topic}\n"
+        f"Domain: {domain}\n"
+        f"Kill mechanisms (relationship barriers): {kills}\n"
+        f"Geography: {geo}\n"
+        f"Founder skills: {skills}\n"
+        f"Founder assets: {assets}\n"
+    )
+
+    wound_line = f"{wound_context}\n" if wound_context else ""
+
+    prompts = {
+        "power-cartographer": {
+            "agent": "power-cartographer",
+            "prompt": (
+                f"Map the power structure around decision-makers in this domain.\n\n"
+                f"{base_context}\n"
+                f"TASK:\n"
+                f"1. Identify 3-5 specific decision-maker ROLES (not orgs) who control access to this opportunity\n"
+                f"2. For each: map lieutenants, gatekeepers, known associates\n"
+                f"3. Find approach vectors — side doors, not front doors\n"
+                f"4. Identify psychological wounds, ego patterns, what they need\n\n"
+                f"OUTPUT FORMAT (JSON):\n"
+                f'{{"targets": [{{"role": "...", "archetype": "...", "org_type": "...", '
+                f'"lieutenants": ["..."], "approach_vectors": ["..."], "side_doors": ["..."], '
+                f'"wounds_needs": "..."}}]}}\n\n'
+                f"QUALITY: Name specific ROLE TYPES (not 'investors' but 'CTO of portfolio company' "
+                f"or 'Association president'). Generic = REJECTED."
+            ),
+        },
+        "gate-broker": {
+            "agent": "gate-broker",
+            "prompt": (
+                f"Design introduction chains to reach top 2 decision-makers in this domain.\n\n"
+                f"{base_context}\n"
+                f"TASK:\n"
+                f"1. For top 2 targets, design chain: Founder → Introducer A → (optional B) → TARGET\n"
+                f"2. Each link: WHO introduces, WHY they would, WHAT to say, WHEN to ask\n"
+                f"3. Script per encounter — exact words, not categories\n"
+                f"4. Value exchange per link — what founder GIVES before asking\n"
+                f"5. Timing: weeks, not months\n\n"
+                f"OUTPUT FORMAT (JSON):\n"
+                f'{{"chains": [{{"target": "...", "chain": ["Founder", "Person A (role)", "TARGET"], '
+                f'"scripts_per_link": ["...", "..."], "value_exchange_per_link": ["...", "..."], '
+                f'"timing_weeks": N, "kill_criterion": "..."}}]}}\n\n'
+                f"QUALITY: Each chain must have SPECIFIC role types and EXACT scripts. "
+                f"'Network at events' = REJECTED."
+            ),
+        },
+        "tay-trang-positioner": {
+            "agent": "tay-trang-positioner",
+            "prompt": (
+                f"Reframe founder's assets to create value for each chain link.\n\n"
+                f"{base_context}\n"
+                f"TASK:\n"
+                f"1. For each person in the introduction chain, identify what they NEED\n"
+                f"2. Map founder's skills/assets to that need — even if indirect\n"
+                f"3. Create 'useful before asked' actions — deliver value BEFORE requesting anything\n"
+                f"4. Design perception reframes — how to make zero-capital founder appear indispensable\n\n"
+                f"OUTPUT FORMAT (JSON):\n"
+                f'{{"value_props_per_link": [{{"target_role": "...", "their_need": "...", '
+                f'"founder_offer": "...", "useful_before_asked_action": "...", '
+                f'"perception_reframe": "..."}}]}}\n\n'
+                f"QUALITY: Each value prop must be SPECIFIC and ACTIONABLE. "
+                f"'Help them with their business' = REJECTED. "
+                f"'Run free AI pipeline audit on their portfolio company X' = ACCEPTED."
+            ),
+        },
+        "proximity-engineer": {
+            "agent": "proximity-engineer",
+            "prompt": (
+                f"Find physical and digital proximity opportunities to target decision-makers.\n\n"
+                f"{base_context}\n"
+                f"TASK:\n"
+                f"1. Search for events, conferences, meetups where targets appear\n"
+                f"2. Identify associations, clubs, online communities they participate in\n"
+                f"3. Design manufactured coincidences — natural-seeming encounters\n"
+                f"4. Map timing windows — when targets are most accessible\n\n"
+                f"OUTPUT FORMAT (JSON):\n"
+                f'{{"events": [{{"name": "...", "date_range": "...", "targets_likely": ["..."], '
+                f'"approach_plan": "..."}}], '
+                f'"communities": [{{"platform": "...", "name": "...", "targets_active": ["..."]}}], '
+                f'"manufactured_coincidences": [{{"scenario": "...", "timing": "...", '
+                f'"natural_pretext": "..."}}]}}\n\n'
+                f"QUALITY: Use WebSearch to find REAL events and communities. "
+                f"Generic 'attend industry events' = REJECTED. "
+                f"'Vietnam Venture Summit 2026 on June 15 at GEM Center' = ACCEPTED."
+            ),
+        },
+        "ego-leverage-specialist": {
+            "agent": "ego-leverage-specialist",
+            "prompt": (
+                f"Profile the psychological DNA of decision-makers in this domain.\n\n"
+                f"{base_context}\n"
+                f"{wound_line}"
+                f"TASK:\n"
+                f"1. For each target role, identify dominant wound type (credibility/isolation/legacy/control/rivalry/boredom)\n"
+                f"2. Map praise calibration — what compliments land vs backfire\n"
+                f"3. Identify giving speed — fast (lonely/bored) vs slow (paranoid/rivalry)\n"
+                f"4. Design ego-leverage scripts per encounter\n\n"
+                f"COMPOUND RULE: Every interaction MUST achieve ≥2 of: surface goal, hidden gain, relationship debt, intelligence extraction, positioning, dependency creation.\n\n"
+                f"OUTPUT: Write as private briefing, not report. No headers, no bullets. Tell the story."
+            ),
+        },
+        "patron-acquisition-strategist": {
+            "agent": "patron-acquisition-strategist",
+            "prompt": (
+                f"Design multi-month escalation campaign for this domain.\n\n"
+                f"{base_context}\n"
+                f"{wound_line}"
+                f"TASK:\n"
+                f"1. Design 8-stage escalation: Stranger → Acquaintance → Familiar → Trusted Junior → Inner Circle → Protégé → Graduation → Peer\n"
+                f"2. For each stage: specific trigger to advance, script, value exchange, timeline\n"
+                f"3. Assign founder archetype per target: Eager Student / Useful Ghost / Intelligence Courier / Connector / Mirror / Bold Outsider\n"
+                f"4. Design fallback tree: IF step N fails → alternative approach\n\n"
+                f"COMPOUND RULE: Every action MUST achieve ≥2 of: surface goal, hidden gain, relationship debt, intelligence extraction, positioning, dependency creation.\n\n"
+                f"OUTPUT: Write as strategic private notes. No headers, no bullets. Encounter by encounter."
+            ),
+        },
+        "chameleon-communicator": {
+            "agent": "chameleon-communicator",
+            "prompt": (
+                f"Design persona-specific scripts for each link in introduction chains.\n\n"
+                f"{base_context}\n"
+                f"{wound_line}"
+                f"TASK:\n"
+                f"1. For each person in chain: design different persona (introducer sees operator, lieutenant sees student, target sees peer)\n"
+                f"2. Per persona: energy calibration, topic steering, silence weaponization\n"
+                f"3. Design nhau (drinking) conversation flow if VN context\n"
+                f"4. Recovery scripts for each awkward scenario\n\n"
+                f"COMPOUND RULE: Every interaction MUST achieve ≥2 objectives simultaneously.\n\n"
+                f"OUTPUT: Write as dialogue coaching. 'When you meet X, say: \"...\" They'll respond with... Then you...' No analysis format."
+            ),
+        },
+        "value-fabricator": {
+            "agent": "value-fabricator",
+            "prompt": (
+                f"Design pre-approach value creation plays for each chain link.\n\n"
+                f"{base_context}\n"
+                f"{wound_line}"
+                f"TASK:\n"
+                f"1. For each target: identify what you can deliver BEFORE any ask\n"
+                f"2. Intelligence packaging — reframe public info as exclusive insider knowledge\n"
+                f"3. 'Thought of you' message sequences — 2 min effort, impression of constant attention\n"
+                f"4. Problem-solver ambush — find visible problems, solve uninvited\n\n"
+                f"COMPOUND RULE: Every value delivery MUST create ≥2 of: trust, debt, positioning, intelligence, dependency.\n\n"
+                f"OUTPUT: Write as mentor advice. 'Before you even meet them, do this: ...' No structured analysis."
+            ),
+        },
+    }
+
+    return prompts
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Side-Door Scanner Trigger (Step 6.8.5)")
+    parser.add_argument("--verdict-file", required=True, help="Path to case JSON")
+    parser.add_argument("--profile-file", default=None, help="Path to founder profile JSON")
+    parser.add_argument("--wound-map", default=None, help="Path to wound map file (text or JSON)")
+    parser.add_argument("--dry-run", action="store_true", help="Output prompts without spawning agents")
+    args = parser.parse_args()
+
+    verdict_path = Path(args.verdict_file)
+    if not verdict_path.exists():
+        print(json.dumps({"fires": False, "reason": f"verdict file not found: {args.verdict_file}"}))
+        sys.exit(1)
+
+    with open(verdict_path, "r", encoding="utf-8") as f:
+        case = json.load(f)
+
+    profile = {}
+    if args.profile_file:
+        profile_path = Path(args.profile_file)
+        if profile_path.exists():
+            with open(profile_path, "r", encoding="utf-8") as f:
+                profile = json.load(f)
+
+    wound_context = ""
+    if args.wound_map:
+        wound_path = Path(args.wound_map)
+        if wound_path.exists():
+            with open(wound_path, "r", encoding="utf-8") as f:
+                raw = f.read()
+            # Accept plain text or JSON; if JSON, stringify for embedding
+            try:
+                parsed = json.loads(raw)
+                wound_context = json.dumps(parsed, ensure_ascii=False, indent=2)
+            except json.JSONDecodeError:
+                wound_context = raw.strip()
+
+    kill_mechs = extract_kill_mechanisms(case)
+    fires, matched, reason = should_fire(kill_mechs)
+
+    if not fires:
+        print(json.dumps({
+            "fires": False,
+            "reason": reason,
+            "kill_mechanisms_found": kill_mechs,
+            "matched_triggers": [],
+        }, indent=2))
+        sys.exit(0)
+
+    ctx = extract_target_context(case, profile)
+    prompts = generate_agent_prompts(ctx, wound_context=wound_context)
+
+    output = {
+        "fires": True,
+        "reason": reason,
+        "kill_mechanisms_found": kill_mechs,
+        "matched_triggers": matched,
+        "agents_count": len(prompts),
+        "agents": list(prompts.values()),
+        "dry_run": args.dry_run,
+    }
+
+    print(json.dumps(output, indent=2, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

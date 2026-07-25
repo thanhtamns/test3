@@ -1,0 +1,52 @@
+# E2E Local Test — Brainstorm Report
+
+## Problem
+System just completed 6-phase quality/security review (161 tests pass, all tiers build clean). Need to verify the full stack works end-to-end locally and produce demo-ready numbers for investors.
+
+## Current State
+- **CLI**: Binary works, hooks installed, 96K tokens saved in real usage
+- **Cloud**: Docker running but with OLD code (pre-Phase 3 auth hardening)
+- **Dashboard**: Builds clean, not running
+- **Auth**: Old containers accept X-Tenant-ID without verification — must rebuild
+
+## Approach: Full E2E + Scripted Benchmark + Live Session
+
+### Step 1: Rebuild Docker Stack
+- `docker-compose down -v` clean slate
+- Add `CODEFLOW_AUTH_DISABLED=true` to ingest/writer env for dev mode
+- `docker-compose build --no-cache` with Phase 3 hardened code + migration runner
+- Verify: healthz OK, auth rejects unauthenticated, dev mode accepts X-Tenant-ID
+
+### Step 2: Seed Demo Data
+- Run `go run ./cmd/seed` — 570 events across 14 days, 3 projects, 10 commands
+- Update seeder to include `X-Tenant-ID` header (required now)
+
+### Step 3: Start Dashboard
+- Set `.env.local` with TENANT_ID
+- `npm run dev` → verify all 7 pages load with data
+
+### Step 4: Scripted CLI Benchmark
+- Create `scripts/benchmark.sh` — runs 20 commands raw vs wrapped
+- Measure: savings %, latency overhead, dedup hit rate
+- Output: markdown table
+
+### Step 5: Live Coding Session
+- `codeflow init` → code for 5 min → `codeflow stats` → `codeflow sync --once` → dashboard refresh
+
+### Step 6: Quality Scorecard
+- Savings % per command, latency p50/p99, fail-open rate, dedup hit rate, E2E flow
+
+## Deliverable
+`plans/reports/e2e-test-report.md` with all metrics + GO/NO-GO verdict
+
+## Risks
+- Docker rebuild may fail if Go modules changed (mitigate: `go mod tidy` first)
+- ClickHouse migration runner is new — first real test in Docker
+- Windows AppControl may block some test binaries (workaround: use GOTMPDIR)
+
+## Success Criteria
+- All 3 tiers communicate (CLI → Cloud → Dashboard)
+- Savings % > 40% across benchmark commands
+- Latency overhead < 5ms per command
+- Zero fail-open triggers on valid commands
+- Dashboard shows real-time data from live session

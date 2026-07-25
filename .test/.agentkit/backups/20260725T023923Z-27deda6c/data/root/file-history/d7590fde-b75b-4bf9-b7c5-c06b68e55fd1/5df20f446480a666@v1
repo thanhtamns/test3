@@ -1,0 +1,310 @@
+"""
+portfolio-optimizer.py — Micro-capital portfolio optimizer using Kelly criterion + Monte Carlo.
+Loads asset-classes.json, filters by founder constraints, sizes via half-Kelly, simulates returns.
+"""
+import sys
+import json
+import math
+import random
+import argparse
+from pathlib import Path
+
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+ASSET_CLASSES_PATH = Path(__file__).resolve().parents[6] / "data" / "intelligence" / "asset-classes.json"
+
+LABOR_MONTHLY = {"sdr-agency": 3500, "content-repurposing": 1500, "productized-audit": 2000,
+                 "commodity-micro-broker": 1200}
+LABOR_DEFAULT_MONTHLY = 1500
+
+
+def load_asset_classes():
+    with open(ASSET_CLASSES_PATH, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def get_founder_tier(capital_usd: float) -> str:
+    if capital_usd < 1000:
+        return "TIER_0"
+    if capital_usd < 5000:
+        return "TIER_1"
+    if capital_usd < 20000:
+        return "TIER_2"
+    return "TIER_3"
+
+
+def filter_classes(classes: list, profile: dict) -> tuple[list, list]:
+    capital = profile.get("capital_usd", 0)
+    founder_tags = set(profile.get("founder_tags", []))
+    sleep_required = profile.get("sleep_test_required", False)
+    tier = get_founder_tier(capital)
+
+    selected, excluded = [], []
+
+    for ac in classes:
+        reasons = []
+
+        # Capital floor
+        if capital < ac.get("capital_entry_min", 0):
+            reasons.append(f"capital_below_min (need ${ac['capital_entry_min']})")
+
+        # Sleep test
+        if sleep_required and ac.get("sleep_test") == "NO":
+            reasons.append("sleep_test=NO excluded by profile")
+
+        # Founder tag match (only if class has tags AND profile has tags)
+        class_tags = set(ac.get("founder_fit_tags", []))
+        if class_tags and founder_tags:
+            missing = class_tags - founder_tags
+            if missing:
+                reasons.append(f"missing_tags: {sorted(missing)}")
+
+        # Tier viability
+        tier_data = ac.get("capital_tiers", {}).get(tier)
+        if tier_data is None or not tier_data.get("viable", False):
+            reasons.append(f"not_viable_at_{tier}")
+
+        if reasons:
+            excluded.append({"id": ac["id"], "name": ac["name"], "reason": "; ".join(reasons)})
+        else:
+            selected.append(ac)
+
+    return selected, excluded
+
+
+def compute_kelly_fractions(filtered: list, tier: str) -> dict:
+    fractions = {}
+    for ac in filtered:
+        tier_data = ac.get("capital_tiers", {}).get(tier, {})
+        avg_win = tier_data.get("expected_roi_p50", 0.0)
+        roi = ac.get("roi_distribution", {})
+        avg_loss = abs(roi.get("p10", 1.0))
+        failure_rate = ac.get("failure_rate_year1", 0.5)
+        win_rate = 1.0 - failure_rate
+
+        if avg_win > 0:
+            f = (win_rate * avg_win - (1.0 - win_rate) * avg_loss) / avg_win
+        else:
+            f = 0.0
+
+        f = f / 2.0  # half-Kelly
+        f = max(0.0, min(f, 0.4))
+        fractions[ac["id"]] = f
+
+    return fractions
+
+
+def allocate_capital(kelly_fractions: dict, classes_by_id: dict, capital_usd: float,
+                     max_assets: int, tier: str) -> list:
+    if not kelly_fractions or capital_usd <= 0:
+        return []
+
+    rounding = 25 if tier == "TIER_0" else 50
+    min_alloc = 25
+
+    # Sort by fraction descending, take top N
+    sorted_ids = sorted(kelly_fractions, key=lambda k: kelly_fractions[k], reverse=True)
+    top_ids = [i for i in sorted_ids if kelly_fractions[i] > 0][:max_assets]
+
+    if not top_ids:
+        return []
+
+    total_frac = sum(kelly_fractions[i] for i in top_ids)
+    if total_frac == 0:
+        return []
+
+    allocations = []
+    for aid in top_ids:
+        norm_frac = kelly_fractions[aid] / total_frac
+        raw_usd = norm_frac * capital_usd
+        rounded = round(raw_usd / rounding) * rounding
+        if rounded < min_alloc:
+            continue
+
+        ac = classes_by_id[aid]
+        tier_data = ac.get("capital_tiers", {}).get(tier, {})
+        expected_roi = tier_data.get("expected_roi_p50", 0.0)
+
+        allocations.append({
+            "asset_class_id": aid,
+            "asset_class_name": ac["name"],
+            "allocation_usd": rounded,
+            "allocation_pct": round(norm_frac * 100, 1),
+            "expected_roi_p50": expected_roi,
+            "sleep_test": ac.get("sleep_test"),
+            "leverage_class": ac.get("leverage_class"),
+        })
+
+    return allocations
+
+
+def _triangular_sample(low: float, mid: float, high: float) -> float:
+    """Sample from triangular distribution using inverse CDF."""
+    u = random.random()
+    if high == low:
+        return mid
+    fc = (mid - low) / (high - low)
+    if u < fc:
+        return low + math.sqrt(u * (high - low) * (mid - low))
+    else:
+        return high - math.sqrt((1 - u) * (high - low) * (high - mid))
+
+
+def simulate_portfolio(allocations: list, classes_by_id: dict, iterations: int = 5000) -> dict:
+    if not allocations:
+        return {"iterations": iterations,
+                "portfolio_return_12mo": {"p10": 0, "p50": 0, "p90": 0},
+                "monthly_passive_estimate": {"p10": 0, "p50": 0, "p90": 0}}
+
+    total_returns = []
+    passive_samples = []
+
+    for _ in range(iterations):
+        total_return = 0.0
+        passive_return = 0.0
+
+        for alloc in allocations:
+            aid = alloc["asset_class_id"]
+            ac = classes_by_id[aid]
+            roi = ac.get("roi_distribution", {})
+            fail_rate = ac.get("failure_rate_year1", 0.5)
+            amt = alloc["allocation_usd"]
+
+            if random.random() < fail_rate:
+                outcome = amt * roi.get("p10", -1.0)
+            else:
+                p25 = roi.get("p25", -0.2)
+                p50 = roi.get("p50", 0.5)
+                p75 = roi.get("p75", 2.0)
+                sampled_roi = _triangular_sample(p25, p50, p75)
+                outcome = amt * sampled_roi
+
+            total_return += outcome
+
+            if ac.get("sleep_test") == "YES":
+                passive_return += outcome
+
+        total_returns.append(total_return)
+        passive_samples.append(passive_return / 12.0)
+
+    total_returns.sort()
+    passive_samples.sort()
+    n = len(total_returns)
+
+    def pct(lst, p):
+        return round(lst[int(n * p / 100)], 2)
+
+    return {
+        "iterations": iterations,
+        "portfolio_return_12mo": {
+            "p10": pct(total_returns, 10),
+            "p50": pct(total_returns, 50),
+            "p90": pct(total_returns, 90),
+        },
+        "monthly_passive_estimate": {
+            "p10": pct(passive_samples, 10),
+            "p50": pct(passive_samples, 50),
+            "p90": pct(passive_samples, 90),
+        },
+    }
+
+
+def build_labor_comparison(excluded: list, classes_by_id: dict, portfolio_monthly_passive: float,
+                           capital_usd: float) -> list:
+    # Portfolio hours: 2h/mo per sleep=YES asset in portfolio (already counted above)
+    portfolio_hours = 2  # conservative single estimate
+
+    comparisons = []
+    for exc in excluded:
+        aid = exc["id"]
+        if aid not in classes_by_id:
+            continue
+        ac = classes_by_id[aid]
+        if ac.get("leverage_class") != "LABOR":
+            continue
+
+        monthly = LABOR_MONTHLY.get(aid, LABOR_DEFAULT_MONTHLY)
+        hours = 160
+        hourly = round(monthly / hours, 2)
+
+        comparisons.append({
+            "asset_class_id": aid,
+            "asset_class_name": ac["name"],
+            "estimated_monthly_income_usd": monthly,
+            "hours_per_month": hours,
+            "effective_hourly_rate_usd": hourly,
+            "portfolio_monthly_passive_usd": round(portfolio_monthly_passive, 2),
+            "portfolio_hours_per_month": portfolio_hours,
+            "verdict": ("labor_wins" if monthly > portfolio_monthly_passive * 3 else
+                        "portfolio_wins" if portfolio_monthly_passive > monthly else "comparable"),
+        })
+
+    return comparisons
+
+
+def parse_profile(args) -> dict:
+    if args.profile_file:
+        with open(args.profile_file, encoding="utf-8") as f:
+            return json.load(f)
+    if args.profile_json:
+        return json.loads(args.profile_json)
+    raise ValueError("Provide --profile-json or --profile-file")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Micro-capital portfolio optimizer")
+    parser.add_argument("--profile-json", type=str, help="Profile as JSON string")
+    parser.add_argument("--profile-file", type=str, help="Path to profile JSON file")
+    parser.add_argument("--seed", type=int, help="Random seed for reproducibility")
+    parser.add_argument("--iterations", type=int, default=5000, help="Monte Carlo iterations")
+    args = parser.parse_args()
+
+    if args.seed is not None:
+        random.seed(args.seed)
+
+    profile = parse_profile(args)
+    capital_usd = float(profile.get("capital_usd", 0))
+    max_assets = int(profile.get("max_assets", 3))
+
+    classes = load_asset_classes()
+    tier = get_founder_tier(capital_usd)
+    classes_by_id = {ac["id"]: ac for ac in classes}
+
+    filtered, excluded = filter_classes(classes, profile)
+    kelly_fracs = compute_kelly_fractions(filtered, tier)
+    allocations = allocate_capital(kelly_fracs, classes_by_id, capital_usd, max_assets, tier)
+
+    # Enrich excluded with names
+    excluded_out = [{"id": e["id"], "name": e.get("name", e["id"]), "reason": e["reason"]}
+                    for e in excluded]
+
+    simulation = simulate_portfolio(allocations, classes_by_id, iterations=args.iterations)
+    portfolio_monthly_p50 = simulation["monthly_passive_estimate"]["p50"]
+
+    labor_comparison = build_labor_comparison(excluded_out, classes_by_id,
+                                              portfolio_monthly_p50, capital_usd)
+
+    output = {
+        "portfolio": allocations,
+        "simulation": simulation,
+        "excluded": excluded_out,
+        "labor_comparison": labor_comparison,
+        "metadata": {
+            "capital_usd": capital_usd,
+            "tier": tier,
+            "founder_tags": profile.get("founder_tags", []),
+            "sleep_test_required": profile.get("sleep_test_required", False),
+            "risk_tolerance": profile.get("risk_tolerance", "moderate"),
+            "time_horizon_months": profile.get("time_horizon_months", 12),
+            "classes_evaluated": len(classes),
+            "classes_passed_filter": len(filtered),
+            "classes_selected": len(allocations),
+        },
+    }
+
+    print(json.dumps(output, indent=2, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

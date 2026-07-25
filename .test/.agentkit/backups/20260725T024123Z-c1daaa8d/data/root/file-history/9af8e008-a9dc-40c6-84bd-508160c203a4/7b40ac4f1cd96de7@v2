@@ -1,0 +1,284 @@
+"""
+Brain 3: Anomaly Cross-Reference Engine.
+Triangulates Brain 1 (price deltas) + Brain 2 (forced flows) + founder profile
++ historical anomalies → ranked AnomalyCards. No web calls — pure computation.
+"""
+
+import logging
+from typing import Optional
+
+from .models import PriceDelta, ForcedFlow, AnomalyCard, FounderProfile, _generate_anomaly_id, _now_iso
+
+logger = logging.getLogger(__name__)
+
+
+class AnomalyCrossReferencer:
+    def __init__(self, historical: Optional[list[AnomalyCard]] = None):
+        self.historical = historical or []
+
+    def cross_reference(
+        self,
+        deltas: list[PriceDelta],
+        flows: list[ForcedFlow],
+        founder: Optional[FounderProfile] = None,
+    ) -> list[AnomalyCard]:
+        cards: list[AnomalyCard] = []
+
+        for delta in deltas:
+            for flow in flows:
+                if self._rule_forced_creates_delta(delta, flow):
+                    card = self._build_intersection_card(delta, flow, founder, "RULE_1_FORCED_CREATES_DELTA")
+                    cards.append(card)
+
+        for delta in deltas:
+            if founder and self._rule_delta_founder_access(delta, founder) > 0.3:
+                if not any(c.delta and c.delta.get("product") == delta.product
+                           and c.intersection_rule == "RULE_1_FORCED_CREATES_DELTA" for c in cards):
+                    card = self._build_delta_card(delta, founder, "RULE_2_DELTA_FOUNDER_ACCESS")
+                    cards.append(card)
+
+        for flow in flows:
+            if founder and self._rule_flow_founder_expertise(flow, founder) > 0.3:
+                if not any(c.flow and c.flow.get("regulation") == flow.regulation
+                           and c.intersection_rule == "RULE_1_FORCED_CREATES_DELTA" for c in cards):
+                    card = self._build_flow_card(flow, founder, "RULE_3_FLOW_FOUNDER_EXPERTISE")
+                    cards.append(card)
+
+        for card in cards:
+            hist_boost = self._rule_historical_persistence(card)
+            if hist_boost > 0:
+                card.anomaly_score = min(1.0, card.anomaly_score + hist_boost)
+                card.delta_trend = self._get_historical_trend(card)
+
+        convergence_boost = self._rule_convergence(cards)
+        for card in cards:
+            key = card.delta.get("product", "") if card.delta else card.flow.get("regulation", "") if card.flow else ""
+            if key in convergence_boost:
+                card.anomaly_score = min(1.0, card.anomaly_score + convergence_boost[key])
+
+        for card in cards:
+            self._score_card(card, founder)
+            self._generate_contacts(card)
+            self._set_kill_criteria(card)
+
+        cards.sort(key=lambda c: c.final_rank(), reverse=True)
+        logger.info(f"Cross-referenced {len(deltas)} deltas × {len(flows)} flows → {len(cards)} anomaly cards")
+        return cards
+
+    def _rule_forced_creates_delta(self, delta: PriceDelta, flow: ForcedFlow) -> bool:
+        delta_markets = {delta.market_a.lower(), delta.market_b.lower()}
+        flow_jurisdiction = flow.jurisdiction.lower()
+        geo_match = any(flow_jurisdiction in m or m in flow_jurisdiction for m in delta_markets)
+        product_lower = delta.product.lower()
+        comply_lower = flow.who_must_comply.lower()
+        reg_lower = flow.regulation.lower()
+        industry_match = (product_lower in comply_lower or product_lower in reg_lower
+                          or comply_lower in product_lower)
+        return geo_match or industry_match
+
+    def _rule_delta_founder_access(self, delta: PriceDelta, founder: FounderProfile) -> float:
+        score = 0.0
+        location_lower = founder.location.lower() if founder.location else ""
+        if location_lower:
+            if location_lower in delta.market_a.lower() or delta.market_a.lower() in location_lower:
+                score += 0.4
+        for lang in founder.languages:
+            lang_lower = lang.lower()
+            market_lang_map = {
+                "vietnamese": ["vietnam", "vn"],
+                "vi": ["vietnam", "vn"],
+                "english": ["us", "uk", "australia", "eu"],
+                "en": ["us", "uk", "australia", "eu"],
+                "mandarin": ["china", "cn"],
+                "chinese": ["china", "cn"],
+                "japanese": ["japan", "jp"],
+                "ja": ["japan", "jp"],
+            }
+            market_keys = market_lang_map.get(lang_lower, [])
+            for key in market_keys:
+                if key in delta.market_a.lower() or key in delta.market_b.lower():
+                    score += 0.3
+                    break
+        if founder.has_industry(delta.product):
+            score += 0.3
+        return min(1.0, score)
+
+    def _rule_flow_founder_expertise(self, flow: ForcedFlow, founder: FounderProfile) -> float:
+        score = 0.0
+        flow_text = f"{flow.regulation} {flow.who_must_comply} {flow.provider_gap}".lower()
+        flow_words = set(flow_text.split())
+        for expertise in founder.domain_expertise:
+            exp_words = set(expertise.lower().split())
+            if exp_words & flow_words:
+                score += 0.4
+                break
+        for industry in founder.industries:
+            ind_words = set(industry.lower().split())
+            if ind_words & flow_words:
+                score += 0.3
+                break
+        location_lower = founder.location.lower() if founder.location else ""
+        jurisdiction_lower = flow.jurisdiction.lower()
+        if location_lower and (jurisdiction_lower in location_lower
+                               or any(w in location_lower for w in jurisdiction_lower.split())):
+            score += 0.3
+        return min(1.0, score)
+
+    def _rule_historical_persistence(self, card: AnomalyCard) -> float:
+        if not self.historical:
+            return 0.0
+        for hist in self.historical:
+            if card.delta and hist.delta:
+                if (card.delta.get("product") == hist.delta.get("product") and
+                    card.delta.get("market_a") == hist.delta.get("market_a")):
+                    if hist.delta_trend != "SHRINKING":
+                        return 0.15
+            if card.flow and hist.flow:
+                if card.flow.get("regulation") == hist.flow.get("regulation"):
+                    return 0.1
+        return 0.0
+
+    def _get_historical_trend(self, card: AnomalyCard) -> str:
+        for hist in self.historical:
+            if card.delta and hist.delta:
+                if card.delta.get("product") == hist.delta.get("product"):
+                    return hist.delta_trend
+        return "STABLE"
+
+    def _rule_convergence(self, cards: list[AnomalyCard]) -> dict[str, float]:
+        signal_counts: dict[str, int] = {}
+        for card in cards:
+            keys = []
+            if card.delta:
+                keys.append(card.delta.get("product", ""))
+            if card.flow:
+                keys.append(card.flow.get("regulation", ""))
+            for k in keys:
+                if k:
+                    signal_counts[k] = signal_counts.get(k, 0) + 1
+        return {k: 0.2 for k, v in signal_counts.items() if v >= 3}
+
+    def _score_card(self, card: AnomalyCard, founder: Optional[FounderProfile]):
+        if card.anomaly_type == "INTERSECTION":
+            card.anomaly_score = max(card.anomaly_score, 0.7)
+        elif card.anomaly_type == "PRICE_DELTA":
+            card.anomaly_score = max(card.anomaly_score, 0.5)
+        elif card.anomaly_type == "FORCED_FLOW":
+            card.anomaly_score = max(card.anomaly_score, 0.4)
+
+        if founder:
+            fit_scores = []
+            if card.delta:
+                d = PriceDelta.from_dict(card.delta)
+                fit_scores.append(self._rule_delta_founder_access(d, founder))
+            if card.flow:
+                f = ForcedFlow.from_dict(card.flow)
+                fit_scores.append(self._rule_flow_founder_expertise(f, founder))
+            card.founder_fit = sum(fit_scores) / len(fit_scores) if fit_scores else 0.1
+
+        if card.flow:
+            f = ForcedFlow.from_dict(card.flow)
+            card.urgency = f.urgency_score()
+        else:
+            card.urgency = 0.5
+
+    def _build_intersection_card(self, delta: PriceDelta, flow: ForcedFlow,
+                                  founder: Optional[FounderProfile], rule: str) -> AnomalyCard:
+        position = self._design_position(delta, flow)
+        return AnomalyCard(
+            id=_generate_anomaly_id(),
+            anomaly_type="INTERSECTION",
+            title=f"{delta.product} × {flow.regulation} ({delta.market_a}→{delta.market_b})",
+            delta=delta.to_dict(),
+            flow=flow.to_dict(),
+            intersection_rule=rule,
+            position_type=position,
+            action="CONNECT" if position == "BROKER" else "CURATE",
+            supply_side=f"Producers in {delta.market_a}",
+            demand_side=f"Buyers in {delta.market_b} needing {flow.regulation} compliance",
+            channel="Direct outreach + trade platforms",
+            price_per_unit=delta.price_b,
+            cost_per_unit=delta.price_a + delta.bridge_cost,
+            anomaly_score=0.7,
+            confidence="[T]",
+        )
+
+    def _build_delta_card(self, delta: PriceDelta, founder: Optional[FounderProfile],
+                           rule: str) -> AnomalyCard:
+        return AnomalyCard(
+            id=_generate_anomaly_id(),
+            anomaly_type="PRICE_DELTA",
+            title=f"{delta.product} arbitrage {delta.market_a}→{delta.market_b} ({delta.spread_pct:.0f}%)",
+            delta=delta.to_dict(),
+            intersection_rule=rule,
+            position_type="ARBITRAGE" if delta.spread_pct > 50 else "BROKER",
+            action="BUY-SELL" if delta.spread_pct > 50 else "CONNECT",
+            supply_side=f"Suppliers in {delta.market_a}",
+            demand_side=f"Buyers in {delta.market_b}",
+            channel="Trade platforms + direct contacts",
+            price_per_unit=delta.price_b,
+            cost_per_unit=delta.price_a + delta.bridge_cost,
+            anomaly_score=0.5,
+            confidence=delta.confidence,
+        )
+
+    def _build_flow_card(self, flow: ForcedFlow, founder: Optional[FounderProfile],
+                          rule: str) -> AnomalyCard:
+        return AnomalyCard(
+            id=_generate_anomaly_id(),
+            anomaly_type="FORCED_FLOW",
+            title=f"{flow.regulation} compliance gap ({flow.jurisdiction})",
+            flow=flow.to_dict(),
+            intersection_rule=rule,
+            position_type=flow.position_opportunity or "INTELLIGENCE",
+            action="CURATE",
+            supply_side=f"Compliance providers for {flow.regulation}",
+            demand_side=f"{flow.who_must_comply} in {flow.jurisdiction}",
+            channel="Industry associations + LinkedIn",
+            price_per_unit=flow.compliance_cost,
+            cost_per_unit=flow.compliance_cost * 0.3,
+            anomaly_score=0.4,
+            confidence=flow.confidence,
+        )
+
+    def _design_position(self, delta: PriceDelta, flow: ForcedFlow) -> str:
+        if delta.spread_pct > 50 and flow.provider_gap:
+            return "BROKER"
+        if flow.provider_gap and "technical" in flow.provider_gap.lower():
+            return "INTELLIGENCE"
+        if delta.spread_pct > 40:
+            return "ARBITRAGE"
+        return "BROKER"
+
+    def _generate_contacts(self, card: AnomalyCard):
+        if card.contacts:
+            return
+        contacts = []
+        if card.demand_side:
+            contacts.append({"side": "demand", "role": "Buyer/importer", "channel": "LinkedIn/email",
+                             "script": f"I help source {card.title.split()[0]} with full compliance. Interested in a sample?"})
+            contacts.append({"side": "demand", "role": "Procurement manager", "channel": "Trade platform",
+                             "script": f"Verified supply for {card.title.split()[0]} — competitive pricing."})
+            contacts.append({"side": "demand", "role": "Compliance officer", "channel": "Industry event",
+                             "script": f"We handle {card.title.split()[0]} compliance end-to-end."})
+        if card.supply_side:
+            contacts.append({"side": "supply", "role": "Producer/farmer", "channel": "Local network",
+                             "script": f"Looking to buy {card.title.split()[0]} for export. What's your current price?"})
+            contacts.append({"side": "supply", "role": "Cooperative leader", "channel": "Direct visit",
+                             "script": f"Exploring partnership for {card.title.split()[0]} export."})
+        card.contacts = contacts[:5]
+        if contacts:
+            card.script = contacts[0].get("script", "")
+
+    def _set_kill_criteria(self, card: AnomalyCard):
+        parts = []
+        if card.anomaly_type in ("PRICE_DELTA", "INTERSECTION") and card.delta:
+            parts.append("Spread drops below 15%")
+        if card.anomaly_type in ("FORCED_FLOW", "INTERSECTION") and card.flow:
+            parts.append("Regulation repealed or deadline extended >1 year")
+        parts.append("No response from 10+ contacts in 14 days")
+        card.kill_criteria = " | ".join(parts)
+        if card.flow:
+            card.deadline = ForcedFlow.from_dict(card.flow).effective_date
+        else:
+            card.deadline = "30 days from discovery"

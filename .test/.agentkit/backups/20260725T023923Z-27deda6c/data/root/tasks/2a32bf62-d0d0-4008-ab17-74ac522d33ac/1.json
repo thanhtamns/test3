@@ -1,0 +1,17 @@
+{
+  "id": "1",
+  "subject": "Phase 1: Foundation — Proto Schema + Provenance Core",
+  "description": "Establish protobuf event schema, blake3 content hashing, Ed25519 signed attestation, and `codeflow blame` CLI command. Creates data foundation all other pillars depend on. Target: 2 weeks.",
+  "status": "pending",
+  "blocks": [
+    "2",
+    "4"
+  ],
+  "blockedBy": [],
+  "metadata": {
+    "phase": 1,
+    "effort": "2w",
+    "planDir": "plans/260603-codeflow-ai-cost-intelligence-engine",
+    "phaseFile": "phase-01-foundation-proto-schema-provenance-core.md"
+  }
+}

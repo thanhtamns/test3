@@ -1,0 +1,114 @@
+"""Unit tests for lateral_inhibition primitive."""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1] / "scripts"
+sys.path.insert(0, str(ROOT))
+
+from primitives.lateral_inhibition import (
+    inhibit,
+    cluster_by_embedding,
+    _cluster_by_text_overlap,
+    WINNER_BOOST,
+    SUPPRESSION_FACTOR,
+)
+
+
+def _make_candidate(text: str, activation: float, **kwargs) -> dict:
+    return {"text": text, "activation": activation, **kwargs}
+
+
+class TestInhibitBasics:
+    def test_empty_input(self):
+        assert inhibit([]) == []
+
+    def test_single_candidate_passes_through(self):
+        c = _make_candidate("hello world", 0.8)
+        result = inhibit([c], budget=5)
+        assert len(result) == 1
+        assert result[0]["activation"] == 0.8 * WINNER_BOOST
+
+    def test_budget_limits_output(self):
+        candidates = [_make_candidate(f"text {i}", 0.5) for i in range(20)]
+        result = inhibit(candidates, budget=3)
+        assert len(result) == 3
+
+    def test_activations_sorted_descending(self):
+        candidates = [
+            _make_candidate("low", 0.2),
+            _make_candidate("high", 0.9),
+            _make_candidate("mid", 0.5),
+        ]
+        result = inhibit(candidates, budget=3)
+        activations = [r["activation"] for r in result]
+        assert activations == sorted(activations, reverse=True)
+
+
+class TestClusterCompetition:
+    def test_similar_texts_form_cluster(self):
+        candidates = [
+            _make_candidate("coffee export vietnam pricing", 0.8),
+            _make_candidate("coffee export vietnam margin", 0.6),
+            _make_candidate("blockchain defi yield farming", 0.7),
+        ]
+        result = inhibit(candidates, budget=3, threshold=0.3)
+        coffee_winner = next(r for r in result if "pricing" in r["text"])
+        coffee_loser = next(r for r in result if "margin" in r["text"])
+        assert coffee_winner["inhibition_role"] == "winner"
+        assert coffee_loser["inhibition_role"] == "suppressed"
+
+    def test_winner_boosted_loser_suppressed(self):
+        candidates = [
+            _make_candidate("same topic alpha", 0.8),
+            _make_candidate("same topic beta", 0.6),
+        ]
+        result = inhibit(candidates, budget=2, threshold=0.3)
+        winner = max(result, key=lambda x: x["activation"])
+        loser = min(result, key=lambda x: x["activation"])
+        assert winner["activation"] == pytest.approx(0.8 * WINNER_BOOST)
+        assert loser["activation"] == pytest.approx(0.6 * SUPPRESSION_FACTOR)
+
+    def test_dissimilar_texts_no_suppression(self):
+        candidates = [
+            _make_candidate("quantum physics relativity", 0.8),
+            _make_candidate("cooking recipe pasta sauce", 0.7),
+        ]
+        result = inhibit(candidates, budget=2, threshold=0.7)
+        for r in result:
+            assert r["inhibition_role"] == "winner"
+
+
+class TestEmbeddingClustering:
+    def test_uses_embeddings_when_available(self):
+        candidates = [
+            {"text": "a", "activation": 0.8, "embedding": [1.0, 0.0, 0.0]},
+            {"text": "b", "activation": 0.6, "embedding": [0.99, 0.1, 0.0]},
+            {"text": "c", "activation": 0.7, "embedding": [0.0, 0.0, 1.0]},
+        ]
+        clusters = cluster_by_embedding(candidates, threshold=0.9)
+        assert len(clusters) == 2
+
+    def test_falls_back_to_text_without_embeddings(self):
+        candidates = [
+            _make_candidate("hello world foo", 0.5),
+            _make_candidate("hello world bar", 0.5),
+        ]
+        clusters = cluster_by_embedding(candidates, threshold=0.3)
+        assert len(clusters) >= 1
+
+
+class TestEdgeCases:
+    def test_zero_activation_candidates(self):
+        candidates = [_make_candidate("zero", 0.0) for _ in range(3)]
+        result = inhibit(candidates, budget=2)
+        assert len(result) == 2
+
+    def test_identical_activations_deterministic(self):
+        candidates = [_make_candidate(f"item {i}", 0.5) for i in range(5)]
+        r1 = inhibit(candidates, budget=3)
+        r2 = inhibit(candidates, budget=3)
+        assert [x["text"] for x in r1] == [x["text"] for x in r2]

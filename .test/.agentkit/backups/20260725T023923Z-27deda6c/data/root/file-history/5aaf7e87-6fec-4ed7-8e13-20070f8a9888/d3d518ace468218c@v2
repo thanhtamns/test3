@@ -1,0 +1,119 @@
+"""Unit tests for Elo engine — pure math, no mocks needed."""
+
+from ..elo_engine import elo_update, expected_score, compute_rankings
+from ..models import DebateResult, OpportunityHypothesis
+
+
+def _make_hypothesis(id: str, elo: float = 1500.0) -> OpportunityHypothesis:
+    return OpportunityHypothesis(
+        id=id, title=f"H-{id}", thesis=f"Thesis for {id}",
+        business_model_type="SaaS", customer_segment="B2B",
+        evidence_refs=[], estimated_revenue_range="$1K-5K/mo",
+        source_phase="pattern_matcher", elo_rating=elo,
+    )
+
+
+def _make_debate(a_id: str, b_id: str, winner: str, pair_id: str = "") -> DebateResult:
+    return DebateResult(
+        pair_id=pair_id or f"{a_id}_vs_{b_id}",
+        hypothesis_a_id=a_id, hypothesis_b_id=b_id,
+        scores_a={}, scores_b={}, total_a=0, total_b=0,
+        winner=winner, key_argument=f"{winner} wins",
+    )
+
+
+def test_equal_ratings_a_wins():
+    new_a, new_b = elo_update(1500, 1500, "A", k=32)
+    assert abs(new_a - 1516) < 0.1
+    assert abs(new_b - 1484) < 0.1
+
+
+def test_equal_ratings_b_wins():
+    new_a, new_b = elo_update(1500, 1500, "B", k=32)
+    assert abs(new_a - 1484) < 0.1
+    assert abs(new_b - 1516) < 0.1
+
+
+def test_underdog_win():
+    new_a, new_b = elo_update(1400, 1600, "A", k=32)
+    assert new_a > 1424, "Underdog should gain more than 24 points"
+    assert new_b < 1576
+
+
+def test_favorite_win():
+    new_a, new_b = elo_update(1600, 1400, "A", k=32)
+    assert new_a > 1600
+    assert new_a < 1616, "Favorite should gain less than 16 points"
+    assert new_b < 1400
+
+
+def test_draw_equal():
+    new_a, new_b = elo_update(1500, 1500, "DRAW", k=32)
+    assert abs(new_a - 1500) < 0.1
+    assert abs(new_b - 1500) < 0.1
+
+
+def test_draw_unequal():
+    new_a, new_b = elo_update(1600, 1400, "DRAW", k=32)
+    assert new_a < 1600, "Higher-rated player loses points on draw"
+    assert new_b > 1400, "Lower-rated player gains points on draw"
+
+
+def test_expected_score_symmetry():
+    ea = expected_score(1500, 1600)
+    eb = expected_score(1600, 1500)
+    assert abs((ea + eb) - 1.0) < 1e-9
+
+
+def test_expected_score_equal():
+    ea = expected_score(1500, 1500)
+    assert abs(ea - 0.5) < 1e-9
+
+
+def test_compute_rankings_all_present():
+    hyps = [_make_hypothesis("A"), _make_hypothesis("B"), _make_hypothesis("C")]
+    debates = [_make_debate("A", "B", "A"), _make_debate("B", "C", "B")]
+    result = compute_rankings(hyps, debates)
+    assert len(result) == 3
+    ids = {h.id for h in result}
+    assert ids == {"A", "B", "C"}
+
+
+def test_compute_rankings_sorted():
+    hyps = [_make_hypothesis("A"), _make_hypothesis("B"), _make_hypothesis("C")]
+    debates = [
+        _make_debate("A", "B", "A"),
+        _make_debate("A", "C", "A"),
+        _make_debate("B", "C", "B"),
+    ]
+    result = compute_rankings(hyps, debates)
+    ratings = [h.elo_rating for h in result]
+    assert ratings == sorted(ratings, reverse=True)
+    assert result[0].id == "A"
+
+
+def test_compute_rankings_empty_debates():
+    hyps = [_make_hypothesis("A", 1500), _make_hypothesis("B", 1500)]
+    result = compute_rankings(hyps, [])
+    assert len(result) == 2
+    assert all(h.elo_rating == 1500 for h in result)
+
+
+def test_compute_rankings_tracks_wins():
+    hyps = [_make_hypothesis("A"), _make_hypothesis("B")]
+    debates = [_make_debate("A", "B", "A")]
+    result = compute_rankings(hyps, debates)
+    winner = next(h for h in result if h.id == "A")
+    loser = next(h for h in result if h.id == "B")
+    assert winner.wins == 1
+    assert winner.matches_played == 1
+    assert loser.wins == 0
+    assert loser.matches_played == 1
+
+
+def test_compute_rankings_captures_highlights():
+    hyps = [_make_hypothesis("A"), _make_hypothesis("B")]
+    debates = [_make_debate("A", "B", "A")]
+    result = compute_rankings(hyps, debates)
+    winner = next(h for h in result if h.id == "A")
+    assert len(winner.debate_highlights) == 1

@@ -1,0 +1,159 @@
+"""
+FactAssembler — verifies, deduplicates, and stores micro-query results
+into decision-vectors.db. Reuses ClaimParser, ClaimVerifier, DistillationBridge.
+"""
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
+
+from .micro_query_runner import MicroQueryResult
+
+ROOT = Path(__file__).resolve().parents[4]
+VECTORS_DB = ROOT / ".claude" / "data" / "knowledge-distillation" / "decision-vectors.db"
+
+
+@dataclass
+class AssemblyResult:
+    facts_added: int = 0
+    facts_updated: int = 0
+    contradictions: list[dict] = field(default_factory=list)
+    duplicates: int = 0
+    gaps_remaining: list[str] = field(default_factory=list)
+    total_processed: int = 0
+
+    def to_dict(self) -> dict:
+        return {
+            "facts_added": self.facts_added,
+            "facts_updated": self.facts_updated,
+            "contradictions": self.contradictions,
+            "duplicates": self.duplicates,
+            "gaps_remaining": self.gaps_remaining,
+            "total_processed": self.total_processed,
+        }
+
+
+class FactAssembler:
+    def __init__(self, vectors_db: Optional[Path] = None):
+        self.vectors_db = vectors_db or VECTORS_DB
+
+    def assemble(self, results: list[MicroQueryResult], domain: str) -> AssemblyResult:
+        from ..hunger.claim_parser import ClaimParser, ParsedClaim
+        from ..hunger.claim_verifier import ClaimVerifier
+        from ..evolution.distillation_bridge import DistillationBridge
+
+        parser = ClaimParser(db_path=self.vectors_db)
+        verifier = ClaimVerifier(db_path=self.vectors_db)
+        bridge = DistillationBridge(vectors_db=self.vectors_db)
+
+        assembly = AssemblyResult()
+        claims: list[ParsedClaim] = []
+
+        for result in results:
+            assembly.total_processed += 1
+            if not result.parse_success or not result.parsed_fact:
+                assembly.gaps_remaining.append(result.query.text)
+                continue
+
+            fact = result.parsed_fact
+            claim = ParsedClaim(
+                fact=fact.get("fact", ""),
+                value=self._parse_numeric(fact.get("value")),
+                dimension=self._map_dimension(result.query.dimension),
+                source_url=fact.get("source"),
+                source_date=fact.get("date"),
+                confidence=fact.get("confidence", 0.5),
+                zone_tag=self._confidence_to_zone(fact.get("confidence", 0.5)),
+                from_prose=fact.get("source") == "prose_extraction",
+            )
+            if claim.fact and len(claim.fact.strip()) >= 5:
+                claims.append(claim)
+
+        if not claims:
+            return assembly
+
+        deduped = parser.deduplicate_claims(claims)
+        assembly.duplicates = len(claims) - len(deduped)
+
+        if not deduped:
+            return assembly
+
+        self._boost_cross_referenced(deduped)
+
+        verification = verifier.verify(deduped)
+        verified = verification["verified_claims"]
+        assembly.contradictions = verification["contradictions"]
+        assembly.duplicates += len(verification["duplicates_merged"])
+
+        for c in assembly.contradictions:
+            for claim in deduped:
+                if claim.fact in (c.get("claim_a", ""), c.get("claim_b", "")):
+                    claim.confidence = min(claim.confidence, 0.49)
+                    claim.zone_tag = "T"
+
+        if verified:
+            fact_dicts = [self._claim_to_fact_dict(c, domain) for c in verified]
+            stored = bridge.distill(fact_dicts, domain, source="micro_decomposition")
+            assembly.facts_added = len(stored)
+
+        return assembly
+
+    def _boost_cross_referenced(self, claims: list) -> None:
+        """Boost confidence when multiple sources report similar facts."""
+        import re
+        for i, c1 in enumerate(claims):
+            nums1 = set(re.findall(r'[\d,.]+', c1.fact))
+            if not nums1:
+                continue
+            corroboration = 0
+            for j, c2 in enumerate(claims):
+                if i == j or c1.dimension != c2.dimension:
+                    continue
+                nums2 = set(re.findall(r'[\d,.]+', c2.fact))
+                if nums1 & nums2 and c1.source_url != c2.source_url:
+                    corroboration += 1
+            if corroboration >= 2:
+                c1.confidence = min(0.88, c1.confidence + 0.12)
+                c1.zone_tag = self._confidence_to_zone(c1.confidence)
+            elif corroboration == 1:
+                c1.confidence = min(0.82, c1.confidence + 0.07)
+                c1.zone_tag = self._confidence_to_zone(c1.confidence)
+
+    def _parse_numeric(self, value) -> Optional[float]:
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _map_dimension(self, decomp_dimension: str) -> str:
+        from ..hunger.claim_parser import VALID_DIMENSIONS
+        if decomp_dimension in VALID_DIMENSIONS:
+            return decomp_dimension
+        mapping = {
+            "founder_experience": "founder_paths",
+            "indirect_entry": "founder_paths",
+        }
+        return mapping.get(decomp_dimension, "failure_rates")
+
+    def _confidence_to_zone(self, confidence: float) -> str:
+        if confidence >= 0.75:
+            return "K"
+        if confidence >= 0.5:
+            return "T"
+        return "?"
+
+    def _claim_to_fact_dict(self, claim: ParsedClaim, domain: str) -> dict:
+        return {
+            "fact": claim.fact,
+            "value": claim.value,
+            "dimension": claim.dimension,
+            "industry": domain,
+            "business_model": "unknown",
+            "outcome": "data_point",
+            "source_url": claim.source_url,
+            "source_date": claim.source_date,
+            "confidence": claim.confidence,
+            "zone_tag": claim.zone_tag,
+        }

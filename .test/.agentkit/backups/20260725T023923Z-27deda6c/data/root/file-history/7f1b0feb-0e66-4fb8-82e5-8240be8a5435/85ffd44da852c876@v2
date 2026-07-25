@@ -1,0 +1,231 @@
+"""
+Brain 4: Flow Position Engine.
+Identifies toll/owner positions (GATEWAY, AGGREGATOR, STANDARD, BOTTLENECK, DATA_EXHAUST)
+in money flows. Python controls search templates, LLM enriches if available.
+"""
+
+import json
+import logging
+import re
+from typing import Callable, Optional
+
+from .models import FlowPosition, FounderProfile, VALID_POSITION_TYPES
+
+logger = logging.getLogger(__name__)
+
+POSITION_SEARCH_TEMPLATES = [
+    '"{topic}" API gateway marketplace platform infrastructure',
+    '"{topic}" toll position intermediary aggregator commission',
+    '"{topic}" infrastructure provider bottleneck monopoly',
+]
+
+POSITION_EXTRACTION_PROMPT = """Analyze this text about "{topic}" and identify toll/owner positions in the money flow.
+For each position found, return JSON array:
+[{{"flow_name": "...", "position_type": "GATEWAY|AGGREGATOR|STANDARD|BOTTLENECK|DATA_EXHAUST",
+"market": "...", "description": "...",
+"estimated_daily_volume": <number or 0>, "take_rate": <decimal 0-1>,
+"avg_transaction_value": <number or 0>,
+"switching_cost": <0-1>, "alternative_count": <int>,
+"network_effect": <0-1>, "build_complexity": <0-1>,
+"capital_required": <number>, "time_to_first_flow": <days>}}]
+
+Position types:
+- GATEWAY: sits between all traffic (API gateways, payment processors)
+- AGGREGATOR: combines many small suppliers for buyers (marketplaces)
+- STANDARD: defines the protocol others must follow (certifications)
+- BOTTLENECK: only path through which flow must pass (regulatory)
+- DATA_EXHAUST: captures data from flow as byproduct (analytics)
+
+If no positions found, return [].
+
+Text:
+{text}"""
+
+KEYWORD_CLUSTERS = {
+    "GATEWAY": ["api", "gateway", "payment", "processor", "routing", "proxy", "middleware"],
+    "AGGREGATOR": ["marketplace", "aggregator", "platform", "exchange", "directory", "hub"],
+    "STANDARD": ["certification", "standard", "protocol", "compliance", "accreditation"],
+    "BOTTLENECK": ["monopoly", "sole provider", "only", "required", "mandatory", "bottleneck"],
+    "DATA_EXHAUST": ["analytics", "data", "insights", "tracking", "monitoring", "intelligence"],
+}
+
+VOLUME_PATTERNS = [
+    (r'([\d,.]+)\s*(?:million|M)\s*(?:transactions?|requests?|users?|calls?)', 1_000_000),
+    (r'([\d,.]+)\s*(?:thousand|K)\s*(?:transactions?|requests?|users?|calls?)', 1_000),
+    (r'([\d,.]+)\s*(?:transactions?|requests?|calls?)\s*(?:per|/)\s*(?:day|daily)', 1),
+    (r'([\d,.]+)\s*(?:transactions?|requests?|calls?)\s*(?:per|/)\s*(?:month|monthly)', 1/30),
+]
+
+TAKE_RATE_PATTERNS = [
+    r'([\d.]+)\s*%\s*(?:commission|take\s*rate|fee|cut|margin)',
+    r'(?:commission|take\s*rate|fee|cut)\s*(?:of|:)?\s*([\d.]+)\s*%',
+    r'\$\s*([\d.]+)\s*(?:per|/)\s*(?:transaction|request|call|order)',
+]
+
+
+class FlowPositionEngine:
+    def __init__(self, research_fn: Callable, llm_fn: Optional[Callable] = None, max_calls: int = 15):
+        self.research_fn = research_fn
+        self.llm_fn = llm_fn
+        self.max_calls = max_calls
+        self.calls_used = 0
+
+    def scan(self, topic: str, founder: Optional[FounderProfile] = None) -> list[FlowPosition]:
+        raw_results = self._gather_raw(topic)
+        if not raw_results:
+            return []
+
+        if self.llm_fn:
+            positions = self._extract_positions_with_llm(topic, raw_results)
+        else:
+            positions = self._extract_positions_heuristic(topic, raw_results)
+
+        if founder:
+            for pos in positions:
+                self._score_founder_fit(pos, founder)
+
+        positions.sort(key=lambda p: p.position_score(), reverse=True)
+        logger.info(f"Brain 4 found {len(positions)} flow positions for '{topic}' "
+                    f"(used {self.calls_used}/{self.max_calls} calls)")
+        return positions
+
+    def _gather_raw(self, topic: str) -> str:
+        parts = []
+        for template in POSITION_SEARCH_TEMPLATES:
+            if self.calls_used >= self.max_calls:
+                break
+            query = template.format(topic=topic)
+            try:
+                self.calls_used += 1
+                result = self.research_fn(query)
+                if result:
+                    parts.append(result)
+            except Exception as e:
+                logger.warning(f"Search failed for '{query[:60]}': {e}")
+        return "\n".join(parts)
+
+    def _extract_positions_with_llm(self, topic: str, raw_results: str) -> list[FlowPosition]:
+        prompt = POSITION_EXTRACTION_PROMPT.format(topic=topic, text=raw_results[:3000])
+        try:
+            result = self.llm_fn(prompt)
+            if isinstance(result, str):
+                result = json.loads(result)
+            if not isinstance(result, list):
+                result = [result] if isinstance(result, dict) else []
+        except Exception as e:
+            logger.warning(f"LLM extraction failed: {e}, falling back to heuristic")
+            return self._extract_positions_heuristic(topic, raw_results)
+
+        positions = []
+        for item in result:
+            if not isinstance(item, dict):
+                continue
+            pos_type = item.get("position_type", "GATEWAY")
+            if pos_type not in VALID_POSITION_TYPES:
+                pos_type = "GATEWAY"
+            positions.append(FlowPosition(
+                flow_name=item.get("flow_name", f"{topic} position"),
+                position_type=pos_type,
+                market=item.get("market", "global"),
+                description=item.get("description", ""),
+                estimated_daily_volume=float(item.get("estimated_daily_volume", 0)),
+                take_rate=float(item.get("take_rate", 0)),
+                avg_transaction_value=float(item.get("avg_transaction_value", 0)),
+                switching_cost=float(item.get("switching_cost", 0)),
+                alternative_count=int(item.get("alternative_count", 0)),
+                network_effect=float(item.get("network_effect", 0)),
+                build_complexity=float(item.get("build_complexity", 0)),
+                capital_required=float(item.get("capital_required", 0)),
+                time_to_first_flow=int(item.get("time_to_first_flow", 0)),
+                confidence="[T]",
+                sources=[],
+            ))
+        return positions
+
+    def _extract_positions_heuristic(self, topic: str, raw_results: str) -> list[FlowPosition]:
+        text_lower = raw_results.lower()
+        positions = []
+
+        for pos_type, keywords in KEYWORD_CLUSTERS.items():
+            matches = sum(1 for kw in keywords if kw in text_lower)
+            if matches < 2:
+                continue
+
+            volume = self._extract_volume(raw_results)
+            take_rate = self._extract_take_rate(raw_results)
+
+            positions.append(FlowPosition(
+                flow_name=f"{topic} {pos_type.lower()}",
+                position_type=pos_type,
+                market="global",
+                description=f"Detected via keyword cluster ({matches}/{len(keywords)} keywords matched)",
+                estimated_daily_volume=volume,
+                take_rate=take_rate,
+                avg_transaction_value=self._extract_avg_value(raw_results),
+                switching_cost=0.3 if pos_type in ("BOTTLENECK", "STANDARD") else 0.1,
+                alternative_count=self._extract_alternative_count(raw_results),
+                network_effect=0.5 if pos_type == "AGGREGATOR" else 0.1,
+                build_complexity=0.7 if pos_type == "BOTTLENECK" else 0.4,
+                confidence="[?]",
+                sources=[],
+            ))
+
+        return positions
+
+    def _extract_volume(self, text: str) -> float:
+        for pattern, multiplier in VOLUME_PATTERNS:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                try:
+                    val = float(match.group(1).replace(",", ""))
+                    daily = val * multiplier
+                    if 1 <= daily <= 100_000_000:
+                        return daily
+                except ValueError:
+                    pass
+        return 0.0
+
+    def _extract_take_rate(self, text: str) -> float:
+        for pattern in TAKE_RATE_PATTERNS:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                try:
+                    val = float(match.group(1))
+                    if 0 < val <= 100:
+                        return val / 100
+                except ValueError:
+                    pass
+        return 0.0
+
+    def _extract_avg_value(self, text: str) -> float:
+        patterns = [
+            r'\$\s*([\d,.]+)\s*(?:average|avg|mean)\s*(?:order|transaction|value)',
+            r'(?:average|avg|mean)\s*(?:order|transaction|value)[:\s]+\$?\s*([\d,.]+)',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                try:
+                    return float(match.group(1).replace(",", ""))
+                except ValueError:
+                    pass
+        return 0.0
+
+    def _extract_alternative_count(self, text: str) -> int:
+        patterns = [
+            r'([\d]+)\s*(?:competitors?|alternatives?|providers?|players?)',
+            r'(?:competitors?|alternatives?|providers?|players?)[:\s]+([\d]+)',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                try:
+                    count = int(match.group(1))
+                    if 0 < count <= 1000:
+                        return count
+                except ValueError:
+                    pass
+        return 5
+
+    def _score_founder_fit(self, position: FlowPosition, founder: FounderProfile):
+        pass

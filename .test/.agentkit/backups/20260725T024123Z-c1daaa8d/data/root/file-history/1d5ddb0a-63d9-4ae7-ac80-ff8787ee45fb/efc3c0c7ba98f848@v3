@@ -1,0 +1,87 @@
+---
+title: "Công Cụ Phân Tích Phân Phối — Từ MVP Đến Hào Dữ Liệu"
+description: "Xây dựng công cụ phân tích phân phối cho indie hackers: dán URL → xếp hạng kênh + kịch bản tiếp cận. Infrastructure×code (tỷ lệ thành công 67%) → chuyển đổi sang data_intelligence×data."
+status: pending
+priority: P1
+branch: "master"
+tags: [business, infrastructure-x-code, indie-hackers, data-compound]
+blockedBy: []
+blocks: []
+created: "2026-05-09T13:53:50.766Z"
+createdBy: "ck:plan"
+source: skill
+---
+
+# Công Cụ Phân Tích Phân Phối — Từ MVP Đến Hào Dữ Liệu
+
+## Tổng quan
+
+**Sản phẩm:** Dán URL sản phẩm → nhận danh sách kênh phân phối xếp hạng + kịch bản tiếp cận copy-paste.
+**Đối tượng:** Indie hackers / người xây micro-SaaS đang gặp vấn đề "xây xong sản phẩm nhưng không ai dùng".
+**Chiến lược:** infrastructure×code (67% thành công, n=18) → chuyển sang data_intelligence×data (100% thành công, n=5).
+
+**Ràng buộc founder:** 15 năm kinh nghiệm dev, vốn $1K, 3 giờ/ngày, sống tại VN, thu nhập ổn định $1K/tháng.
+
+**Tiêu chí huỷ:** 0 người trả tiền sau 45 ngày kể từ ra mắt → đổi hướng friction hoặc huỷ sản phẩm.
+
+## Lý do quyết định (từ thư viện mẫu, 93 trường hợp)
+
+| Yếu tố | Giá trị | Nguồn |
+|---------|---------|-------|
+| Tỷ lệ cơ sở (infra×code) | 67% thành công | PAT-CROSS-INFRASTRUCTURE-X-CODE (n=18, độ tin cậy 0.76) |
+| Founder-crowd alignment | CÓ (founder LÀ indie hacker) | Case studies: Plausible, ConvertKit, Bannerbear |
+| Phụ thuộc nền tảng | KHÔNG | Không phụ thuộc API bên ngoài |
+| Tiềm năng tích luỹ dữ liệu | CAO | Mỗi phân tích → mẫu hình → tri thức |
+| Chi phí hàng tháng | $5-54/tháng | Nằm trong vốn $1K |
+| Thời gian xây dựng | 30 giờ (~2 tuần với 3 giờ/ngày) | HTMX + Workers, không cần SPA |
+
+## Công nghệ sử dụng
+
+| Thành phần | Lựa chọn | Chi phí/tháng |
+|------------|----------|---------------|
+| Backend | Cloudflare Workers (Hono) | $0-5 |
+| Frontend | HTMX + HTML render phía server | $0 |
+| Cơ sở dữ liệu | SQLite → Turso | $0-9 |
+| AI | OpenAI GPT-4o-mini | $5-20 |
+| Thu thập dữ liệu web | Cheerio + fetch | $0 |
+| Thanh toán | Stripe | 2.9% |
+| Email | Resend | $0-20 |
+
+## Lộ trình
+
+```
+Tuần 1:      Khám phá & Xác nhận
+Tuần 2-3:    Xây MVP (30 giờ)
+Tuần 4-5:    Ra mắt & Bán hàng đầu tiên
+Tuần 6-8:    Lặp lại cải tiến (nếu còn sống)
+Tháng 3-4:   Dữ liệu bắt đầu tích luỹ
+Tháng 5-8:   Sản phẩm dữ liệu (Option B) xuất hiện
+```
+
+## Các giai đoạn
+
+| Giai đoạn | Tên | Trạng thái | Thời gian |
+|-----------|-----|------------|-----------|
+| 1 | [Khám Phá & Xác Nhận](./phase-01-discovery-validation.md) | Chờ | Tuần 1 (15 giờ) |
+| 2 | [Xây Dựng MVP Cốt Lõi](./phase-02-build-mvp-core.md) | Chờ | Tuần 2 (15 giờ) |
+| 3 | [Xây Dựng AI & Matching Engine](./phase-03-build-ai-matching-engine.md) | Chờ | Tuần 3 (15 giờ) |
+| 4 | [Ra Mắt & Bán Hàng Đầu Tiên](./phase-04-launch-first-sales.md) | Chờ | Tuần 4-5 (15 giờ) |
+| 5 | [Lặp Lại & Tích Luỹ Dữ Liệu](./phase-05-iterate-data-compound.md) | Chờ | Tuần 6-8 (15 giờ) |
+| 6 | [Sản Phẩm Dữ Liệu (Option B)](./phase-06-option-b-data-products.md) | Chờ | Tháng 3+ |
+
+## Tiêu chí huỷ (BẮT BUỘC)
+
+| Cổng | Điều kiện | Hành động |
+|------|-----------|-----------|
+| Ngày 7 | <3/10 phản hồi DM từ indie hackers | Đổi giả thuyết friction |
+| Ngày 21 | MVP chưa ship được | Giảm phạm vi, không giãn thời gian |
+| Ngày 35 | <50 đăng ký | Phỏng vấn TẠI SAO không đăng ký, điều chỉnh positioning |
+| **Ngày 45** | **0 người trả tiền** | **HUỶ sản phẩm. Giữ lại kho kênh + dữ liệu làm tài sản** |
+| Ngày 60 | <$500 MRR | Đánh giá đổi hướng hay tăng gấp đôi |
+
+## Nguồn tham khảo
+
+- Brainstorm: `plans/reports/brainstorm-260509-2040-option-a-b-execution-playbook.md`
+- Framework tinh hoa: `plans/reports/brainstorm-260509-1945-tinh-hoa-dong-tien-thuc-su.md`
+- Dữ liệu mẫu: `master_investments/experience_layer/data/ground_truth/extracted_patterns.json`
+- Case studies: `plans/reports/researcher-260509-1107-infrastructure-for-crowds-case-studies.md`

@@ -1,0 +1,41 @@
+# Idea Tournament Engine — Session Journal
+
+**Date:** 2026-05-27
+**Scope:** Stage0 Phase 2.7 — pairwise debate + Elo ranking for opportunity hypotheses
+**Status:** Implementation complete, 33/33 tests passing, pending commit
+
+## What Shipped
+
+Added adversarial tournament between Phase 2.5C (Pattern Matching) and Phase 4 (Vision Gate + Synthesis). Opportunities extracted from evidence vault + pattern matcher compete head-to-head in LLM-judged debates, accumulate Elo scores, and get diversity-enforced before synthesis.
+
+**Architecture:** Prompt protocol (markdown) + lightweight Python Elo scorer. Follows same pattern as evidence-vault-protocol.md and reasoning-chain-protocol.md. The LLM IS the orchestrator — no heavy Python orchestration.
+
+## Files Created/Modified
+
+| File | Action |
+|------|--------|
+| `.claude/lib/intelligence/tournament/models.py` | NEW — 3 dataclasses, activation gate, diversity enforcement, cluster classification |
+| `.claude/lib/intelligence/tournament/elo_engine.py` | NEW — pure math Elo (expected_score, elo_update, compute_rankings) |
+| `.claude/agents/core/intelligence/tournament-protocol.md` | NEW — 5-step agent protocol (harvest→cluster→debate→rank→diversity) |
+| `.claude/skills/business/startup/SKILL.md` | MODIFIED — Phase 2.7 insertion + Phase 4 null-check fallback |
+| `tournament/tests/test_elo_engine.py` | NEW — 13 tests |
+| `tournament/tests/test_models.py` | NEW — 20 tests |
+
+## Key Decisions
+
+1. **Standalone OpportunityHypothesis** — does NOT extend Hypothesis from money_flow_graph.py (semantically unrelated)
+2. **N=10 hard cap** — max 45 debates, ~2.5 min wall time. Pre-filter by keyword relevance if >10
+3. **Dual activation gate** — keyword count >= 3 AND pattern count >= 3. Zero LLM cost when skipped
+4. **Round-robin over Swiss** — simpler, proven correct for N≤10
+5. **Non-mutating compute_rankings** — deep-copies inputs (code review catch, fixed)
+6. **Retry once then DRAW** — for malformed JSON and marginal score debates
+
+## Bugs Found & Fixed
+
+- **Diversity enforcement loop** — was iterating over `rest` list while modifying it mid-iteration. Caused only 1 promotion instead of 2 when top-5 had <3 clusters. Fixed with while-loop approach.
+- **compute_rankings mutation** — was modifying input hypothesis objects in place. Code review caught this. Fixed with `copy.copy()` at function entry.
+
+## What's Next
+
+- Manual validation: run `/startup` with a 3+ hypothesis topic and evaluate tournament ranking quality
+- Monitor token budget impact in production (estimated +50K tokens, +2-3 min wall time)

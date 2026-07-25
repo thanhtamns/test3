@@ -1,0 +1,325 @@
+"""
+MoneyFlowGraph — incremental knowledge graph for money flow intelligence.
+Nodes = entities (payers, providers, brokers, platforms).
+Edges = money flows with verified amounts and confidence scores.
+"""
+
+import json
+import hashlib
+from dataclasses import dataclass, field
+from typing import Optional
+
+
+@dataclass
+class GraphNode:
+    id: str
+    entity: str
+    entity_type: str  # PAYER | PROVIDER | BROKER | PLATFORM | REGULATOR | INTERMEDIARY
+    monthly_volume: Optional[float] = None
+    confidence: float = 0.5
+    source_url: str = ""
+    metadata: dict = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "entity": self.entity,
+            "entity_type": self.entity_type,
+            "monthly_volume": self.monthly_volume,
+            "confidence": self.confidence,
+            "source_url": self.source_url,
+            "metadata": self.metadata,
+        }
+
+
+@dataclass
+class GraphEdge:
+    source: str  # node_id
+    target: str  # node_id
+    flow_type: str  # PAYS | REFERS | REGULATES | COMPETES | SUPPLIES
+    amount_per_tx: Optional[float] = None
+    volume_monthly: Optional[int] = None
+    take_rate: Optional[float] = None
+    confidence: float = 0.5
+    verified_by: str = ""
+    metadata: dict = field(default_factory=dict)
+
+    @property
+    def id(self) -> str:
+        return f"{self.source}->{self.target}:{self.flow_type}"
+
+    @property
+    def monthly_value(self) -> Optional[float]:
+        if self.amount_per_tx is not None and self.volume_monthly is not None:
+            return self.amount_per_tx * self.volume_monthly
+        return None
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "source": self.source,
+            "target": self.target,
+            "flow_type": self.flow_type,
+            "amount_per_tx": self.amount_per_tx,
+            "volume_monthly": self.volume_monthly,
+            "take_rate": self.take_rate,
+            "monthly_value": self.monthly_value,
+            "confidence": self.confidence,
+            "verified_by": self.verified_by,
+        }
+
+
+HYPOTHESIS_UNTESTED = "UNTESTED"
+HYPOTHESIS_CONFIRMED = "CONFIRMED"
+HYPOTHESIS_KILLED = "KILLED"
+HYPOTHESIS_INCONCLUSIVE = "INCONCLUSIVE"
+
+
+@dataclass
+class Hypothesis:
+    id: str
+    statement: str
+    test_query: str
+    priority: float = 0.5  # 0-1, higher = more valuable to verify
+    status: str = HYPOTHESIS_UNTESTED
+    evidence_for: list[str] = field(default_factory=list)
+    evidence_against: list[str] = field(default_factory=list)
+    affects_edges: list[str] = field(default_factory=list)  # edge IDs this would update
+    cycle_created: int = 0
+    cycle_tested: Optional[int] = None
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "statement": self.statement,
+            "test_query": self.test_query,
+            "priority": self.priority,
+            "status": self.status,
+            "evidence_for": self.evidence_for,
+            "evidence_against": self.evidence_against,
+            "affects_edges": self.affects_edges,
+            "cycle_created": self.cycle_created,
+            "cycle_tested": self.cycle_tested,
+        }
+
+
+def _make_node_id(entity: str) -> str:
+    slug = entity.lower().strip().replace(" ", "_")[:40]
+    h = hashlib.md5(entity.lower().strip().encode()).hexdigest()[:6]
+    return f"n_{slug}_{h}"
+
+
+class MoneyFlowGraph:
+    def __init__(self):
+        self.nodes: dict[str, GraphNode] = {}
+        self.edges: dict[str, GraphEdge] = {}
+        self.hypotheses: dict[str, Hypothesis] = {}
+        self._hypothesis_counter = 0
+
+    def add_node(
+        self,
+        entity: str,
+        entity_type: str,
+        monthly_volume: Optional[float] = None,
+        confidence: float = 0.5,
+        source_url: str = "",
+        metadata: Optional[dict] = None,
+    ) -> GraphNode:
+        node_id = _make_node_id(entity)
+        if node_id in self.nodes:
+            existing = self.nodes[node_id]
+            if confidence > existing.confidence:
+                existing.confidence = confidence
+                if monthly_volume is not None:
+                    existing.monthly_volume = monthly_volume
+                if source_url:
+                    existing.source_url = source_url
+            return existing
+        node = GraphNode(
+            id=node_id,
+            entity=entity,
+            entity_type=entity_type,
+            monthly_volume=monthly_volume,
+            confidence=confidence,
+            source_url=source_url,
+            metadata=metadata or {},
+        )
+        self.nodes[node_id] = node
+        return node
+
+    def add_edge(
+        self,
+        source_entity: str,
+        target_entity: str,
+        flow_type: str,
+        amount_per_tx: Optional[float] = None,
+        volume_monthly: Optional[int] = None,
+        take_rate: Optional[float] = None,
+        confidence: float = 0.5,
+        verified_by: str = "",
+    ) -> GraphEdge:
+        src_id = _make_node_id(source_entity)
+        tgt_id = _make_node_id(target_entity)
+        if src_id not in self.nodes:
+            self.add_node(source_entity, "UNKNOWN", confidence=0.3)
+        if tgt_id not in self.nodes:
+            self.add_node(target_entity, "UNKNOWN", confidence=0.3)
+
+        edge = GraphEdge(
+            source=src_id,
+            target=tgt_id,
+            flow_type=flow_type,
+            amount_per_tx=amount_per_tx,
+            volume_monthly=volume_monthly,
+            take_rate=take_rate,
+            confidence=confidence,
+            verified_by=verified_by,
+        )
+        edge_key = edge.id
+        if edge_key in self.edges:
+            existing = self.edges[edge_key]
+            if confidence > existing.confidence:
+                self.edges[edge_key] = edge
+            return self.edges[edge_key]
+        self.edges[edge_key] = edge
+        return edge
+
+    def add_hypothesis(
+        self,
+        statement: str,
+        test_query: str,
+        priority: float = 0.5,
+        affects_edges: Optional[list[str]] = None,
+        cycle: int = 0,
+    ) -> Hypothesis:
+        self._hypothesis_counter += 1
+        h = Hypothesis(
+            id=f"H{self._hypothesis_counter:03d}",
+            statement=statement,
+            test_query=test_query,
+            priority=priority,
+            affects_edges=affects_edges or [],
+            cycle_created=cycle,
+        )
+        self.hypotheses[h.id] = h
+        return h
+
+    def untested_hypotheses(self) -> list[Hypothesis]:
+        return [h for h in self.hypotheses.values() if h.status == HYPOTHESIS_UNTESTED]
+
+    def confirmed_hypotheses(self) -> list[Hypothesis]:
+        return [h for h in self.hypotheses.values() if h.status == HYPOTHESIS_CONFIRMED]
+
+    def find_gaps(self) -> list[dict]:
+        gaps = []
+        for node in self.nodes.values():
+            if node.confidence < 0.5:
+                gaps.append({"type": "low_confidence_node", "node": node.id, "entity": node.entity, "confidence": node.confidence})
+            if node.monthly_volume is None and node.entity_type in ("PAYER", "PROVIDER", "BROKER"):
+                gaps.append({"type": "missing_volume", "node": node.id, "entity": node.entity})
+
+        node_ids = set(self.nodes.keys())
+        has_outgoing = {e.source for e in self.edges.values()}
+        has_incoming = {e.target for e in self.edges.values()}
+        for nid, node in self.nodes.items():
+            if node.entity_type == "PAYER" and nid not in has_outgoing:
+                gaps.append({"type": "payer_no_outflow", "node": nid, "entity": node.entity})
+            if node.entity_type == "PROVIDER" and nid not in has_incoming:
+                gaps.append({"type": "provider_no_inflow", "node": nid, "entity": node.entity})
+
+        for edge in self.edges.values():
+            if edge.confidence < 0.5:
+                gaps.append({"type": "low_confidence_edge", "edge": edge.id, "confidence": edge.confidence})
+            if edge.amount_per_tx is None and edge.flow_type == "PAYS":
+                gaps.append({"type": "missing_amount", "edge": edge.id})
+        return gaps
+
+    def bottleneck_positions(self) -> list[dict]:
+        positions = []
+        incoming_count: dict[str, int] = {}
+        outgoing_count: dict[str, int] = {}
+        for edge in self.edges.values():
+            outgoing_count[edge.source] = outgoing_count.get(edge.source, 0) + 1
+            incoming_count[edge.target] = incoming_count.get(edge.target, 0) + 1
+
+        for nid, node in self.nodes.items():
+            inc = incoming_count.get(nid, 0)
+            out = outgoing_count.get(nid, 0)
+            if inc >= 2 and out >= 2:
+                positions.append({
+                    "node": nid,
+                    "entity": node.entity,
+                    "type": "HUB",
+                    "incoming": inc,
+                    "outgoing": out,
+                    "monthly_volume": node.monthly_volume,
+                })
+            elif inc >= 2 and out <= 1:
+                positions.append({
+                    "node": nid,
+                    "entity": node.entity,
+                    "type": "AGGREGATOR",
+                    "incoming": inc,
+                    "outgoing": out,
+                })
+            elif inc <= 1 and out >= 2:
+                positions.append({
+                    "node": nid,
+                    "entity": node.entity,
+                    "type": "DISTRIBUTOR",
+                    "incoming": inc,
+                    "outgoing": out,
+                })
+
+        # Find edges where NO intermediary exists (direct payer→provider)
+        for edge in self.edges.values():
+            if edge.flow_type == "PAYS" and edge.monthly_value and edge.monthly_value > 1000:
+                src = self.nodes.get(edge.source)
+                tgt = self.nodes.get(edge.target)
+                if src and tgt:
+                    has_intermediary = any(
+                        e for e in self.edges.values()
+                        if e.source == edge.source and e.target != edge.target and e.flow_type in ("PAYS", "REFERS")
+                    )
+                    if not has_intermediary:
+                        positions.append({
+                            "node": None,
+                            "type": "MISSING_BROKER",
+                            "between": [src.entity, tgt.entity],
+                            "monthly_value": edge.monthly_value,
+                            "edge": edge.id,
+                        })
+        return positions
+
+    def overall_confidence(self) -> float:
+        if not self.edges:
+            return 0.0
+        return sum(e.confidence for e in self.edges.values()) / len(self.edges)
+
+    def verified_edge_count(self, threshold: float = 0.6) -> int:
+        return sum(1 for e in self.edges.values() if e.confidence >= threshold)
+
+    def total_monthly_flow(self) -> float:
+        return sum(e.monthly_value or 0 for e in self.edges.values() if e.flow_type == "PAYS")
+
+    def to_dict(self) -> dict:
+        return {
+            "nodes": {nid: n.to_dict() for nid, n in self.nodes.items()},
+            "edges": {eid: e.to_dict() for eid, e in self.edges.items()},
+            "hypotheses": {hid: h.to_dict() for hid, h in self.hypotheses.items()},
+            "stats": {
+                "node_count": len(self.nodes),
+                "edge_count": len(self.edges),
+                "verified_edges": self.verified_edge_count(),
+                "overall_confidence": round(self.overall_confidence(), 3),
+                "total_monthly_flow": self.total_monthly_flow(),
+                "hypotheses_total": len(self.hypotheses),
+                "hypotheses_confirmed": len(self.confirmed_hypotheses()),
+                "hypotheses_untested": len(self.untested_hypotheses()),
+                "gaps": len(self.find_gaps()),
+                "bottleneck_positions": len(self.bottleneck_positions()),
+            },
+        }
+
+    def to_json(self, indent: int = 2) -> str:
+        return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)

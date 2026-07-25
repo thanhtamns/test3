@@ -1,0 +1,60 @@
+---
+title: "Barbell Cashflow Architecture — 6-Month Execution"
+description: "Taleb Barbell Strategy applied to founder cashflow: Safe side (solo AI freelancing) + Chaos side (4 parallel convex bets). Stage0-validated + Hunt-verified."
+status: pending
+priority: P1
+branch: "master"
+tags: [barbell, cashflow, taleb, stage0-verified, hunt-verified]
+blockedBy: []
+blocks: []
+created: "2026-05-29T03:26:57.926Z"
+createdBy: "ck:plan"
+source: skill
+---
+
+# Barbell Cashflow Architecture — 6-Month Execution
+
+## Overview
+
+6-month execution plan applying Nassim Taleb's Barbell Strategy to founder cashflow design. Two parallel tracks running simultaneously:
+
+**SAFE SIDE (70% time):** Solo AI-augmented freelancing → $2-3K/mo predictable income. Stage0 verdict: SIDE_HUSTLE_WITH_STAIRCASE (confidence 0.78). Chris Lee precedent: $6K/mo, $20/mo tools, 3 clients.
+
+**CHAOS SIDE (20% time + 10% learning):** 4 parallel convex bets with 30-day kill gates. Hunt-verified primary bet: CN-VN trade intelligence (7 anomaly cards, top score 0.75, founder fit 0.85).
+
+**Source documents:**
+- Brainstorm: `plans/reports/260529-barbell-cashflow-architecture.md`
+- Stage0 verdict: `master_investments/kb/cases/260529-labor-arbitrage-ai-dev.json`
+- Hunt anomalies: `master_investments/data/hunts/HUNT-260529-cn-vn-trade-intelligence/anomalies.json`
+
+**Founder:** 15yr software/AI, $1K capital, $1K/mo job, Vietnam mobile, 30h/week
+**Allocation:** 70% safe / 20% bets / 10% learning (Rob Walling validated ratio)
+**Kill philosophy:** Annie Duke pre-commitment — write criteria BEFORE launching, review monthly
+
+## Phases
+
+| Phase | Name | Timeline | Status |
+|-------|------|----------|--------|
+| 1 | [Foundation Setup](./phase-01-foundation-setup.md) | Week 1 | Pending |
+| 2 | [Safe Barbell Launch](./phase-02-safe-barbell-launch.md) | Week 1-4 | Pending |
+| 3 | [Chaos Portfolio Launch](./phase-03-chaos-portfolio-launch.md) | Week 1-4 | Pending |
+| 4 | [First Kill Gate Review](./phase-04-first-kill-gate-review.md) | Day 30 | Pending |
+| 5 | [Scale and Shift](./phase-05-scale-and-shift.md) | Month 2-4 | Pending |
+| 6 | [Compound Review and Mountain Path](./phase-06-compound-review-and-mountain-path.md) | Month 4-6 | Pending |
+
+## Dependencies
+
+- Phase 2 and 3 run IN PARALLEL (this is the barbell — both sides simultaneously)
+- Phase 4 BLOCKS Phase 5 (kill decisions before scaling)
+- Phase 5 feeds Phase 6 (survivors scale into mountain path)
+
+## Revenue Targets
+
+| Month | Safe Side | Chaos Side | Total | Action |
+|-------|-----------|------------|-------|--------|
+| 1 | $0 (building pipeline) | $0 (launching bets) | $1,000 (job) | Build |
+| 2 | $500-1,500 (1st client) | $0 (free tiers) | $1,500-2,500 | Validate |
+| 3 | $1,500-3,000 (2-3 clients) | $0-500 (1st paid subs) | $2,500-4,500 | Kill gate |
+| 4 | $2,000-3,500 | $200-1,000 | $3,200-5,500 | Scale winners |
+| 5 | $2,500-5,000 | $500-2,000 | $4,000-8,000 | Productize |
+| 6 | $3,000-7,500 | $1,000-5,000 | $5,000-13,500 | Mountain path? |

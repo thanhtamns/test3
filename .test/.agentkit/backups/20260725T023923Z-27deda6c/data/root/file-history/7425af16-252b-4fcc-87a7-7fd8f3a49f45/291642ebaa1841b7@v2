@@ -1,0 +1,160 @@
+---
+status: complete
+created: 2026-05-27
+updated: 2026-05-30
+target_repo: D:\code\invesments\master_investments
+title: "Hypothesis-Driven Intelligence Engine + Deal Drill"
+description: >-
+  Evolve Stage0 from search-aggregation pipeline to hypothesis-driven
+  adversarial intelligence engine + Deal Drill for mechanism-specific output.
+  Co-Scientist inspired: THINK (80%) > SEARCH (15%). 7 phases.
+  DISCOVERY 2026-05-30: ALL Python code (191 tests) already built.
+  Remaining work: 3 agent protocols + SKILL.md wiring + Deal Drill layer.
+total_phases: 7
+estimated_effort: "18h (revised from 35h — Python code already shipped)"
+---
+
+# Hypothesis-Driven Intelligence Engine + Deal Drill
+
+## Problem
+
+Stage0 produces DATA, not INTELLIGENCE. Output is generic ("3 business models: SaaS, digital product, commerce") instead of mechanism-specific ("sell compliance tool X to 5,000 companies in industry Y, entry via LinkedIn group Z, edge: competitor doesn't support VN").
+
+**Root cause:** Pipeline is COLLECT → ORGANIZE → SUMMARIZE. Missing the THINK step (Co-Scientist, DeepMind) AND the DRILL step (mechanism → specific WHO/HOW/ENTRY/EDGE).
+
+## Status Update (2026-05-30)
+
+**CRITICAL DISCOVERY:** ALL Python code for Phases 1-5 is ALREADY BUILT and passing 191 tests:
+- `hypothesis/` — FirstPrinciplesModels + ReflectionScorer ✅
+- `knowledge/` — KnowledgeGraph + VaultToGraph ✅
+- `refinement/` — ConvergenceChecker + EvidenceDebateBuilder + ProximityEnforcer ✅
+- `shared/` — ConvergenceProtocol + GraphProtocol ✅
+- `tournament/` — EloEngine + Models ✅
+- `controller/` — IntelligenceController + MoneyFlowGraph ✅
+
+**MISSING (actual remaining work):**
+1. 3 agent protocol .md files (reflection, refinement-loop, mechanism-output)
+2. SKILL.md wiring (Phase 2.6B, 2.8 not yet inserted)
+3. Hunt pipeline upgrade (IC at start, not end)
+4. Phase 6: Deal Drill layer (NEW — mechanism → specific actionable output)
+
+## Co-Scientist Architecture (reference)
+
+```
+Generation(10%) → [Verify against structured DBs(70%) + Debate(20%)] × N rounds → Convergence
+```
+
+Key principles:
+1. Generate NOVEL hypotheses before any search (first principles, not web-first)
+2. 70% compute on VERIFICATION against structured knowledge, not generation
+3. Contradictions are MORE valuable than confirmations
+4. Iterative refinement until ranking CONVERGES (not single-pass)
+5. Evolution: top ideas MERGE into stronger forms
+
+## Current Stage0 vs Proposed
+
+```
+CURRENT:
+  Search(60%) → Organize(20%) → Debate(10%) → Synthesize(10%)
+  Single-pass: Phase 0 → 1 → 2 → 2.5A/B/C → 2.7 → 3 → 4
+
+PROPOSED:
+  Seed(10%) → [Generate → Verify → Debate → Evolve] × N → Synthesize(10%)
+  Iterative: Phase 2.6 (Generate) → 2.7 (Debate) → 2.8 (Refine) loops until convergence
+```
+
+## Phase Overview
+
+| # | Phase | Status | Effort | Notes |
+|---|-------|--------|--------|-------|
+| 1 | [First Principles Generator](phase-01-first-principles-generator.md) | **complete** | 5h | Python + protocol + SKILL.md wired |
+| 1B | [Reflection Agent (Self-Critique)](phase-01b-reflection-agent.md) | **complete** | 1h | Python ✅ + protocol .md ✅ + SKILL.md wired ✅ |
+| 2 | [Knowledge Graph](phase-02-knowledge-graph.md) | **complete** | 1h | Python ✅ + SKILL.md wired ✅ |
+| 3 | [Refinement Loop + Evolution](phase-03-refinement-loop.md) | **complete** | 2h | Python ✅ + protocol .md ✅ + SKILL.md wired ✅ |
+| 3A | [Proximity & Diversity Enforcer](phase-03a-proximity-diversity.md) | **complete** | 0.5h | Python ✅ + referenced in refinement protocol |
+| 4 | [Mechanism-First Output](phase-04-mechanism-first-output.md) | **complete** | 1.5h | Protocol .md ✅ + synthesis inputs updated ✅ |
+| 5 | [Integration + Unification](phase-05-integration-testing.md) | **complete** | 3h | SKILL.md wired (Phases 2.6B, 2.8, 4C) ✅ |
+| 6 | [Deal Drill Layer](phase-06-deal-drill.md) | **complete** | 5h | Protocol .md ✅ + SKILL.md Phase 4C ✅ |
+| 6B | [Hunt Pipeline Upgrade](phase-06b-hunt-upgrade.md) | **complete** | 4h | IC at START ✅, targeted queries ✅, 264 tests pass ✅ |
+
+## Architecture
+
+```
+Phase 2 research agents (existing, UNCHANGED)
+        ↓
+Phase 2.5A: Evidence Vault → Knowledge Graph (Python: DONE ✅)
+Phase 2.5B: Reasoning Chain (UNCHANGED)
+Phase 2.5C: Pattern Matcher (UNCHANGED)
+        ↓
+Phase 2.6: FIRST PRINCIPLES GENERATOR (DONE ✅ — wired in SKILL.md)
+        ↓
+Phase 2.6B: REFLECTION AGENT (Python: DONE ✅, protocol .md: MISSING)
+  - Self-critique EACH hypothesis, kill <3/10
+        ↓
+Phase 2.7: Tournament (DONE ✅ — wired in SKILL.md, needs evidence-debate upgrade)
+        ↓
+Phase 2.8: REFINEMENT LOOP (Python: DONE ✅, protocol .md: MISSING)
+  - STRENGTHEN + ATTACK + EVOLVE × N rounds, dynamic convergence
+        ↓
+Phase 3-4: Lens Analysis + Synthesis (needs mechanism-first output upgrade)
+        ↓
+Phase 4.5: DEAL DRILL (NEW — Phase 6)
+  - Top-1 hypothesis → 5 drills: WHO/PRICE/ENTRY/EDGE/KILL
+  - Max 15 targeted searches
+  - Output: mechanism-specific actionable deal
+        ↓
+Phase 5: UNIFICATION — IC + Refinement share graph + convergence
+        ↓
+Hunt: IC at START (Phase 6B), not end
+  - Hypotheses guide Price Delta + Forced Flow searches
+  - Deal Drill on top-1 anomaly card
+```
+
+## Execution Order (revised for minimal risk)
+
+```
+Wave 1 (parallel, 2h): Phase 1B protocol + Phase 4 protocol
+  → Creates: reflection-protocol.md, mechanism-output-protocol.md
+  
+Wave 2 (2h): Phase 5 integration
+  → Wires Phase 2.6B + 2.8 + knowledge graph into SKILL.md
+  → Creates: refinement-loop-protocol.md
+  → Shared protocols already in Python
+  
+Wave 3 (5h): Phase 6 Deal Drill
+  → Creates: deal-drill-protocol.md
+  → Modifies: SKILL.md (Phase 4.5), output-template.md
+  
+Wave 4 (4h): Phase 6B Hunt Upgrade
+  → Modifies: hunt_runner.py, price_delta_engine.py, forced_flow_engine.py
+  → IC at start, deal drill at end
+
+Wave 5 (2h): End-to-end testing + validation
+  → Manual test: /stage0 + /hunt with real topics
+  → Verify: mechanism-first output + deal drill section
+```
+
+## Dependencies
+
+- Tournament engine (Phase 2.7) — SHIPPED, 33/33 tests
+- Intelligence Controller — SHIPPED, hypothesis loop pattern reusable
+- Evidence Vault Protocol — exists, needs upgrade to Knowledge Graph
+- SKILL.md — will be modified in Phase 5 integration
+
+## Key Design Decisions
+
+1. **Knowledge Graph is Python, not markdown** — structured queryable data, not flat text
+2. **First Principles Generator is a PROTOCOL (markdown)** — follows evidence-vault-protocol pattern, LLM is the executor
+3. **Refinement Loop uses DYNAMIC convergence, not fixed rounds** — Elo delta rate determines when to stop
+4. **Convergence = Elo movement rate + ranking stability** — two signals, either triggers stop
+5. **All new code in `.claude/lib/intelligence/`** — extends existing module structure
+6. **Evidence vault is NOT replaced** — Knowledge Graph is a structured LAYER on top
+7. **Reflection agent filters BEFORE tournament** — weak hypotheses killed pre-debate
+8. **Proximity enforcement is a DIVERSITY TAX on tournament** — top-3 cannot all be same archetype
+9. **IC merges with Refinement Loop** — single convergence system, shared graph infrastructure
+10. **Deep debate = evidence-backed argumentation** — SPECIFIC evidence citations, not LLM opinion
+11. **Deal Drill runs ONLY on top-1** — cost control, 15 search budget, skip if confidence < 0.7
+12. **Deal Drill is ONE agent, not 5** — drills are interdependent (pricing depends on customer drill), single context window
+13. **"Đường vòng" (indirect approach) is MANDATORY** — every deal drill must identify how to bypass direct competition
+14. **Hunt: IC BEFORE data collection** — hypotheses guide search, not vice versa. Backward compatible fallback.
+15. **Output = Level A (Mechanism-specific)** — WHO pays (named entities), HOW MUCH (verified prices), ENTRY (specific community + script), EDGE (founder-specific), KILL (measurable threshold + timeframe)

@@ -1,0 +1,252 @@
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\budget_policy.rs-363-                feature_tag: None,
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\budget_policy.rs:364:                project_path: project.to_string(),
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\budget_policy.rs-365-                developer_id: dev.to_string(),
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-30-    pub feature_tag: Option<String>,
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs:31:    pub project_path: String,
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-32-    pub developer_id: String,
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-81-                feature_tag      TEXT,
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs:82:                project_path     TEXT NOT NULL DEFAULT '',
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-83-                developer_id     TEXT NOT NULL DEFAULT '',
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-118-                 cache_read_tokens, cache_write_tokens, cost_usd,
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs:119:                 pr_ref, feature_tag, project_path, developer_id, timestamp)
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-120-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-130-                record.feature_tag,
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs:131:                record.project_path,
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-132-                record.developer_id,
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-143-                    cache_read_tokens, cache_write_tokens, cost_usd,
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs:144:                    pr_ref, feature_tag, project_path, developer_id, timestamp
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-145-             FROM cost_records WHERE pr_ref = ?1 ORDER BY timestamp ASC",
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-154-                    cache_read_tokens, cache_write_tokens, cost_usd,
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs:155:                    pr_ref, feature_tag, project_path, developer_id, timestamp
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-156-             FROM cost_records WHERE developer_id = ?1 ORDER BY timestamp ASC",
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-165-                    cache_read_tokens, cache_write_tokens, cost_usd,
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs:166:                    pr_ref, feature_tag, project_path, developer_id, timestamp
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-167-             FROM cost_records WHERE model_id LIKE ?1 ORDER BY timestamp ASC",
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-178-                    cache_read_tokens, cache_write_tokens, cost_usd,
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs:179:                    pr_ref, feature_tag, project_path, developer_id, timestamp
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-180-             FROM cost_records WHERE timestamp LIKE ?1 ORDER BY timestamp ASC",
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-186-    /// Sum total cost across all records (optionally filtered by project path).
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs:187:    pub fn total_cost(&self, project_path: Option<&str>) -> Result<f64> {
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs:188:        let total: f64 = if let Some(path) = project_path {
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-189-            self.conn.query_row(
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs:190:                "SELECT COALESCE(SUM(cost_usd), 0.0) FROM cost_records WHERE project_path = ?1",
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-191-                params![path],
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-267-    /// Used by the budget policy engine to check per-project period spend.
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs:268:    pub fn accumulated_cost_by_project(&self, project_path: &str, since: &str) -> Result<f64> {
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-269-        let total: f64 = self.conn.query_row(
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-270-            "SELECT COALESCE(SUM(cost_usd), 0.0) FROM cost_records
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs:271:             WHERE project_path = ?1 AND timestamp >= ?2",
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs:272:            rusqlite::params![project_path, since],
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-273-            |row| row.get(0),
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-303-        feature_tag: row.get(9)?,
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs:304:        project_path: row.get(10)?,
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-305-        developer_id: row.get(11)?,
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-361-    feature_tag: Option<String>,
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs:362:    project_path: &str,
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-363-) -> CostRecord {
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-374-        feature_tag,
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs:375:        project_path: project_path.to_string(),
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-376-        developer_id: whoami(),
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-403-            feature_tag: Some("feat".to_string()),
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs:404:            project_path: "/home/dev/myproject".to_string(),
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-405-            developer_id: "alice".to_string(),
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-477-        let mut r1 = sample_record("s1", None);
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs:478:        r1.project_path = "/proj/a".to_string();
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-479-        r1.cost_usd = 0.10;
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-480-        let mut r2 = sample_record("s2", None);
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs:481:        r2.project_path = "/proj/b".to_string();
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-482-        r2.cost_usd = 0.20;
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-564-        let mut r1 = sample_record("s1", None);
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs:565:        r1.project_path = "/proj/alpha".to_string();
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-566-        r1.cost_usd = 0.15;
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-568-        let mut r2 = sample_record("s2", None);
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs:569:        r2.project_path = "/proj/alpha".to_string();
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-570-        r2.cost_usd = 0.35;
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-572-        let mut r3 = sample_record("s3", None);
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs:573:        r3.project_path = "/proj/beta".to_string();
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\cost_store.rs-574-        r3.cost_usd = 0.99;
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\learn\mod.rs-30-        let cwd_str = cwd.to_string_lossy().to_string();
+D:\code\invesments\tools_decisions\rtk-analysis\src\learn\mod.rs:31:        let encoded = ClaudeProvider::encode_project_path(&cwd_str);
+D:\code\invesments\tools_decisions\rtk-analysis\src\learn\mod.rs-32-        Some(encoded)
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-130-    /// `C:\Users\foo\bar`        → `C:-Users-foo-bar`
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs:131:    pub fn encode_project_path(path: &str) -> String {
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-132-        const SANITIZED_CHARS: &[char] = &['/', '.', '_', '\\', ' ', '[', ']'];
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-353-    #[test]
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs:354:    fn test_encode_project_path() {
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-355-        assert_eq!(
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs:356:            ClaudeProvider::encode_project_path("/Users/foo/bar"),
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-357-            "-Users-foo-bar"
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-361-    #[test]
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs:362:    fn test_encode_project_path_trailing_slash() {
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-363-        assert_eq!(
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs:364:            ClaudeProvider::encode_project_path("/Users/foo/bar/"),
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-365-            "-Users-foo-bar-"
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-369-    #[test]
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs:370:    fn test_encode_project_path_dot_in_username() {
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-371-        // Claude Code replaces both '/' and '.' with '-'.
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-375-        assert_eq!(
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs:376:            ClaudeProvider::encode_project_path("/Users/first.last/my-project"),
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-377-            "-Users-first-last-my-project"
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-381-    #[test]
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs:382:    fn test_encode_project_path_multiple_dots() {
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-383-        assert_eq!(
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs:384:            ClaudeProvider::encode_project_path("/Users/a.b.c/proj"),
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-385-            "-Users-a-b-c-proj"
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-389-    #[test]
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs:390:    fn test_encode_project_path_underscore() {
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-391-        // Claude Code also replaces '_' with '-' (https://github.com/anthropics/claude-code/issues/24067)
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-392-        assert_eq!(
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs:393:            ClaudeProvider::encode_project_path("/home/chris/2_project-files/proj"),
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-394-            "-home-chris-2-project-files-proj"
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-398-    #[test]
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs:399:    fn test_encode_project_path_non_ascii() {
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-400-        // Non-ASCII characters are each replaced with '-' (https://github.com/anthropics/claude-code/issues/40946)
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-402-        assert_eq!(
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs:403:            ClaudeProvider::encode_project_path("/home/user/\u{5916}\u{4e3b}/app"),
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-404-            "-home-user----app"
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-408-    #[test]
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs:409:    fn test_encode_project_path_windows() {
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-410-        // Windows backslashes are also replaced with '-'
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-411-        assert_eq!(
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs:412:            ClaudeProvider::encode_project_path(r"C:\Users\foo\bar"),
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-413-            "C:-Users-foo-bar"
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-418-    fn test_match_project_filter() {
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs:419:        let encoded = ClaudeProvider::encode_project_path("/Users/foo/Sites/rtk");
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-420-        assert!(encoded.contains("rtk"));
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-427-        assert_eq!(
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs:428:            ClaudeProvider::encode_project_path(
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\provider.rs-429-                r"/home/user/projects/[QZX-7K42] - Análise Genérica de Exemplo"
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\README.md-41-  rtk_cmd TEXT,                -- "rtk ls"
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\README.md:42:  project_path TEXT,           -- cwd (for project-scoped stats)
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\README.md-43-  input_tokens INTEGER,        -- estimated from raw output
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\mod.rs-61-        let cwd_str = cwd.to_string_lossy().to_string();
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\mod.rs:62:        let encoded = ClaudeProvider::encode_project_path(&cwd_str);
+D:\code\invesments\tools_decisions\rtk-analysis\src\discover\mod.rs-63-        Some(encoded)
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\cmds\system\deps.rs-55-
+D:\code\invesments\tools_decisions\rtk-analysis\src\cmds\system\deps.rs:56:    let pyproject_path = dir.join("pyproject.toml");
+D:\code\invesments\tools_decisions\rtk-analysis\src\cmds\system\deps.rs:57:    if pyproject_path.exists() {
+D:\code\invesments\tools_decisions\rtk-analysis\src\cmds\system\deps.rs-58-        found = true;
+D:\code\invesments\tools_decisions\rtk-analysis\src\cmds\system\deps.rs:59:        raw.push_str(&fs::read_to_string(&pyproject_path).unwrap_or_default());
+D:\code\invesments\tools_decisions\rtk-analysis\src\cmds\system\deps.rs-60-        rtk.push_str("Python (pyproject.toml):\n");
+D:\code\invesments\tools_decisions\rtk-analysis\src\cmds\system\deps.rs:61:        rtk.push_str(&summarize_pyproject_str(&pyproject_path)?);
+D:\code\invesments\tools_decisions\rtk-analysis\src\cmds\system\deps.rs-62-    }
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-42-/// Get the canonical project path string for the current working directory.
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs:43:fn current_project_path_string() -> String {
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-44-    std::env::current_dir()
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-53-/// Uses GLOB instead of LIKE to avoid `_` and `%` in paths acting as wildcards. // changed: GLOB
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs:54:fn project_filter_params(project_path: Option<&str>) -> (Option<String>, Option<String>) {
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs:55:    match project_path {
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-56-        Some(p) => (
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-285-        );
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs:286:        // Migration: add project_path column with DEFAULT '' for new rows // changed: added DEFAULT
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-287-        let _ = conn.execute(
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs:288:            "ALTER TABLE commands ADD COLUMN project_path TEXT DEFAULT ''",
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-289-            [],
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-293-            .query_row(
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs:294:                "SELECT EXISTS(SELECT 1 FROM commands WHERE project_path IS NULL)",
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-295-                [],
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-300-            let _ = conn.execute(
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs:301:                "UPDATE commands SET project_path = '' WHERE project_path IS NULL",
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-302-                [],
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-306-        let _ = conn.execute(
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs:307:            "CREATE INDEX IF NOT EXISTS idx_project_path_timestamp ON commands(project_path, timestamp)",
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-308-            [],
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-350-                exec_time_ms INTEGER DEFAULT 0,
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs:351:                project_path TEXT DEFAULT ''
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-352-            )",
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-359-        self.conn.execute(
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs:360:            "CREATE INDEX IF NOT EXISTS idx_project_path_timestamp ON commands(project_path, timestamp)",
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-361-            [],
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-416-
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs:417:        let project_path = current_project_path_string(); // added: record cwd
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-418-
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-419-        self.conn.execute(
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs:420:            "INSERT INTO commands (timestamp, original_cmd, rtk_cmd, project_path, input_tokens, output_tokens, saved_tokens, savings_pct, exec_time_ms)
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs:421:             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)", // added: project_path
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-422-            params![
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-425-                rtk_cmd,
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs:426:                project_path, // added
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-427-                input_tokens as i64,
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-569-    ///
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs:570:    /// When `project_path` is `Some`, matches the exact working directory
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-571-    /// or any subdirectory (prefix match with path separator).
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs:572:    pub fn get_summary_filtered(&self, project_path: Option<&str>) -> Result<GainSummary> {
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs:573:        let (project_exact, project_glob) = project_filter_params(project_path); // added
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-574-        let mut total_commands = 0usize;
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-582-             FROM commands
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs:583:             WHERE (?1 IS NULL OR project_path = ?1 OR project_path GLOB ?2)", // added: project filter
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-584-        )?;
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-616-
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs:617:        let by_command = self.get_by_command(project_path)?; // added: pass project filter
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs:618:        let by_day = self.get_by_day(project_path)?; // added: pass project filter
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-619-
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-634-        &self,
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs:635:        project_path: Option<&str>, // added
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-636-    ) -> Result<Vec<CommandStats>> {
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs:637:        let (project_exact, project_glob) = project_filter_params(project_path); // added
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-638-        let mut stmt = self.conn.prepare(
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-640-             FROM commands
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs:641:             WHERE (?1 IS NULL OR project_path = ?1 OR project_path GLOB ?2)
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-642-             GROUP BY rtk_cmd
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-662-        &self,
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs:663:        project_path: Option<&str>, // added
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-664-    ) -> Result<Vec<(String, usize)>> {
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs:665:        let (project_exact, project_glob) = project_filter_params(project_path); // added
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-666-        let mut stmt = self.conn.prepare(
+--
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-668-             FROM commands
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs:669:             WHERE (?1 IS NULL OR project_path = ?1 OR project_path GLOB ?2)
+D:\code\invesments\tools_decisions\rtk-analysis\src\core\tracking.rs-670-             GROUP BY DATE(timestamp)
+--
+
+[Showing results with pagination = limit: 250]

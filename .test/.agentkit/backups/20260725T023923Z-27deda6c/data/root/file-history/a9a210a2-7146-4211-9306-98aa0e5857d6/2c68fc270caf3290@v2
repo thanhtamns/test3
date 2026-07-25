@@ -1,0 +1,71 @@
+---
+name: empire-trajectory
+description: "Empire Pipeline V1 — Track compound assets, enforce staircase progression, generate weekly dashboard on path to $50K/mo."
+version: 1.0
+aliases: [empire]
+---
+
+# Empire Trajectory Skill
+
+Track all compound assets. Enforce staircase progression. Dashboard gap to $50K/mo.
+
+## Commands
+
+### Asset Registry
+```bash
+python .claude/skills/business/empire-trajectory/scripts/asset-registry-cli.py add \
+  --name "Product X" --category revenue --value 5000 --mrr 500
+python .claude/skills/business/empire-trajectory/scripts/asset-registry-cli.py list
+python .claude/skills/business/empire-trajectory/scripts/asset-registry-cli.py list --category revenue
+python .claude/skills/business/empire-trajectory/scripts/asset-registry-cli.py update --id 1 --mrr 750
+python .claude/skills/business/empire-trajectory/scripts/asset-registry-cli.py delete --id 1
+python .claude/skills/business/empire-trajectory/scripts/asset-registry-cli.py summary
+python .claude/skills/business/empire-trajectory/scripts/asset-registry-cli.py summary --json
+```
+
+### Staircase Enforcer
+```bash
+python .claude/skills/business/empire-trajectory/scripts/staircase-enforcer.py status
+python .claude/skills/business/empire-trajectory/scripts/staircase-enforcer.py check --verdict PASS
+python .claude/skills/business/empire-trajectory/scripts/staircase-enforcer.py check --verdict DOWNGRADE
+python .claude/skills/business/empire-trajectory/scripts/staircase-enforcer.py check --verdict DOWNGRADE --force
+```
+
+### Compound Dashboard
+```bash
+python .claude/skills/business/empire-trajectory/scripts/compound-dashboard.py generate
+```
+
+## Asset Categories
+
+| Category | Examples |
+|----------|----------|
+| code | Repos, tools, SaaS products, templates, scripts |
+| audience | Followers, email list, community members |
+| data | Training data, customer insights, market intelligence |
+| relationship | Clients, partners, mentors, network contacts |
+| revenue | MRR, ARR, recurring contracts |
+
+## Staircase
+
+| Stair | MRR | Strategy | DOWNGRADE Allowed |
+|-------|-----|----------|-------------------|
+| 0 | $0 | Validate | Yes |
+| 1 | $1-3K | Cash bridge | Yes |
+| 2 | $3-10K | Product revenue | No |
+| 3 | $10-30K | Scale | No |
+| 4 | $30-50K | Diversify | No |
+| 5 | $50-100K | Empire | No |
+
+## Integration
+
+- **compound-filter.py** (transaction-layer) produces PASS/DOWNGRADE/KILL
+- **staircase-enforcer.py** gates DOWNGRADE based on current stair
+- **compound-dashboard.py** generates weekly report with gap analysis
+- **asset-registry-cli.py** tracks all assets feeding into dashboard
+
+## Data
+
+- `data/empire/assets.db` — SQLite (3 tables: assets, staircase_log, compound_snapshots)
+- `data/empire/staircase-state.json` — Current stair + definition
+- `data/empire/reports/` — Weekly compound dashboard markdown reports

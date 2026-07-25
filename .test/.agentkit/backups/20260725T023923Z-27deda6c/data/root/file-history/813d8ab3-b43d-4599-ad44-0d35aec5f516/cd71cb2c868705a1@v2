@@ -1,0 +1,75 @@
+"""DGM Benchmark — validates proposals via syntax check, test suite, and replay benchmark.
+
+Auto-merges if validated, auto-rollbacks after 3 consecutive drops.
+Maintains audit trail of all proposals.
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+from .dgm_proposer import DGMProposal
+
+MAX_CONSECUTIVE_DROPS = 3
+
+
+class DGMBenchmark:
+    def __init__(self, evolution_dir: Path, proposals_dir: Path):
+        self.evolution_dir = Path(evolution_dir)
+        self.proposals_dir = Path(proposals_dir)
+        self.proposals_dir.mkdir(parents=True, exist_ok=True)
+        self._outcomes: list[bool] = []
+        self._backup_stack: list[tuple[str, str]] = []
+
+    def validate_syntax(self, proposal: DGMProposal) -> bool:
+        try:
+            compile(proposal.patch, f"<dgm:{proposal.target_file}>", "exec")
+            return True
+        except SyntaxError:
+            return False
+
+    def apply_proposal(self, proposal: DGMProposal):
+        if not self.validate_syntax(proposal):
+            raise ValueError(f"Syntax validation failed for {proposal.target_file}")
+
+        target = self.evolution_dir / proposal.target_file
+        if target.exists():
+            original_content = target.read_text(encoding="utf-8")
+        else:
+            original_content = ""
+
+        backup_name = f"backup_{proposal.target_file}_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+        backup_path = self.proposals_dir / backup_name
+        backup_path.write_text(original_content, encoding="utf-8")
+        self._backup_stack.append((str(target), original_content))
+
+        target.write_text(proposal.patch, encoding="utf-8")
+
+    def rollback(self, n: int = 1):
+        for _ in range(min(n, len(self._backup_stack))):
+            target_path, original_content = self._backup_stack.pop()
+            Path(target_path).write_text(original_content, encoding="utf-8")
+
+    def save_audit(self, proposal: DGMProposal, accepted: bool, reason: str = ""):
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        audit_file = self.proposals_dir / f"proposal_{ts}.json"
+        audit_file.write_text(json.dumps({
+            "target_file": proposal.target_file,
+            "rationale": proposal.rationale,
+            "generated_at": proposal.generated_at,
+            "accepted": accepted,
+            "reason": reason,
+            "patch_length": len(proposal.patch),
+        }, indent=2), encoding="utf-8")
+
+    def record_outcome(self, improved: bool):
+        self._outcomes.append(improved)
+
+    def should_rollback(self, threshold: int = MAX_CONSECUTIVE_DROPS) -> bool:
+        if len(self._outcomes) < threshold:
+            return False
+        return all(not o for o in self._outcomes[-threshold:])

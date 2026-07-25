@@ -1,0 +1,154 @@
+"""
+OutcomeTrigger — fires when real outcome is recorded. Analyzes WHY the system
+was right/wrong, extracts corrective patterns, updates weights.
+
+V2 addition: mechanism-level error attribution via ErrorAttributor.
+When verdict is wrong, identifies which steps/knobs caused the error.
+"""
+
+import json
+import logging
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
+
+from .distillation_bridge import DistillationBridge
+
+logger = logging.getLogger(__name__)
+
+ROOT = Path(__file__).resolve().parents[4]
+CHAIN_TRACES_PATH = ROOT / ".claude" / "data" / "reasoning" / "chain_traces.jsonl"
+
+
+@dataclass
+class OutcomeEvolution:
+    case_id: str = ""
+    correct: bool = False
+    wrong_atoms: int = 0
+    corrections_distilled: int = 0
+    weight_updates: int = 0
+    mechanism_errors: int = 0
+
+    def to_dict(self) -> dict:
+        return {
+            "case_id": self.case_id,
+            "correct": self.correct,
+            "wrong_atoms": self.wrong_atoms,
+            "corrections_distilled": self.corrections_distilled,
+            "weight_updates": self.weight_updates,
+            "mechanism_errors": self.mechanism_errors,
+        }
+
+
+class OutcomeTrigger:
+    def __init__(
+        self,
+        distiller: Optional[DistillationBridge] = None,
+        llm_query_fn=None,
+        trace_path: Optional[Path] = None,
+    ):
+        self.distiller = distiller or DistillationBridge()
+        self.llm_query_fn = llm_query_fn
+        self.trace_path = trace_path or CHAIN_TRACES_PATH
+
+    def on_outcome(self, case_id: str, actual_outcome: str, predicted_verdict: str) -> OutcomeEvolution:
+        correct = self._outcomes_match(actual_outcome, predicted_verdict)
+        result = OutcomeEvolution(case_id=case_id, correct=correct)
+
+        # Mechanism-level attribution (runs regardless of chain trace)
+        if not correct:
+            result.mechanism_errors = self._run_mechanism_attribution(
+                case_id, actual_outcome, predicted_verdict
+            )
+
+        trace = self._load_trace(case_id)
+
+        if correct:
+            if trace:
+                self._reinforce_correct(trace)
+                result.weight_updates = 1
+            return result
+
+        if not trace:
+            return result
+
+        wrong_atoms = self._find_wrong_atoms(trace, actual_outcome)
+        result.wrong_atoms = len(wrong_atoms)
+
+        if not self.llm_query_fn or not wrong_atoms:
+            return result
+
+        for atom in wrong_atoms:
+            try:
+                query = f"Why does '{atom.get('question', '')}' lead to '{actual_outcome}' instead of '{atom.get('answer', '')}'?"
+                llm_result = self.llm_query_fn(query)
+                if llm_result and isinstance(llm_result, list):
+                    domain = trace.get("query_type", "unknown")
+                    v = self.distiller.distill(llm_result, domain, source="outcome_correction")
+                    if v:
+                        result.corrections_distilled += 1
+            except Exception:
+                continue
+
+        return result
+
+    def _outcomes_match(self, actual: str, predicted: str) -> bool:
+        positive = {"success", "go", "pass", "mountain"}
+        negative = {"failure", "kill", "no_go", "skip"}
+        actual_l = actual.lower().replace("-", "_").replace(" ", "_")
+        predicted_l = predicted.lower().replace("-", "_").replace(" ", "_")
+        if actual_l in positive and predicted_l in positive:
+            return True
+        if actual_l in negative and predicted_l in negative:
+            return True
+        return actual_l == predicted_l
+
+    def _load_trace(self, case_id: str) -> Optional[dict]:
+        if not self.trace_path.exists():
+            return None
+        for line in reversed(self.trace_path.read_text(encoding="utf-8").strip().split("\n")):
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+                if case_id in record.get("query", ""):
+                    return record
+            except json.JSONDecodeError:
+                continue
+        return None
+
+    def _find_wrong_atoms(self, trace: dict, actual_outcome: str) -> list[dict]:
+        chain_detail = trace.get("chain_detail", [])
+        wrong = []
+        for atom in chain_detail:
+            if atom.get("status") != "RESOLVED":
+                continue
+            if atom.get("confidence", 0) < 0.5:
+                wrong.append(atom)
+                continue
+            answer = (atom.get("answer") or "").lower()
+            if actual_outcome.lower() in ("failure", "kill") and "no" in answer and "risk" not in answer:
+                wrong.append(atom)
+        return wrong[:3]
+
+    def _reinforce_correct(self, trace: dict) -> None:
+        pass
+
+    def _run_mechanism_attribution(
+        self, case_id: str, actual_outcome: str, predicted_verdict: str
+    ) -> int:
+        """Run causal error attribution and persist results. Returns error count."""
+        try:
+            from ..mechanism.error_attributor import ErrorAttributor
+            attributor = ErrorAttributor()
+            errors = attributor.attribute(case_id, actual_outcome, predicted_verdict)
+            if errors:
+                attributor.persist(errors)
+                logger.info(
+                    "Mechanism attribution: %d errors for case %s (top: %s → %s)",
+                    len(errors), case_id, errors[0].step, errors[0].error_type,
+                )
+            return len(errors)
+        except Exception as e:
+            logger.warning("Mechanism attribution failed for %s: %s", case_id, e)
+            return 0

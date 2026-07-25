@@ -1,0 +1,2639 @@
+# System Architecture
+
+## High-Level Flow
+
+```
+User Input
+    ↓
+/invest | /debate | /advisory (Slash Command Router)
+    ↓
+Investment Orchestrator (Query Parser + Agent Router)
+    ├── Determines relevant personas (1-5)
+    ├── Spawns agents in parallel
+    └── Monitors completion
+    ↓
+Independent Agent Analysis (Parallel Execution)
+    ├── Jeff Bezos Agent → Persona-specific research
+    ├── Peter Thiel Agent → Contrarian analysis
+    ├── Elon Musk Agent → First-principles breakdown
+    ├── Sam Altman Agent → Startup dynamics
+    └── Mark Cuban Agent → Business pragmatism
+    ↓
+Debate Synthesizer (Orchestrates Debate)
+    ├── Phase 1: Collect analyses
+    ├── Phase 2: Identify agreements/disagreements
+    ├── Phase 3: Run debate rounds (max 3)
+    └── Phase 4: Generate synthesis
+    ↓
+Final Output
+    ├── Executive Summary
+    ├── Decision Matrix
+    ├── Debate Transcript
+    ├── Confidence Score
+    └── Limitations & Assumptions
+```
+
+## Core Components (Updated Phase 14 - System Audit & Upgrade)
+
+The system now includes 45 personas across 8 completed phases:
+
+**Phase 1 (5)**: Billionaire founders - Bezos, Thiel, Musk, Altman, Cuban
+**Phase 2 (7)**: Sales masters - Hormozi, Voss, Sandler, Brunson, Kennedy, Tracy, Kotler
+**Phase 3 (5)**: Practitioners - Upwork Top-Rated, Cold Email King, Chinese Export Seller, Indian IT Outsourcing, Vietnamese Freelancer
+**Phase 5 (4)**: Investor advisors - Buffett, Munger, Dalio, Soros
+**Phase 7 (10)**: Young Masters - first-dollar-hunter, cash-flow-surgeon, bullshit-detector, niche-archaeologist, timing-prophet, arbitrage-scanner, automation-stacker, vn-market-navigator, creator-economy-scout, saas-validator
+**Phase 8 (3 new)**: Specialist domains - physical-biz-architect, street-smart-operator, ai-disruption-assessor (Physical Retail, F&B, Micro-business, AI Assessment)
+
+### 1. Investment Orchestrator Agent
+**Location**: `./.claude/agents/business/investment-orchestrator.md`
+
+**Purpose**: Master coordinator - routes queries and manages agent execution
+
+**Responsibilities**:
+- Parse user query to identify query type and context
+- Determine relevant personas (all 5 or subset)
+- Spawn agents in parallel via Task tool
+- Collect individual analyses
+- Pass results to Debate Synthesizer
+
+**Key Interfaces**:
+- Input: User query (unstructured text)
+- Output: Structured analyses from each persona
+- Timeout: <60 seconds for agent spawning
+
+**Integration**: Direct entry point for `/invest`, `/debate`, `/advisory` commands
+
+### 2. Venture Orchestrator Agent
+**Location**: `./.claude/agents/business/venture-orchestrator.md`
+
+**Purpose**: Coordinates multi-department startup evaluation with auto-formation and 8-track research
+
+**Responsibilities**:
+- Classify startup type (SaaS, ecommerce, service, marketplace, hardware)
+- Extract capital constraints and validate vertical specificity
+- Auto-select 3-10 departments based on query keywords
+- Spawn 8 parallel research specialists (failure archaeology, market reality, risks, timing, arbitrage, etc.)
+- Spawn department-specific evaluators with persona consultation
+- Synthesize cross-department strategy while preserving conflicts
+- Run triple validation gates (bullshit-detector, contrarian advisor, risk aggregation)
+- Generate 12-week roadmap with specific actions and kill criteria
+- Create executable dashboard (JSON + HTML)
+
+**Key Interfaces**:
+- Input: Startup query + optional budget
+- Output: Structured analysis with 8 research tracks, department evaluations, unified strategy, validation checks
+- Timeout: ~15 minutes for full analysis (varies by scope)
+
+**Integration**: Entry point for `/venture`, `/venture:light`, `/venture:update` commands
+
+### 3. Department Router Agent
+**Location**: `./.claude/agents/business/department-router.md`
+
+**Purpose**: Auto-selects departments based on query keywords for startup evaluation
+
+**Responsibilities**:
+- Extract keywords from startup query
+- Deterministically route to core 3 departments (research, strategy, finance)
+- Match optional departments by keyword thresholds
+- Cap at max 10 departments
+- Weight departments by relevance
+
+**Key Interfaces**:
+- Input: Startup query (unstructured text)
+- Output: Routing config with department weights and scope (light/medium/full)
+
+**Integration**: Called by venture-orchestrator during triage phase
+
+### 4. Cross-Department Synthesizer Agent
+**Location**: `./.claude/agents/business/cross-dept-synthesizer.md`
+
+**Purpose**: Merges department outputs into unified strategy while preserving critical conflicts
+
+**Responsibilities**:
+- Extract recommendations from each department
+- Detect conflicts using tension matrix (sales-vs-finance, product-vs-ops, etc.)
+- Classify severity (minor/moderate/major)
+- Resolve or preserve based on severity
+- Create dependency DAG for critical path
+- Generate unified strategy with assumptions registry
+
+**Key Interfaces**:
+- Input: Department evaluation outputs
+- Output: unified-strategy.md, disagreements.md, assumptions.md
+
+**Integration**: Called by venture-orchestrator after department evaluations complete
+
+### 5. Dashboard Generator Agent
+**Location**: `./.claude/agents/business/dashboard-generator.md`
+
+**Purpose**: Creates real-time tracking dashboard for venture execution
+
+**Responsibilities**:
+- Generate status.json (machine-readable state)
+- Generate dashboard.html (self-contained, no dependencies)
+- Track department progress, kill criteria, key metrics
+- Display 12-week roadmap timeline
+- Calculate health status (green/yellow/red)
+
+**Key Interfaces**:
+- Input: Triage context, recommendations, kill criteria, roadmap
+- Output: status.json + dashboard.html (files)
+
+**Integration**: Called by venture-orchestrator at end of analysis to enable real-time updates
+
+### 6. Debate Synthesizer Agent (v2.0)
+**Location**: `./.claude/agents/business/debate-synthesizer.md`
+
+**Purpose**: Orchestrates multi-round debate with cross-challenge protocol and confidence cascade routing
+
+**Responsibilities**:
+- Parse 5 agent analyses by category (Entrepreneurs, Asia, Investors, Operators, Sales)
+- **Phase 2**: Build comparison matrix, detect disagreements (recommendation diff, risk >2 pts, timeline >6mo)
+- **Phase 3**: Cross-challenge round (max 5 pairs, cross-category prioritized) with structured evidence
+- **Phase 4**: Defend/Concede/Modify round (track resolution: RESOLVED/PARTIAL/UNRESOLVED)
+- **Phase 5**: Synthesize with disagreement matrix + unresolved tensions table
+- **Phase 6**: Calculate confidence cascade routing (AUTO/ADVISOR/EXPERT/ESCALATE/DELIBERATION)
+- Routes decision to review-manager with confidence score + dissent %
+
+### 7. Review Manager Agent (NEW - Phase 3 Extended)
+**Location**: `./.claude/agents/business/review-manager.md`
+
+**Purpose**: Coordinates human-in-the-loop review gates with confidence-tier routing
+
+**Responsibilities**:
+- Receives routed decisions from debate-synthesizer with consensus % + dissent %
+- Routes to confidence tier (AUTO/ADVISOR/EXPERT/ESCALATE/DELIBERATION)
+- Presents review context to appropriate reviewer(s)
+- Processes review actions (APPROVE/MODIFY/REJECT/EXTEND)
+- Manages SLA tracking with auto-actions on timeout
+- Triggers iterative refinement if MODIFY/EXTEND requested
+- Coordinates feedback capture after each review action
+- Logs all decisions to logs/reviews/{YYYY-MM}/
+
+**Key Interfaces**:
+- Input: Decision from debate-synthesizer with routing tier
+- Output: Approved/modified/rejected recommendation + reviewer signature
+- Routing thresholds:
+  - AUTO: >85% consensus, <10% dissent → skip review
+  - ADVISOR: 60-85% consensus → 24h SLA
+  - EXPERT: <60% consensus → 48h SLA
+  - ESCALATE: >20% major dissent → 72h SLA
+  - DELIBERATION: triggered for extended rounds → 4h cycle
+
+**Integration**: Routes from debate-synthesizer, feeds to queue-manager/execution layer. Queue-manager sends notifications on approve/reject actions.
+
+**Debate Protocol (v2.0)**:
+```
+Phase 1: Parse analyses → Extract recommendation, reasoning, risk, confidence per persona
+Phase 2: Build cross-category matrix → Detect agreement/disagreement triggers
+Phase 3: Cross-Challenge → [{CHALLENGER} challenges {DEFENDER}] with evidence
+Phase 4: Defend/Concede → [{PERSONA} DEFENDS|CONCEDES|MODIFIES] with reasoning
+Phase 5: Synthesize → JSON output + disagreement matrix + unresolved tensions
+Phase 6: Route by confidence cascade:
+  >85% consensus, <10% dissent → AUTO (execute directly)
+  70-85% consensus, 10-20% dissent → ADVISOR (human review)
+  60-70% consensus, 20-30% dissent → EXPERT (domain expert)
+  <60% consensus or >20% major dissent → ESCALATE (extend + expert)
+```
+
+**Output Formats**:
+1. Executive summary (main recommendation + routing decision)
+2. Decision matrix (weighted scoring)
+3. Perspectives by category (Entrepreneurs/Asia/Investors/Operators/Sales consensus)
+4. Disagreement matrix (persona, position, confidence, reason, resolution status)
+5. Unresolved tensions (topic, view A, view B)
+6. Debate transcript (key exchanges + resolution tags)
+7. Confidence & dissent levels with explanation
+
+### 8. Persona Agents (5 Total)
+
+#### 8.1 Jeff Bezos Agent
+**Location**: `./.claude/agents/business/jeff-bezos.md`
+
+**Core Framework**: Day 1 → Customer obsession → Long-term thinking
+
+**Skills Used**:
+- `business/personas/jeff-bezos/` (references: shareholder letters, decisions, failures)
+- `business/value-investing/` (for financial analysis)
+- `business/startup-dynamics/` (for company structure analysis)
+
+**Decision Framework**:
+- Type 1 (irreversible) vs Type 2 (reversible) decisions
+- Regret minimization lens
+- Customer metric obsession
+- Long-term moat building
+
+**Typical Output**: "Customer-centric opportunity with 10+ year horizon. Type 1 decision requires high conviction on data."
+
+#### 8.2 Peter Thiel Agent
+**Location**: `./.claude/agents/business/peter-thiel.md`
+
+**Core Framework**: Zero-to-one thinking → Monopoly building
+
+**Skills Used**:
+- `business/personas/peter-thiel/` (references: PayPal, Palantir, writings)
+- `business/value-investing/` (for valuation)
+- `business/market-research/` (for competitive analysis)
+
+**Decision Framework**:
+- Secrets (non-obvious truths)
+- Competition as negative indicator
+- Monopoly vs competitive analysis
+- 10x better vs incremental improvement
+
+**Typical Output**: "This is a competitive market, not a monopoly. Requires genuine 10x insight to succeed."
+
+#### 8.3 Elon Musk Agent
+**Location**: `./.claude/agents/business/elon-musk.md`
+
+**Core Framework**: First principles → Manufacturing scale → Impossible timelines
+
+**Skills Used**:
+- `business/personas/elon-musk/` (references: interviews, tweets, decisions)
+- `business/startup-dynamics/` (for execution assessment)
+- `business/cash-flow-analysis/` (for burn rate reality check)
+
+**Decision Framework**:
+- Physics-based constraints (what's really possible?)
+- Manufacturing difficulty (often underestimated)
+- Integrated vertical systems
+- Extreme timeline pushes
+
+**Typical Output**: "The math doesn't work at current physics constraints. Need 3-4x improvement in core process."
+
+#### 8.4 Sam Altman Agent
+**Location**: `./.claude/agents/business/sam-altman.md`
+
+**Core Framework**: Network effects → Talent density → Founder quality
+
+**Skills Used**:
+- `business/personas/sam-altman/` (references: YC blog, interviews)
+- `business/startup-dynamics/` (for growth analysis)
+- `business/market-research/` (for TAM assessment)
+
+**Decision Framework**:
+- Founder quality as primary signal
+- Network effects strength
+- Talent concentration
+- Rate of change in founder thinking
+
+**Typical Output**: "Founder trajectory matters more than current traction. Is the team learning fast?"
+
+#### 8.5 Mark Cuban Agent
+**Location**: `./.claude/agents/business/mark-cuban.md`
+
+**Core Framework**: Cash flow → Unit economics → Deal structure pragmatism
+
+**Skills Used**:
+- `business/personas/mark-cuban/` (references: Shark Tank, interviews)
+- `business/cash-flow-analysis/` (detailed financial model)
+- `business/value-investing/` (for deal valuation)
+
+**Decision Framework**:
+- Cash flow vs vanity metrics
+- Customer acquisition cost (CAC) payback
+- Gross margins and unit economics
+- Deal structure and negotiation leverage
+
+**Typical Output**: "Unit economics work if CAC payback <12 months. Current path shows 18-month payback—need adjustment."
+
+#### 8.6 Brian Tracy Agent
+**Location**: `./.claude/agents/business/brian-tracy.md`
+
+**Core Framework**: Goal Achievement Systems → Eat That Frog → Sales Psychology
+
+**Skills Used**:
+- `business/personas/brian-tracy/` (references: Eat That Frog, Psychology of Selling, Goals!)
+- `business/cash-flow-analysis/` (for productivity ROI)
+- `business/startup-dynamics/` (for execution assessment)
+
+**Decision Framework**:
+- 7-Step Goal System (decide, write, deadline, list, prioritize, act, daily)
+- Eat That Frog prioritization (tackle hardest task first)
+- ABCDE Method for task categorization
+- 80/20 Rule (Pareto Principle) for focus
+- Law of Three for daily priorities
+
+**Typical Output**: "Your frog is [X]. If you single-handle it before 11 AM, you'll 2x your output. Current priorities violate 80/20—80% of your effort is on the 20% that doesn't matter."
+
+#### 8.7 Philip Kotler Agent
+**Location**: `./.claude/agents/business/philip-kotler.md`
+
+**Core Framework**: STP (Segmentation, Targeting, Positioning) → 4Ps Marketing Mix
+
+**Skills Used**:
+- `business/personas/philip-kotler/` (references: Marketing Management, Kotler on Marketing)
+- `business/market-research/` (for competitive analysis)
+- `business/value-investing/` (for market sizing)
+
+**Decision Framework**:
+- STP Framework (Segmentation → Targeting → Positioning)
+- DAMP Criteria (Distinctive, Accessible, Measurable, Profitable)
+- 4Ps/6Ps Marketing Mix (Product, Price, Place, Promotion + People, Process)
+- TAM/SAM/SOM market sizing
+- Positioning Statement methodology
+
+**Typical Output**: "Your segment fails DAMP—not Measurable. I can't size it. Re-segment by behavior: [specific recommendation]. Your positioning statement: For [target] who [need], [Brand] is the [category] that [benefit] because [proof]."
+
+### 9. Supporting Skills
+
+#### Value Investing Skill
+**Use**: Financial analysis, valuation, intrinsic value assessment
+**For Personas**: All (especially Bezos, Thiel, Cuban)
+**Methods**: DCF, margin of safety, rule of 40, magic numbers
+
+#### Cash Flow Analysis Skill
+**Use**: Unit economics, burn rate, runway, financial modeling
+**For Personas**: Musk, Cuban, Altman
+**Methods**: CAC, LTV, payback period, growth accounting
+
+#### Startup Dynamics Skill
+**Use**: PMF assessment, scaling, fundraising, cap table
+**For Personas**: Altman, Bezos, Musk
+**Methods**: Growth metrics, founder assessment, market analysis
+
+#### Market Research Skill
+**Use**: Competitive analysis, TAM, industry dynamics
+**For Personas**: Thiel, Altman, Bezos
+**Methods**: SWOT, Porter's Five Forces, market interviews
+
+#### Debate Framework Skill (v2.0)
+**Use**: Orchestrating multi-agent debate with cross-challenge and confidence cascade
+**For**: Debate Synthesizer agent
+**Methods**:
+- Round management (max 3 rounds, early stop on consensus)
+- Cross-challenge protocol (pair formation, evidence-based challenges, resolution tracking)
+- Defend/Concede mechanics (resolution tags: RESOLVED/PARTIAL/UNRESOLVED)
+- Disagreement matrix preservation (persona, category, position, confidence, reason, status)
+- Confidence cascade routing (AUTO/ADVISOR/EXPERT/ESCALATE/DELIBERATION based on consensus %)
+**References**:
+- `references/cross-challenge-protocol.md` - Pair formation rules, challenge format, resolution tracking
+- `references/confidence-cascade.md` - Routing thresholds (>85%, 70-85%, 60-70%, <60%), SLA configuration
+
+#### Gemini Validation Skill
+**Use**: Cross-validate numerical claims with Google Search grounding
+**For**: investment-orchestrator, debate-synthesizer
+**Methods**: Gemini 2.5 Pro API, implicit caching (90% discount), batch validation
+**Integration Points**:
+- Pre-synthesis validation of market data claims
+- Fact-check before final recommendation output
+- Real-time data grounding for investment analysis
+
+#### Vietnam Business Skill
+**Use**: Local context, regulations, business norms
+**For Personas**: All (applied when relevant to Vietnam context)
+**Methods**: Local law, payment systems, cultural norms
+
+#### HITL Review Protocol (NEW - Phase 3 Extended)
+**Use**: Human-in-the-loop review gates with confidence-tier routing
+**For**: Review Manager agent
+**Methods**:
+- Confidence-tier routing (AUTO/ADVISOR/EXPERT/ESCALATE/DELIBERATION)
+- SLA tracking (24h/48h/72h/4h per tier)
+- Review queue management
+- Iterative refinement cycles (max 2 per decision)
+- SLA auto-actions (auto-approve, escalate, hold)
+**References**:
+- `protocols/hitl-review.md` - Review tiers, SLA definitions, auto-actions
+
+#### Feedback Capture Protocol (NEW - Phase 3 Extended)
+**Use**: Structured feedback collection & aggregation for system learning
+**For**: Review Manager agent, all review actions
+**Methods**:
+- Explicit feedback: Rating (1-5), override category, helpful persona
+- Implicit feedback: Time-to-decision, execution divergence
+- Storage: logs/feedback/{YYYY-MM}/{decision_id}.json
+- Monthly aggregation: logs/feedback/aggregates/{YYYY-MM}.json
+- Privacy: Hashed user IDs, anonymized reporting
+**References**:
+- `protocols/feedback-capture.md` - Feedback types, storage format, aggregation schema
+
+### 10. Cash Flow Intelligence Team (NEW - 2026-04-21)
+
+#### Overview
+**Location**: `./.claude/skills/business/money-intelligence/cash_flow_team/`
+
+Specialized team of 4 agents focused on cash flow optimization and financial orchestration. Accessible through unified `money-intelligence-runner.py` or individual runners.
+
+**Core Insight**: "Tiền không cần có TRƯỚC — cần orchestrate TRƯỚC" (Money doesn't need to exist first — just orchestrate it first)
+
+#### 10.1 Zero Capital Orchestrator
+
+**Purpose**: Creates viable capital paths from $0 using float arbitrage, pre-sales, and milestone billing
+
+**Capabilities**:
+- Analyzes current skills, assets, and constraints
+- Generates 3-5 capital creation playbooks ranked by speed-to-runway
+- Identifies float opportunities (holding deposits, payment terms manipulation, milestone billing)
+- Evidence-based: 40% of zero-capital ventures succeed via pre-sales (Enterprise Nation 2025)
+- Reference models: Buffett float arbitrage, Amazon negative CCC, pre-sales playbooks
+
+**Input Schema**:
+```
+{
+  "current_cash": int,
+  "monthly_burn": float,
+  "target_runway_days": int,
+  "skills": ["software_engineering", "marketing", "sales"],
+  "existing_assets": ["email_list_500", "twitter_following", "course_outline"],
+  "market_access": "direct|vendor|partnership",
+  "speed_preference": "fast|sustainable|balanced"
+}
+```
+
+**Output Schema**:
+```
+{
+  "paths": [
+    {
+      "path_id": "presales_to_float",
+      "runway_weeks": 4,
+      "capital_unlocked": 15000,
+      "float_opportunities": [
+        {
+          "type": "customer_advance",
+          "amount": 10000,
+          "terms": "net_0",
+          "execution_steps": [...]
+        }
+      ],
+      "steps": [...],
+      "risks": [...]
+    }
+  ],
+  "recommended_path": "presales_to_float"
+}
+```
+
+**CLI Usage**:
+```bash
+python zero-capital-runner.py --input '{"current_cash": 0, "skills": ["software_engineering"]}'
+python money-intelligence-runner.py --engine zero_capital --input '{"monthly_burn": 2000}'
+```
+
+#### 10.2 Cash Flow Simulator
+
+**Purpose**: Monte Carlo stress testing of cash position under uncertain conditions
+
+**Capabilities**:
+- Runs 10,000 Monte Carlo simulations of daily cash position
+- Generates P10/P50/P90 probability distributions
+- Models revenue volatility, payment delays, unexpected expenses
+- Stress-tests against multiple scenarios (recession, customer churn, supplier delays)
+- Output includes probability of insolvency, runway distribution, critical decision points
+
+**Input Schema**:
+```
+{
+  "current_cash": float,
+  "daily_revenues": [float, ...],
+  "daily_expenses": [float, ...],
+  "revenue_volatility": float (std_dev),
+  "payment_delays": {"days_late": int, "probability": float},
+  "scenarios": [
+    {
+      "name": "recession",
+      "revenue_multiplier": 0.5,
+      "probability": 0.2
+    }
+  ]
+}
+```
+
+**Output Schema**:
+```
+{
+  "simulations": 10000,
+  "runway_days": {
+    "p10": 45,
+    "p50": 87,
+    "p90": 180,
+    "mean": 92.3
+  },
+  "insolvency_probability": 0.15,
+  "critical_events": [
+    {
+      "day": 45,
+      "event": "expected_payment_delay",
+      "impact": -2000,
+      "probability": 0.3
+    }
+  ],
+  "scenario_results": {...}
+}
+```
+
+**CLI Usage**:
+```bash
+python cash-flow-simulator-runner.py --input '{"cash": 10000, "burn": 2000}'
+python money-intelligence-runner.py --engine monte_carlo --input '{...}'
+```
+
+#### 10.3 Cash Decision Tree
+
+**Purpose**: Situation-specific decision guidance for 10 common cash crises
+
+**Situation Types Covered**:
+1. Net-60 customer payment arrives late (payment_delay)
+2. Unexpected supplier invoice (supplier_shock)
+3. Employee salary timing conflict (payroll_conflict)
+4. Inventory buildup blocking cash (inventory_lockup)
+5. Customer requests extended terms (customer_negotiation)
+6. Opportunity requiring immediate capital (opportunity_cost)
+7. Seasonal revenue cliff (seasonal_trough)
+8. Competitor price war (margin_compression)
+9. Failed fundraising round (capital_loss)
+10. Tax payment deadline approaching (regulatory_constraint)
+
+**Decision Logic**:
+- Evaluates situation against 5-7 conditions (cash_on_hand, runway_days, customer_health, etc.)
+- Returns ranked decision options with expected outcomes
+- Each decision includes: action, timing, probability of success, downstream risks
+
+**Input Schema**:
+```
+{
+  "situation_type": "payment_delay",
+  "context": {
+    "cash_on_hand": 5000,
+    "expected_payment": 15000,
+    "days_late": 30,
+    "customer_health": "strong|weak",
+    "alternative_funding": 0
+  }
+}
+```
+
+**Output Schema**:
+```
+{
+  "situation": "payment_delay",
+  "decision_options": [
+    {
+      "rank": 1,
+      "action": "accelerate_collections",
+      "probability_success": 0.8,
+      "capital_impact": 15000,
+      "execution_time": "1_day",
+      "risks": ["customer_relationship_damage"]
+    }
+  ],
+  "recommended_decision": "accelerate_collections"
+}
+```
+
+**CLI Usage**:
+```bash
+python cash-decision-runner.py --situation payment_delay --input '{"cash": 5000, "payment": 15000}'
+python money-intelligence-runner.py --engine decision --input '{"situation": {...}}'
+```
+
+#### 10.4 Cash Position Dashboard
+
+**Purpose**: Real-time cash tracking with alerts, CCC metrics, and daily snapshots
+
+**Features**:
+- Real-time cash balance tracking
+- Cash conversion cycle (CCC) metrics: DIO + DSO - DPO
+- Daily cash entry/exit tracking
+- 90-day forward projection with confidence intervals
+- Automated alerts: low-cash, negative-runway, high-volatility
+- Visual dashboard (HTML + JSON)
+
+**Metrics Tracked**:
+- **Daily Cash Flow**: inflows - outflows
+- **Runway Days**: cash_balance / average_daily_burn
+- **CCC**: Days Inventory Outstanding + Days Sales Outstanding - Days Payable Outstanding
+- **Cash Velocity**: (current_cash / average_daily_burn) / historical_maximum
+- **Stress Level**: (volatility × payment_default_rate) / runway_coverage
+
+**Alert Thresholds**:
+- Red: runway < 30 days OR cash < monthly burn
+- Yellow: runway 30-60 days OR CCC > 90 days
+- Green: runway > 60 days AND CCC < 90 days
+
+**Input Schema**:
+```
+{
+  "cash_entries": [
+    {
+      "date": "2026-04-21",
+      "amount": 5000,
+      "category": "customer_payment",
+      "confidence": 0.95
+    }
+  ],
+  "future_entries": [
+    {
+      "date": "2026-05-01",
+      "expected_amount": 8000,
+      "probability": 0.7
+    }
+  ]
+}
+```
+
+**Output Schema**:
+```
+{
+  "current_position": {
+    "cash": 12000,
+    "runway_days": 45,
+    "alert_level": "yellow",
+    "ccc_days": 75
+  },
+  "metrics": {
+    "daily_burn": 500,
+    "daily_inflow": 450,
+    "volatility": 0.15
+  },
+  "forecast_90d": {
+    "p10_cash": 5000,
+    "p50_cash": 18000,
+    "p90_cash": 32000
+  },
+  "alerts": [
+    {
+      "type": "runway_alert",
+      "severity": "yellow",
+      "message": "Runway < 60 days"
+    }
+  ]
+}
+```
+
+**CLI Usage**:
+```bash
+python cash-dashboard-runner.py --input '{"cash": 12000, "burn": 500}'
+python money-intelligence-runner.py --engine dashboard --input '{"entries": [...]}'
+```
+
+#### 10.5 Unified Entry Point
+
+**Money Intelligence Runner**
+**Location**: `./.claude/skills/business/money-intelligence/money-intelligence-runner.py`
+
+**Usage**:
+```bash
+# Zero-capital analysis
+python money-intelligence-runner.py --engine zero_capital --input '{...}'
+
+# Monte Carlo simulation
+python money-intelligence-runner.py --engine monte_carlo --input '{...}'
+
+# Decision guidance
+python money-intelligence-runner.py --engine decision --input '{...}'
+
+# Dashboard generation
+python money-intelligence-runner.py --engine dashboard --input '{...}'
+
+# Runway calculation (legacy)
+python money-intelligence-runner.py --engine runway --input '{...}'
+
+# Float analysis (legacy)
+python money-intelligence-runner.py --engine float --input '{...}'
+```
+
+**Integrated Engines**:
+- `zero_capital`: ZeroCapitalOrchestrator
+- `monte_carlo`: CashFlowSimulator (10,000 simulations)
+- `decision`: CashDecisionTree (10 situation types)
+- `dashboard`: CashPositionDashboard (real-time tracking)
+- `runway`: Legacy runway calculation
+- `velocity`: CCC and cash velocity analysis
+- `float`: Float earnings and arbitrage
+- `leverage`: Revenue source leverage classification
+- `compound`: Compound play analysis
+
+#### 10.6 Data Schemas
+
+**Schema Directory**: `./.claude/skills/business/money-intelligence/cash_flow_team/schemas/`
+
+Core schema files:
+- `capital_path.py` - ZeroCapitalInput, CapitalCreationPath, FloatOpportunity
+- `simulation_input.py` - SimulatorInput, CashFlowEntry, DaySnapshot, MonteCarloResult
+- `decision_node.py` - SituationContext, DecisionInput, DecisionOutput, SITUATION_TYPES
+- `dashboard_state.py` - DashboardState, MetricSnapshot, Alert, ALERT_THRESHOLDS
+
+#### 10.7 Integration Points
+
+**With Investment System**:
+- Mark Cuban persona uses CashPositionDashboard output for unit economics validation
+- Financial Planner agent queries CashDecisionTree for capital optimization
+- Venture Orchestrator invokes ZeroCapitalOrchestrator for zero-funded startups
+
+**With Execution**:
+- Auto-Executor queries CashPositionDashboard before approving large expense commitments
+- Queue Manager uses runway forecast to prioritize decision urgency
+
+**With Feedback Loop**:
+- Outcome tracking: `/log-outcome --cash-decision decision_123 --outcome success`
+- Simulation calibration: weekly-prediction-review compares P50 forecast vs actual cash
+
+## Data Flow Architecture
+
+### Request Phase
+```
+User Query
+    ↓
+investment-orchestrator.md
+    ├── Parse query type (investment, strategy, etc.)
+    ├── Extract context (opportunity, constraints, etc.)
+    ├── Determine agent subset (usually all 5)
+    └── Spawn 5 parallel agents via Task tool
+```
+
+### Analysis Phase
+```
+Each Agent in Parallel:
+    ├── Load persona-specific knowledge
+    ├── Retrieve relevant skill references
+    ├── Apply decision framework
+    ├── Conduct web research if needed
+    ├── Generate structured analysis
+    └── Return with confidence score + reasoning
+```
+
+### Synthesis Phase (v2.0)
+```
+debate-synthesizer.md
+    ├── Phase 1: Parse 5 analyses by category
+    ├── Phase 2: Build cross-category matrix → detect disagreements
+    ├── Phase 3: Cross-challenge round
+    │   ├── Form pairs (max 5: INVEST vs PASS, risk >2 pts, cross-category prioritized)
+    │   └── Structured challenges with evidence
+    ├── Phase 4: Defend/Concede/Modify round
+    │   └── Track resolutions (RESOLVED/PARTIAL/UNRESOLVED)
+    ├── Phase 5: Build disagreement matrix + unresolved tensions
+    ├── Phase 6: Confidence cascade routing
+    │   └── Calculate consensus % → route to AUTO/ADVISOR/EXPERT/ESCALATE/DELIBERATION
+    ├── Invoke gemini-validation for numerical claim verification
+    └── Route to review-manager with decision_id + routing tier
+```
+
+### Review Phase (NEW - Phase 3 Extended)
+```
+review-manager.md
+    ├── Route to tier: AUTO/ADVISOR/EXPERT/ESCALATE/DELIBERATION
+    ├── If AUTO (>85% consensus): Skip review, proceed to execution
+    ├── If ADVISOR/EXPERT/ESCALATE: Queue for human review
+    │   ├── Present review context (query, synthesis, disagreements, confidence)
+    │   ├── Track SLA deadline per tier
+    │   ├── Process review action: APPROVE/MODIFY/REJECT/EXTEND
+    │   └── Auto-action on SLA timeout
+    ├── If DELIBERATION: Trigger extended debate round
+    ├── Iterative refinement (max 2 cycles)
+    ├── Capture feedback after review action
+    └── Log decision to logs/reviews/{YYYY-MM}/
+```
+
+### Output Phase
+```
+Return to User:
+    ├── Executive summary (main recommendation)
+    ├── Decision matrix (comparative scoring)
+    ├── Debate transcript (shows reasoning)
+    ├── Review decision (APPROVED/MODIFIED/REJECTED/PENDING)
+    ├── Reviewer (user_id)
+    ├── Confidence score (1-10)
+    ├── Feedback collected (rating, helpful persona, override reason)
+    └── Key limitations (what we might be wrong about)
+```
+
+## Isolation Guarantees
+
+### Agent Isolation
+- ✓ Each persona agent runs in isolated Task subprocess
+- ✓ Agent can ONLY access `./.claude/agents/business/` agents
+- ✓ Agent can ONLY invoke `./.claude/skills/business/` skills
+- ✓ No cross-agent contamination before debate phase
+
+### Reference Isolation
+- ✓ Each persona loads ONLY their own reference files
+- ✓ Jeff Bezos can't see Elon Musk references
+- ✓ Cross-pollination happens only in debate synthesizer
+- ✓ Clean debates result from independent thinking
+
+### Skill Isolation
+- ✓ Business skills never invoke tech agents
+- ✓ Tech agents never invoke business agents
+- ✓ Clear domain boundaries maintained
+- ✓ No architectural coupling
+
+## Error Handling & Fallbacks
+
+### Agent Timeout
+- Timeout: 60 seconds per agent analysis
+- Fallback: Return "timeout - insufficient analysis" to synthesizer
+- Synthesizer: Continues with available analyses (can work with N-1)
+
+### Bad Analysis Quality
+- Detector: Synthesizer checks for minimum confidence threshold
+- Fallback: Flag in final output as "lower confidence due to analysis gaps"
+- User: Informed which analyses contributed less
+
+### Web Research Failure
+- Fallback: Continue with stored knowledge in references
+- Note: Flag in output "Research unavailable for real-time context"
+
+### Debate Deadlock
+- After 3 rounds with no convergence: Force synthesis
+- Approach: Weight by confidence, document disagreement
+- Output: "Experts disagree; here's why" (transparent)
+
+## LLM Provider Abstraction Layer
+
+**Location**: `./.claude/lib/llm/`
+
+**Purpose**: Unified interface for multi-provider LLM access with automatic fallback and cost tracking
+
+### Architecture
+
+**Core Components**:
+1. **provider_interface.py** - Abstract base class defining LLM provider contract
+   - `LLMProvider` - ABC with `complete()` method
+   - `CompletionResult` - Standardized response object (content, model, tokens, cost)
+   - `ProviderConfig` - Configuration schema (api_key, model, max_tokens, timeout)
+
+2. **factory.py** - Provider instantiation and management
+   - `create_provider(name)` - Instantiate provider by name
+   - `get_default_provider()` - Return configured default provider
+   - `complete_with_fallback(prompt)` - Chain completion with automatic fallback
+
+3. **providers/** - Implementation for each LLM service
+   - `claude.py` - Anthropic Claude API integration
+   - `openai.py` - OpenAI GPT integration
+   - `gemini.py` - Google Gemini API integration
+   - `ollama.py` - Local LLM (Ollama) integration
+
+### Configuration
+
+**File**: `./.claude/data/llm-config.json`
+
+**Structure**:
+```json
+{
+  "providers": {
+    "claude": { enabled, api_key_env, default_model, max_tokens, timeout_seconds },
+    "openai": { ... },
+    "gemini": { ... },
+    "ollama": { ... }
+  },
+  "default_provider": "claude",
+  "fallback_chain": ["claude", "gemini", "openai", "ollama"],
+  "cost_tracking": { enabled, budget_daily_usd, alert_threshold_pct }
+}
+```
+
+### Features
+
+- **Multi-Provider Support**: Claude, OpenAI, Gemini, local Ollama
+- **Automatic Fallback**: Chain execution through configured fallback providers on failure
+- **Cost Tracking**: Optional daily budget monitoring and alerts at threshold
+- **Unified Interface**: All providers expose same `complete(prompt, **kwargs)` method
+- **Configuration-Driven**: Provider selection and fallback order via JSON config
+
+### Usage Example
+
+```python
+from lib.llm.factory import create_provider, get_default_provider, complete_with_fallback
+
+# Get default provider (from config)
+provider = get_default_provider()
+result = provider.complete("What is 2+2?")
+
+# Create specific provider
+claude = create_provider("claude")
+result = claude.complete(prompt, max_tokens=1000)
+
+# Use fallback chain
+result = complete_with_fallback("Your prompt here")
+# Tries: claude → gemini → openai → ollama
+```
+
+### Integration Points
+
+- **Agents**: All agents use `complete_with_fallback()` for resilience
+- **Skills**: Research and validation skills default to best provider for task
+- **Cost Optimization**: Budget alerts integrated with execution-safety protocols
+- **Debugging**: Cost and model info tracked in execution logs
+
+## Intelligence Core Architecture (NEW - 2026-04-19)
+
+**Location**: `./.claude/lib/llm/` + `./.claude/lib/local/`
+
+**Purpose**: Layered intelligence system combining LLM abstraction with local processing for intelligent request routing and decomposition.
+
+### Layer 1: LLM Abstraction Layer (.claude/lib/llm/)
+
+**Components**:
+1. **provider_interface.py** - Abstract base for all LLM providers
+   - `LLMProvider` ABC with `complete()` signature
+   - `CompletionResult` with content, model, tokens, cost
+   - `ProviderConfig` for credentials and model settings
+
+2. **factory.py** - Provider management
+   - `create_provider(name)` - Instantiate by provider name
+   - `get_default_provider()` - Load from config
+   - `complete_with_fallback(prompt)` - Automatic fallback chain
+
+3. **providers/** - 4 implementations
+   - `claude.py` - Anthropic Claude (primary)
+   - `openai.py` - OpenAI GPT-4/3.5
+   - `gemini.py` - Google Gemini (Flash/Pro)
+   - `ollama.py` - Local LLM support
+
+4. **router.py** - Capability-based routing
+   - `CapabilityRouter` class
+   - `RouteDecision` with selected provider + justification
+   - Route by task type (analysis, coding, summarization, etc.)
+
+5. **cost_tracker.py** - Budget management
+   - Per-provider cost tracking
+   - Daily budget enforcement
+   - Cost estimation before completion
+
+6. **performance_capture.py** - Async logging
+   - Latency tracking per provider
+   - Quality metrics logging
+   - Performance aggregation for optimization
+
+7. **quality_scorer.py** - Response quality evaluation
+   - Score completeness, accuracy, relevance
+   - Identify hallucinations or off-topic responses
+   - Feed scores into router learning
+
+8. **routing_optimizer.py** - Intelligent routing
+   - Generate routing proposals based on task history
+   - Bayesian update of provider success rates
+   - Cost-vs-quality optimization
+
+### Layer 2: Local Intelligence Layer (.claude/lib/local/)
+
+**Components**:
+1. **intent_classifier.py** - Query intent detection
+   - `IntentClassifier` class with pattern matching
+   - Classify: ANALYSIS, CODE_GENERATION, EXPLANATION, RESEARCH, DECISION, etc.
+   - Zero-latency, no LLM required
+
+2. **complexity_scorer.py** - Query complexity assessment
+   - `ComplexityScorer` with token estimation
+   - Levels: SIMPLE, MODERATE, COMPLEX, EXPERT
+   - Route simple queries to fast/cheap providers
+
+3. **pattern_matcher.py** - SQLite-backed cache
+   - `PatternMatcher` with semantic similarity
+   - Cache hits for repeated query patterns
+   - Reduce API costs by 30-40%
+
+4. **task_decomposer.py** - Subtask breakdown
+   - `TaskDecomposer` for multi-step problems
+   - Identify dependencies and parallelization opportunities
+   - Generate execution DAG
+
+5. **query_processor.py** - Orchestrator
+   - `QueryProcessor` orchestrates all local modules
+   - Runs intent classification → complexity → pattern match → decomposition
+   - Output: routing hints for LLM layer
+
+### Configuration Files
+
+**File**: `./.claude/data/llm-config.json`
+```json
+{
+  "providers": {
+    "claude": { "enabled": true, "api_key_env": "ANTHROPIC_API_KEY", "default_model": "claude-3-5-sonnet", "max_tokens": 4000, "timeout_seconds": 60 },
+    "openai": { "enabled": true, "api_key_env": "OPENAI_API_KEY", "default_model": "gpt-4", "max_tokens": 4000, "timeout_seconds": 60 },
+    "gemini": { "enabled": true, "api_key_env": "GOOGLE_API_KEY", "default_model": "gemini-2-5-pro", "max_tokens": 4000, "timeout_seconds": 60 },
+    "ollama": { "enabled": false, "base_url": "http://localhost:11434", "default_model": "llama2", "max_tokens": 2000, "timeout_seconds": 30 }
+  },
+  "default_provider": "claude",
+  "fallback_chain": ["claude", "gemini", "openai", "ollama"],
+  "cost_tracking": { "enabled": true, "budget_daily_usd": 100, "alert_threshold_pct": 80 }
+}
+```
+
+**File**: `./.claude/data/capability-matrix.json`
+```json
+{
+  "analysis": { "preferred": "claude", "fallback": ["openai", "gemini"], "token_budget": 2000 },
+  "code_generation": { "preferred": "claude", "fallback": ["openai"], "token_budget": 4000 },
+  "summarization": { "preferred": "gemini", "fallback": ["claude", "openai"], "token_budget": 1000 },
+  "research": { "preferred": "claude", "fallback": ["openai", "gemini"], "token_budget": 3000 },
+  "debate": { "preferred": "claude", "fallback": ["openai"], "token_budget": 2500 },
+  "explanation": { "preferred": "gemini", "fallback": ["claude"], "token_budget": 1500 }
+}
+```
+
+**File**: `./.claude/data/routing-rules.json`
+```json
+{
+  "overrides": [
+    { "pattern": "code review", "provider": "claude" },
+    { "pattern": "unit economics", "provider": "claude" },
+    { "pattern": "quick summary", "provider": "gemini" },
+    { "pattern": "interview analysis", "provider": "openai" }
+  ],
+  "complexity_thresholds": {
+    "simple": { "provider": "gemini", "budget": 500 },
+    "moderate": { "provider": "claude", "budget": 2000 },
+    "complex": { "provider": "claude", "budget": 4000 },
+    "expert": { "provider": "claude", "budget": 4000 }
+  }
+}
+```
+
+**File**: `./.claude/data/intent-rules.json`
+```json
+{
+  "intents": [
+    { "name": "ANALYSIS", "keywords": ["analyze", "evaluate", "assess", "review"], "preferred_provider": "claude" },
+    { "name": "CODE_GENERATION", "keywords": ["write", "implement", "code", "function"], "preferred_provider": "claude" },
+    { "name": "EXPLANATION", "keywords": ["explain", "clarify", "how", "why"], "preferred_provider": "gemini" },
+    { "name": "RESEARCH", "keywords": ["research", "find", "discover", "investigate"], "preferred_provider": "claude" },
+    { "name": "DECISION", "keywords": ["should", "recommend", "decide", "choose"], "preferred_provider": "claude" },
+    { "name": "SUMMARIZATION", "keywords": ["summarize", "brief", "overview", "tldr"], "preferred_provider": "gemini" }
+  ]
+}
+```
+
+### Data Flow
+
+```
+User Query
+    ↓
+[Local Intelligence Layer]
+    ├── IntentClassifier → Detect ANALYSIS/CODE/EXPLANATION/RESEARCH/etc.
+    ├── ComplexityScorer → Assess SIMPLE/MODERATE/COMPLEX/EXPERT
+    ├── PatternMatcher → Check SQLite cache for similar queries
+    └── TaskDecomposer → Break into subtasks if needed
+    ↓
+[Routing Decision]
+    ├── Apply routing rules (intent overrides, complexity thresholds)
+    ├── Select provider (Claude/OpenAI/Gemini/Ollama)
+    └── Set token budget based on task type
+    ↓
+[LLM Abstraction Layer]
+    ├── CapabilityRouter → Final routing decision
+    ├── Check cost budget (budget_daily_usd)
+    └── Invoke provider chain with fallback
+    ↓
+[Quality & Learning]
+    ├── QualityScorer → Evaluate response quality
+    ├── PerformanceCapture → Log latency + cost
+    └── RoutingOptimizer → Update success rates for learning
+    ↓
+Response + Metadata (model, tokens, cost)
+```
+
+### Integration Points
+
+- **Investment Orchestrator**: Routes complex investment decisions via routing-optimizer
+- **Debate Synthesizer**: Multi-agent debates leverage cost-tracking to manage token budget
+- **Research agents**: Use pattern-matcher to avoid duplicate queries
+- **Personas**: Complexity assessment ensures Bezos/Hormozi get sufficient token budget
+- **Learning loop**: Performance metrics feed routing-optimizer for continuous improvement
+
+### Performance Characteristics
+
+- **Local classification**: <5ms (no API calls)
+- **Cache hit rate**: ~30% on repeat queries (via pattern-matcher)
+- **Cost reduction**: 40-50% vs. always using Claude (via intelligent routing)
+- **Latency**: <100ms overhead for routing logic
+- **Fallback chain**: Average success rate >99% (if one provider fails, automatic retry)
+
+## Performance Characteristics
+
+### Token Usage (Typical)
+- Per-agent analysis: 500-800 tokens
+- 5 agents: 2,500-4,000 tokens
+- Debate round (5 agents): 1,500-2,500 tokens
+- Synthesis: 400-600 tokens
+- **Total**: 5,000-8,000 tokens per full query
+
+### Response Time (Target)
+- Agent analysis parallelization: 30-60 seconds
+- Debate rounds (3 max): 2-3 minutes
+- Final synthesis: <1 minute
+- **Total**: <5 minutes end-to-end
+
+### Scalability
+- Can add new persona agents without redesign
+- Skills can be shared across personas
+- Debate protocol handles N agents (tested 5)
+- Architecture supports enterprise scale
+
+## Extension Points
+
+### Adding a New Persona
+1. Create agent file: `./.claude/agents/business/new-persona.md`
+2. Create skill directory: `./.claude/skills/business/personas/new-persona/`
+3. Register in orchestrator query routing
+4. Register in debate synthesizer
+5. Test with sample queries
+
+### Adding a New Skill
+1. Create directory: `./.claude/skills/business/new-skill/`
+2. Create `SKILL.md` with definition
+3. Link to relevant personas in agent prompts
+4. Document in manifest
+
+### Supporting New Market Context
+1. Expand Vietnam Business skill with new locale
+2. Add market-specific references
+3. Update agent prompts with conditional logic
+4. Test with locale-specific queries
+
+## Debate Enhancement (Phase 2 - NEW)
+
+### Cross-Challenge Protocol
+**Location**: `./.claude/skills/business/debate-framework/references/cross-challenge-protocol.md`
+
+**Purpose**: Structured pair-based challenge rounds with resolution tracking
+
+**Features**:
+- Pair formation rules (INVEST vs PASS, risk assessment divergence >2 pts, cross-category prioritized)
+- Challenge format with concrete evidence and specific points
+- Resolution tracking (DEFEND/CONCEDE/MODIFY with reasoning)
+- Early stop on 3+ RESOLVED status
+- Token-efficient: max 5 pairs, max 3 rounds
+
+### Confidence Cascade Routing
+**Location**: `./.claude/skills/business/debate-framework/references/confidence-cascade.md`
+
+**Purpose**: Route recommendations by consensus confidence levels
+
+**Routing Tiers**:
+- **>85% consensus, <10% dissent** → AUTO (execute directly)
+- **70-85%, 10-20% dissent** → ADVISOR (human approval)
+- **60-70%, 20-30% dissent** → EXPERT (domain expert review)
+- **<60%, any dissent** → ESCALATE (extend debate + expert)
+- **any consensus, >20% major dissent** → DELIBERATION (extend 1 round)
+
+**SLA Configuration**: Thresholds adjustable per query type (startup vs. buyout vs. strategic)
+
+## Validation Layer (Phase 1)
+
+### Gemini Validation Engine
+**Location**: `./.claude/skills/gemini-validation/`
+
+**Purpose**: Cross-validate investment analysis claims with real-time Google Search data
+
+**Components**:
+- `gemini_validator.py` - Core validation logic (Gemini 2.5 Pro/Flash API)
+- `test_gemini_validator.py` - Unit tests + integration tests
+- `validation-prompts.md` - Structured prompt templates
+
+**Integration**:
+1. **Pre-Synthesis** - investment-orchestrator validates market data before debate
+2. **Pre-Output** - debate-synthesizer fact-checks final recommendations
+3. **Batch Processing** - validates 5+ claims per query with implicit caching
+
+**Cost Optimization**:
+- Implicit caching: 90% discount on repeated validations
+- Model fallback: Pro → Flash if daily limit approached
+- Output capped at 200 tokens per claim
+- Batch validation reduces latency
+
+**Error Handling**:
+- Rate limit (429): Exponential backoff, max 3 retries
+- Timeout (>120s): Return partial results + flag
+- Daily limit: Fallback to Flash model
+- Connection error: Skip validation, note in output
+
+---
+
+## Human-in-the-Loop Review (Phase 3 Extended - NEW)
+
+### HITL Review Protocol
+**Location**: `./.claude/skills/business/protocols/hitl-review.md`
+
+**Purpose**: Confidence-tier review gates between analysis and execution with SLA tracking
+
+**Review Tiers**:
+| Tier | Trigger | Reviewer | SLA | Auto-Fallback |
+|------|---------|----------|-----|---------------|
+| AUTO | >85% consensus, <10% dissent | None | 0s | Execute immediately |
+| ADVISOR | 60-85% consensus | Domain advisor | 24h | Auto-approve if no response |
+| EXPERT | <60% consensus | Domain expert | 48h | Escalate if no response |
+| ESCALATE | >20% major dissent | Advisory council | 72h | Hold + alert if no response |
+| DELIBERATION | Extended debate needed | System | 4h | Run extended debate round |
+
+**Review Queue**:
+- Pending reviews tracked in memory/session
+- Commands: `/review:list`, `/review:process {id}`, `/review:auto`
+- Iterative refinement: max 2 cycles before escalation
+
+### Feedback Capture Protocol
+**Location**: `./.claude/skills/business/protocols/feedback-capture.md`
+
+**Purpose**: Structured feedback collection to improve system recommendations
+
+**Feedback Types**:
+- **Explicit**: Rating (1-5), override category (accuracy/relevance/depth/clarity/other), helpful/unhelpful persona
+- **Implicit**: Time-to-decision (fast/medium/slow), execution divergence from recommendation
+- **Storage**: logs/feedback/{YYYY-MM}/{decision_id}.json
+- **Aggregation**: logs/feedback/aggregates/{YYYY-MM}.json (monthly)
+- **Privacy**: Hashed user IDs, anonymized reports, skip rate tracking
+
+**Feedback Prompt**:
+- 30-second max friction
+- Rating required, persona feedback optional
+- Free text field (200 char max) for quick notes
+- Skip tracking: reduce prompts if skip rate >80%
+
+## Phase 8: Asset Building System (NEW)
+
+### Money Never Sleeps — Asset Building System
+
+**5-Module Architecture** integrated into advisory ecosystem:
+
+#### Module 1: Asset Registry
+**Location**: `./.claude/skills/business/asset-registry/`
+
+**Purpose**: Central CRUD for all asset types (digital, financial, business)
+
+**Capabilities**:
+- Asset creation/update/delete with full audit trail
+- Portfolio summary aggregation
+- Real-time HTML dashboard with asset overview
+- Multi-level categorization (type, status, maturity)
+- Tagging and filtering system
+
+**Commands**: `/asset:registry`
+**Storage**: `data/assets/registry/`
+
+#### Module 2: Cash Flow Intelligence
+**Location**: `./.claude/skills/business/asset-cashflow/`
+
+**Purpose**: Transaction tracking and idle cash optimization
+
+**Capabilities**:
+- Transaction ledger with bank CSV import
+- Idle cash detection (funds >30 days untouched)
+- Compound interest calculator
+- Cash efficiency metrics
+- Automated alerts for optimization opportunities
+
+**Commands**: `/asset:cashflow`, `/asset:idle`, `/asset:compound`
+**Storage**: `data/assets/cashflow/`
+
+#### Module 3: Decision Engine
+**Location**: `./.claude/skills/business/asset-decision-engine/`
+
+**Purpose**: Dual-signal analysis for investment decisions
+
+**Capabilities**:
+- Statistical analysis framework
+- Metaphysical (psychological/contextual) signal detection
+- Cash flow impact modeling
+- Auto-injection into existing `/invest`, `/debate`, `/council` flows
+- Confidence scoring with reasoning trails
+
+**Commands**: `/asset:decide`
+**Storage**: `data/assets/pipeline/` (decision logs)
+
+#### Module 4: Asset Factory
+**Location**: `./.claude/skills/business/asset-factory/`
+
+**Purpose**: 6-stage pipeline for asset evolution (scout→scale)
+
+**Capabilities**:
+- Stage 1: Scout (opportunity identification)
+- Stage 2: Validate (thesis testing)
+- Stage 3: Pilot (proof of concept)
+- Stage 4: Scale (growth execution)
+- Stage 5: Optimize (efficiency improvement)
+- Stage 6: Mature (steady state)
+- Kill criteria evaluation at each stage
+- Maturity scoring (0-100)
+
+**Commands**: `/asset:factory`, `/asset:score`
+**Storage**: `data/assets/pipeline/`
+
+#### Module 5: Capital Deployment
+**Location**: `./.claude/skills/business/asset-deployment/`
+
+**Purpose**: Rules-based capital allocation with risk management
+
+**Capabilities**:
+- Risk profile engine (Conservative, Moderate, Aggressive)
+- Rebalancing logic based on portfolio drift
+- Reserve protection ($5K minimum floor)
+- Approval gate for commitments >$2K
+- Deployment sequencing and staging
+- Rollback protection and safeguards
+
+**Commands**: `/asset:deploy`
+**Storage**: `data/assets/rules/`, `data/assets/snapshots/`
+
+### Integration Points with Advisory System
+
+1. **Decision Engine → Investment Orchestrator**: Asset decisions can trigger `/invest` analysis with advisory personas
+2. **Decision Engine → Council**: Major capital decisions route to `/council` for investor-tier review
+3. **Decision Engine → Young Masters**: Emerging assets leverage digital-native expertise via `/ck:ymasters`
+4. **Capital Deployment → HITL Review**: Deployments >$5K trigger confidence-tier review gates
+
+### Data Structure
+
+```
+data/assets/
+├── registry/          # Asset definitions (JSON)
+├── archive/           # Historical asset records
+├── cashflow/          # Transaction ledger (CSV/JSON)
+├── pipeline/          # Factory stage data + decision logs
+├── rules/             # Deployment rules, risk profiles
+└── snapshots/         # Point-in-time portfolio snapshots
+```
+
+### Agents (New - Phase 8)
+
+1. **asset-registry** - CRUD orchestrator for asset inventory
+2. **asset-decision-engine** - Dual-signal analysis coordinator
+3. **asset-factory** - 6-stage pipeline orchestrator
+4. **asset-deployment** - Rules engine + approval router
+
+### Command Reference
+
+| Command | Module | Purpose |
+|---------|--------|---------|
+| `/asset:registry` | Asset Registry | Manage asset inventory |
+| `/asset:cashflow` | Cash Flow Intelligence | View transaction ledger |
+| `/asset:idle` | Cash Flow Intelligence | Detect idle capital |
+| `/asset:compound` | Cash Flow Intelligence | Calculate compound scenarios |
+| `/asset:decide` | Decision Engine | Get dual-signal analysis |
+| `/asset:factory` | Asset Factory | View/manage 6-stage pipeline |
+| `/asset:score` | Asset Factory | Get maturity scoring |
+| `/asset:deploy` | Capital Deployment | Execute capital deployment |
+
+### Performance Characteristics
+
+- **Registry Operations**: <500ms CRUD, <2s portfolio summary
+- **Decision Analysis**: 2-5 minutes for dual-signal (includes advisory consultation)
+- **Factory Pipeline**: Full 6-stage assessment <10 minutes
+- **Deployment**: <1 minute for execution (with approval gate at >$2K)
+
+### Success Metrics
+
+- Asset coverage: 100% of investable capital tracked
+- Idle cash detection: <7 days to identify opportunities
+- Decision confidence: >80% on dual-signal scores
+- Deployment accuracy: <3% variance from planned allocation
+- Reserve protection: $5K+ minimum maintained at all times
+
+---
+
+## Business Workflow Pipeline (System Evolution - NEW)
+
+**Location**: `./.claude/workflows/business-workflow.md`
+
+**Purpose**: Orchestrates complete business decision lifecycle with 6 sequential stages
+
+### 6-Stage Pipeline
+
+1. **Research Stage** - Gather intelligence
+   - Use: knowledge-verify skill, market-research skill, data-intelligence system
+   - Output: Raw findings + source credibility scores
+   - Integration: MFE pre-flight validation
+
+2. **Verification Stage** - Validate claims & sources
+   - Use: universal-verification-protocol, ccs-agy-universal-protocol
+   - Output: Verified claims with confidence intervals
+   - Check: Source credibility >0.65, consensus threshold
+
+3. **Analysis Stage** - Apply frameworks & personas
+   - Use: All 43 persona agents, debate-framework skill
+   - Output: Multi-perspective analysis matrix
+   - Integration: Competence matrix scoring
+
+4. **Decision Stage** - Synthesize & route
+   - Use: debate-synthesizer, decision-fusion
+   - Output: Routing tier (AUTO/ADVISOR/EXPERT/ESCALATE/DELIBERATION)
+   - Check: Confidence cascade routing
+
+5. **Execution Stage** - Implement decisions
+   - Use: auto-executor (3-tier), execution-safety protocol
+   - Output: Action results + audit trail
+   - Check: Kill switches, rate limits, compliance
+
+6. **Tracking Stage** - Monitor & learn
+   - Use: feedback-capture protocol, accuracy tracking
+   - Output: Outcome logs + pattern extraction
+   - Update: Persona competence scores + learning system
+
+### Mode Detection
+
+System auto-detects decision mode based on context:
+- **Autonomous** (AUTO tier): Execute immediately, log only
+- **Advisory** (ADVISOR tier): Wait for human approval (24h SLA)
+- **Expert** (EXPERT tier): Route to domain expert (48h SLA)
+- **Escalation** (ESCALATE tier): Council review (72h SLA)
+
+---
+
+## Universal Verification Protocol Architecture (NEW)
+
+**Location**: `./.claude/skills/business/protocols/universal-verification-protocol.md`
+
+**Purpose**: Root verification protocol for all claim validation across system
+
+### Components
+
+1. **Source Credibility Engine**
+   - Scoring: 0.0-1.0 based on source type (Government: 0.95, Academic: 0.85, Media: 0.60-0.70)
+   - Decay: Applied for outdated sources (>6 months for market data)
+   - Verification methods: Cross-reference, triangulation, expert review
+
+2. **CCS Agy Universal Protocol** (`./.claude/skills/common/ccs-agy-universal-protocol.md`)
+   - Cross-verification across 3+ sources
+   - Consensus requirement: >0.65 agreement
+   - Implementation: `ccs_agy_verifier.py` class
+
+3. **Confidence Quantification**
+   - Formula: Combines source credibility × consensus × expert review
+   - Output: 1-5 confidence scale with uncertainty band
+
+### Integration Points
+
+- Pre-synthesis: Validate market data claims before debate
+- Pre-execution: Verify decision prerequisites before auto-execution
+- Post-outcome: Track prediction accuracy for learning
+
+---
+
+## Metaphysics→Fusion Bridge (NEW)
+
+**Location**: `./.claude/skills/metaphysics/synthesizer/scripts/output-adapter.py`
+
+**Purpose**: Converts metaphysics system outputs (Bát Tự, Kỳ Môn, Tử Vi) to fusion JSON for decision integration
+
+### Data Flow
+
+```
+Metaphysics Systems (Bát Tự, Kỳ Môn, Tử Vi)
+    ↓
+output-adapter.py (Standardization)
+    ├── Extract: Confidence scores, recommendations, timing signals
+    ├── Normalize: Map to standardized 0-1 confidence scale
+    ├── Validate: Check schema + cross-reference integrity
+    └── Format: JSON output compatible with decision-fusion
+    ↓
+decision-fusion (Weighted Aggregation)
+    ├── Weight: Metaphysical 10-40% depending on decision type
+    ├── Combine: With statistical + persona confidence scores
+    └── Output: Unified recommendation with methodology transparency
+```
+
+### Integration Points
+
+- `/ck:ymasters` command: Metaphysics signals inform Young Masters decisions
+- Asset decisions: Timing & risk assessment enriched by metaphysics
+- Market timing: Kỳ Môn formation analysis for entry/exit signals
+
+---
+
+## Meditation Skill Integration (thien)
+
+**Location**: `./.claude/skills/thien/`
+
+**Purpose**: Meditation coaching & brain training skill with dual storage
+
+### Architecture
+
+1. **Data Storage (Dual Mode)**
+   - JSON output: Structured coaching data for display
+   - SQLite database: Persistent user progress tracking
+   - Session history: Time-series meditation logs with metrics
+
+2. **Brain Training Framework**
+   - Part I-VIII: Foundational techniques (breathing, focus, visualization)
+   - Part IX: Deliberate practice & neuroscience-grounded mastery (NEW)
+   - Spaced repetition: Anki-based scheduling for skill acquisition
+   - Progress metrics: Session count, consistency, skill advancement
+
+3. **Integration with Decision System**
+   - Pre-decision preparation: Meditation for clarity
+   - Stress management: Breathing exercises during high-stakes decisions
+   - Pattern recognition enhancement: Meditation improves intuitive decision-making
+
+---
+
+## Unified Decision Engine (UDE)
+
+Added 2026-02-05. Transforms /startup from loosely coupled pipeline into unified decision system.
+
+### Components
+- **MFE** (`./.claude/skills/business/factors/`): 8-domain factor engine with SQLite + YAML hybrid storage, domain-specific TTLs, triple-trigger calibration
+- **Competence Matrix** (`./.claude/skills/business/feedback_loop/competence_matrix.py`): Agent scoring (domain_relevance × accuracy × freshness), 30% exclusion, 25% weight reduction
+- **Decision Fusion** (`./.claude/skills/business/fusion/`): Statistical × Metaphysical weighted per decision type (Financial=90/10, Timing=50/50), agreement bonus/penalty
+- **Cash Flow Architect** (`./.claude/skills/business/cashflow/`): 3-5 parallel streams, TTP metrics, compound projections (5%/15%/30%), kill criteria
+- **State v3.0** (`./.claude/skills/business/state/`): Additive migration from v2.0, checksum integrity
+
+### Integration
+- `/startup`: Phases -2 (MFE), 1.5 (Cash Flow), 1.7 (Statistical), 5 (Decision Fusion)
+- `/invest`, `/debate`, `/council`, `/advisory`: MFE pre-flight
+- 43 persona agents: competence_domains frontmatter
+- Tests: 6 suites, ~50 tests, 100% pass
+
+---
+
+## Phase 11: Power Network Intelligence System (NEW - 2026-03-01)
+
+**See detailed documentation**: `./docs/power-network-intelligence.md`
+
+8 new agents + 6 upgraded agents enabling strategic power network leverage.
+
+**New Agents**: power-cartographer, patron-acquisition-strategist, ego-leverage-specialist, proximity-engineer, chameleon-communicator, social-intelligence-engine, value-fabricator, power-network-orchestrator
+
+**Command**: `/relationship` with 6 subcommands (target, approach, nhau, escalate, timing, campaign)
+
+**Key**: campaign-manager.py for CRUD with dual JSON/SQLite storage, 7-layer relationship hierarchy, influence quantification
+
+---
+
+## Phase 12: Agent Persona Knowledge Base Architecture (NEW - 2026-03-08)
+
+### Overview
+6-phase systematic upgrade of agent persona system from knowledge collection through decision pattern extraction to continuous automation. Enables dynamic knowledge bases, authentic voice patterns, and data-driven decision validation.
+
+### Phase 1: Audit & Gap Analysis
+**Tool**: `audit-persona-gaps.py`
+**Output**: `gap-matrix.json/md`
+**Scope**: 15 personas (Buffett, Dalio, Thiel, Taleb, Horowitz, Andreessen, Graham, Munger, Lynch, Soros, Ackman, Cuban, Robbins, Branson, Navarre)
+**Identifies**: Missing voice DNA, decision patterns, failure modes, knowledge bases
+
+### Phase 2: Voice-DNA Sprint
+**Standard**: 12-file reference per persona
+1. shareholder-letters (or equivalent founding documents)
+2. decision-cases (real decisions with context)
+3. failures-learned (failures + lessons)
+4. interview-insights (quote mining)
+5. signature-phrases (authentic voice patterns)
+6. core-frameworks (primary mental models)
+7. communication-patterns (how they explain ideas)
+8. blind-spots (known weaknesses)
+9. edge-case-thinking (uncommon perspectives)
+10. contrarian-positions (contrasts with consensus)
+11. market-signals (timing + detection methods)
+12. execution-timeline (speed + tempo preferences)
+
+**Location**: `./.claude/skills/business/personas/*/references/`
+**Volume**: 149+ reference files across 15 personas (2-5x expansion per persona)
+
+### Phase 3: Knowledge Base Collection
+**Shared Utilities** (`./.claude/skills/business/knowledge_base/shared/`):
+- `chunker.py` - Semantic chunking for knowledge fragmentation
+- `bm25_search.py` - BM25 retrieval for relevance ranking
+- `youtube_fetcher.py` - Extract knowledge from video transcripts
+- `web_fetcher.py` - Fetch + parse web sources
+
+**Persona Collectors/Retrievers**:
+- 12 new modules in `./.claude/skills/business/knowledge_base/persona_sources/*/`
+- Each provides: `collector.py` (fetch sources) + `retriever.py` (query-time retrieval)
+- Dynamic knowledge base: chunk on demand, vectorize on retrieval (no pre-computed embeddings)
+
+### Phase 4: Decision Patterns & Failure Modes
+**Decision Patterns** (`{persona}-decision-patterns.json`):
+- 308 total decisions across 15 personas
+- Fields: Context, Framework, Decision, Outcome, Confidence, Lessons, Transferability
+- Enables agent decision validation against historical patterns
+
+**Failures** (`{persona}-failures.json`):
+- ~150 total failures across 15 personas
+- Fields: Failure, Context, Root Cause, Lessons, Prevention
+- Prevents agent from repeating known failure modes
+
+**Location**: `./.claude/skills/business/knowledge_base/persona_sources/*/`
+
+### Phase 5: Agent Prompt Upgrade
+**New Agents** (4 total):
+1. **Buffett** - Value + business quality + owner mentality
+2. **Dalio** - Systems thinking + radical transparency + principles
+3. **Thiel** - Zero-to-one + contrarian + power law
+4. **Taleb** - Antifragility + tail risks + skin in game
+
+**Upgraded Agents** (11 total):
+- Integrated V11 principles (voice, frameworks, decision patterns, failure modes)
+- Extracted shared principles to `./.claude/agents/business/shared/v11-principles.md`
+- Optimized Chris Voss from 560 → 144 lines (preserved core voice)
+
+### Phase 6: Pipeline Automation
+
+**See detailed documentation**: `./docs/agent-persona-knowledge-base.md`
+
+**Automation Scripts** (5 total): bootstrap-persona, freshness-dashboard, quality-gate, refresh-collectors, extract-decisions
+
+**Key Outcomes**: 149+ reference files, 308 decisions tracked, ~150 failures, 4 new agents + 11 upgraded, 5 automation scripts
+
+---
+
+## Phase 13: Agentic Team Intelligence Upgrade (NEW - Mar 2026)
+
+5 integrated modules enabling autonomous team coordination, learning from feedback, safe execution gating.
+
+**See detailed documentation**: `./docs/agentic-team-intelligence.md`
+
+**Modules**:
+1. **Auto-Learning Engine** - Correction detection + 30d rule TTL injection
+2. **Unified Knowledge Compound** - SQLite DB (predictions/outcomes/patterns/scores) + CLI
+3. **Agent Registry & PM Control** - EMA scoring with orchestrator integration
+4. **Parallel Coordination** - Default parallel patterns; sequential for dependencies
+5. **Execution Gate** - Kill-switch, spend caps, error thresholds, audit trail
+
+**Files**: 3 new hooks (correction-detector, post-correction-learner, agent-performance-tracker, execution-gate), 5 data files (compound.db, agent-registry.json, execution-config.json, execution-log.json, compound-manager.py)
+
+**Impact**: Autonomous execution with learning feedback, unified decision memory, quality-based agent selection, compliance auditing.
+
+---
+
+## Phase 12.5: Runtime Memory Pipeline (NEW - Mar 2026)
+
+Implements token-budgeted context compilation for agents to retrieve relevant persona knowledge at runtime.
+
+### Runtime Memory Pipeline Components
+**Location**: `./.claude/skills/business/knowledge_base/`
+
+#### 1. Query Classifier
+**File**: `query-classifier.py`
+
+**Purpose**: Map natural language query to multi-label business category tags
+
+**Categories** (16 total):
+- Domain: pricing, scaling, validation, fundraising, operations, marketing, product, exit
+- Vertical: saas, marketplace
+- Topic: negotiation, risk, moat, mental_models, unit_economics, offer_design
+
+**Usage**:
+```python
+from query_classifier import classify_query
+tags = classify_query("how to price my SaaS tool")
+# Output: ["pricing", "saas"]
+```
+
+**Performance**: O(n) keyword regex matching, multi-label output
+
+#### 2. Boundary Loader
+**File**: `boundary-loader.py`
+
+**Purpose**: Load edge cases, anti-patterns, and contradictions from persona reference files
+
+**Reference files scanned**:
+- `edge-cases.md` - When frameworks don't apply
+- `anti-patterns.md` - Common mistakes in domain
+- `contrarian-views.md` - Positions differing from mainstream
+
+**Output Schema**:
+```json
+{
+  "boundaries": [
+    {"title": "...", "body": "..."}
+  ],
+  "thin_knowledge": false,
+  "source_files": ["edge-cases.md", ...]
+}
+```
+
+**Usage**:
+```python
+from boundary_loader import load_boundaries
+result = load_boundaries("alex-hormozi", ["pricing", "saas"])
+```
+
+#### 3. Persona Context Loader
+**File**: `persona-context-loader.py`
+
+**Purpose**: Orchestrate full context retrieval pipeline into token-budgeted block
+
+**Pipeline Steps**:
+1. Query → classify via query-classifier
+2. Query → match experiences via experience-retriever (experience_sim/)
+3. Query → match failures via failure-matcher (failure-cases/scripts/)
+4. Query → extract boundaries via boundary-loader
+5. Compile → token budget (default: 2000 tokens)
+6. Format → JSON or text output
+
+**Output Schema**:
+```json
+{
+  "persona": "alex-hormozi",
+  "query": "...",
+  "tags": ["pricing", "saas"],
+  "context": {
+    "experiences": [
+      {"case": "...", "framework": "...", "outcome": "..."}
+    ],
+    "boundaries": [
+      {"title": "...", "body": "..."}
+    ],
+    "failures": [
+      {"failure": "...", "lesson": "..."}
+    ]
+  },
+  "metadata": {
+    "token_budget_used": 1847,
+    "sources": [...],
+    "confidence": 0.95
+  }
+}
+```
+
+**Usage**:
+```bash
+python persona-context-loader.py \
+  --persona alex-hormozi \
+  --query "pricing for SaaS tool" \
+  --budget 1500 \
+  --format json
+```
+
+**As module**:
+```python
+from persona_context_loader import load_persona_context
+ctx = load_persona_context(
+  persona="charlie-munger",
+  query="moat analysis",
+  token_budget=2000,
+  multi_agent=True
+)
+```
+
+### Integration Points
+
+- **All Persona Agents**: Call `persona_context_loader.load_persona_context()` before step 0 (ingest)
+- **Brainstormer**: Pre-load context for debate personas selection
+- **Decision Maker**: Retrieve context for autonomous decisions
+- **Debate Synthesizer**: Enrich personas with boundary knowledge before synthesis
+
+### SARL Experience Generation
+
+**Scope**: 10 persona agents with Runtime Knowledge directive
+- Generated: 166 total experience entries
+- Batch format: Structured SARL (Scenario-Action-Result-Learning)
+- Stored in: `./.claude/skills/business/knowledge_base/experience_sim/`
+
+**Template**:
+```json
+{
+  "persona": "persona-name",
+  "scenario": "Initial context",
+  "action": "Decision/framework applied",
+  "result": "Outcome achieved",
+  "learning": "Key lesson"
+}
+```
+
+**Integration**: Loaded by experience-retriever at runtime
+
+### Rule 16: Inner Monologue Format
+
+**Location**: `./.claude/skills/business/protocols/reasoning-enforcement.md`
+
+**Rule 16** (NEW): Agents must show inner monologue before final output
+
+**Format**:
+```
+[THINKING]
+- Classified query: [tags]
+- Loaded experiences: [N] cases
+- Boundary knowledge: [Y/N]
+- Framework selected: [framework]
+- Risk factors: [risks]
+[/THINKING]
+
+[RESPONSE]
+{final output}
+```
+
+**Benefit**: Transparent reasoning + easier error diagnosis
+
+---
+
+## Phase 3-4: Decision Graph Layer & Enhanced Debate Protocol (NEW - Mar 2026)
+
+Adds intelligent persona selection via decision graphs and structured debate corner system to brainstormer agent.
+
+### Decision Graph Pipeline
+**Location**: `./.claude/skills/business/knowledge_base/graph/`
+
+**Components**:
+- `decision-graph-builder.py` - Extracts causal chains from 43 persona decision patterns + failures
+- `decision-graph-querier.py` - Query interface: `causal_chain(persona, topic)` returns relevant experiences
+- `entity-extractor.py` - Extracts actors, decisions, outcomes as graph nodes
+- `cross-persona-linker.py` - Identifies shared decision contexts across personas
+- Extractors: `decision_case_extractor.py`, `failure_extractor.py` for pattern mining
+- Output: `decision-graph.json` (NetworkX-compatible), `extracted-entities.json`
+
+**Key Features**:
+- Causal reasoning: Traces decision context → persona reasoning → outcome
+- Experience-backed references: Ground debate positions in specific cases (year, dollar amount, decision)
+- Cross-persona conflict mapping: Identifies philosophical disagreements on identical decisions
+
+### Enhanced Debate Protocol (v3.0)
+**Location**: `./.claude/agents/business/shared/`
+
+**New Components**:
+1. **Debate Personas Selector** (`debate-personas-selector.md`)
+   - Step 0g in brainstormer: Auto-select 3 personas with maximum disagreement potential
+   - Domain classification (pricing, growth, risk, product, funding, marketing, competition, systems)
+   - Opposition mapping: Select personas from opposite philosophical positions
+   - Diversity gate: Ensure contrarian voice + practitioner with scars
+   - Fallback trio: alex-hormozi, charlie-munger, pieter-levels (max range)
+
+2. **Debate Output Template** (`debate-output-template.md`)
+   - Step 7 in brainstormer: Structured "Debate Corner" section
+   - Quality gates: Specificity (REAL cases), genuine disagreement, non-obvious tension, actionable implication
+   - Anti-patterns: Rejects generic philosophy, hedge language, restatements
+
+### Integration with Brainstormer Agent
+**Updated**: `./.claude/agents/business/brainstormer.md`
+- **Step 0g**: Query decision graph for personas on user's topic → feed to personas selector
+- **Step 7**: Generate debate corner with personas selector + template
+
+**Updated**: `./.claude/agents/business/_persona-template.md`
+- **Step 0j**: Query decision graph to load topic-specific experiences (failures, decisions, cases)
+- Load experiences before persona prompt to seed authentic reasoning
+
+**Updated**: `./.claude/agents/business/shared/cross-persona-patterns.json`
+- Added `disagreement_pairs` field: Maps which personas disagree on identical decision contexts
+- Enables efficient debate pair selection without full debate orchestration
+
+---
+
+## Phase 14: System Audit & Upgrade (NEW - Mar 2026)
+
+### XSkills Research Architecture
+
+**New XSkill Scripts** (6 total):
+1. **reddit-deep-miner** - Subreddit community signal extraction with sentiment analysis
+2. **negative-review-miner** - E-commerce review scraping with complaint clustering
+3. **google-trends** - Search trend analysis for market signal detection
+4. **government-data** - Official data integration (trade, census, regulatory)
+5. **pricing-scraper** - Competitor pricing intelligence with volatility tracking
+6. **job-posting** - Labor market signal analysis from job postings
+
+**Deep-Research Protocol**:
+- Location: `./.claude/skills/business/research/deep-research-protocol.md`
+- XSkill registry with execution order, caching strategy, result aggregation
+- Quality gates per XSkill with confidence scoring
+- Integration with research-dispatcher for parallel execution
+
+### Reasoning Enforcement Upgrade (Rules 21-24)
+
+**New Rules** added to `reasoning-enforcement.md`:
+- **Rule 21**: AI commoditization thesis - Model current as commodity layer
+- **Rule 22**: First-principles reasoning requirement - Reject internet summaries
+- **Rule 23**: Research quality standards - Favor primary sources, primary data
+- **Rule 24**: Analysis tool mode - Use available XSkills before synthesis
+
+**Step 0k** (NEW) - Insight generation added to persona template:
+- Generate novel insights BEFORE consuming references
+- Combine XSkill outputs with persona frameworks
+- Validate against failure precedents
+
+### Domain Coverage Expansion
+
+**Category Taxonomy** (7 categories):
+- Pricing & monetization
+- Growth & scaling
+- Risk & financial modeling
+- Product & market fit
+- Operations & execution
+- Power & positioning
+- Timing & catalysts
+
+**New Domain Categories** added to `persona-domain-mapping.yaml`:
+- Physical Retail (storefronts, inventory, supply chain)
+- Food & Beverage (margin dynamics, supplier relationships, scaling)
+- Micro-business (solo operators, unit economics, lifestyle)
+- AI Assessment (disruption risk, automation potential, timing windows)
+
+**Panel Diversity Rule**:
+- Mandate contrarian + practitioner with domain scars on all debates
+- Cross-challenge protocol prioritizes philosophical opposition
+- Category representation requirements (min 2 categories per panel)
+
+### Knowledge Base Enhancements
+
+**Unit Economics Templates** (6 new):
+1. Physical Retail - Fixed asset ROI, inventory turns, labor leverage
+2. Food & Beverage - COGS %, labor %, rent %, margin stacking
+3. Service Business - Hourly/project pricing, capacity utilization, scaling constraints
+4. Franchise Model - Upfront fee, royalties, support cost structures
+5. Micro-business (Solo) - Owner salary, overhead, leverage opportunities
+6. Commodity/Export - Volume leverage, payment terms, storage costs
+
+**Insights Store** (24 seed insights):
+- Location: `./.claude/skills/business/knowledge_base/insights/`
+- Anti-patterns in pricing, unit economics, scaling failures
+- Industry-specific pattern libraries
+- Cross-referenced with persona decision graphs
+
+**knowledge-accumulator.py**:
+- Dynamic insight extraction from XSkill results + persona patterns
+- Automated pattern recognition with confidence scoring
+- Integration with decision-fusion weighting
+
+### Learning System Initialization
+
+**Agent Accuracy Initialization**:
+- File: `data/assets/calibration/agent-accuracy.json`
+- 114 entries for all agent personas
+- Fields: domain, confidence_history, accuracy_trends, preferred_contexts
+
+**Token Budget Tiers**:
+- Tier 1 (Exploration): 1500 tokens, broad context
+- Tier 2 (Standard): 2000 tokens, balanced context
+- Tier 3 (Deep): 3000 tokens, comprehensive references + graph results
+
+**Reference Pruning Guide**:
+- Location: `./.claude/skills/business/knowledge_base/reference-pruning-guide.md`
+- Aging policy: 6mo for market data, 12mo for frameworks
+- Access frequency tracking for optimization
+
+**Automation Scripts**:
+- `outcome-logger.py` - Structured outcome logging with cause/effect analysis
+- `learning-loop-protocol.md` - Documented feedback→adjustment cycle
+
+## Agent Intelligence Rebuild: Layer 2 Knowledge Enhancement (NEW - Mar 2026)
+
+### Layer 2 Schema Expansion
+
+**New Knowledge Files**: 2 JSON schemas added to persona knowledge architecture
+
+**1. Domain Intelligence Schema** (`.claude/skills/business/personas/_templates/domain-intelligence.schema.json`)
+- **Purpose**: Competitive landscape specific to persona's domain, filtered through persona's decision lens
+- **Content**:
+  - `top_players` (5-10 entries) — competitor names, URLs, pricing, estimated users, growth signal, moat assessment
+  - `persona_interpretation` — market read, opportunity gaps, warning signs (from persona's heuristics)
+- **Population**: Knowledge syncer Phase 3b (5 WebSearch queries per domain)
+- **Refresh**: Tier-based: A=7d, B=14d, C=30d
+
+**2. Case Library Schema** (`.claude/skills/business/personas/_templates/case-library.schema.json`)
+- **Purpose**: Real case studies (success/failure) relevant to persona's domain with specific outcomes
+- **Content**:
+  - `cases` array (5-20 entries) — company, outcome type, domain, numbers (revenue, users, timeline), root cause, lesson, pattern tag
+  - Pattern tags: pricing-mistake, channel-dependency, moat-failure, timing-right, team-execution, product-market-fit, capital-efficiency, market-shift
+- **Population**: Knowledge syncer Phase 3c (4 WebSearch queries per domain)
+- **Lesson mapping**: Each case mapped to persona's specific framework (not generic takeaways)
+
+### 5 Mandatory Protocols Injected (All 98 Personas)
+
+**New Requirements in SKILL.md Template** (`.claude/skills/business/personas/_templates/knowledge-base-skill-template.md`)
+
+1. **Research Protocol** — Market reality (2 searches) → Case evidence (2 searches) → Anti-confirmation (1 search)
+   - Extract: market size, growth rate, case outcomes with $ anchors, failure reasons
+   - Skip conditions: philosophy questions, framework explanations, user-provided data analysis only
+
+2. **Case-Based Reasoning Protocol** — Map user situation to comparable cases before framework application
+   - Extract 2+ comparable businesses from search results
+   - Map similarities/differences explicitly
+   - Gate: "No comparable case found → apply with [LOW CONFIDENCE]"
+
+3. **Output Concreteness Rules** — Ban vague phrases, require specifics
+   - "consider doing X" → "Do X. Here's how: [specific steps]"
+   - "competitively priced" → "$X/mo vs Competitor Y at $Z/mo (source: URL)"
+   - "in the near future" → "within 14 days"
+
+4. **Contrarian Mode Protocol** — Activate when role="contrarian" or prompt contains challenge keywords
+   - Surface 3+ structural failure reasons (not surface-level risks)
+   - Challenge single strongest assumption explicitly
+   - Present 1 unconsidered alternative with real example
+   - Gate: Contrarian answer validating original plan = FAILURE
+
+5. **Confidence Scoring** — Tag every factual claim [K]/[T]/?
+   - [K] = verified from search, ≥0.75 confidence
+   - [T] = inferred from adjacent evidence, 0.50–0.74 confidence
+   - [?] = insufficient data, <0.50 confidence
+   - Gate: >50% [?] claims → block recommendations, request specific data
+
+### Persona Agent Template Behavior Contract
+
+**File**: `.claude/agents/personas/_persona-template.md` (Standard behavior contract, 85 lines)
+
+**Identity Loading** (Execute Before Any Output):
+1. Load persona SKILL.md
+2. Load mandatory reference files (core-methodology, voice-patterns, failure-scars, contrarian-views)
+3. Load knowledge files if present (meta.json, decision-patterns.json)
+4. Run calculation script if SKILL.md specifies one
+
+**Pre-Output Execution Gate**:
+- Confirm: SKILL.md loaded, references loaded, calculation script run (if specified), Research Protocol executed for strategic queries
+- Tag all claims [K]/[T]/?
+- Fail fast if any check missing
+
+**Domain Boundary Enforcement**: Stay within competence domains in SKILL.md "When to Apply" section; reference complementary personas if outside domain
+
+**Anti-Generic Output Gate** (Final check before output):
+- Scan for banned phrases from anti-patterns.md
+- "Could ChatGPT produce this?" → if YES, add mechanism or delete
+- "Specific companies, prices, numbers?" → if NO, go scrape
+- "Would REAL persona say this in their voice?" → if NO, rewrite
+
+**Output Format**:
+- Parallel panel mode: Max 20 lines (Verdict [K/T/?] → Insight → Evidence → Risk → Action)
+- Direct invocation: No limit, full Research Protocol outputs + calculation results
+
+### Knowledge Syncer Layer 2 Integration
+
+**Phases 3b-3c** (Knowledge syncer SKILL.md):
+
+**Phase 3b: Domain Intelligence Population**
+- Search `"{persona domain} top competitors market share pricing 2026"` + trend search
+- WebFetch top 3-5 results for concrete data
+- Build `top_players` array (min 5 entries with name, URL, pricing, users, growth, moat, source)
+- Write `persona_interpretation` using persona's decision heuristics
+- Version="2.0", last_updated (ISO datetime), content_hash (MD5 of top_players JSON)
+- Skip gracefully if <5 players found
+
+**Phase 3c: Case Library Population**
+- Search `"{persona domain} success case study revenue growth 2025-2026"`
+- Search `"{persona domain} failure post-mortem lessons"`
+- WebFetch sources to extract company, outcome numbers (revenue, users, timeline), root cause
+- Build `cases` array (5-10 entries mixing success/failure)
+- Map `lesson` to persona's specific framework
+- Tag `pattern_tag` from enum
+- Skip gracefully if <5 cases found
+
+### Integration Points
+
+- **Research Protocol**: Activates automatically for strategic queries (market analysis, opportunity evaluation, pricing strategy)
+- **Case-Based Reasoning**: Provides grounded evidence before framework application in all persona analyses
+- **Knowledge Syncer**: Refreshes Layer 2 files in background during /startup pre-flight (non-blocking, top 5 stale personas)
+- **Persona Agent Template**: Applied to all 98 personas, enforces identity loading + pre-output gates on every response
+
+---
+
+## V17: Research Orchestration & Agent Intelligence Upgrade (NEW - Mar 2026)
+
+### Phase 5: Expanded Data Fetcher Architecture
+
+**Data Sources Expansion**: 10 fetchers (up from 6)
+
+**New Fetchers Added**:
+1. `youtube-transcript-fetcher.py` - Extract knowledge from video transcripts (metadata, timestamps, speaker turns)
+2. `hn-deep-fetcher.py` - Deep Hacker News exploration (thread patterns, founder sentiment, market signals)
+3. `sec-edgar-fetcher.py` - SEC filing intelligence (10-K/10-Q analysis, financial ratios, insider trading)
+4. `semantic-scholar-fetcher.py` - Academic paper mining (research frontiers, methodology validation, citation trends)
+
+**Existing Fetchers** (6):
+- reddit-deep-miner, negative-review-miner, google-trends, government-data, pricing-scraper, job-posting-analyzer
+
+**research-dispatcher Integration**:
+- Location: `./.claude/skills/business/knowledge_base/research/`
+- Parallel execution with quality gates per fetcher
+- Caching strategy: 7d for news-like sources, 30d for academic/SEC sources
+- Aggregation: Result merging with source confidence weighting
+
+### Phase 6: Agent Pipeline Expansion
+
+**New Business Agents** (3 total, 146 agents total system-wide):
+1. **financial-planner.md** - Unit economics validation, CAC/LTV modeling, margin analysis
+   - BLOCKING gate in `/startup` pipeline (no-go if unit economics fail)
+   - Validates unit_economics_score < 6.0 → escalate to decision-maker
+2. **unit-economics-validator.md** - Cohort analysis, payback periods, blended metrics
+   - BLOCKING gate in `/startup` pipeline
+   - Integrates with 6 unit economics templates (retail, F&B, service, franchise, micro, export)
+3. **product-manager.md** - PMF assessment, feature velocity, market response tracking
+   - Part of venture-orchestrator department router
+   - Feeds market-fit confidence to decision matrix
+
+**Total Agent Count**: 146 (was 143)
+- 31 business agents (+ 3 new)
+- 18+ tech agents (unchanged)
+- 1 meditation agent (unchanged)
+- Supporting orchestrators/routers
+
+### Phase 7: Knowledge Enrichment Pipeline
+
+**Insight Extraction System**:
+- Location: `./.claude/skills/business/knowledge_base/insights/`
+- Tool: `insight-extractor.py` - Mine patterns from Phase 5 fetched sources
+- Automatically tags insights by domain (pricing, growth, risk, product, operations, power, timing)
+
+**YouTube Enrichment Pipeline** (NEW):
+- `youtube-enrichment-pipeline.py` - Process transcript → structured segments
+- Extract speaker expertise signals, mention frequency analytics, sentiment arcs
+- Link to persona frameworks for authentication of claims
+- Integrate with runtime-memory context loader for just-in-time enrichment
+
+**Enrichment Workflow**:
+1. Fetch data (Phase 5 fetchers)
+2. Extract insights with domain tagging (insight-extractor)
+3. Enrich YouTube transcripts (youtube-enrichment-pipeline)
+4. Store enriched insights (knowledge-accumulator)
+5. Index for runtime retrieval (persona-context-loader)
+
+### Phase 8: Learning Loop Closure
+
+**Prediction Verification Tools**:
+
+1. **auto-verifier.py** - Automated claim validation
+   - Compare agent predictions vs outcome data
+   - Confidence calibration scoring
+   - False positive rate tracking per persona
+
+2. **implicit-signal-capture.py** - Extract latent success factors
+   - Pattern mining from executed deals
+   - Correlation analysis (what predicted wins, what predicted losses)
+   - Build signal strength database for next cycle
+
+3. **weekly-prediction-review.py** - Structured prediction audit
+   - Review all predictions from prior week
+   - Bayesian prior update: P(signal | outcome) → strengthen weak signals
+   - Alert on systematic biases (underestimating risk, overestimating growth)
+   - Generate rule updates for decision-fusion weighting
+
+**Learning Loop Closure**:
+- Outcome Logger → Implicit Signals → Weekly Review → Bayesian Prior Updates
+- Decision Fusion weights automatically adjusted based on calibration scores
+- Failure modes added to persona failure databases
+- Decision graph enriched with outcome annotations
+
+## V18: Discovery Engine Rebuild (NEW - Apr 2026)
+
+### Pipeline Architecture Inversion
+
+**Problem Identified (V17 Anti-Bias, Apr 2026 — SUPERSEDED)**: Single money-mountain-scanner monoculture with embedded Pre-Filter D sustainability gate achieved 100% miss rate vs ground-truth sale2 shapes (lifestyle, platform, content, arbitrage, agency, saas, service). Note: V17 Anti-Bias plan (`260406-1127`) was designed to fix this incrementally but was superseded before shipping by V18's full architecture inversion.
+
+**Solution (V18)**: Inverted from filter→discovery to discovery-first with 10 parallel archetype scanners + shared miner-base.
+
+### 10 Parallel Archetype Scanners
+
+Each scanner independently evaluates one business model archetype:
+
+1. **Lifestyle Arbitrage Scanner** - Location/lifestyle plays
+2. **Platform Ecosystem Scanner** - Network effects, marketplaces
+3. **Content Distribution Scanner** - Creator monetization
+4. **Trade/Arbitrage Scanner** - Pricing gaps, geosourcing
+5. **Agency Service Scanner** - Founder-led services
+6. **SaaS Validator Scanner** - Recurring revenue gates
+7. **Service Scaling Scanner** - Labor leverage
+8. **Digital Asset Scanner** - IP monetization
+9. **E-Commerce Aggregator Scanner** - Multi-supplier consolidation
+10. **Talent Market Scanner** - Skill/contractor arbitrage
+
+### New Agents (3)
+
+- **archetype-router.md** — Route opportunities to 10 scanners based on archetype match
+- **budget-allocator.md** — Per-archetype compute budget allocation
+- **pattern-inducer.md** — Mine patterns from discoveries, present candidates for human CLI confirm
+
+### New Scripts (4)
+
+- `archetype-allocator.py` — Budget assignment logic per archetype
+- `pattern-inducer.py` — Pattern mining + induction engine
+- `scoring-rebalancer.py` — Rebalance archetype weights post-discovery
+- `test-stage0-ground-truth.py` — Validation test: 7/7 sale2 ground-truth shapes matched
+
+### New Data Structures (5)
+
+- `archetype-registry.json` — 10 archetype definitions + characteristics
+- `scoring-weights-per-archetype.json` — 10×6 scoring matrix (10 archetypes, 6 dimensions)
+- `vn-source-registry.json` — Vietnam-specific sources + quality tiers
+- `pattern-library-candidates.json` — Candidate patterns awaiting human confirmation
+- `sale2-ground-truth.json` — Integration test reference (7 shapes)
+
+### Miner Architecture Restructure
+
+- **Shared Miner-Base** — Unified web scraping, API querying, pattern extraction
+- **10 Specialist Miners** — Each archetype extracts domain-specific signals
+- **Signal Propagation** — All discoveries propagate to all 10 scorers (max coverage)
+
+### Key Changes vs V17
+
+| Aspect | V17 | V18 |
+|--------|-----|-----|
+| Scanner Count | 1 monoculture | 10 parallel archetypes |
+| Pre-Filter D | Hard kill gate | Demoted to scoring input |
+| VN Quota | Enforced | Removed |
+| Capital Constraint | $1K hard cap | Removed |
+| Pattern Library | Static | Dynamic (induction + human CLI) |
+| Ground-truth Test | 0/7 shapes matched | 7/7 shapes matched |
+
+### Integration Updates (14 Callers)
+
+All transaction-layer orchestrators updated:
+- transaction-orchestrator, smart-detector, video-signal-miner, pattern-librarian, stage0-cmd, pipeline-runner, contradiction-resolver, five-dimension-scorer, signal-extractor, transaction-state, SKILL.md, archetype-router, tech-leverage-analyzer, archetype-registry
+
+### Legacy Deletions
+
+✅ Clean removal (no stubs):
+- money-mountain-scanner.md
+- conversation-miner.md
+
+## V19: Dual-Lane Mountain Hunter (NEW - Apr 2026)
+
+### Lane B: Novelty Discovery Engine (Parallel to Lane A)
+
+**Problem Addressed**: Lane A (V18) excels at pattern-recall via 10 archetypes but structurally cannot discover truly novel $10K+/day P90 opportunities where competitors are invisible (info-lag, regulatory-lag, capital-lag, ego-driven gaps).
+
+**Solution**: Dual-lane architecture where Lane B runs 6 novelty scanners designed to surface opportunities from market gaps, not pattern libraries.
+
+### 6 Novelty Scanners
+
+1. **Tool-Cost-Collapse** — Detect infrastructure cost drops enabling new margin structures
+2. **Smart-Money-Divergence** — Find where institutional capital is absent despite visible demand
+3. **Sleepy-Incumbent** — Identify legacy players with stalled innovation (capture their customers)
+4. **Regulatory-Window** — Spot short-term policy changes creating temporary competitive moats
+5. **Cross-Jurisdiction-Delta** — Surface practices legal in Zone A but prohibited in Zone B
+6. **Consolidation-Vacuum** — Find fragmented markets where roll-up economics suddenly viable
+
+### New Scripts (Lane B Pipeline)
+
+- `lane-b-pipeline.py` — Orchestrate 6 scanners → anti-confirmation executor → inverted-evidence-validator → gates → P90-Kelly scorer → exploration-budget allocator
+- `_scanner_base.py` — Shared abstraction (cache, robots.txt compliance, rate limiting, zone tags)
+- `inverted-evidence-validator.py` — **KEY INVERSION**: Absence of competitors = SIGNAL (not kill). Requires ≥3 distinct absence categories (regulatory, capability, capital, info-lag, ego, distribution)
+- `anti-confirmation-executor.py` — Run 7 mandatory anti-confirmation queries per candidate (from research-verification.md)
+- `lane-b-gates.py` — P90 ≥ $10K/day AND P50 ≥ $500/day, time-to-moat ≤ 12mo, VN quota OFF, anti-consensus filter, Pre-Filter F removed
+- `p90-kelly-scorer.py` — Log-normal P10/P50/P90 distribution, rank by P90×P(reach), Kelly fraction ≤ 0.25, NO averaging with Lane A
+- `exploration-budget-allocator.py` — 20% reserve for novelty hits, monoculture detection
+- `prompt-gate.py` — UX warning if user prompt contains floor-framing language
+
+### New Config Files (All Thresholds Parameterized)
+
+- `config/mountain-config.json` — Global thresholds (P90 gate, P50 gate, moat timeline)
+- `config/p90-scoring.json` — Distribution parameters, Kelly framing
+- `config/anti-confirmation-queries.json` — 7 query templates
+- Per-scanner configs in `scripts/scanners/mountain/` (tool-cost-collapse.json, etc.)
+
+### Lane A Invariant (V18 Unchanged)
+
+✅ sale2 ground-truth test remains 7/7 PASS  
+✅ Zero edits to V18 archetype scanners, miner-base, or pattern-inducer  
+✅ Lane A and Lane B execute in parallel; scores NOT averaged
+
+### Test Coverage
+
+✅ Lane B unit tests: ~280 tests across 14 test files, all passing  
+✅ Mountain ground-truth: 10/10 (broad fixture matching vs known high-asymmetry opportunities)  
+✅ Anti-confirmation: 7 query validators, ≥2 blocking triggers
+
+---
+
+## Agent Orchestration (V17 Research Orchestration — Hybrid Intelligence, Mar 2026)
+
+> **Note:** "V17" here refers to the Research Orchestration upgrade (Mar 21, 2026) — fully shipped. This is distinct from the V17 Anti-Bias Intelligence Engine plan (Apr 2026, plan `260406-1127`) which was SUPERSEDED before shipping by V18+V19. See project-roadmap.md § "V17 Anti-Bias Intelligence Engine" for full supersession rationale.
+
+### Pipeline
+1. **GROUND** — Multi-source intelligence engine
+   - 5 specialized researchers (market, competitor, demand, channel, failure)
+   - Dynamic query generation (80-150 queries per session)
+   - Iterative deepening (2-3 passes with gap analysis)
+   - Output: verified data_package JSON
+
+2. **INTERPRET** — Curated expert panel
+   - 3-5 personas selected by domain match + Brier score
+   - Personas analyze data_package only (no fact generation)
+   - Consensus/disagreement detection + kill signals
+
+3. **EXECUTE** — Executive brief synthesis
+   - GO/CAUTION/KILL verdict with confidence score
+   - 7-day action plan with measurable kill criteria
+   - All claims sourced to URLs
+
+### Supporting Components
+- Intelligence Engine Skill: `.claude/skills/business/intelligence-engine/SKILL.md`
+- Learning Loop: Brier scores in `data/agent-accuracy.json`, query library in `data/query-library.json`
+- Session Storage: `data/sessions/{session_id}/`
+- Commands: /startup (standard), /invest (financial), /debate (adversarial)
+
+---
+
+*Last updated: 2026-03-08 (Phase 12 - Agent Persona Deep Upgrade)
+Updated: 2026-03-14 (Phase 13 - Agentic Team Intelligence)
+Updated: 2026-03-20 (Phase 3-4 - Decision Graph Layer + Phase 12.5 - Runtime Memory Pipeline)
+Updated: 2026-03-20 (Phase 14 - System Audit & Upgrade: 6 new XSkill scripts, Rules 21-24, Step 0k insight generation, 7-category taxonomy, 6 unit economics templates, 24 seed insights, agent accuracy initialization, learning loop documentation)
+Updated: 2026-03-21 (V17 Research & Agent Upgrade: Phases 5-8 complete. Phase 5 adds 4 data fetchers (youtube, HN, SEC, scholar). Phase 6 adds 3 blocking validation agents. Phase 7 adds insight extraction + youtube enrichment. Phase 8 closes learning loop with auto-verify + prediction review)
+Updated: 2026-04-07 (V19 Dual-Lane Mountain Hunter SHIPPED: Lane B adds 6 novelty scanners + inverted-evidence-validator + P90-Kelly scorer + $10K/day gate. Lane A (V18) unchanged, all tests passing. See plans/260407-0821-v19-dual-lane-mountain-hunter/)
+Updated: 2026-04-06 (V18 Discovery Engine Rebuild: 10 parallel archetype scanners + shared miner-base, pattern induction with human CLI confirm, Pre-Filter D demoted to scoring input, 7/7 ground-truth shapes matched, 14 callers updated)
+Updated: 2026-04-07 (V17 Anti-Bias superseded — never shipped, plan 260406-1127 all phases unchecked. V17.1 Orchestration Contracts complete. See project memory for supersession rationale.)
+Updated: 2026-04-09 (v23 Intelligence Upgrade — Street Smart Operator: 10 new subsystems wired into /stage0. See section below.)
+Updated: 2026-04-10 (Creator Intel Ingestion Phases 01-07 SHIPPED: 4-tier knowledge density system, 7 core modules, anti-confirm + hype verification, channel-agnostic CLI, outcome tracker. Compressor benchmark: 58 cards from existing @ugblackmmo ledger. Phase 08 production run DEFERRED — needs WER labels + multi-hour CPU. All 3 blockers + 6 highs from code-review fixed by fix-wave. See plans/260410-0724-creator-intel-ingestion-auto-use/)*
+
+---
+
+## v23 Intelligence Upgrade — Street Smart Operator (2026-04-09)
+
+Plan: `260409-1002-system-intelligence-upgrade` — 10 phases (P00-P09) + integration (P10). All complete.
+
+### Problem Addressed
+
+Prior /stage0 (v22) had 16 intelligence gaps:
+- Bot-blocked on 91% of pho test run scrapes
+- Transcript coverage: 0% (no full-coverage ingest)
+- Hypothesis engine: missing (1-shot LLM narrative = theater)
+- Revenue triangulation: LLM guess, not multi-signal verification
+- KG write/read: not wired into stage0 workflow
+- Persona insider facts: not topic-keyed
+- Red-team gate: absent (verdicts persisted without quality check)
+- Primary research action cards: templates only, no real contacts
+
+### 10 New Subsystems
+
+| ID | Subsystem | Agent | Gap Closed |
+|----|-----------|-------|-----------|
+| P00 | Ground-Truth Substrate | `ground-truth-fetcher` | Registry, hiring, backlink, reverse-image ID |
+| P01 | Full-Coverage Ingest | `full-coverage-ingest` | All videos + captions + clusters + timeline arc |
+| P02 | Hypothesis Engine | `hypothesis-generator`, `hypothesis-tester`, `hypothesis-arbiter`, `contradiction-resolver` | 5-way parallel falsifiable hypotheses |
+| P03 | Financial Triangulation | `financial-triangulator` | Multi-signal revenue range + burn_math downside |
+| P04 | Primary Research Cards | `primary-research-agent` | Real phone/email/signup/event contacts (no placeholders) |
+| P05 | Knowledge Graph | `knowledge-graph-curator` | Entity/relation store, cohort queries, compounding validation |
+| P06 | Anti-Bot Chain | `method_chain_fetcher` | httpx→cloudscraper→playwright→proxy fallback chain |
+| P07 | Persona Insider Facts | `persona-insider-loader` | Topic-keyed insider facts per persona (≥3 facts cited) |
+| P08 | Post-Synthesis Red Team | `post-synthesis-red-team`, `gap_auditor`, `gap_scorer` | 16-dim rubric gate: score ≤3=PASS, 3-6=FLAGS, ≥7=BLOCK |
+| P09 | Persona Auto-Sync Daemon | persona sync pipeline | Keeps persona KB fresh, auto-purges stale facts |
+
+### /stage0 Workflow Changes (v22 → v23)
+
+| Step | Change |
+|------|--------|
+| 3.5 | 8 → 14 parallel agents; degrade threshold 5/8 → 10/14 |
+| 4 | All scraping via method_chain_fetcher; coverage <80% prints COVERAGE_GAP; claims cite video+timestamp |
+| 5 | Causal extraction REPLACED by hypothesis engine (5 hypotheses × parallel testing × arbiter × contradiction-resolver) |
+| 6 | Q1 gated by financial-triangulator (reject if max <$5K/mo); Q2 cross-checked against KG cohort; downside from burn_math; compounding requires KG entity ≥2 evidence |
+| 6.5 | Pulse templates auto-populated with primary-research action cards (no placeholder fills) |
+| 7.5 | NEW — post-synthesis red-team gate (PASS/PASS_WITH_FLAGS/BLOCK) |
+| 8 | Gated by Step 7.5 result (BLOCK = no KB persist) |
+| 9.5 | schema-accumulator write + knowledge-graph-curator write (logged independently) |
+
+### Preflight Expansion
+
+`.claude/commands/stage0-lib/preflight-check.cjs`:
+- REQUIRED_AGENTS: 8 → 14
+- DEGRADE_THRESHOLD: 10 (of 14)
+- New agents: ground-truth-fetcher, full-coverage-ingest, knowledge-graph-curator, persona-insider-loader, financial-triangulator, hypothesis-generator
+
+### Acceptance Test
+
+`tests/stage0/test_stage0_acceptance.py` — 23 tests, all passing:
+- Fixture: `tests/stage0/fixtures/pho-smalljobs-signals.json` (180 videos, 16-dim coverage)
+- Score: 0.000 / 10.0 — Status: PASS
+- All 16 dimensions: PASS (including dim 6 N/A for non-app business)
+- Runner: `.claude/commands/stage0-lib/acceptance-test-runner.cjs`
+
+### Architecture Impact
+
+```
+/stage0 v23 dispatch (Step 3.5 — 14 agents, all parallel):
+  ┌─ schema-accumulator (patterns)
+  ├─ persona-loader (PATP knowledge)
+  ├─ contrarian-research-agent
+  ├─ market-reality-checker
+  ├─ failure-archaeologist
+  ├─ competitive-intelligence-engine
+  ├─ deep-comment-miner ─── via method_chain_fetcher (P06)
+  ├─ topic-spider
+  ├─ ground-truth-fetcher (P00) ── registry/hiring/backlink/identity
+  ├─ full-coverage-ingest (P01) ─ transcripts/captions/clusters/timeline
+  ├─ knowledge-graph-curator (read, P05) ── cohort/compounding
+  ├─ persona-insider-loader (P07) ── topic-keyed insider facts
+  ├─ financial-triangulator (P03) ── revenue range + burn_math
+  └─ hypothesis-generator (P02) ── 5 falsifiable hypotheses
+
+Step 5: hypothesis-tester ×5 (parallel) → arbiter → contradiction-resolver
+Step 7.5: gap_auditor (16-dim) → gap_scorer → PASS/FLAGS/BLOCK gate
+Step 9.5: schema-accumulator write + knowledge-graph-curator write (both non-blocking)
+
+### Reasoning Surface Exposure (2026-04-20 Upgrade)
+
+*New in Deep Cash Flow Intelligence Upgrade:* /stage0 output now exposes internal reasoning surface for transparency:
+
+**Discovery Chain (Q1-Q5):**
+- Q1: Financial viability — Revenue range validation via financial-triangulator
+- Q2: Market cohort analysis — Cross-checks against knowledge-graph peers
+- Q3: Compounding mechanisms — Entity evidence validation (≥2 sources required)
+- Q4: Founder constraint matching — Capital, language, location, timing fit
+- Q5: Execution distance — Path clarity for first 30 days
+
+**Adversarial Analysis:**
+- Desperation scores per party (supplier urgency, customer urgency, operator constraints)
+- Cash-conversion-cycle optimization (payment terms from actual profiles, not templates)
+- Float capture windows (timing context: harvest season, year-end, regulatory windows)
+- Pattern recognition: Marc Rich Prepay Arbitrage, Negative CCC, Float Capture
+
+**Pattern Intelligence:**
+- Why chains: causal mechanisms extracted from cases (e.g., "factory-direct D2C → margin compression")
+- Confidence scoring: 0.0-1.0 per pattern, based on case library overlap and founder-constraint match
+- Cross-pattern danger detection: 6 operator patterns combined for multi-risk assessment
+
+**Outcome Pipeline Integration:**
+- `/log-outcome --case-id {id} --observed {0|1}` triggers Brier score calculation
+- Auto-evolve policy checks calibration drift (7-day minimum age guard)
+- MODEL_OVERCONFIDENT trigger surfaces alert + next 10 verdicts auto-downgrade
+- Brain stats (brier_avg_30d, brier_avg_lifetime) updated in real-time
+
+---
+
+## Thinking Evolution Upgrade (2026-04-21)
+
+Plan: In-progress — Experience Layer (cases + matching) shipped, Reasoning Layer (causal + Bayesian) shipped.
+
+### Overview
+
+Upgrade reasoning pipeline with verified operator case libraries (15 real cases: 11 global + 4 Vietnamese), pain-indexed pattern matching, cross-case danger detection, Bayesian belief updates, and causal reasoning. Target: <100ms lookup, zero fabrication via grounded evidence.
+
+### Architecture
+
+**Location**: `./.claude/skills/business/money-intelligence/`
+
+#### Experience Layer
+Verified operator case libraries + pain-weighted matching:
+
+| Component | Purpose | Files |
+|-----------|---------|-------|
+| **Case Libraries** | 15 verified global & VN operator cases with pain profiles | `experience_layer/data/raw_cases/global_operators.json`, `vietnamese_operators.json` |
+| **Cross-Pattern Detector** | 6 danger patterns combining pain indices across cases | `experience_layer/data/cross_patterns.json` |
+| **Case Loader** | Pydantic models + O(1) loader for 15 cases | `experience_layer/raw_case_loader.py` |
+| **Pain-Weighted Matcher** | Pain-indexed pattern matching (vs naive keyword match) | `experience_layer/pain_weighted_matcher.py` |
+| **Cross-Case Reasoner** | Multi-pattern overlap detection for founder constraints | `experience_layer/cross_case_reasoner.py` |
+| **VN Context Module** | Vietnamese-specific scoring rules & thresholds | `experience_layer/vietnamese_context.py` |
+| **Precompute Index** | O(1) lookup indices for <100ms query performance | `experience_layer/precompute.py` |
+| **Tests** | 17 test cases covering all matchers & cross-patterns | `experience_layer/tests/test_thinking_evolution.py` |
+
+#### Reasoning Layer
+Causal inference + Bayesian learning:
+
+| Component | Purpose | Files |
+|-----------|---------|-------|
+| **Causal Reasoner** | Extract why-chains from cases (e.g., "factory-direct D2C → margin compression") | `reasoning_layer/causal_reasoner.py` |
+| **Bayesian Updater** | Beta-binomial belief updates on success/failure signals | `reasoning_layer/bayesian_updater.py` |
+| **Monte Carlo Simulator** | 1000-run scenario simulations for outcome probability estimates | `reasoning_layer/monte_carlo_simulator.py` |
+
+### Data Evidence
+
+**Global operators (11 cases)**: Amazon (Jeff Bezos), Apple (Steve Jobs), Alibaba (Jack Ma), Airbnb (Brian Chesky), Uber (Travis Kalanick), Stripe (Patrick Collison), Shopify (Tobias Lutke), Slack (Stewart Butterfield), Figma (Dylan Field), Notion (Ivan Zhao), Discord (Jason Citron)
+
+**Vietnamese operators (4 cases)**: Tiki (Tran Ngoc Thai Ha), Momo (Pham Khac Tuan), Zalo (To Huynh), Sendo (Hoang Viet Dung)
+
+### Integration Points
+
+1. **V19 Pipeline**: Case libraries matched against founder constraints (language, audience, capital, location-edge) via pain-weighted matcher
+2. **Agent Queries**: `/invest` routes leverage cross-case reasoner for multi-pattern danger detection
+3. **Causal Chains**: Failure archaeology agents reference causal_reasoner to extract mechanism-level insights
+4. **Bayesian Gates**: Success probability estimates via monte_carlo_simulator feed into confidence scoring
+
+### Performance Target
+
+- **Case lookup**: <10ms (Pydantic pre-load + precompute indices)
+- **Pain matching**: <30ms (vectorized index search)
+- **Cross-pattern detection**: <50ms (6 patterns max)
+- **Full reasoning query**: <100ms (end-to-end)
+
+---
+
+## Creator Intel Ingestion System (2026-04-10)
+
+Plan: `260410-0724-creator-intel-ingestion-auto-use` — Phases 01-07 SHIPPED. Phase 08 (production run @ugblackmmo) DEFERRED — pending user-provided WER hand-labels and 6-10h CPU budget.
+
+### Overview
+
+Mine creator channels (TikTok, YouTube, Instagram) for monetization signals → persist into V19 pipeline → auto-used by future agent queries without context bloat. 4-tier knowledge density keeps production index ≤500 lines across 100+ channels.
+
+### 4-Tier Knowledge Density Architecture
+
+```
+T3  Raw archive     ~100-500MB/channel   NEVER loaded      data/tiktok/raw/{handle}/
+T2  Extracted JSON  ~5-20MB/channel      On-demand via Read data/tiktok/{handle}/extracted/
+T1  Playbook cards  ~50 lines each       Keyword-match     data/tiktok/{handle}/cards/
+T0  Channel INDEX   ~20 lines summary    Auto-load         data/tiktok/INDEX.md (≤500 lines)
+```
+
+### Core Components (`.claude/skills/business/knowledge-extraction/`)
+
+| Module | Purpose | Status |
+|--------|---------|--------|
+| **Audio Stage** (`collectors/local_transcriber.py` + `extractors/tiktok_pipeline.py`) | Transcribe videos via faster-whisper (VN-tuned); cache at `data/tiktok/{handle}/transcripts/` | ✅ Phase 01 |
+| **Comment Collector** (`collectors/tiktok_comments.py`) | 3-backend chain (yt-dlp→TikTok-Api→Playwright) + fallback; feed top-200 comments into LLM | ✅ Phase 02 |
+| **Free Vision Extraction Layer** (`collectors/post_type_classifier.py`, `video_frame_extractor.py`, `visual_extractor.py` + `extractors/claude_vision_runner.py`, `tiktok_vision_pipeline.py`) | Extract post type, keyframes, OCR text (PaddleOCR-VN), visuals; enrich extracted data with vision signals; cache at `data/tiktok/{handle}/vision/` | ✅ Phase 08 |
+| **7Q Anti-Confirm Verifier** (`verifiers/anti_confirm_verifier.py`) | Run SAVEHAWK protocol per claim (failure-rate, free-alternatives, big-tech, competitor-depth, moat-validity, channel-decay, why-it-fails); zone-tag: `[K]`/`[T]`/`[?]` | ✅ Phase 03 |
+| **Hype Downgrader** (`verifiers/hype_downgrader.py`) | VN trigger words + co-occurrence rules; demote inflated claims to `[?]` | ✅ Phase 03 |
+| **Card Compressor** (`extractors/card_compressor.py`) | Compress opportunity clusters to ≤50-line markdown cards; only `[K]`/`[T]` admitted | ✅ Phase 04 |
+| **INDEX Writer** (`extractors/index_writer.py`) | Build T0 INDEX.md (pipe-delimited, sorted by P90+zone); ≤500 lines | ✅ Phase 04 |
+| **SessionStart Hook** (`.claude/hooks/session-start-creator-intel.cjs`) | Auto-load INDEX.md into session context; idempotent, fail-closed | ✅ Phase 05 |
+| **Agent Auto-Use** (3 agents: niche-archaeologist, opportunity-scanner, schema-accumulator) | Mandates grep INDEX → read card BEFORE WebSearch; per-query cost 0 tokens unless keyword hit | ✅ Phase 05 |
+| **Channel-Agnostic CLI** (`query/creator_ingest.py`) | `init {handle} [--url] [--niche-hint]` → `run {handle} [--stage discover|transcribe|vision|extract|verify|cards|all]` → `rebuild-index` | ✅ Phase 06 |
+| **Outcome Tracker** (`extractors/card_outcome_tracker.py` + `/log-outcome` flag) | Record hit/miss/partial per card-id; EMA confidence smoothing | ✅ Phase 07 |
+| **Card Deprecation Daemon** (`extractors/card_deprecation_daemon.py`) | Auto-prune cards with `total_uses≥10 and accuracy<0.4` | ✅ Phase 07 |
+| **Rezone CLI** (`scripts/rezone-extracted.py`) | Reapply hype + anti-confirm to existing extracted JSONs (idempotent) | ✅ Phase 03 |
+
+### Build Benchmark (compressor only — NOT production run)
+
+Phase 04 card compressor was benchmarked against the existing @ugblackmmo opportunity ledger (14 videos previously extracted under predecessor plan; no fresh discovery):
+
+- ✅ Build script ran end-to-end: `scripts/build-cards-for-channel.py ugblackmmo`
+- ✅ Cards generated from current ledger: **58** (after B1 cluster-collision fix; was 20 pre-fix)
+- ✅ All cards ≤50 lines (max observed: 33 lines)
+- ✅ Tests: **264/264 passing** (was 190; +74 across 7 phases + fix-wave)
+
+**NOT yet measured (requires Phase 08 production run):**
+- T0 INDEX line count under multi-channel load
+- P90 mountain candidate count tagged `[K]`
+- Schema registry `evidence_strength: strong` entries
+- Hype-downgrade rate on full corpus
+- Cards built from FRESH discovery + transcription + verified extraction (current 58 cards built from pre-existing extracts; verifier was not run against live network)
+
+### Known Issues (Resolved by fix-wave 260410-0834)
+
+- B1 ~~Cluster collision~~ → Fixed: card_id now includes tool_families
+- B2 ~~Anti-confirm corroboration inversion~~ → Fixed: adversarial-only logic, dropped generic keywords
+- B3 ~~WebSearch backend missing~~ → Fixed: DuckDuckGo HTTP scraper wired; CLI requires `--search-backend ddg`
+- H3 WER stage: audio quality gate UNVERIFIED — Phase 08 blocked pending user hand-labels for 3 VN clips (workaround: accept WER output as-is with confidence `[T]` label)
+- H6 Hype trigger precision: `"triệu/tháng"` too broad → Fixed: co-occurrence rules (must appear with `"đảm bảo"`/`"chỉ cần"`/`"dễ"`)
+
+### Integration Points
+
+1. **V19 Pipeline**: Cards auto-matched to Lane A/B scanners via keyword grep (e.g., "platform-arbitrage" → archetype-router)
+2. **SessionStart Hook**: INDEX.md injected before `/invest` query routes to agents
+3. **Agent Auto-Use**: niche-archaeologist.md, opportunity-scanner.md, schema-accumulator.md all mandate local INDEX search before WebSearch
+4. **Outcome Learning**: `/log-outcome --card-id X --outcome hit` feeds back to card accuracy stats; deprecation daemon auto-purges stale cards
+
+### Files & Storage
+
+- **Extractors**: `tiktok_pipeline.py`, `card_compressor.py`, `index_writer.py`, `card_outcome_tracker.py`, `card_deprecation_daemon.py`, `claude_vision_runner.py`, `tiktok_vision_pipeline.py`, `vision_queue_writer.py`
+- **Verifiers**: `anti_confirm_verifier.py`, `hype_downgrader.py`
+- **Collectors**: `local_transcriber.py`, `tiktok_comments.py`, `post_type_classifier.py`, `video_frame_extractor.py`, `visual_extractor.py`
+- **Query/CLI**: `creator_ingest.py`, `production_runner_ugblackmmo.py`
+- **Data**: `data/tiktok/{handle}/extracted/`, `data/tiktok/{handle}/cards/`, `data/tiktok/{handle}/transcripts/`, `data/tiktok/{handle}/vision/`, `data/tiktok/INDEX.md`
+```
+
+### Phase 16: Socratic Truth Discovery Engine (NEW - 2026-04-22)
+
+**Location**: `./.claude/skills/business/socratic/`
+
+**Purpose**: Recursive question drilling to uncover foundational business truths across cash flow, sales, and value domains.
+
+#### Core Components
+
+**SocraticEngine** (`socratic_engine.py`)
+- Recursive inquiry with max 7 levels (configurable depth)
+- 3-4 child questions per level generated via question-generator
+- Convergence detection via convergence_detector
+- 50K token budget enforcement
+- Truth extraction and registry storage
+- Domain auto-detection: `cashflow`, `sales`, `value`, `integrated`
+
+**QuestionGenerator** (`question_generator.py`)
+- Generates domain-specific child questions (2-4 per parent)
+- Domain routing: cashflow (money flow, timing, float), sales (psychology, objections), value (creation, perception)
+- Extractable assumptions from answers for next iteration
+- Integration with persona frameworks for authentic reasoning
+
+**ConvergenceDetector** (`convergence_detector.py`)
+- Pattern matching for when inquiry has reached fundamental truth
+- Confidence scoring (0.1-0.95) based on evidence strength
+- Convergence metrics: repeated answers, logical completeness, assumption saturation
+- Stats API for inquiry tree analysis
+
+#### Output Schema
+
+Each inquiry produces `SocraticNode` tree with:
+```
+{
+  "question": str,
+  "domain": "cashflow|sales|value|integrated",
+  "level": int (1-7),
+  "answer": {...},
+  "children": [...],
+  "converged": bool,
+  "convergence_reason": str,
+  "truths_extracted": [
+    {
+      "content": str,
+      "confidence": float (0.1-0.95),
+      "domain": str,
+      "source": str (question path),
+      "challenges": [str]  # counter-arguments
+    }
+  ]
+}
+```
+
+#### CLI Usage
+
+```bash
+# Basic inquiry with auto-depth
+/socratic "Why do service businesses fail to scale?"
+
+# Domain-focused
+/socratic --domain=cashflow "What causes negative cash flow?"
+/socratic --domain=sales "Why do technical founders struggle with closing?"
+
+# Custom depth and format
+/socratic --depth=5 --output=flat "Question here"
+/socratic --domain=integrated "How do X and Y affect each other?"
+
+# Truth registry management
+/truth search "cash flow"
+/truth list --domain=sales
+/truth show T001
+/truth stats
+/challenge-truth T001 "Counter-argument here"
+```
+
+#### Integration
+
+- **Truth Registry**: Stores discovered truths at `data/truths/` with confidence tracking
+- **Knowledge Graph**: `data/truths/knowledge-graph.json` for cross-truth relationships
+- **Learning Loop**: Truths feed into `venture_analytics/core/learning_loop.py` for outcome validation
+- **Persona Hooks**: Uses personae from `.claude/agents/business/personas/` for grounded reasoning
+- **Analytics**: Query logs at `data/analytics/socratic/`

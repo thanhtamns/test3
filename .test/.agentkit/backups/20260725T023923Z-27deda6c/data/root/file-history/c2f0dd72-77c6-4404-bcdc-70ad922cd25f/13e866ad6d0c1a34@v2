@@ -1,0 +1,97 @@
+"""End-to-end integration tests for the full ThinkRunner pipeline with all Phase 1-3 upgrades."""
+
+import json
+import sqlite3
+from pathlib import Path
+
+import pytest
+
+from ..think_runner import ThinkRunner
+from ..synthesis_engine import SynthesisResult
+
+
+def _make_research_fn(confidence=0.75):
+    counter = {"n": 0}
+
+    def fn(prompt: str) -> str:
+        counter["n"] += 1
+        return json.dumps({
+            "fact": f"Integration test fact #{counter['n']}",
+            "value": counter["n"] * 10,
+            "confidence": confidence,
+            "source": "integration_test",
+            "date": "2026-05-01",
+        })
+
+    return fn
+
+
+def _seed_vectors(db_path, count=5):
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS decision_vectors (
+                id TEXT PRIMARY KEY, industry TEXT, business_model TEXT,
+                features_json TEXT, outcome TEXT, source TEXT, created_at TEXT
+            )
+        """)
+        for i in range(count):
+            conn.execute(
+                "INSERT INTO decision_vectors VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (f"pipe_{i}", "SaaS", "unknown",
+                 json.dumps({"dimension": "failure_rates", "fact": f"Seeded {i}", "confidence": 0.7}),
+                 "data_point", "seed", "2026-05-01T00:00:00+00:00"),
+            )
+
+
+@pytest.fixture
+def pipeline(tmp_path):
+    vectors_db = tmp_path / "vectors.db"
+    evolution_db = tmp_path / "evolution.db"
+    _seed_vectors(vectors_db)
+    runner = ThinkRunner(
+        research_fn=_make_research_fn(),
+        vectors_db=vectors_db,
+        evolution_db=evolution_db,
+    )
+    return runner
+
+
+class TestFullPipeline:
+    def test_pipeline_produces_strategic_insight(self, pipeline):
+        result = pipeline.think("How to build SaaS for restaurants")
+        assert result.strategic_insight is not None
+        assert "causal_chain" in result.strategic_insight or "error" in result.strategic_insight
+
+    def test_pipeline_produces_sbe_evaluation(self, pipeline):
+        result = pipeline.think("SaaS for restaurant management")
+        assert result.sbe_evaluation is not None
+        assert "sbe_verdict" in result.sbe_evaluation or "error" in result.sbe_evaluation
+
+    def test_pipeline_graceful_on_all_failures(self, pipeline):
+        result = pipeline.think("Test query")
+        assert result.overall_score >= 0
+        assert result.facts_used >= 0
+        assert result.dimension_scores is not None
+
+    def test_pipeline_output_json_serializable(self, pipeline):
+        result = pipeline.think("Test serialization query")
+        d = result.to_dict()
+        serialized = json.dumps(d, default=str)
+        assert len(serialized) > 100
+
+    def test_dimension_quality_recorded(self, pipeline):
+        pipeline.think("Test dimension quality")
+        pending = pipeline.evolver.get_pending_predictions()
+        assert isinstance(pending, list)
+
+    def test_pipeline_evolves_weights(self, pipeline):
+        for i in range(3):
+            pipeline.think(f"Query about SaaS topic {i}")
+        weights = pipeline.evolver.get_evolved_weights()
+        assert len(weights) > 0
+
+    def test_output_has_new_fields(self, pipeline):
+        result = pipeline.think("Test new fields")
+        d = result.to_dict()
+        has_new = any(k in d for k in ("strategic_insight", "sbe_evaluation"))
+        assert has_new

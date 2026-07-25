@@ -1,0 +1,71 @@
+# CODEFLOW Competitive Gap Analysis — Tháng 6/2026
+
+**Trigger:** Video TikTok @agi.2027 (64K views) giới thiệu tool tương tự, @tramai.vn giới thiệu Headroom
+**Kết luận:** Thị trường "token savings" đã bão hòa. CODEFLOW cần pivot sang "SAVES + PROVES".
+
+## 1. Bối cảnh cạnh tranh (tháng 6/2026)
+
+| Tool | Stars | Savings | Điểm mạnh | Thiếu gì |
+|------|-------|---------|-----------|----------|
+| RTK | 39.5K | 60-90% | 100+ filters, 14 AI tools, single Rust binary | Không prove productivity |
+| Headroom | 10K+ | 60-95% | Reversible compression, multi-agent, proxy layer | Không prove productivity |
+| Token Optimizer | — | 95-99% | Structure Map, cost dashboard | Không prove productivity |
+| LeanCTX | — | tới 99% | 63 MCP tools | Không prove productivity |
+| Codebase Memory MCP | — | 120x | Knowledge graph | Không prove productivity |
+| **CODEFLOW** | **0** | **40-65%** | Dashboard, waste detection, model routing, security | **Chưa build PROVES** |
+
+## 2. Vấn đề của CODEFLOW hiện tại
+
+- SAVES yếu hơn đối thủ (15 filters vs RTK 100+, chỉ Claude Code vs RTK 14 tools)
+- Unique features (dashboard, waste, routing) chưa đủ để bán standalone
+- 0 users, 0 stars → chưa market validation
+- Productivity Measurement Engine — điểm khác biệt duy nhất theo brainstorm gốc — CHƯA BUILD
+
+## 3. Hướng đi: Build PROVES bên cạnh SAVES
+
+### PROVES = Productivity Measurement Engine
+
+Thu thập tự động từ git + CI (developer không cần thao tác):
+
+| Metric | Nguồn | Cách đo |
+|--------|-------|---------|
+| PRs merged/week | git log | Count PRs per dev per week |
+| Cycle time | git timestamps | PR open → merge duration |
+| Code acceptance rate | git diff | AI-generated code kept vs reverted |
+| Build success rate | CI logs | Pass rate before vs after optimization |
+| Session efficiency | CODEFLOW events | Useful output per token spent |
+| AI waste % | CODEFLOW waste detector | Redundant commands, re-reads |
+
+### Output cho từng stakeholder
+
+- **Developer:** "Phiên hôm nay: 47 tool calls, 3.2K tokens tiết kiệm, 0 waste patterns"
+- **Team Lead:** "Team waste: 23% → giảm xuống 12% sau 2 tuần dùng CODEFLOW"
+- **CTO/CFO:** "Q2: tiết kiệm $42K AI spend, productivity tăng 8% (PRs/week), 0 security incidents"
+
+### Pitch 1 câu
+
+> "CODEFLOW: giảm 70% chi phí AI coding VÀ CHỨNG MINH bằng dữ liệu rằng developer vẫn productive."
+
+## 4. Thứ tự ưu tiên
+
+1. **NGAY:** Tự dùng CODEFLOW 2 tuần, thu thập dữ liệu thật
+2. **Tuần 1-2:** Build Productivity Metrics (git integration, basic dashboard)
+3. **Tuần 3-4:** Build ROI Report (PDF export cho CTO/CFO)
+4. **Tuần 5-6:** Tìm 5 beta users, thu thập phản hồi
+5. **Quyết định:** Dựa trên dữ liệu beta → tiếp tục hoặc pivot
+
+## 5. Kill criteria
+
+Dừng dự án nếu sau 6 tuần:
+- 0 beta users muốn dùng miễn phí
+- Không ai quan tâm đến productivity metrics
+- Compression không tạo khác biệt cảm nhận được cho developer
+
+## Sources
+
+- [RTK GitHub](https://github.com/rtk-ai/rtk) — 39.5K stars
+- [Headroom GitHub](https://github.com/chopratejas/headroom) — 10K+ stars  
+- [Headroom Guide](https://dashen-tech.com/en/dev-tools/headroom-llm-token-compression/)
+- [Claude Code Pricing 2026](https://www.finout.io/blog/claude-code-pricing-2026)
+- [Developer Productivity Benchmarks 2026](https://larridin.com/developer-productivity-hub/developer-productivity-benchmarks-2026)
+- [Great Productivity Panic of 2026](https://news.ycombinator.com/item?id=47467922)

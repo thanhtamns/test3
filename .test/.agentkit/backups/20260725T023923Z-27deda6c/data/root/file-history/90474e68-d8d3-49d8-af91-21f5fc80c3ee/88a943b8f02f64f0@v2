@@ -1,0 +1,119 @@
+package api
+
+import (
+	"context"
+	"encoding/json"
+	"log/slog"
+	"net/http"
+	"sync"
+	"time"
+
+	"nhooyr.io/websocket"
+)
+
+type LiveMetrics struct {
+	TokensSavedToday uint64 `json:"tokens_saved_today"`
+	EventsToday      uint64 `json:"events_today"`
+	ActiveSessions   int    `json:"active_sessions"`
+	Timestamp        int64  `json:"timestamp"`
+}
+
+type wsHub struct {
+	mu      sync.RWMutex
+	clients map[string]map[*wsClient]struct{}
+}
+
+type wsClient struct {
+	conn     *websocket.Conn
+	tenantID string
+}
+
+func newWSHub() *wsHub {
+	return &wsHub{
+		clients: make(map[string]map[*wsClient]struct{}),
+	}
+}
+
+func (hub *wsHub) register(c *wsClient) {
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+	if hub.clients[c.tenantID] == nil {
+		hub.clients[c.tenantID] = make(map[*wsClient]struct{})
+	}
+	hub.clients[c.tenantID][c] = struct{}{}
+}
+
+func (hub *wsHub) unregister(c *wsClient) {
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+	if tenantClients, ok := hub.clients[c.tenantID]; ok {
+		delete(tenantClients, c)
+		if len(tenantClients) == 0 {
+			delete(hub.clients, c.tenantID)
+		}
+	}
+}
+
+func (hub *wsHub) Broadcast(tenantID string, metrics LiveMetrics) {
+	hub.mu.RLock()
+	tenantClients := hub.clients[tenantID]
+	hub.mu.RUnlock()
+
+	if len(tenantClients) == 0 {
+		return
+	}
+
+	data, err := json.Marshal(metrics)
+	if err != nil {
+		return
+	}
+
+	hub.mu.RLock()
+	defer hub.mu.RUnlock()
+	for c := range tenantClients {
+		go func(client *wsClient) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := client.conn.Write(ctx, websocket.MessageText, data); err != nil {
+				slog.Debug("ws write failed", "error", err)
+			}
+		}(c)
+	}
+}
+
+func (hub *wsHub) ClientCount(tenantID string) int {
+	hub.mu.RLock()
+	defer hub.mu.RUnlock()
+	return len(hub.clients[tenantID])
+}
+
+func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.URL.Query().Get("tenant_id")
+	if tenantID == "" {
+		tenantID = tenantFromCtx(r)
+	}
+
+	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+		OriginPatterns: []string{"*"},
+	})
+	if err != nil {
+		h.logger.Error("ws accept failed", "error", err)
+		return
+	}
+
+	client := &wsClient{conn: conn, tenantID: tenantID}
+	h.hub.register(client)
+	defer h.hub.unregister(client)
+
+	h.logger.Info("ws client connected",
+		"tenant", tenantID,
+		"clients", h.hub.ClientCount(tenantID),
+	)
+
+	for {
+		_, _, err := conn.Read(r.Context())
+		if err != nil {
+			break
+		}
+	}
+}

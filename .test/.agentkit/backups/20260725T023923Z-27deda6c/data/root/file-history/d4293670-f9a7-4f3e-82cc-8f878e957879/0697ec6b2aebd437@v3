@@ -1,0 +1,40 @@
+//! Building blocks shared across all RTK modules.
+
+pub mod args_utils;
+pub mod config;
+pub mod constants;
+pub mod display_helpers;
+pub mod filter;
+pub mod runner;
+pub mod stream;
+pub mod tee;
+pub mod telemetry;
+pub mod telemetry_cmd;
+pub mod toml_filter;
+pub mod tracking;
+pub mod truncate;
+pub mod utils;
+
+pub mod proto;
+#[allow(dead_code)]
+pub mod content_hash;
+#[allow(dead_code)]
+pub mod attestation;
+#[allow(dead_code)]
+pub mod provenance;
+#[allow(dead_code)]
+pub mod agent_trace;
+#[allow(dead_code)]
+pub mod pricing;
+#[allow(dead_code)]
+pub mod pr_linker;
+#[allow(dead_code)]
+pub mod cost_store;
+#[allow(dead_code)]
+pub mod dep_validator;
+#[allow(dead_code)]
+pub mod hallucination_detector;
+#[allow(dead_code)]
+pub mod license_checker;
+#[allow(dead_code)]
+pub mod quality_gate;

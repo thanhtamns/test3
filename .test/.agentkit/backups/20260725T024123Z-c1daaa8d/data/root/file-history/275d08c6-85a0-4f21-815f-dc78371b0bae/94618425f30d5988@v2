@@ -1,0 +1,90 @@
+---
+phase: 2
+title: "Safe Barbell Launch"
+status: pending
+priority: P1
+effort: "4 weeks"
+dependencies: [1]
+---
+
+# Phase 2: Safe Barbell Launch (SAFE-A: Solo AI Freelancing)
+
+## Overview
+Launch the safe barbell side: solo AI-augmented freelancing at $100-150/hr effective rate. Stage0 verdict: SIDE_HUSTLE_WITH_STAIRCASE (0.78 confidence). Goal: $1.5-3K/mo by end of month 1. Zero capital deployed. YOU + AI tools = the entire team.
+
+**Source:** Stage0 case `260529-labor-arbitrage-ai-dev`, hypothesis H2 (solo + AI tools)
+
+## Requirements
+- Functional: LinkedIn profile, 1 case study, outreach pipeline, first client closed
+- Non-functional: ≤15h/week, $0 capital, no team management overhead
+- Constraint: Position as "$100+/hr AI automation specialist" NOT "$15/hr offshore dev"
+
+## Architecture
+
+```
+SAFE-A Flywheel:
+LinkedIn Profile + Case Study → Cold DMs/Posts → Discovery Call → Pilot ($500-1500)
+    ↓                                                                    ↓
+Loom Demos ←── Deliver with AI tools (Claude/Cursor) ──→ Retainer ($1500-2500/mo)
+    ↓                                                                    ↓
+Portfolio compounds ←──────────── Testimonial ───────────→ Referrals (zero CAC)
+```
+
+## Implementation Steps
+
+### Week 1: Profile + First Outreach (5h)
+1. **LinkedIn profile overhaul** (2h):
+   - Headline: "AI Automation Specialist | 15yr Software Engineering | I build AI workflows that save 20+ hours/week"
+   - About: 3 paragraphs — problem you solve, who you help, proof (15yr experience + AI tools)
+   - Featured: 1 Loom demo showing AI workflow automation (build hypothetical if needed)
+2. **Choose 1 target vertical** (30min): Real estate OR e-commerce OR legal (pick based on which you understand best)
+3. **Write outreach script** (30min) — use hunt-lib/script-writer framework:
+   > "Hi [Name], I noticed [specific observation about their business]. I build AI automations that [specific outcome]. Would a 15-min call to explore if this fits make sense?"
+4. **Send 10 cold DMs** (2h) — to SMB owners in target vertical on LinkedIn
+
+### Week 2: First Conversations (5h)
+1. **Follow up on Week 1 DMs** — 2nd touch on non-responders (different angle)
+2. **Send 10 more cold DMs** — refine based on Week 1 response patterns
+3. **Offer 1 FREE AI audit** to most qualified prospect:
+   - 30min call → identify 3 manual processes AI can automate
+   - Document before/after metrics (estimated hours saved, cost saved)
+   - Build 1 sample automation in 4h using Claude/Cursor
+4. **Record Loom walkthrough** of sample automation → add to LinkedIn featured
+
+### Week 3: Close First Deal (5h)
+1. **Convert free audit → paid pilot** ($500-1500):
+   - Scope: 1 specific automation, delivered in 1 week
+   - Structure: 50% deposit upfront, 50% on delivery (Marc Rich mechanism)
+   - Fixed scope SOW — NEVER hourly billing
+2. **Deliver pilot using AI tools** — 3-5x faster than quoted
+3. **Continue outreach** — 10 more DMs per week (pipeline never stops)
+
+### Week 4: Repeat + Optimize (5h)
+1. **Collect testimonial** from pilot client
+2. **Propose retainer** ($1500-2500/mo) for ongoing AI automation support
+3. **Analyze metrics:** response rate, call booking rate, close rate
+4. **Adjust:** If <5% response rate → change vertical or messaging
+5. **Post 1 LinkedIn article** documenting results (anonymized if needed)
+
+## AVOID LIST (stage0-validated)
+- DO NOT hire devs until 2+ paying clients from 2+ sources
+- DO NOT build website — LinkedIn + Loom = your website
+- DO NOT compete on Upwork at $15/hr — you're a $100+/hr specialist
+- DO NOT take projects under $500 (Chris Lee floor: $1500/client/mo)
+- DO NOT promise autonomous AI agents — 80% fail in production [K]
+- DO NOT scope creep — 1 automation per pilot, nothing more
+
+## Success Criteria
+- [ ] LinkedIn profile live with AI specialist positioning
+- [ ] 40+ cold DMs sent (10/week × 4 weeks)
+- [ ] ≥3 discovery calls booked
+- [ ] ≥1 free audit completed
+- [ ] ≥1 paid pilot closed ($500-1500)
+- [ ] ≤15h/week spent (tracked via Toggl)
+- [ ] $0 capital spent
+
+## Risk Assessment
+- **Risk:** 0 responses from cold DMs → vertical mismatch. **Mitigation:** Try different vertical in Week 3
+- **Risk:** Free audit doesn't convert → pricing or scope issue. **Mitigation:** Ask why, adjust offer
+- **Risk:** AI tools can't deliver promised automation → over-scoped. **Mitigation:** Start with tiny automations (email responder, data entry, lead scoring)
+- **Risk:** Job interferes with schedule → **Mitigation:** Block specific evening hours, treat as non-negotiable

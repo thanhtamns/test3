@@ -1,0 +1,94 @@
+"""
+CompletionJudge — decides when the intelligence loop should stop.
+Deterministic rules, no LLM.
+"""
+
+from dataclasses import dataclass
+
+from .money_flow_graph import MoneyFlowGraph
+
+
+VERDICT_CONTINUE = "CONTINUE"
+VERDICT_COMPLETE = "COMPLETE"
+VERDICT_INCOMPLETE = "INCOMPLETE"
+
+MIN_VERIFIED_EDGES = 3
+MIN_OVERALL_CONFIDENCE = 0.55
+MIN_NODES = 4
+MAX_CYCLES = 5
+
+
+@dataclass
+class CompletionVerdict:
+    verdict: str  # CONTINUE | COMPLETE | INCOMPLETE
+    reason: str
+    cycle: int
+    confidence: float
+    verified_edges: int
+    total_edges: int
+    node_count: int
+    gaps_remaining: int
+    untested_hypotheses: int
+
+    def to_dict(self) -> dict:
+        return {
+            "verdict": self.verdict,
+            "reason": self.reason,
+            "cycle": self.cycle,
+            "confidence": self.confidence,
+            "verified_edges": self.verified_edges,
+            "total_edges": self.total_edges,
+            "node_count": self.node_count,
+            "gaps_remaining": self.gaps_remaining,
+            "untested_hypotheses": self.untested_hypotheses,
+        }
+
+
+class CompletionJudge:
+    def __init__(
+        self,
+        min_verified_edges: int = MIN_VERIFIED_EDGES,
+        min_confidence: float = MIN_OVERALL_CONFIDENCE,
+        min_nodes: int = MIN_NODES,
+        max_cycles: int = MAX_CYCLES,
+    ):
+        self.min_verified_edges = min_verified_edges
+        self.min_confidence = min_confidence
+        self.min_nodes = min_nodes
+        self.max_cycles = max_cycles
+
+    def judge(self, graph: MoneyFlowGraph, cycle: int, budget_remaining: int) -> CompletionVerdict:
+        verified = graph.verified_edge_count(threshold=0.6)
+        confidence = graph.overall_confidence()
+        node_count = len(graph.nodes)
+        gaps = len(graph.find_gaps())
+        untested = len(graph.untested_hypotheses())
+
+        base = dict(
+            cycle=cycle,
+            confidence=round(confidence, 3),
+            verified_edges=verified,
+            total_edges=len(graph.edges),
+            node_count=node_count,
+            gaps_remaining=gaps,
+            untested_hypotheses=untested,
+        )
+
+        if cycle >= self.max_cycles:
+            if verified >= self.min_verified_edges and confidence >= self.min_confidence:
+                return CompletionVerdict(verdict=VERDICT_COMPLETE, reason="max_cycles_reached_but_sufficient", **base)
+            return CompletionVerdict(verdict=VERDICT_INCOMPLETE, reason="max_cycles_exhausted", **base)
+
+        if budget_remaining <= 0:
+            if verified >= self.min_verified_edges:
+                return CompletionVerdict(verdict=VERDICT_COMPLETE, reason="budget_exhausted_but_sufficient", **base)
+            return CompletionVerdict(verdict=VERDICT_INCOMPLETE, reason="budget_exhausted", **base)
+
+        if verified >= self.min_verified_edges and confidence >= self.min_confidence and node_count >= self.min_nodes:
+            if untested == 0 or gaps <= 2:
+                return CompletionVerdict(verdict=VERDICT_COMPLETE, reason="quality_threshold_met", **base)
+
+        if untested == 0 and gaps == 0:
+            return CompletionVerdict(verdict=VERDICT_COMPLETE, reason="no_more_questions", **base)
+
+        return CompletionVerdict(verdict=VERDICT_CONTINUE, reason="more_hypotheses_to_test", **base)

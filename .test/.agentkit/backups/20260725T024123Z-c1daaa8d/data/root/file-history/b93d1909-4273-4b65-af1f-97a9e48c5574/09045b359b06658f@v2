@@ -1,0 +1,69 @@
+{
+  "type": "think",
+  "trigger_patterns": ["sequential", "step 1", "## Step", "thinking through", "## Analysis", "let me think"],
+  "min_length": 600,
+  "dimensions": {
+    "completeness": {
+      "weight": 0.3,
+      "checks": [
+        {
+          "id": "think_steps",
+          "rule": "count_pattern('step \\d|\\d\\.|phase \\d|first|second|third|finally') >= 2",
+          "severity": "major",
+          "description": "No clear step progression found",
+          "fix": "Structure thinking into numbered steps or clear progression"
+        },
+        {
+          "id": "think_conclusion",
+          "rule": "contains('conclusion|therefore|thus|in summary|result|answer|verdict')",
+          "severity": "critical",
+          "description": "No conclusion or final answer",
+          "fix": "Add a clear conclusion summarizing the reasoning result"
+        }
+      ]
+    },
+    "logic": {
+      "weight": 0.3,
+      "checks": [
+        {
+          "id": "think_connectives",
+          "rule": "contains('therefore|because|since|given that|it follows|this means|consequently')",
+          "severity": "major",
+          "description": "No logical connectives — steps are disconnected",
+          "fix": "Add logical connectives showing how each step follows from the previous"
+        },
+        {
+          "id": "think_no_contradiction",
+          "rule": "no_score_contradiction()",
+          "severity": "critical",
+          "description": "Self-contradiction detected between reasoning steps",
+          "fix": "Resolve contradictions — acknowledge and explain if perspective changed"
+        }
+      ]
+    },
+    "depth": {
+      "weight": 0.2,
+      "checks": [
+        {
+          "id": "think_mechanism",
+          "rule": "contains('because|caused by|works by|driven by|the reason|this happens when')",
+          "severity": "minor",
+          "description": "Surface reasoning without mechanism explanation"
+        }
+      ]
+    },
+    "actionability": {
+      "weight": 0.2,
+      "checks": [
+        {
+          "id": "think_actionable",
+          "rule": "contains('recommend|should|must|next|action|do|implement|choose')",
+          "severity": "minor",
+          "description": "No actionable recommendation in conclusion"
+        }
+      ]
+    }
+  },
+  "pass_criteria": { "critical": 0, "major": 0 },
+  "max_iterations": 3
+}

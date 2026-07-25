@@ -1,0 +1,117 @@
+---
+phase: 3
+title: CLI Benchmark Script
+status: completed
+priority: P1
+effort: 1h
+dependencies:
+  - 2
+---
+
+# Phase 3: CLI Benchmark Script
+
+## Overview
+
+Create `scripts/benchmark.sh` that runs 15+ real commands through `codeflow wrap`, measures compression %, latency overhead, and dedup hit rate. Produces a markdown report table.
+
+## Requirements
+
+- Functional: Run each command raw and wrapped, compare output sizes, measure time delta
+- Non-functional: Script runs in <2min total. Reproducible results.
+
+## Related Code Files
+
+- Create: `cli/scripts/benchmark.sh`
+- Create: `cli/scripts/benchmark-report.md` (generated output)
+- Read: `cli/filters/*.toml` (filter definitions for benchmarked commands)
+
+## Implementation Steps
+
+1. Create `cli/scripts/benchmark.sh`:
+   ```bash
+   #!/bin/bash
+   # CODEFLOW CLI Benchmark
+   # Runs commands raw vs wrapped, measures savings + latency
+   
+   CODEFLOW="./target/debug/codeflow.exe"  # or release
+   REPORT="scripts/benchmark-report.md"
+   
+   # Header
+   echo "| Command | Raw Tokens | Wrapped Tokens | Savings % | Latency (ms) | Dedup Hit |" > $REPORT
+   echo "|---------|-----------|---------------|-----------|-------------|-----------|" >> $REPORT
+   
+   benchmark() {
+     local cmd="$1"
+     local label="$2"
+     
+     # Raw: run command, count output bytes, estimate tokens
+     raw_output=$($cmd 2>&1)
+     raw_bytes=${#raw_output}
+     raw_tokens=$(( (raw_bytes + 3) / 4 ))
+     
+     # Wrapped: run through codeflow wrap
+     start_ns=$(date +%s%N)
+     wrapped_output=$($CODEFLOW wrap $cmd 2>/dev/null)
+     end_ns=$(date +%s%N)
+     
+     wrapped_bytes=${#wrapped_output}
+     wrapped_tokens=$(( (wrapped_bytes + 3) / 4 ))
+     latency_ms=$(( (end_ns - start_ns) / 1000000 ))
+     
+     if [ $raw_tokens -gt 0 ]; then
+       savings=$(( 100 - (wrapped_tokens * 100 / raw_tokens) ))
+     else
+       savings=0
+     fi
+     
+     # Dedup: run same command again
+     dedup_output=$($CODEFLOW wrap $cmd 2>/dev/null)
+     dedup_bytes=${#dedup_output}
+     if [ $dedup_bytes -lt $wrapped_bytes ]; then
+       dedup="YES"
+     else
+       dedup="no"
+     fi
+     
+     echo "| $label | $raw_tokens | $wrapped_tokens | ${savings}% | ${latency_ms}ms | $dedup |" >> $REPORT
+   }
+   ```
+
+2. Add benchmark commands (must be in a real repo with git history):
+   ```bash
+   benchmark "git diff" "git diff"
+   benchmark "git status" "git status"
+   benchmark "git log --oneline -20" "git log"
+   benchmark "cargo test" "cargo test"  # or npm test
+   benchmark "cargo build" "cargo build"
+   benchmark "ls -la" "ls -la"
+   benchmark "find . -name '*.rs' -type f" "find *.rs"
+   benchmark "grep -r 'fn main' --include='*.rs'" "grep fn main"
+   benchmark "docker logs cloud-ingest-1 --tail 50" "docker logs"
+   benchmark "cat README.md" "cat README"
+   ```
+
+3. Run from cli/ directory: `cd cli && bash scripts/benchmark.sh`
+
+4. Generate summary stats at bottom of report:
+   - Average savings %
+   - Median latency ms
+   - Dedup hit rate (% of commands that hit on second run)
+   - Total tokens saved across all commands
+
+5. Run `codeflow stats --json` before and after benchmark, diff the numbers
+
+## Success Criteria
+
+- [ ] Script runs without errors on 10+ commands
+- [ ] Average savings > 40% across all commands with filters
+- [ ] Latency overhead < 10ms per command (p50)
+- [ ] Dedup hits on 100% of identical repeat runs
+- [ ] Markdown report generated with clear table
+- [ ] `codeflow stats` shows increased token savings after benchmark
+
+## Risk Assessment
+
+- **Command availability:** Some commands (cargo, docker) may not be available. Script should skip unavailable commands gracefully.
+- **Latency measurement:** `date +%s%N` nanosecond precision varies by OS. On Windows/Git Bash may need different approach.
+- **Git repo state:** Benchmark results depend on repo state (e.g., `git diff` output varies). Run from the codeflow repo itself for consistent results.

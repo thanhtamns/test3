@@ -1,0 +1,135 @@
+{
+  "schema_version": "1.0",
+  "purpose": "Master index of cognitive corpus (brain-inspired 7-layer system). Replaces data/training/INDEX.json. Read by cognitive-session-init.cjs hook on SessionStart and by stage0 Step 3.5.0 retrieve call.",
+  "last_updated": "2026-04-11",
+  "phase_r_status": {
+    "completed_at": "2026-04-11",
+    "loops_active": ["R1_outcome_logger", "R2_pattern_library", "R3_agent_accuracy", "R4_bayesian_priors", "R5_meta_learner_cron", "R6_hebbian_decay"],
+    "l3_bayesian_write_status": "ACTIVE",
+    "l4_hebbian_write_status": "ACTIVE",
+    "gate": "session_gates_passed_45d_soak_pending",
+    "regression_report": "plans/260411-1753-brain-cognition-phase-r/phase-07-regression-report.md"
+  },
+  "corpus_root": "data/cognitive/",
+  "dual_storage_policy": "data/training/*.md preserved forever as human-readable source of truth. data/cognitive/ is the machine-indexed retrieval layer. Never delete .md files.",
+  "auto_load_on_session_start": true,
+  "applicable_activities": [
+    "channel_analysis",
+    "founder_evaluation",
+    "opportunity_discovery",
+    "market_research",
+    "business_model_validation",
+    "niche_validation",
+    "competitor_analysis",
+    "investment_analysis",
+    "stage0_mountain_hunting"
+  ],
+  "architecture": {
+    "layers": [
+      "L1_ingest: .md/.json -> chunked nodes",
+      "L2_cognee_store: Kuzu graph + LanceDB vectors",
+      "L3_bayesian: Beta(a,b) priors per node",
+      "L4_hebbian: edge boost on co-retrieval",
+      "L5_retrieve: system1 reflex + system2 spreading",
+      "L6_hitl: pending queue -> approve/reject",
+      "L7_metacognition: consolidation + gap detection"
+    ],
+    "docs": [
+      "data/cognitive/docs/cognitive-system.md",
+      "data/cognitive/docs/api-reference.md",
+      "data/cognitive/docs/migration.md"
+    ]
+  },
+  "datasets": [
+    {
+      "id": "rules-registry",
+      "source": "data/schemas/registry.json + data/training/extracted-rules-channel-analysis.json",
+      "ingested": "2026-04-11T03:56:51Z",
+      "node_count_est": 50,
+      "id_range": "SCH-012 to SCH-021+",
+      "load_trigger": "every_stage0_run",
+      "priority": "always_on"
+    },
+    {
+      "id": "mental-models",
+      "source": "data/training/mental-models.md",
+      "node_count_est": 6,
+      "id_range": "MM-01 to MM-06",
+      "load_trigger": "every_stage0_run",
+      "priority": "always_on"
+    },
+    {
+      "id": "archetypes",
+      "source": "data/training/archetypes/*.json",
+      "load_trigger": "keyword_match_on_topic",
+      "priority": "keyword_gated"
+    },
+    {
+      "id": "verification-toolkit",
+      "source": "data/training/verification-toolkit.md",
+      "load_trigger": "ground_truth_phase",
+      "priority": "domain_gated"
+    },
+    {
+      "id": "inference-engine-spec",
+      "source": "data/training/inference-engine.md",
+      "load_trigger": "always",
+      "priority": "always_on"
+    },
+    {
+      "id": "universal-analysis-protocol",
+      "source": "data/training/universal-analysis-protocol.md",
+      "load_trigger": "always",
+      "priority": "always_on"
+    }
+  ],
+  "stores": {
+    "cognee_store": {
+      "path": "data/cognitive/cognee_store/system/databases/",
+      "graph_db": "cognee_graph_kuzu",
+      "vector_db": "cognee.lancedb",
+      "relational_db": "cognee_db",
+      "size_bytes": 1289428567,
+      "size_human": "1.2GB"
+    },
+    "bayesian": "data/cognitive/custom/bayesian.db",
+    "hebbian_edges": "data/cognitive/custom/hebbian-edges.db",
+    "chunks": "data/cognitive/custom/chunks.db",
+    "merge_groups": "data/cognitive/custom/merge-groups.db",
+    "archive_index": "data/cognitive/custom/archive-index.db",
+    "boost_log": "data/cognitive/custom/boost-log.db"
+  },
+  "hitl": {
+    "pending_queue": "data/cognitive/custom/pending-queue.jsonl",
+    "approved_log": "data/cognitive/custom/approved-log.jsonl",
+    "rejected_log": "data/cognitive/custom/rejected-log.jsonl"
+  },
+  "scripts": {
+    "retrieve": "data/cognitive/scripts/retrieve/cognitive_retrieve.py",
+    "inference_capture": "data/cognitive/scripts/hitl/inference-capture.py",
+    "review_pending": "data/cognitive/scripts/hitl/cognitive-review-pending.py",
+    "consolidate": "data/cognitive/scripts/consolidate/",
+    "metacognition": "data/cognitive/scripts/metacognition/",
+    "ingest": "data/cognitive/scripts/ingest/"
+  },
+  "hooks": {
+    "session_init": ".claude/hooks/cognitive-session-init.cjs",
+    "consolidation_cron": ".claude/hooks/cognitive-consolidation-cron.cjs",
+    "legacy_fallback": ".claude/hooks/training-corpus-loader.cjs"
+  },
+  "migration_status": {
+    "phase": "parallel_run",
+    "started": "2026-04-11",
+    "cutover_eta": "2026-04-25",
+    "old_loader_role": "fallback_on_cognitive_empty_or_error",
+    "validation_window_days": 14,
+    "cutover_criteria": [
+      "retrieval_precision_geq_0.80",
+      "parallel_overlap_geq_0.90",
+      "hitl_roundtrip_verified_5x",
+      "consolidation_fired_3x_no_error",
+      "user_explicit_approval"
+    ]
+  },
+  "venv_python": "data/cognitive/.venv/Scripts/python.exe"
+}

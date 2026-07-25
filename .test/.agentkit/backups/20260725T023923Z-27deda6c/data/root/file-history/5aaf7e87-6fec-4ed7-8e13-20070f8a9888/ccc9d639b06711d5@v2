@@ -1,0 +1,167 @@
+"""First Principles Hypothesis models. Standalone — no imports from money_flow_graph or tournament."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Optional
+
+
+GENERATION_TECHNIQUES = [
+    "T1_STRUCTURAL",       # Map money flow, find bottleneck, insert founder
+    "T2_INVERSION",        # What kills incumbents? Reverse each failure → opportunity
+    "T3_ADJACENT_TRANSFER", # Solved in industry A, apply mechanism to domain B
+    "T4_CONSTRAINT_EXPLOIT", # Founder's constraint = hidden advantage
+    "T5_TEMPORAL_ARBITRAGE", # Window opening in 90-180 days, position now
+]
+
+MIN_FOUNDER_FIT = 4
+MAX_HYPOTHESES = 8
+MIN_HYPOTHESES = 3
+
+
+@dataclass
+class FirstPrinciplesHypothesis:
+    id: str
+    title: str
+    thesis: str
+    mechanism: str
+    generation_technique: str
+    falsification_criteria: list[str]
+    evidence_gaps: list[str]
+    founder_fit_score: int
+    novelty_claim: str
+    business_model_type: str = ""
+    customer_segment: str = ""
+    estimated_revenue_range: str = ""
+    verified: bool = False
+    verification_evidence: list[str] = field(default_factory=list)
+    attack_results: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "title": self.title,
+            "thesis": self.thesis,
+            "mechanism": self.mechanism,
+            "generation_technique": self.generation_technique,
+            "falsification_criteria": list(self.falsification_criteria),
+            "evidence_gaps": list(self.evidence_gaps),
+            "founder_fit_score": self.founder_fit_score,
+            "novelty_claim": self.novelty_claim,
+            "business_model_type": self.business_model_type,
+            "customer_segment": self.customer_segment,
+            "estimated_revenue_range": self.estimated_revenue_range,
+            "verified": self.verified,
+            "verification_evidence": list(self.verification_evidence),
+            "attack_results": list(self.attack_results),
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> FirstPrinciplesHypothesis:
+        return cls(
+            id=d["id"],
+            title=d["title"],
+            thesis=d["thesis"],
+            mechanism=d["mechanism"],
+            generation_technique=d["generation_technique"],
+            falsification_criteria=d["falsification_criteria"],
+            evidence_gaps=d["evidence_gaps"],
+            founder_fit_score=d["founder_fit_score"],
+            novelty_claim=d["novelty_claim"],
+            business_model_type=d.get("business_model_type", ""),
+            customer_segment=d.get("customer_segment", ""),
+            estimated_revenue_range=d.get("estimated_revenue_range", ""),
+            verified=d.get("verified", False),
+            verification_evidence=d.get("verification_evidence", []),
+            attack_results=d.get("attack_results", []),
+        )
+
+    def to_tournament_hypothesis(self) -> dict:
+        """Convert to OpportunityHypothesis-compatible dict for tournament intake."""
+        return {
+            "id": self.id,
+            "title": self.title,
+            "thesis": self.thesis,
+            "business_model_type": self.business_model_type,
+            "customer_segment": self.customer_segment,
+            "evidence_refs": [f"first_principles:{self.generation_technique}"]
+                + self.verification_evidence,
+            "estimated_revenue_range": self.estimated_revenue_range,
+            "source_phase": "first_principles",
+        }
+
+    def is_valid(self) -> bool:
+        return (
+            bool(self.id)
+            and bool(self.title)
+            and bool(self.thesis)
+            and bool(self.mechanism)
+            and self.generation_technique in GENERATION_TECHNIQUES
+            and len(self.falsification_criteria) >= 1
+            and len(self.evidence_gaps) >= 1
+            and 1 <= self.founder_fit_score <= 10
+            and bool(self.novelty_claim)
+        )
+
+    def passes_founder_gate(self) -> bool:
+        return self.founder_fit_score >= MIN_FOUNDER_FIT
+
+
+@dataclass
+class GenerationResult:
+    hypotheses: list[FirstPrinciplesHypothesis]
+    techniques_used: list[str]
+    killed_count: int
+    killed_reasons: list[str]
+    domain_decomposition: dict = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        return {
+            "hypotheses": [h.to_dict() for h in self.hypotheses],
+            "techniques_used": list(self.techniques_used),
+            "killed_count": self.killed_count,
+            "killed_reasons": list(self.killed_reasons),
+            "domain_decomposition": dict(self.domain_decomposition),
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> GenerationResult:
+        return cls(
+            hypotheses=[FirstPrinciplesHypothesis.from_dict(h) for h in d["hypotheses"]],
+            techniques_used=d["techniques_used"],
+            killed_count=d["killed_count"],
+            killed_reasons=d["killed_reasons"],
+            domain_decomposition=d.get("domain_decomposition", {}),
+        )
+
+    def valid_hypotheses(self) -> list[FirstPrinciplesHypothesis]:
+        return [h for h in self.hypotheses if h.is_valid() and h.passes_founder_gate()]
+
+    def tournament_candidates(self) -> list[dict]:
+        return [h.to_tournament_hypothesis() for h in self.valid_hypotheses()]
+
+
+def filter_by_founder_fit(
+    hypotheses: list[FirstPrinciplesHypothesis],
+    min_score: int = MIN_FOUNDER_FIT,
+) -> tuple[list[FirstPrinciplesHypothesis], list[str]]:
+    """Filter hypotheses by founder fit score. Returns (kept, kill_reasons)."""
+    kept = []
+    reasons = []
+    for h in hypotheses:
+        if h.founder_fit_score >= min_score:
+            kept.append(h)
+        else:
+            reasons.append(f"{h.id} '{h.title}' killed: founder_fit={h.founder_fit_score} < {min_score}")
+    return kept, reasons
+
+
+def cap_hypotheses(
+    hypotheses: list[FirstPrinciplesHypothesis],
+    max_count: int = MAX_HYPOTHESES,
+) -> list[FirstPrinciplesHypothesis]:
+    """Cap at max_count, keeping highest founder_fit_score first."""
+    if len(hypotheses) <= max_count:
+        return list(hypotheses)
+    sorted_h = sorted(hypotheses, key=lambda h: h.founder_fit_score, reverse=True)
+    return sorted_h[:max_count]

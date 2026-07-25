@@ -1,0 +1,259 @@
+"""Tests for ErrorAttributor — causal attribution of verdict errors to steps/knobs."""
+
+import json
+from pathlib import Path
+
+import pytest
+
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
+from intelligence.mechanism.error_attributor import (
+    ErrorAttributor,
+    MechanismError,
+    VERDICT_DIRECTION,
+    KNOB_STEP_MAP,
+)
+from intelligence.mechanism.trace_logger import TraceLogger
+
+
+@pytest.fixture
+def traces_dir(tmp_path):
+    """Create a temp traces directory."""
+    d = tmp_path / "traces"
+    d.mkdir()
+    return d
+
+
+@pytest.fixture
+def errors_path(tmp_path):
+    return tmp_path / "mechanism-errors.jsonl"
+
+
+@pytest.fixture
+def sample_trace(traces_dir):
+    """Create a sample trace with mixed signals."""
+    trace = TraceLogger(case_id="TEST-001", traces_dir=traces_dir)
+    trace.log_step("1.8_local_prescreen", "Local Knowledge Pre-Screen",
+                   knobs_used=["local_kill_confidence"],
+                   signal={"direction": "GO", "confidence": 0.6})
+    trace.log_step("3.5_wave1", "Wave 1 Agent Dispatch",
+                   knobs_used=["wave1_base_agent_count"],
+                   signal={"direction": "GO", "confidence": 0.75},
+                   agents=["researcher", "niche-archaeologist"])
+    trace.log_step("3.5_wave2", "Wave 2 Deep Agents",
+                   knobs_used=["wave2_min_agents"],
+                   signal={"direction": "GO", "confidence": 0.80},
+                   agents=["bullshit-detector"])
+    trace.log_step("6_mountain_test", "Mountain Test",
+                   knobs_used=["mountain_threshold_monthly", "mountain_timeline_months"],
+                   signal={"direction": "GO", "confidence": 0.72})
+    trace.log_step("7_verdict_synthesis", "Verdict Synthesis",
+                   knobs_used=["confidence_gate_minimum"],
+                   signal={"direction": "GO", "confidence": 0.78})
+    trace.log_verdict_composition("MOUNTAIN_CANDIDATE",
+                                  step_weights={"3.5_wave1": 0.3, "3.5_wave2": 0.3,
+                                                "6_mountain_test": 0.3, "7_verdict_synthesis": 0.1},
+                                  final_confidence=0.78)
+    trace.save()
+    return traces_dir
+
+
+@pytest.fixture
+def mixed_signal_trace(traces_dir):
+    """Trace where one step correctly predicted KILL but was overridden."""
+    trace = TraceLogger(case_id="TEST-002", traces_dir=traces_dir)
+    trace.log_step("3.5_wave1", "Wave 1 Agent Dispatch",
+                   knobs_used=["wave1_base_agent_count"],
+                   signal={"direction": "GO", "confidence": 0.70})
+    trace.log_step("3.5_wave2", "Wave 2 Deep Agents",
+                   knobs_used=["wave2_min_agents"],
+                   signal={"direction": "KILL", "confidence": 0.65})
+    trace.log_step("6_mountain_test", "Mountain Test",
+                   knobs_used=["mountain_threshold_monthly"],
+                   signal={"direction": "GO", "confidence": 0.60})
+    trace.log_step("7_verdict_synthesis", "Verdict Synthesis",
+                   knobs_used=["confidence_gate_minimum"],
+                   signal={"direction": "GO", "confidence": 0.68})
+    trace.log_verdict_composition("MOUNTAIN_CANDIDATE",
+                                  step_weights={"3.5_wave1": 0.35, "3.5_wave2": 0.25,
+                                                "6_mountain_test": 0.25, "7_verdict_synthesis": 0.15},
+                                  final_confidence=0.68)
+    trace.save()
+    return traces_dir
+
+
+def test_correct_verdict_returns_no_errors(sample_trace, errors_path):
+    """If verdict was correct, no errors should be attributed."""
+    attributor = ErrorAttributor(traces_dir=sample_trace, errors_path=errors_path)
+    errors = attributor.attribute("TEST-001", actual_outcome="GO", predicted_verdict="MOUNTAIN_CANDIDATE")
+    assert errors == []
+
+
+def test_direction_mismatch_detected(sample_trace, errors_path):
+    """Steps pushing GO when outcome is KILL should be flagged."""
+    attributor = ErrorAttributor(traces_dir=sample_trace, errors_path=errors_path)
+    errors = attributor.attribute("TEST-001", actual_outcome="KILL", predicted_verdict="MOUNTAIN_CANDIDATE")
+
+    direction_errors = [e for e in errors if e.error_type == "direction_mismatch"]
+    assert len(direction_errors) >= 3  # wave1, wave2, mountain_test all pushed GO
+
+    for err in direction_errors:
+        assert err.case_id == "TEST-001"
+        assert err.severity >= 0.3
+        assert len(err.knobs_implicated) > 0
+
+
+def test_direction_mismatch_ignores_low_confidence(traces_dir, errors_path):
+    """Steps with confidence <0.3 should not be flagged."""
+    trace = TraceLogger(case_id="TEST-LOW", traces_dir=traces_dir)
+    trace.log_step("3.5_wave1", "Wave 1",
+                   knobs_used=["wave1_base_agent_count"],
+                   signal={"direction": "GO", "confidence": 0.2})
+    trace.log_step("7_verdict_synthesis", "Synthesis",
+                   knobs_used=["confidence_gate_minimum"],
+                   signal={"direction": "GO", "confidence": 0.25})
+    trace.log_verdict_composition("GO", final_confidence=0.25)
+    trace.save()
+
+    attributor = ErrorAttributor(traces_dir=traces_dir, errors_path=errors_path)
+    errors = attributor.attribute("TEST-LOW", actual_outcome="KILL", predicted_verdict="GO")
+    direction_errors = [e for e in errors if e.error_type == "direction_mismatch"]
+    assert len(direction_errors) == 0
+
+
+def test_override_error_detected(mixed_signal_trace, errors_path):
+    """Correct minority signal overridden by synthesis should be flagged."""
+    attributor = ErrorAttributor(traces_dir=mixed_signal_trace, errors_path=errors_path)
+    errors = attributor.attribute("TEST-002", actual_outcome="KILL", predicted_verdict="MOUNTAIN_CANDIDATE")
+
+    override_errors = [e for e in errors if e.error_type == "override_error"]
+    assert len(override_errors) == 1
+    assert override_errors[0].step == "3.5_wave2"
+    assert "confidence_gate_minimum" in override_errors[0].knobs_implicated
+
+
+def test_missing_signal_detected(traces_dir, errors_path):
+    """Critical steps that didn't fire should be flagged."""
+    trace = TraceLogger(case_id="TEST-MISSING", traces_dir=traces_dir)
+    trace.log_step("3.5_wave1", "Wave 1",
+                   knobs_used=["wave1_base_agent_count"],
+                   signal={"direction": "GO", "confidence": 0.7})
+    # Missing: wave2, mountain_test, verdict_synthesis
+    trace.log_verdict_composition("GO", final_confidence=0.7)
+    trace.save()
+
+    attributor = ErrorAttributor(traces_dir=traces_dir, errors_path=errors_path)
+    errors = attributor.attribute("TEST-MISSING", actual_outcome="KILL", predicted_verdict="GO")
+
+    missing_errors = [e for e in errors if e.error_type == "missing_signal"]
+    missing_steps = {e.step for e in missing_errors}
+    assert "3.5_wave2" in missing_steps
+    assert "6_mountain_test" in missing_steps
+    assert "7_verdict_synthesis" in missing_steps
+
+
+def test_confidence_inflation_detected(traces_dir, errors_path):
+    """High-confidence wrong verdict should flag inflating steps."""
+    trace = TraceLogger(case_id="TEST-INFLATE", traces_dir=traces_dir)
+    trace.log_step("3.5_wave1", "Wave 1",
+                   knobs_used=["wave1_base_agent_count"],
+                   signal={"direction": "GO", "confidence": 0.9})
+    trace.log_step("6_mountain_test", "Mountain Test",
+                   knobs_used=["mountain_threshold_monthly"],
+                   signal={"direction": "GO", "confidence": 0.85})
+    trace.log_step("7_verdict_synthesis", "Synthesis",
+                   knobs_used=["confidence_gate_minimum"],
+                   signal={"direction": "GO", "confidence": 0.88})
+    trace.log_verdict_composition("MOUNTAIN_CANDIDATE",
+                                  step_weights={"3.5_wave1": 0.4, "6_mountain_test": 0.4,
+                                                "7_verdict_synthesis": 0.2},
+                                  final_confidence=0.88)
+    trace.save()
+
+    attributor = ErrorAttributor(traces_dir=traces_dir, errors_path=errors_path)
+    errors = attributor.attribute("TEST-INFLATE", actual_outcome="KILL", predicted_verdict="MOUNTAIN_CANDIDATE")
+
+    inflate_errors = [e for e in errors if e.error_type == "confidence_inflation"]
+    assert len(inflate_errors) >= 2
+    assert all("confidence_gate_minimum" in e.knobs_implicated for e in inflate_errors)
+
+
+def test_persist_writes_jsonl(sample_trace, errors_path):
+    """Persisted errors should be written as JSONL."""
+    attributor = ErrorAttributor(traces_dir=sample_trace, errors_path=errors_path)
+    errors = attributor.attribute("TEST-001", actual_outcome="KILL", predicted_verdict="MOUNTAIN_CANDIDATE")
+
+    attributor.persist(errors)
+
+    assert errors_path.exists()
+    lines = errors_path.read_text(encoding="utf-8").strip().split("\n")
+    assert len(lines) == len(errors)
+
+    first = json.loads(lines[0])
+    assert first["case_id"] == "TEST-001"
+    assert "error_type" in first
+
+
+def test_persist_empty_does_nothing(errors_path):
+    """Persisting empty list should not create file."""
+    attributor = ErrorAttributor(errors_path=errors_path)
+    attributor.persist([])
+    assert not errors_path.exists()
+
+
+def test_load_errors_filters_by_knob(sample_trace, errors_path):
+    """load_errors with knob_id filter returns matching only."""
+    attributor = ErrorAttributor(traces_dir=sample_trace, errors_path=errors_path)
+    errors = attributor.attribute("TEST-001", actual_outcome="KILL", predicted_verdict="MOUNTAIN_CANDIDATE")
+    attributor.persist(errors)
+
+    wave1_errors = attributor.load_errors(knob_id="wave1_base_agent_count")
+    assert all("wave1_base_agent_count" in e["knobs_implicated"] for e in wave1_errors)
+
+
+def test_count_errors_by_knob(sample_trace, errors_path):
+    """count_errors_by_knob aggregates correctly."""
+    attributor = ErrorAttributor(traces_dir=sample_trace, errors_path=errors_path)
+    errors = attributor.attribute("TEST-001", actual_outcome="KILL", predicted_verdict="MOUNTAIN_CANDIDATE")
+    attributor.persist(errors)
+
+    counts = attributor.count_errors_by_knob()
+    assert isinstance(counts, dict)
+    assert sum(counts.values()) > 0
+
+
+def test_no_trace_returns_empty(traces_dir, errors_path):
+    """Missing trace should return empty list, not crash."""
+    attributor = ErrorAttributor(traces_dir=traces_dir, errors_path=errors_path)
+    errors = attributor.attribute("NONEXISTENT", actual_outcome="KILL", predicted_verdict="GO")
+    assert errors == []
+
+
+def test_errors_sorted_by_severity(sample_trace, errors_path):
+    """Returned errors should be sorted highest severity first."""
+    attributor = ErrorAttributor(traces_dir=sample_trace, errors_path=errors_path)
+    errors = attributor.attribute("TEST-001", actual_outcome="KILL", predicted_verdict="MOUNTAIN_CANDIDATE")
+
+    if len(errors) > 1:
+        for i in range(len(errors) - 1):
+            assert errors[i].severity >= errors[i + 1].severity
+
+
+def test_mechanism_error_to_dict():
+    """MechanismError serializes correctly."""
+    err = MechanismError(
+        case_id="TEST",
+        step="3.5_wave1",
+        step_name="Wave 1",
+        error_type="direction_mismatch",
+        severity=0.75,
+        knobs_implicated=["wave1_base_agent_count"],
+        detail="test detail",
+        predicted_verdict="GO",
+        actual_outcome="KILL",
+    )
+    d = err.to_dict()
+    assert d["case_id"] == "TEST"
+    assert d["severity"] == 0.75
+    assert "timestamp" in d

@@ -1,0 +1,158 @@
+"""
+SynthesisEngine — LOCAL-ONLY orchestrator for dimension scoring, gap analysis,
+path generation, and output formatting. Zero LLM calls enforced.
+"""
+
+from dataclasses import dataclass, field
+from typing import Optional
+
+from ..hunger.claim_parser import ParsedClaim
+from .decomposer import DecompositionTree
+from .dimension_scorer import DimensionScore, DimensionScorer
+from .gap_analyzer import GapAnalyzer, GapReport
+from .output_formatter import OutputFormatter
+from .path_generator import PathGenerator, PathStep
+
+
+@dataclass
+class SynthesisResult:
+    query: str
+    query_type: str
+    overall_score: float
+    dimension_scores: dict[str, DimensionScore]
+    gaps: list[GapReport]
+    path: list[PathStep]
+    facts_used: int
+    facts_by_zone: dict[str, int]
+    llm_calls_made: int
+    recommendations: list[str] = field(default_factory=list)
+    technique_results: Optional[dict] = None
+    strategy: Optional[dict] = None
+
+    def to_dict(self) -> dict:
+        d = {
+            "query": self.query,
+            "query_type": self.query_type,
+            "overall_score": round(self.overall_score, 3),
+            "dimension_scores": {k: v.to_dict() for k, v in self.dimension_scores.items()},
+            "gaps": [g.to_dict() for g in self.gaps],
+            "path": [p.to_dict() for p in self.path],
+            "facts_used": self.facts_used,
+            "facts_by_zone": self.facts_by_zone,
+            "llm_calls_made": self.llm_calls_made,
+            "recommendations": self.recommendations,
+        }
+        if self.technique_results:
+            d["technique_results"] = self.technique_results
+        if self.strategy:
+            d["strategy"] = self.strategy
+        return d
+
+
+class SynthesisEngine:
+    def __init__(self):
+        self.scorer = DimensionScorer()
+        self.gap_analyzer = GapAnalyzer()
+        self.path_generator = PathGenerator()
+        self.formatter = OutputFormatter()
+
+    def synthesize(self, tree: DecompositionTree, facts: list[ParsedClaim]) -> SynthesisResult:
+        facts_by_dim = self._group_by_dimension(facts, tree)
+        dim_scores = self.scorer.score_all(facts_by_dim)
+
+        for dim in tree.dimensions:
+            if dim.name not in dim_scores:
+                dim_scores[dim.name] = self.scorer.score(dim.name, [])
+
+        gaps = self.gap_analyzer.analyze(tree, dim_scores)
+        path = self.path_generator.generate(tree.query_type, dim_scores, tree.context)
+
+        scored_dims = [ds for ds in dim_scores.values() if ds.fact_count > 0]
+        overall = (
+            sum(ds.score * self._get_weight(ds.dimension, tree) for ds in scored_dims)
+            / max(sum(self._get_weight(ds.dimension, tree) for ds in scored_dims), 1.0)
+        ) if scored_dims else 0.0
+
+        zone_counts = {"K": 0, "T": 0, "?": 0}
+        for f in facts:
+            tag = f.zone_tag if f.zone_tag in zone_counts else "?"
+            zone_counts[tag] += 1
+
+        recommendations = self._generate_recommendations(dim_scores, gaps)
+
+        result = SynthesisResult(
+            query=tree.original_query,
+            query_type=tree.query_type,
+            overall_score=overall,
+            dimension_scores=dim_scores,
+            gaps=gaps,
+            path=path,
+            facts_used=len(facts),
+            facts_by_zone=zone_counts,
+            llm_calls_made=0,
+            recommendations=recommendations,
+        )
+
+        assert result.llm_calls_made == 0, "SynthesisEngine must be LOCAL-only"
+        return result
+
+    def format_output(self, result: SynthesisResult) -> str:
+        return self.formatter.format(result)
+
+    def _group_by_dimension(
+        self, facts: list[ParsedClaim], tree: DecompositionTree,
+    ) -> dict[str, list[ParsedClaim]]:
+        dim_map = self._build_claim_dimension_map()
+        grouped: dict[str, list[ParsedClaim]] = {}
+        tree_dims = {d.name for d in tree.dimensions}
+
+        for fact in facts:
+            decomp_dim = dim_map.get(fact.dimension)
+            if decomp_dim and decomp_dim in tree_dims:
+                grouped.setdefault(decomp_dim, []).append(fact)
+            else:
+                for dim_name in tree_dims:
+                    if dim_name in fact.fact.lower() or fact.dimension in dim_name:
+                        grouped.setdefault(dim_name, []).append(fact)
+                        break
+
+        return grouped
+
+    def _build_claim_dimension_map(self) -> dict[str, str]:
+        return {
+            "failure_rates": "failure_patterns",
+            "unit_economics": "unit_economics",
+            "competitive_landscape": "competitive_landscape",
+            "moat_patterns": "moat_patterns",
+            "founder_paths": "founder_experience",
+            "timing_windows": "timing_windows",
+            "regulatory_risks": "regulatory_risks",
+            "compounding_mechanisms": "compounding_mechanisms",
+        }
+
+    def _get_weight(self, dimension: str, tree: DecompositionTree) -> float:
+        for dim in tree.dimensions:
+            if dim.name == dimension:
+                return dim.weight
+        return 1.0
+
+    def _generate_recommendations(
+        self, scores: dict[str, DimensionScore], gaps: list[GapReport],
+    ) -> list[str]:
+        recs = []
+        high_conf = [ds for ds in scores.values() if ds.zone_tag == "K"]
+        if high_conf:
+            dims = ", ".join(ds.dimension for ds in high_conf[:3])
+            recs.append(f"Strong evidence in: {dims}")
+
+        critical_gaps = [g for g in gaps if g.priority >= 2.0]
+        if critical_gaps:
+            dims = ", ".join(g.dimension for g in critical_gaps[:3])
+            recs.append(f"Critical gaps to research: {dims}")
+
+        contradicted = [ds for ds in scores.values() if ds.contradictions > 0]
+        if contradicted:
+            dims = ", ".join(ds.dimension for ds in contradicted[:3])
+            recs.append(f"Contradictions found in: {dims} — resolve before deciding")
+
+        return recs

@@ -1,0 +1,563 @@
+[
+  {
+    "id": "micro-saas",
+    "name": "Micro-SaaS (single-feature tool)",
+    "category": "digital_product",
+    "capital_entry_min": 0,
+    "capital_entry_max": 5000,
+    "roi_distribution": {
+      "p10": -1.0,
+      "p25": -0.5,
+      "p50": 0.5,
+      "p75": 3.0,
+      "p90": 10.0
+    },
+    "time_to_first_dollar_days": {
+      "p25": 90,
+      "p50": 180,
+      "p75": 365
+    },
+    "sleep_test": "YES",
+    "leverage_class": "CODE",
+    "lindy_years": 30,
+    "compound_mechanism": "subscriber base + codebase + brand recognition",
+    "failure_rate_year1": 0.70,
+    "structural_risks": ["AI_DISRUPTION", "BIGTECH_ADJACENT"],
+    "data_sources": [
+      {"source": "flippa_marketplace_analysis_2024", "year": 2024, "zone_tag": "K"},
+      {"source": "microacquire_listing_data_2024", "year": 2024, "zone_tag": "K"},
+      {"source": "indie_hackers_revenue_survey_2023", "year": 2023, "zone_tag": "K"}
+    ],
+    "founder_fit_tags": ["can_code_or_nocode", "english_fluent"],
+    "capital_tiers": {
+      "TIER_0": {"viable": true, "expected_roi_p50": 0.5, "notes": "no-code MVP only (Bubble/Softr free tier)"},
+      "TIER_1": {"viable": true, "expected_roi_p50": 2.0, "notes": "custom code possible, small ad budget"},
+      "TIER_2": {"viable": true, "expected_roi_p50": 3.0, "notes": "full product with paid acquisition"}
+    }
+  },
+  {
+    "id": "digital-template-library",
+    "name": "Digital Templates (Notion, Figma, Canva, spreadsheets)",
+    "category": "digital_product",
+    "capital_entry_min": 0,
+    "capital_entry_max": 500,
+    "roi_distribution": {
+      "p10": -0.5,
+      "p25": 0.0,
+      "p50": 1.0,
+      "p75": 3.0,
+      "p90": 8.0
+    },
+    "time_to_first_dollar_days": {
+      "p25": 30,
+      "p50": 66,
+      "p75": 180
+    },
+    "sleep_test": "YES",
+    "leverage_class": "MEDIA",
+    "lindy_years": 100,
+    "compound_mechanism": "template library + SEO backlinks + email list + cross-sell",
+    "failure_rate_year1": 0.60,
+    "structural_risks": ["SATURATION", "PLATFORM_DEPENDENCY"],
+    "data_sources": [
+      {"source": "gumroad_creator_economy_report_2024", "year": 2024, "zone_tag": "K"},
+      {"source": "etsy_digital_downloads_analysis_2024", "year": 2024, "zone_tag": "K"},
+      {"source": "notion_template_marketplace_data_2025", "year": 2025, "zone_tag": "T"}
+    ],
+    "founder_fit_tags": ["english_fluent"],
+    "capital_tiers": {
+      "TIER_0": {"viable": true, "expected_roi_p50": 1.0, "notes": "Canva free + Gumroad free tier, zero cost entry"},
+      "TIER_1": {"viable": true, "expected_roi_p50": 2.5, "notes": "custom domain + email marketing tools"}
+    }
+  },
+  {
+    "id": "mini-course",
+    "name": "Mini Course (sub-$50, self-paced)",
+    "category": "digital_product",
+    "capital_entry_min": 0,
+    "capital_entry_max": 1000,
+    "roi_distribution": {
+      "p10": -0.8,
+      "p25": -0.2,
+      "p50": 1.5,
+      "p75": 5.0,
+      "p90": 15.0
+    },
+    "time_to_first_dollar_days": {
+      "p25": 30,
+      "p50": 90,
+      "p75": 180
+    },
+    "sleep_test": "YES",
+    "leverage_class": "MEDIA",
+    "lindy_years": 100,
+    "compound_mechanism": "course catalog + student reviews + email list + upsell path",
+    "failure_rate_year1": 0.65,
+    "structural_risks": ["CONTENT_FATIGUE", "REFUND_RATE"],
+    "data_sources": [
+      {"source": "gumroad_creator_economy_report_2024", "year": 2024, "zone_tag": "K"},
+      {"source": "udemy_instructor_revenue_statistics_2024", "year": 2024, "zone_tag": "T"},
+      {"source": "skillshare_teacher_earnings_analysis_2024", "year": 2024, "zone_tag": "T"}
+    ],
+    "founder_fit_tags": ["english_fluent", "domain_expertise"],
+    "capital_tiers": {
+      "TIER_0": {"viable": true, "expected_roi_p50": 1.5, "notes": "Gumroad/Teachable free tier, screen recorder free"},
+      "TIER_1": {"viable": true, "expected_roi_p50": 3.0, "notes": "better production, email sequences"}
+    }
+  },
+  {
+    "id": "chrome-extension",
+    "name": "Chrome Extension (freemium utility)",
+    "category": "digital_product",
+    "capital_entry_min": 0,
+    "capital_entry_max": 2000,
+    "roi_distribution": {
+      "p10": -1.0,
+      "p25": -0.5,
+      "p50": 0.5,
+      "p75": 4.0,
+      "p90": 20.0
+    },
+    "time_to_first_dollar_days": {
+      "p25": 60,
+      "p50": 120,
+      "p75": 270
+    },
+    "sleep_test": "YES",
+    "leverage_class": "CODE",
+    "lindy_years": 20,
+    "compound_mechanism": "user base + reviews + Chrome Web Store ranking + data",
+    "failure_rate_year1": 0.75,
+    "structural_risks": ["BIGTECH_ADJACENT", "AI_DISRUPTION", "PLATFORM_POLICY"],
+    "data_sources": [
+      {"source": "chrome_web_store_developer_economics_2024", "year": 2024, "zone_tag": "T"},
+      {"source": "indie_hackers_extension_revenue_threads_2025", "year": 2025, "zone_tag": "T"},
+      {"source": "extensionmonitor_market_data_2024", "year": 2024, "zone_tag": "T"}
+    ],
+    "founder_fit_tags": ["can_code", "english_fluent"],
+    "capital_tiers": {
+      "TIER_0": {"viable": true, "expected_roi_p50": 0.5, "notes": "$5 Chrome Web Store fee, rest is time"},
+      "TIER_1": {"viable": true, "expected_roi_p50": 2.0, "notes": "paid ads for initial users"}
+    }
+  },
+  {
+    "id": "api-wrapper-tool",
+    "name": "AI API Wrapper (ChatGPT/Claude wrapper for niche)",
+    "category": "digital_product",
+    "capital_entry_min": 0,
+    "capital_entry_max": 2000,
+    "roi_distribution": {
+      "p10": -1.0,
+      "p25": -0.5,
+      "p50": 1.0,
+      "p75": 5.0,
+      "p90": 25.0
+    },
+    "time_to_first_dollar_days": {
+      "p25": 14,
+      "p50": 45,
+      "p75": 120
+    },
+    "sleep_test": "YES",
+    "leverage_class": "CODE",
+    "lindy_years": 10,
+    "compound_mechanism": "user base + prompt library + usage data + niche expertise",
+    "failure_rate_year1": 0.80,
+    "structural_risks": ["AI_DISRUPTION", "BIGTECH_ADJACENT", "API_COST_SQUEEZE"],
+    "data_sources": [
+      {"source": "producthunt_ai_tool_launches_2024_2025", "year": 2025, "zone_tag": "T"},
+      {"source": "openai_wrapper_market_analysis_2024", "year": 2024, "zone_tag": "T"},
+      {"source": "indie_hackers_ai_wrapper_revenue_2025", "year": 2025, "zone_tag": "?"}
+    ],
+    "founder_fit_tags": ["can_code", "english_fluent"],
+    "capital_tiers": {
+      "TIER_0": {"viable": true, "expected_roi_p50": 1.0, "notes": "free tier APIs + Vercel free hosting"},
+      "TIER_1": {"viable": true, "expected_roi_p50": 3.0, "notes": "own API keys, custom domain"}
+    }
+  },
+  {
+    "id": "affiliate-microsite",
+    "name": "Affiliate Micro-Site (niche comparison/review)",
+    "category": "media",
+    "capital_entry_min": 0,
+    "capital_entry_max": 500,
+    "roi_distribution": {
+      "p10": -0.5,
+      "p25": -0.2,
+      "p50": 0.2,
+      "p75": 2.0,
+      "p90": 8.0
+    },
+    "time_to_first_dollar_days": {
+      "p25": 90,
+      "p50": 180,
+      "p75": 365
+    },
+    "sleep_test": "YES",
+    "leverage_class": "MEDIA",
+    "lindy_years": 25,
+    "compound_mechanism": "SEO authority + content library + backlink profile + email list",
+    "failure_rate_year1": 0.70,
+    "structural_risks": ["CHANNEL_DECAY", "AI_DISRUPTION", "COMMISSION_RATE_DECLINE"],
+    "data_sources": [
+      {"source": "amazon_associates_commission_history_2020_2025", "year": 2025, "zone_tag": "K"},
+      {"source": "authority_hacker_income_reports_2024", "year": 2024, "zone_tag": "K"},
+      {"source": "ahrefs_niche_site_study_2024", "year": 2024, "zone_tag": "T"}
+    ],
+    "founder_fit_tags": ["english_fluent", "seo_knowledge"],
+    "capital_tiers": {
+      "TIER_0": {"viable": true, "expected_roi_p50": 0.2, "notes": "free WordPress hosting, slow SEO build"},
+      "TIER_1": {"viable": true, "expected_roi_p50": 1.0, "notes": "paid hosting + content tools"}
+    }
+  },
+  {
+    "id": "content-authority-site",
+    "name": "Content/Authority Site (display ad monetized)",
+    "category": "media",
+    "capital_entry_min": 0,
+    "capital_entry_max": 2000,
+    "roi_distribution": {
+      "p10": -0.8,
+      "p25": -0.3,
+      "p50": 0.5,
+      "p75": 3.0,
+      "p90": 10.0
+    },
+    "time_to_first_dollar_days": {
+      "p25": 120,
+      "p50": 240,
+      "p75": 365
+    },
+    "sleep_test": "YES",
+    "leverage_class": "MEDIA",
+    "lindy_years": 25,
+    "compound_mechanism": "content library + domain authority + traffic moat + ad rate optimization",
+    "failure_rate_year1": 0.65,
+    "structural_risks": ["AI_DISRUPTION", "GOOGLE_ALGO_CHANGE", "AD_RATE_DECLINE"],
+    "data_sources": [
+      {"source": "mediavine_raptive_publisher_data_2024", "year": 2024, "zone_tag": "T"},
+      {"source": "flippa_content_site_multiples_2024", "year": 2024, "zone_tag": "K"},
+      {"source": "google_helpful_content_update_impact_2024", "year": 2024, "zone_tag": "K"}
+    ],
+    "founder_fit_tags": ["english_fluent", "seo_knowledge"],
+    "capital_tiers": {
+      "TIER_0": {"viable": true, "expected_roi_p50": 0.5, "notes": "free hosting, AI-assisted content, 6-12mo to Mediavine threshold"},
+      "TIER_1": {"viable": true, "expected_roi_p50": 1.5, "notes": "paid hosting + content acceleration"}
+    }
+  },
+  {
+    "id": "domain-portfolio",
+    "name": "Domain Name Portfolio (buy/hold/lease)",
+    "category": "financial",
+    "capital_entry_min": 10,
+    "capital_entry_max": 10000,
+    "roi_distribution": {
+      "p10": -0.8,
+      "p25": -0.5,
+      "p50": -0.2,
+      "p75": 1.0,
+      "p90": 8.0
+    },
+    "time_to_first_dollar_days": {
+      "p25": 90,
+      "p50": 365,
+      "p75": 730
+    },
+    "sleep_test": "YES",
+    "leverage_class": "CAPITAL",
+    "lindy_years": 30,
+    "compound_mechanism": "portfolio size + market knowledge + buyer network + renewal equity",
+    "failure_rate_year1": 0.50,
+    "structural_risks": ["MARKET_SATURATION", "RENEWAL_COST_DRAG"],
+    "data_sources": [
+      {"source": "namebio_aftermarket_data_2024", "year": 2024, "zone_tag": "K"},
+      {"source": "godaddy_aftermarket_report_2024", "year": 2024, "zone_tag": "K"},
+      {"source": "domain_investing_subreddit_income_reports_2025", "year": 2025, "zone_tag": "T"}
+    ],
+    "founder_fit_tags": ["english_fluent"],
+    "capital_tiers": {
+      "TIER_0": {"viable": true, "expected_roi_p50": -0.2, "notes": "$10-50/domain, most never sell — extreme survivorship bias"},
+      "TIER_1": {"viable": true, "expected_roi_p50": 0.5, "notes": "better domains at $50-200, still speculative"}
+    }
+  },
+  {
+    "id": "notion-figma-templates",
+    "name": "Notion/Figma Template Store (marketplace-native)",
+    "category": "digital_product",
+    "capital_entry_min": 0,
+    "capital_entry_max": 200,
+    "roi_distribution": {
+      "p10": -0.3,
+      "p25": 0.0,
+      "p50": 0.8,
+      "p75": 3.0,
+      "p90": 10.0
+    },
+    "time_to_first_dollar_days": {
+      "p25": 14,
+      "p50": 45,
+      "p75": 120
+    },
+    "sleep_test": "YES",
+    "leverage_class": "MEDIA",
+    "lindy_years": 15,
+    "compound_mechanism": "template catalog + marketplace reviews + bundle deals + creator brand",
+    "failure_rate_year1": 0.55,
+    "structural_risks": ["PLATFORM_DEPENDENCY", "SATURATION"],
+    "data_sources": [
+      {"source": "notion_marketplace_seller_data_2025", "year": 2025, "zone_tag": "T"},
+      {"source": "gumroad_notion_template_category_2024", "year": 2024, "zone_tag": "K"},
+      {"source": "figma_community_monetization_2024", "year": 2024, "zone_tag": "T"}
+    ],
+    "founder_fit_tags": ["english_fluent"],
+    "capital_tiers": {
+      "TIER_0": {"viable": true, "expected_roi_p50": 0.8, "notes": "zero cost entry, Notion/Figma free accounts"},
+      "TIER_1": {"viable": true, "expected_roi_p50": 2.0, "notes": "own storefront + email list"}
+    }
+  },
+  {
+    "id": "newsletter-paid",
+    "name": "Paid Newsletter (niche B2B intelligence)",
+    "category": "media",
+    "capital_entry_min": 0,
+    "capital_entry_max": 1000,
+    "roi_distribution": {
+      "p10": -0.5,
+      "p25": -0.2,
+      "p50": 0.3,
+      "p75": 2.0,
+      "p90": 8.0
+    },
+    "time_to_first_dollar_days": {
+      "p25": 60,
+      "p50": 120,
+      "p75": 270
+    },
+    "sleep_test": "PARTIAL",
+    "leverage_class": "MEDIA",
+    "lindy_years": 300,
+    "compound_mechanism": "subscriber list + content archive + sponsor relationships + community network",
+    "failure_rate_year1": 0.70,
+    "structural_risks": ["CONTENT_FATIGUE", "SUBSCRIBER_CHURN"],
+    "data_sources": [
+      {"source": "beehiiv_creator_economics_2024", "year": 2024, "zone_tag": "K"},
+      {"source": "substack_paid_conversion_data_2024", "year": 2024, "zone_tag": "K"},
+      {"source": "newsletter_operator_survey_2025", "year": 2025, "zone_tag": "T"}
+    ],
+    "founder_fit_tags": ["english_fluent", "domain_expertise", "consistent_writer"],
+    "capital_tiers": {
+      "TIER_0": {"viable": true, "expected_roi_p50": 0.3, "notes": "Substack/Beehiiv free tier, $2.37 avg subscriber acquisition cost"},
+      "TIER_1": {"viable": true, "expected_roi_p50": 1.5, "notes": "paid tools + cross-promotion budget"}
+    }
+  },
+  {
+    "id": "paid-community",
+    "name": "Paid Community (Discord/Skool/Circle)",
+    "category": "digital_product",
+    "capital_entry_min": 0,
+    "capital_entry_max": 500,
+    "roi_distribution": {
+      "p10": -0.5,
+      "p25": -0.2,
+      "p50": 0.3,
+      "p75": 2.0,
+      "p90": 10.0
+    },
+    "time_to_first_dollar_days": {
+      "p25": 30,
+      "p50": 90,
+      "p75": 180
+    },
+    "sleep_test": "PARTIAL",
+    "leverage_class": "HYBRID",
+    "lindy_years": 50,
+    "compound_mechanism": "member network + content library + peer-generated value + brand",
+    "failure_rate_year1": 0.75,
+    "structural_risks": ["CHURN", "CONTENT_FATIGUE", "PLATFORM_DEPENDENCY"],
+    "data_sources": [
+      {"source": "skool_community_revenue_data_2025", "year": 2025, "zone_tag": "T"},
+      {"source": "discord_server_monetization_study_2024", "year": 2024, "zone_tag": "T"},
+      {"source": "community_led_growth_report_2024", "year": 2024, "zone_tag": "T"}
+    ],
+    "founder_fit_tags": ["english_fluent", "domain_expertise", "community_builder"],
+    "capital_tiers": {
+      "TIER_0": {"viable": true, "expected_roi_p50": 0.3, "notes": "Discord free, Skool $99/mo (need 3 paid members to cover)"},
+      "TIER_1": {"viable": true, "expected_roi_p50": 1.5, "notes": "dedicated platform + content production"}
+    }
+  },
+  {
+    "id": "sdr-agency",
+    "name": "SDR/Lead Gen Agency (outsourced for US SaaS)",
+    "category": "service",
+    "capital_entry_min": 0,
+    "capital_entry_max": 500,
+    "roi_distribution": {
+      "p10": -0.3,
+      "p25": 0.5,
+      "p50": 3.0,
+      "p75": 8.0,
+      "p90": 20.0
+    },
+    "time_to_first_dollar_days": {
+      "p25": 14,
+      "p50": 30,
+      "p75": 60
+    },
+    "sleep_test": "NO",
+    "leverage_class": "LABOR",
+    "lindy_years": 200,
+    "compound_mechanism": "client portfolio + case studies + SOPs + VA team + reputation",
+    "failure_rate_year1": 0.50,
+    "structural_risks": ["CLIENT_CHURN", "CHANNEL_DECAY", "LABOR_DEPENDENCY"],
+    "data_sources": [
+      {"source": "upwork_lead_gen_market_rates_2025", "year": 2025, "zone_tag": "K"},
+      {"source": "apollo_io_cold_email_benchmark_2024", "year": 2024, "zone_tag": "K"},
+      {"source": "smma_agency_revenue_reports_reddit_2025", "year": 2025, "zone_tag": "T"}
+    ],
+    "founder_fit_tags": ["english_fluent", "vietnam_cost_base"],
+    "capital_tiers": {
+      "TIER_0": {"viable": true, "expected_roi_p50": 3.0, "notes": "free email tools + LinkedIn, high ROI but LABOR income not capital return"},
+      "TIER_1": {"viable": true, "expected_roi_p50": 5.0, "notes": "paid tools + 1 VA"}
+    }
+  },
+  {
+    "id": "content-repurposing",
+    "name": "Content Repurposing Service (AI-assisted)",
+    "category": "service",
+    "capital_entry_min": 0,
+    "capital_entry_max": 200,
+    "roi_distribution": {
+      "p10": -0.2,
+      "p25": 0.5,
+      "p50": 2.0,
+      "p75": 5.0,
+      "p90": 12.0
+    },
+    "time_to_first_dollar_days": {
+      "p25": 7,
+      "p50": 21,
+      "p75": 60
+    },
+    "sleep_test": "NO",
+    "leverage_class": "LABOR",
+    "lindy_years": 50,
+    "compound_mechanism": "client base + SOP library + AI workflow templates + portfolio",
+    "failure_rate_year1": 0.55,
+    "structural_risks": ["AI_DISRUPTION", "CLIENT_DIY", "LABOR_DEPENDENCY"],
+    "data_sources": [
+      {"source": "fiverr_content_repurposing_rates_2025", "year": 2025, "zone_tag": "K"},
+      {"source": "upwork_social_media_management_data_2024", "year": 2024, "zone_tag": "K"},
+      {"source": "creator_economy_service_market_2024", "year": 2024, "zone_tag": "T"}
+    ],
+    "founder_fit_tags": ["english_fluent"],
+    "capital_tiers": {
+      "TIER_0": {"viable": true, "expected_roi_p50": 2.0, "notes": "free AI tools, LABOR income"},
+      "TIER_1": {"viable": true, "expected_roi_p50": 3.0, "notes": "paid AI tools + 1 VA for scale"}
+    }
+  },
+  {
+    "id": "productized-audit",
+    "name": "Productized Audit/Assessment Service",
+    "category": "service",
+    "capital_entry_min": 0,
+    "capital_entry_max": 200,
+    "roi_distribution": {
+      "p10": -0.3,
+      "p25": 0.0,
+      "p50": 1.5,
+      "p75": 5.0,
+      "p90": 15.0
+    },
+    "time_to_first_dollar_days": {
+      "p25": 14,
+      "p50": 45,
+      "p75": 90
+    },
+    "sleep_test": "NO",
+    "leverage_class": "LABOR",
+    "lindy_years": 100,
+    "compound_mechanism": "checklist IP + case studies + authority + automation path",
+    "failure_rate_year1": 0.60,
+    "structural_risks": ["CREDIBILITY_COLD_START", "LABOR_DEPENDENCY"],
+    "data_sources": [
+      {"source": "consulting_productized_service_market_2024", "year": 2024, "zone_tag": "T"},
+      {"source": "indie_hackers_audit_service_threads_2025", "year": 2025, "zone_tag": "T"},
+      {"source": "upwork_consulting_audit_rates_2025", "year": 2025, "zone_tag": "K"}
+    ],
+    "founder_fit_tags": ["english_fluent", "domain_expertise"],
+    "capital_tiers": {
+      "TIER_0": {"viable": true, "expected_roi_p50": 1.5, "notes": "expertise + document templates, LABOR income"},
+      "TIER_1": {"viable": true, "expected_roi_p50": 3.0, "notes": "professional branding + outreach tools"}
+    }
+  },
+  {
+    "id": "commodity-micro-broker",
+    "name": "Commodity Micro-Broker (VN agricultural to ASEAN)",
+    "category": "physical",
+    "capital_entry_min": 100,
+    "capital_entry_max": 5000,
+    "roi_distribution": {
+      "p10": -1.0,
+      "p25": -0.5,
+      "p50": 0.8,
+      "p75": 3.0,
+      "p90": 10.0
+    },
+    "time_to_first_dollar_days": {
+      "p25": 60,
+      "p50": 120,
+      "p75": 270
+    },
+    "sleep_test": "NO",
+    "leverage_class": "LABOR",
+    "lindy_years": 500,
+    "compound_mechanism": "supplier relationships + buyer trust + market intelligence + route knowledge",
+    "failure_rate_year1": 0.65,
+    "structural_risks": ["WORKING_CAPITAL_TRAP", "QUALITY_DISPUTES", "PAYMENT_DEFAULT"],
+    "data_sources": [
+      {"source": "vn_agricultural_export_statistics_2024", "year": 2024, "zone_tag": "K"},
+      {"source": "alibaba_commodity_trade_data_2024", "year": 2024, "zone_tag": "T"},
+      {"source": "stage0_coffee_export_research_2026", "year": 2026, "zone_tag": "T"}
+    ],
+    "founder_fit_tags": ["vietnam_location", "supply_chain_access"],
+    "capital_tiers": {
+      "TIER_0": {"viable": true, "expected_roi_p50": 0.8, "notes": "$100-500 for samples + transport, broker fee model"},
+      "TIER_1": {"viable": true, "expected_roi_p50": 2.0, "notes": "own small inventory possible"}
+    }
+  },
+  {
+    "id": "niche-job-board",
+    "name": "Niche Job Board (vertical-specific)",
+    "category": "digital_product",
+    "capital_entry_min": 0,
+    "capital_entry_max": 500,
+    "roi_distribution": {
+      "p10": -0.8,
+      "p25": -0.5,
+      "p50": 0.3,
+      "p75": 3.0,
+      "p90": 15.0
+    },
+    "time_to_first_dollar_days": {
+      "p25": 90,
+      "p50": 180,
+      "p75": 365
+    },
+    "sleep_test": "YES",
+    "leverage_class": "CODE",
+    "lindy_years": 30,
+    "compound_mechanism": "job seeker traffic + employer relationships + niche authority + data",
+    "failure_rate_year1": 0.75,
+    "structural_risks": ["CHICKEN_EGG", "PLATFORM_COMPETITION"],
+    "data_sources": [
+      {"source": "niche_job_board_revenue_analysis_2024", "year": 2024, "zone_tag": "T"},
+      {"source": "indie_hackers_job_board_threads_2025", "year": 2025, "zone_tag": "T"},
+      {"source": "pallet_job_board_platform_data_2024", "year": 2024, "zone_tag": "T"}
+    ],
+    "founder_fit_tags": ["english_fluent", "niche_network"],
+    "capital_tiers": {
+      "TIER_0": {"viable": true, "expected_roi_p50": 0.3, "notes": "free tools (Pallet, Notion), chicken-egg problem at start"},
+      "TIER_1": {"viable": true, "expected_roi_p50": 1.5, "notes": "custom site + SEO budget"}
+    }
+  }
+]

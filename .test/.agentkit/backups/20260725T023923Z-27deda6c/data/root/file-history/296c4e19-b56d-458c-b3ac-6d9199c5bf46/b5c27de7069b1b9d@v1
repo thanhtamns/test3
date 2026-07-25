@@ -1,0 +1,88 @@
+---
+title: "Benchmark Intelligence Engine"
+description: "Parse role-model benchmarks into structured profiles, decompose into micro-factual queries, resolve via 3-tier cascade (SQLite→Web→LLM), assemble deterministic verdicts. Auto-distill every fact to reduce LLM dependency over time."
+status: pending
+priority: P1
+branch: "master"
+tags: [intelligence, benchmark, local-first, micro-decomposition, compound-learning]
+blockedBy: []
+blocks: []
+created: "2026-05-10T08:41:55.400Z"
+createdBy: "ck:plan"
+source: skill
+target_repo: D:/code/invesments/master_investments
+estimated_effort: "7 days"
+---
+
+# Benchmark Intelligence Engine
+
+## Problem
+
+User asks: "Achieve like Giang Tran Minh Thanh ($450M fund director at 25)". Current system sends this as 1 big prompt to LLM. Output quality = LLM reasoning quality that day. No decomposition, no verification, no compound learning.
+
+## Solution
+
+New `benchmark/` module in `.claude/lib/intelligence/` that:
+1. Parses role-model articles/profiles into structured `BenchmarkProfile`
+2. Compares benchmark vs founder → measurable `DimensionGap[]`
+3. Generates 100-200 micro-factual queries per gap
+4. Resolves facts via 3-tier cascade: SQLite KB (free) → WebSearch (cheap) → LLM (last resort, max 20 calls)
+5. Local engine assembles deterministic verdict with traceable evidence
+6. Auto-distills every Tier 2/3 fact to SQLite → system needs less LLM each run
+
+## Architecture
+
+```
+"Achieve like X"
+  → benchmark_parser.py: article → BenchmarkProfile JSON
+  → benchmark_decomposer.py: Profile + Founder → DimensionGap[]
+  → (reuse) micro_query_generator.py: gaps → MicroQuery[100-200]
+  → tiered_resolver.py: KB → WebSearch → LLM cascade
+  → (reuse) fact_assembler.py: verify + deduplicate
+  → path_matcher.py: gaps → matched success paths from SQLite
+  → benchmark_verdict_assembler.py: compose deterministic output
+  → auto_distiller.py: write Tier 2/3 facts back to SQLite
+```
+
+## Target Directory
+
+`D:/code/invesments/master_investments/.claude/lib/intelligence/benchmark/`
+
+## Reuses Existing
+
+| Module | Path | How |
+|--------|------|-----|
+| `dimension_registry.py` | `decomposition/` | Add `benchmark_comparison` question type |
+| `micro_query_generator.py` | `decomposition/` | Generate queries from gaps |
+| `micro_query_runner.py` | `decomposition/` | Fire queries (wrapped by tiered_resolver) |
+| `fact_assembler.py` | `decomposition/` | Verify + deduplicate facts |
+| `atomic_resolver.py` | `reasoning/` | Tier 1 local KB resolution |
+| `synthesis_engine.py` | `decomposition/` | Score + gap analysis |
+
+## Phases
+
+| # | Phase | Effort | Status | Deps |
+|---|-------|--------|--------|------|
+| 1 | [Benchmark Parser](./phase-01-benchmark-parser.md) | 1d | Pending | None |
+| 2 | [Benchmark Decomposer + Gap Analyzer](./phase-02-benchmark-decomposer-gap-analyzer.md) | 1d | Pending | P1 |
+| 3 | [Tiered Fact Resolver](./phase-03-tiered-fact-resolver.md) | 2d | Pending | None |
+| 4 | [Path Matcher + Success Paths DB](./phase-04-path-matcher-success-paths-db.md) | 1d | Pending | P2 |
+| 5 | [Auto-Distiller + Evolution Hook](./phase-05-auto-distiller-evolution-hook.md) | 0.5d | Pending | P3 |
+| 6 | [Benchmark Verdict Assembler](./phase-06-benchmark-verdict-assembler.md) | 1d | Pending | P2, P3, P4, P5 |
+| 7 | [End-to-End Integration Test](./phase-07-end-to-end-integration-test.md) | 0.5d | Pending | P6 |
+
+**Parallelism:** P1+P3 can run in parallel. P2+P4 sequential after P1. P5 after P3. P6 waits for all.
+
+## Success Criteria
+
+- Benchmark verdict is deterministic (same facts → same output)
+- Every claim traceable to source URL or SQLite row
+- LLM calls ≤20 per run (budget enforced)
+- After 10 similar runs, Tier 1 hit rate >80%
+- End-to-end test passes with Giang Tran Minh Thanh benchmark
+
+## Kill Criteria
+
+- Tiered resolver Tier 2 (WebSearch) returns <30% useful facts → Web unreliable for micro-facts
+- Decomposition produces <50% dimension coverage → gap analysis too sparse
+- Auto-distillation retrieval accuracy <70% → stored facts too noisy

@@ -1,0 +1,104 @@
+---
+phase: 1
+title: "Khám Phá & Xác Nhận"
+status: pending
+priority: P1
+effort: "15 giờ (Tuần 1)"
+dependencies: []
+---
+
+# Giai đoạn 1: Khám Phá & Xác Nhận
+
+## Tổng quan
+
+Xác nhận rằng "phân phối" thực sự là friction số 1 của indie hackers, thu thập ngôn ngữ chính xác họ dùng để mô tả nỗi đau, và xác định lỗ hổng của các giải pháp hiện có. Giai đoạn này là CHẶN — không viết code cho đến khi xác nhận đạt.
+
+## Yêu cầu
+
+- Chức năng: Thu thập 50+ điểm dữ liệu xác nhận friction. Nhận 3+ phản hồi DM với mô tả nỗi đau cụ thể.
+- Phi chức năng: Tất cả dữ liệu phải từ cuộc trò chuyện/bài đăng THẬT, không giả định. Gắn nhãn [K] đã xác minh hoặc [T] suy luận.
+
+## Các bước thực hiện
+
+### Ngày 1: Khai thác Reddit/Diễn đàn (3 giờ)
+
+1. Vào r/SideProject — sắp xếp theo "mới nhất", đọc 50 bài đăng
+   - Ghi lại: Bao nhiêu bài đề cập phân phối/người dùng/traffic là vấn đề chính?
+   - Sao chép cụm từ chính xác họ dùng (đây sẽ là copy cho trang landing)
+   - Lưu ý: Họ đã thử giải pháp nào? Cái nào thất bại?
+
+2. Vào r/SaaS, r/indiehackers — quy trình tương tự, mỗi sub 25 bài
+   - Tìm: "how to get first users", "nobody uses my product", "launched but no traction"
+
+3. Lưu vào bảng tính: `discovery/friction-data.csv`
+   - Cột: nguồn, url, trích dẫn, loại_friction, giải_pháp_đã_thử, sẵn_sàng_trả_tiền
+
+### Ngày 2: Quan sát cộng đồng (3 giờ)
+
+4. Tham gia 3 server Discord:
+   - Indie Hackers Discord
+   - WIP (Work in Progress)
+   - MicroConf Connect (hoặc cộng đồng builder tương tự)
+
+5. Đọc các kênh #launches, #feedback, #struggles
+   - Ghi lại cùng loại dữ liệu như Ngày 1
+   - Lưu ý: Họ đang YÊU CẦU trợ giúp phân phối? Hay chỉ phàn nàn?
+
+### Ngày 3: Trò chuyện trực tiếp (3 giờ)
+
+6. Xác định 10 indie hackers đã đăng về khó khăn phân phối trong 30 ngày qua
+7. Gửi DM theo mẫu:
+   ```
+   Chào [tên], mình thấy bài của bạn về [vấn đề cụ thể].
+   Mình đang nghiên cứu cách builders tìm người dùng đầu tiên.
+   Câu hỏi nhanh: điều gì bạn đã thử cho phân phối mà KHÔNG hiệu quả?
+   Và bạn sẽ trả tiền cho gì nếu nó thực sự giải quyết được vấn đề?
+   ```
+8. Theo dõi phản hồi trong `discovery/dm-responses.csv`
+
+### Ngày 4: Phân tích khoảng trống đối thủ (3 giờ)
+
+9. Google: "indie hacker distribution tool", "find users for SaaS", "product launch tool"
+10. Với mỗi công cụ tìm được, ghi lại:
+    - Tên, URL, giá
+    - Làm được gì vs KHÔNG làm được gì
+    - Đánh giá/phàn nàn từ người dùng
+11. Xác định KHOẢNG TRỐNG: công cụ nào KHÔNG giải quyết được?
+12. Lưu vào `discovery/competitor-analysis.md`
+
+### Ngày 5: Cổng quyết định (3 giờ)
+
+13. Tổng hợp dữ liệu vào `discovery/validation-report.md`:
+    - Xác nhận friction: Phân phối có thực sự là #1? (cần 70%+ bài đề cập)
+    - Ngân hàng ngôn ngữ: Cụm từ chính xác cho trang landing
+    - Tín hiệu sẵn sàng trả tiền: Họ có trả không? Bao nhiêu?
+    - Khoảng trống đối thủ: Thiếu gì?
+    - Hiểu biết từ DM: Chiều sâu định tính
+
+14. **QUYẾT ĐỊNH TẠI CỔNG:**
+
+| Tín hiệu | TIẾN | CHUYỂN HƯỚNG | HUỶ |
+|-----------|------|--------------|-----|
+| Bài đề cập phân phối | >70% | 40-70% | <40% |
+| Tỷ lệ phản hồi DM | >30% (3/10) | 10-30% | <10% |
+| Công cụ hiện có lấp khoảng trống | <50% | 50-80% | >80% |
+| Bằng chứng sẵn sàng trả tiền | >3 người nói "có" | 1-2 người | 0 người |
+
+## Tiêu chí thành công
+
+- [ ] Thu thập 50+ điểm dữ liệu từ Reddit/diễn đàn
+- [ ] Quan sát 3+ cộng đồng Discord có ghi chú
+- [ ] Gửi 10 DM, nhận 3+ phản hồi
+- [ ] Phân tích khoảng trống đối thủ hoàn thành (5+ công cụ được khảo sát)
+- [ ] Báo cáo xác nhận được viết với quyết định TIẾN/CHUYỂN HƯỚNG/HUỶ
+- [ ] Ngôn ngữ chính xác của người dùng được thu thập cho trang landing
+- [ ] Đạt quyết định TIẾN (hoặc kế hoạch chuyển hướng được ghi nhận)
+
+## Đánh giá rủi ro
+
+| Rủi ro | Xác suất | Cách giảm thiểu |
+|--------|----------|-----------------|
+| Phân phối KHÔNG phải friction #1 | 20% | Chuyển sang friction #2 từ dữ liệu (có thể là giá hoặc churn) |
+| Không ai phản hồi DM | 30% | Đề nghị phân tích miễn phí làm động lực; thử Twitter thay thế |
+| Công cụ hiện có đã giải quyết | 15% | Khác biệt hoá bằng AI cá nhân hoá hoặc giá rẻ hơn |
+| Thiên kiến echo chamber (chỉ tìm thấy những gì mong đợi) | 25% | Chủ động tìm bằng chứng ngược: "phân phối KHÔNG phải vấn đề" |

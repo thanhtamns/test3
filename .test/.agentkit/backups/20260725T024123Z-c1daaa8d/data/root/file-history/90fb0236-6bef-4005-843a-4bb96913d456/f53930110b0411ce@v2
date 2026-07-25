@@ -1,0 +1,205 @@
+---
+phase: 3
+title: "Anti-Orthodox Quality Gate"
+status: completed
+priority: P1
+effort: "2h"
+dependencies: [1, 2]
+completed: "2026-05-10T08:18:00.000Z"
+---
+
+# Phase 3: Anti-Orthodox Quality Gate
+
+## Overview
+
+Add Step 7.1 to stage0: before finalizing ANY recommendation (alternatives, side-door paths, short/medium/long tracks), check if the advice is "ChatGPT-obvious". If yes → REWRITE with non-obvious insight or REMOVE.
+
+This prevents the system from producing generic advice like "attend events", "build your LinkedIn", "create content" — which every AI and career blog already says.
+
+## Requirements
+
+- Functional: New Step 7.1 fires AFTER Step 7 verdict draft, BEFORE final output
+- Functional: Each recommendation checked against orthodoxy test
+- Functional: Failed recommendations get rewritten or removed
+- Non-functional: Add ≤10s to pipeline (text analysis, no web calls)
+- Non-functional: Must not block legitimate advice that happens to be common
+
+## Architecture
+
+```
+Step 7 — Verdict synthesis (draft)
+    ↓
+Step 7.1 — Anti-Orthodox Gate (NEW)
+    ├── Extract all recommendations from verdict draft
+    ├── For each recommendation:
+    │   ├── ORTHODOXY TEST: Would top-3 Google results for 
+    │   │   "how to [goal] in [industry]" say the same thing?
+    │   │   ├── YES → Flag as ORTHODOX
+    │   │   └── NO → Pass
+    │   │
+    │   ├── SPECIFICITY TEST: Does it name specific people/companies/
+    │   │   platforms/scripts, or is it generic category advice?
+    │   │   ├── GENERIC → Flag as ORTHODOX
+    │   │   └── SPECIFIC → Pass
+    │   │
+    │   └── CHATGPT TEST: Could a zero-context ChatGPT prompt 
+    │       "how to break into [industry]" produce this advice?
+    │       ├── YES → Flag as ORTHODOX
+    │       └── NO → Pass
+    │
+    ├── ORTHODOX recommendations:
+    │   ├── Try REWRITE with side-door thinking (inject power-network lens)
+    │   ├── If rewrite still orthodox → REMOVE and note "[removed: generic]"
+    │   └── If rewrite produces specific chain/script → KEEP rewrite
+    │
+    └── Output: cleaned verdict with only non-obvious recommendations
+```
+
+## Related Code Files
+
+- Modify: `D:/code/invesments/master_investments/.claude/commands/stage0.md` — Add Step 7.1
+- Modify: `D:/code/invesments/master_investments/.claude/commands/stage0-checklist.md` — Add checklist
+- Create: `D:/code/invesments/master_investments/.claude/skills/business/transaction-layer/nui-hunter/scripts/anti-orthodox-gate.py` — Orthodox detection logic
+
+## Implementation Steps
+
+### 1. Create anti-orthodox-gate.py
+
+Python script that receives verdict draft text, extracts recommendations, scores each:
+
+```python
+ORTHODOX_PATTERNS = [
+    # Networking
+    r"attend\s+(events?|conferences?|meetups?)",
+    r"build\s+(your\s+)?(network|connections|relationships)",
+    r"join\s+(communities|groups|associations)",
+    r"go\s+to\s+(networking|industry)\s+events?",
+    
+    # Content
+    r"create\s+(content|blog|podcast|youtube|linkedin\s+posts?)",
+    r"build\s+(your\s+)?(personal\s+brand|online\s+presence|thought\s+leadership)",
+    r"post\s+(regularly|consistently|weekly)",
+    r"share\s+(your\s+)?(expertise|knowledge|insights)",
+    
+    # Cold outreach
+    r"(cold\s+)?(email|dm|message|outreach)\s+(people|investors|founders)",
+    r"reach\s+out\s+to\s+\d+\s+(people|companies|investors)",
+    r"send\s+(linkedin|cold)\s+(messages?|invitations?)",
+    
+    # Generic learning
+    r"learn\s+(about|more|the\s+basics)",
+    r"take\s+(a\s+)?(course|class|certification)",
+    r"read\s+(books?|articles?)\s+(about|on)",
+    
+    # Volunteer
+    r"volunteer\s+(at|for|with)",
+    r"offer\s+(free|pro\s+bono)\s+(work|services?|help)",
+]
+
+SPECIFICITY_SIGNALS = [
+    r"@\w+",                          # Social handle
+    r"https?://",                     # URL
+    r'"[^"]{10,}"',                   # Quoted script ≥10 chars
+    r"(Mr|Ms|Mrs)\.\s+\w+",          # Named person
+    r"\b[A-Z][a-z]+\s+[A-Z][a-z]+\b",  # Proper name (2 words capitalized)
+    r"(CEO|CTO|CFO|VP|Director)\s+of\s+\w+",  # Titled role at named org
+]
+
+def score_orthodoxy(recommendation: str) -> dict:
+    orthodox_hits = count_pattern_matches(recommendation, ORTHODOX_PATTERNS)
+    specificity_hits = count_pattern_matches(recommendation, SPECIFICITY_SIGNALS)
+    
+    is_orthodox = orthodox_hits >= 2 and specificity_hits < 2
+    
+    return {
+        "text": recommendation,
+        "orthodox_hits": orthodox_hits,
+        "specificity_hits": specificity_hits,
+        "verdict": "ORTHODOX" if is_orthodox else "PASS",
+        "rewrite_needed": is_orthodox
+    }
+```
+
+### 2. Add Step 7.1 to stage0.md
+
+Insert after Step 7, before Step 8:
+
+```markdown
+### Step 7.1 — Anti-Orthodox Quality Gate
+
+**Purpose:** Reject generic advice that any AI or career blog would produce. 
+Every recommendation must pass the "would a stranger with zero context and 
+ChatGPT produce this same advice?" test.
+
+**Execution:**
+
+1. Extract all actionable recommendations from verdict draft (Steps, tracks, 
+   alternatives, side-door paths)
+
+2. For each recommendation, apply 3 tests:
+
+   **Test A — Orthodoxy Pattern:** Does it match generic advice patterns?
+   - "attend events" / "build network" / "create content" / "cold email" 
+   - "volunteer" / "take a course" / "read books" / "get certified"
+   - If ≥2 pattern matches AND <2 specificity signals → ORTHODOX
+
+   **Test B — Specificity:** Does it name:
+   - A specific person, company, or platform? (not "investors" but "CTO of Sendo")
+   - A specific script? (not "communicate value" but '"Say this: ..."')
+   - A specific action with measurable outcome? (not "build relationships" 
+     but "help 3 CTOs in Do Ventures portfolio with AI pipeline review")
+   - If NO to all 3 → ORTHODOX
+
+   **Test C — Side-Door Check:** Is this a front-door or side-door approach?
+   - Front door: apply, submit, cold outreach, compete with other applicants
+   - Side door: indirect chain, manufactured proximity, value-before-ask
+   - If FRONT DOOR and alternatives exist → ORTHODOX (prefer side-door)
+
+3. For ORTHODOX recommendations:
+   a. Attempt rewrite: inject power-network thinking (chain, script, target)
+   b. If rewrite produces specific chain with ≥1 named role + script → KEEP
+   c. If rewrite still generic → REMOVE, note "[removed: orthodox — 
+      available via basic Google search]"
+
+4. Log: total recs checked, orthodox flagged, rewritten, removed
+
+**Exception:** If ALL recommendations are flagged orthodox (rare), keep top 2 
+most specific ones with "[ORTHODOX — upgrade with specific targets]" tag rather 
+than outputting nothing.
+
+**Quality gate integration:** This step feeds into stage0-post-audit.cjs. 
+Post-audit checks for orthodox_removed_count. If >50% removed → emit warning 
+"Side-door thinking underutilized — consider re-running with Step 6.8.5."
+```
+
+### 3. Update stage0-checklist.md
+
+Add line:
+```
+7.1    Anti-orthodox gate: each recommendation checked (orthodoxy + specificity + side-door). Orthodox → rewrite or remove.
+```
+
+### 4. Integration with existing Anti-Generic Gate
+
+The agents already have an Anti-Generic Gate in their shared rules:
+```
+"Could ChatGPT produce this?" → If YES → add non-obvious insight or delete
+```
+
+Step 7.1 extends this from per-agent to verdict-level. The existing agent-level gate catches generic analysis; Step 7.1 catches generic recommendations that survive synthesis.
+
+## Success Criteria
+
+- [x] anti-orthodox-gate.py created with pattern matching + specificity scoring
+- [x] Step 7.1 added to stage0.md
+- [x] Checklist updated
+- [x] Test: "attend startup events and build your network" → flagged ORTHODOX
+- [x] Test: "find CTO of Sendo on LinkedIn, DM: '...'" → PASS
+- [x] Test: "create content on LinkedIn" → ORTHODOX; rewrite → "write technical teardown of [specific AI startup], tag [specific investor]" → PASS
+- [x] Exception: all-orthodox case keeps top 2 with tag
+
+## Risk Assessment
+
+- **Risk**: Over-filtering removes legitimate advice. **Mitigation**: Specificity signals override orthodox patterns. If recommendation names specific person/company/script, it passes regardless of pattern match.
+- **Risk**: Rewrite quality depends on LLM. **Mitigation**: Rewrite has clear instruction: "inject chain + script + target name". If still vague after rewrite → remove rather than keep bad rewrite.
+- **Risk**: Slows pipeline. **Mitigation**: Text analysis only, no web calls. <10s added.

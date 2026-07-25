@@ -1,0 +1,150 @@
+use std::process::Command;
+
+fn codeflow_bin() -> String {
+    let mut path = std::path::PathBuf::from(env!("CARGO_BIN_EXE_codeflow"));
+    if !path.exists() {
+        path = std::path::PathBuf::from("target/debug/codeflow");
+    }
+    path.to_string_lossy().to_string()
+}
+
+#[test]
+fn test_version_output() {
+    let output = Command::new(codeflow_bin())
+        .arg("update")
+        .output()
+        .expect("failed to run codeflow");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("codeflow 0.1.0"), "expected version in output: {}", stdout);
+    assert!(stdout.contains("target:"), "expected target info: {}", stdout);
+}
+
+#[test]
+fn test_cache_info_no_db() {
+    let output = Command::new(codeflow_bin())
+        .args(["cache", "info"])
+        .env("HOME", std::env::temp_dir())
+        .env("USERPROFILE", std::env::temp_dir())
+        .env("LOCALAPPDATA", std::env::temp_dir().join("nonexistent"))
+        .output()
+        .expect("failed to run codeflow");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("No cache") || stdout.contains("Cache entries"),
+        "unexpected output: {}", stdout
+    );
+}
+
+#[test]
+fn test_stats_no_data() {
+    let output = Command::new(codeflow_bin())
+        .arg("stats")
+        .env("HOME", std::env::temp_dir().join("codeflow-test-nodata"))
+        .env("USERPROFILE", std::env::temp_dir().join("codeflow-test-nodata"))
+        .env("LOCALAPPDATA", std::env::temp_dir().join("codeflow-test-nodata"))
+        .output()
+        .expect("failed to run codeflow");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("No data yet"), "expected no-data message: {}", stdout);
+}
+
+#[test]
+fn test_hook_pre_tool_use_passthrough() {
+    let input = r#"{"tool_name":"Read","tool_input":{"file_path":"/tmp/foo"}}"#;
+    let output = Command::new(codeflow_bin())
+        .args(["hook", "pre-tool-use"])
+        .env("CODEFLOW_SESSION_ID", "test")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            child.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
+            child.wait_with_output()
+        })
+        .expect("failed to run hook");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout.trim(), "{}", "non-Bash tool should passthrough: {}", stdout);
+}
+
+#[test]
+fn test_hook_pre_tool_use_rewrites_bash() {
+    let input = r#"{"tool_name":"Bash","tool_input":{"command":"git status"}}"#;
+    let output = Command::new(codeflow_bin())
+        .args(["hook", "pre-tool-use"])
+        .env("CODEFLOW_SESSION_ID", "test")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            child.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
+            child.wait_with_output()
+        })
+        .expect("failed to run hook");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("codeflow"), "expected rewrite with codeflow binary: {}", stdout);
+    assert!(stdout.contains("wrap"), "expected 'wrap' subcommand in rewrite: {}", stdout);
+    assert!(stdout.contains("git status"), "expected original command preserved: {}", stdout);
+}
+
+#[test]
+fn test_hook_invalid_json_degrades() {
+    let input = "not json at all";
+    let output = Command::new(codeflow_bin())
+        .args(["hook", "pre-tool-use"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            child.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
+            child.wait_with_output()
+        })
+        .expect("failed to run hook");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(stdout.trim(), "{}", "invalid JSON should passthrough: {}", stdout);
+    assert!(stderr.contains("health-check"), "expected health-check warning: {}", stderr);
+}
+
+#[test]
+fn test_hook_post_tool_use_noop() {
+    let input = r#"{}"#;
+    let output = Command::new(codeflow_bin())
+        .args(["hook", "post-tool-use"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            child.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
+            child.wait_with_output()
+        })
+        .expect("failed to run hook");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout.trim(), "{}", "post-tool-use should be no-op: {}", stdout);
+}
+
+#[test]
+fn test_wrap_echo() {
+    let output = Command::new(codeflow_bin())
+        .args(["wrap", "echo", "hello world"])
+        .env("CODEFLOW_SESSION_ID", "integration-test")
+        .env("HOME", std::env::temp_dir().join("codeflow-wrap-test"))
+        .env("USERPROFILE", std::env::temp_dir().join("codeflow-wrap-test"))
+        .env("LOCALAPPDATA", std::env::temp_dir().join("codeflow-wrap-test"))
+        .output()
+        .expect("failed to run wrap");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("hello world"), "wrap should pass through echo output: {}", stdout);
+    assert!(output.status.success(), "wrap echo should succeed");
+}

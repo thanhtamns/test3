@@ -1,0 +1,118 @@
+package main
+
+import (
+	"bytes"
+	"compress/gzip"
+	"fmt"
+	"io"
+	"net/http"
+	"time"
+
+	pb "github.com/codeflow-dev/codeflow/cloud/proto"
+	"google.golang.org/protobuf/proto"
+)
+
+func main() {
+	now := time.Now()
+	events := make([]*pb.Event, 0, 50)
+
+	commands := []struct {
+		cmd    string
+		filter string
+		input  uint64
+		saved  uint64
+	}{
+		{"git diff", "git-diff", 8000, 3200},
+		{"git status", "git-status", 2000, 1400},
+		{"cargo test", "cargo-test", 12000, 5400},
+		{"npm test", "npm-test", 6000, 2100},
+		{"tsc", "tsc", 3000, 900},
+		{"cargo build", "cargo-build", 15000, 7500},
+		{"eslint .", "eslint", 4000, 1600},
+		{"pytest", "pytest", 5000, 1750},
+		{"go test ./...", "go-test", 9000, 3600},
+		{"docker logs app", "docker-logs", 7000, 4200},
+	}
+
+	projects := []string{
+		"/home/user/codeflow",
+		"/home/user/dashboard",
+		"/home/user/api-server",
+	}
+
+	id := 0
+	for day := 0; day < 14; day++ {
+		ts := now.AddDate(0, 0, -day)
+		for _, proj := range projects {
+			for _, cmd := range commands {
+				id++
+				events = append(events, &pb.Event{
+					Id:          fmt.Sprintf("seed-%d", id),
+					TimestampMs: ts.UnixMilli(),
+					SessionId:   fmt.Sprintf("sess-%d-%d", day, id%5),
+					ProjectDir:  proj,
+					Command:     cmd.cmd,
+					Compression: &pb.CompressionEvent{
+						InputBytes:  cmd.input * 4,
+						OutputBytes: (cmd.input - cmd.saved) * 4,
+						InputTokens: cmd.input,
+						OutputTokens: cmd.input - cmd.saved,
+						TokensSaved: cmd.saved,
+						FilterName:  cmd.filter,
+						LatencyMs:   1.5,
+					},
+				})
+
+				if day%3 == 0 {
+					id++
+					events = append(events, &pb.Event{
+						Id:          fmt.Sprintf("seed-%d", id),
+						TimestampMs: ts.UnixMilli(),
+						SessionId:   fmt.Sprintf("sess-%d-%d", day, id%5),
+						ProjectDir:  proj,
+						Command:     cmd.cmd,
+						Dedup: &pb.DedupEvent{
+							ContentHash: fmt.Sprintf("hash-%d", id),
+							CacheHit:    true,
+							TokensSaved: cmd.saved / 2,
+							LatencyMs:   0.3,
+						},
+					})
+				}
+			}
+		}
+	}
+
+	batch := &pb.EventBatch{
+		CliVersion: "0.1.0-seed",
+		MachineId:  "seed-machine",
+		Events:     events,
+	}
+
+	data, err := proto.Marshal(batch)
+	if err != nil {
+		panic(err)
+	}
+
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	gz.Write(data)
+	gz.Close()
+
+	fmt.Printf("Seeding %d events (%d bytes proto, %d bytes gzipped)...\n",
+		len(events), len(data), buf.Len())
+
+	req, _ := http.NewRequest("POST", "http://localhost:8080/v1/events", &buf)
+	req.Header.Set("Content-Type", "application/x-protobuf")
+	req.Header.Set("Content-Encoding", "gzip")
+	req.Header.Set("X-Tenant-ID", "demo-tenant")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	fmt.Printf("Response: %d %s\n", resp.StatusCode, string(body))
+}

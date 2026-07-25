@@ -1,0 +1,50 @@
+{
+  "schema_version": "1.0",
+  "purpose": "Maps AgentMemory MCP tools to cognitive 7-layer system. Used by agentmemory-sync-bridge.py.",
+  "agentmemory_api": {
+    "base_url": "http://localhost:3111",
+    "health_endpoint": "/agentmemory/health",
+    "auth_env_var": "AGENTMEMORY_SECRET"
+  },
+  "tool_to_layer_map": {
+    "memory_save": {
+      "cognitive_layers": ["L1_ingest", "L4_hebbian"],
+      "description": "New facts → L1 chunk ingest + L4 Hebbian boost on save"
+    },
+    "memory_smart_search": {
+      "cognitive_layers": ["L2_cognee_store", "L5_retrieve"],
+      "description": "Hybrid search → maps to L2 graph retrieval + L5 spreading activation"
+    },
+    "memory_recall": {
+      "cognitive_layers": ["L5_retrieve"],
+      "description": "Direct recall → L5 system1 reflex path"
+    },
+    "memory_patterns": {
+      "cognitive_layers": ["L7_metacognition"],
+      "description": "Pattern detection → L7 consolidation + gap detection"
+    },
+    "memory_governance_delete": {
+      "cognitive_layers": ["L6_hitl"],
+      "description": "Prune → L6 metacognition prune queue"
+    },
+    "memory_consolidate": {
+      "cognitive_layers": ["L6_hitl", "L7_metacognition"],
+      "description": "Auto-consolidation → replaces manual HITL review"
+    }
+  },
+  "sync_settings": {
+    "stale_threshold_days": 60,
+    "decay_factor": 0.95,
+    "consolidation_trigger_count": 50,
+    "archive_threshold_days": 90,
+    "k_tag_only_ingest": true
+  },
+  "data_paths": {
+    "agentmemory_data": "data/agentmemory/",
+    "cognitive_root": "data/cognitive/",
+    "bayesian_db": "data/cognitive/custom/bayesian.db",
+    "hebbian_db": "data/cognitive/custom/hebbian-edges.db",
+    "hitl_pending": "data/cognitive/custom/pending-queue.jsonl",
+    "hitl_approved": "data/cognitive/custom/approved-log.jsonl"
+  }
+}

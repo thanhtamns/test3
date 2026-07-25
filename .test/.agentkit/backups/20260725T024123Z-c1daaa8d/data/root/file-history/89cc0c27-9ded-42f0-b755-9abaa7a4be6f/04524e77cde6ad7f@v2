@@ -1,0 +1,31 @@
+pub mod agent_trace;
+pub mod attestation;
+pub mod budget_policy;
+pub mod compliance;
+pub mod content_hash;
+pub mod dashboard_template;
+pub mod cost;
+pub mod cyclonedx_export;
+pub mod dedup;
+pub mod dep_validator;
+pub mod events;
+pub mod exporter;
+pub mod filter;
+pub mod license_checker;
+pub mod pr_linker;
+pub mod pricing;
+pub mod provenance;
+pub mod quality_gate;
+pub mod read_dedup;
+pub mod router;
+pub mod security;
+pub mod session;
+pub mod slsa_export;
+pub mod soc2_export;
+pub mod tracking;
+pub mod util;
+pub mod waste;
+
+pub mod proto {
+    include!(concat!(env!("OUT_DIR"), "/codeflow.events.v1.rs"));
+}

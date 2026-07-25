@@ -1,0 +1,22 @@
+{
+  "id": "3",
+  "subject": "Phase 3: Root Docker Compose",
+  "description": "Create root docker-compose.yml orchestrating full stack (ClickHouse+NATS+API+Dashboard). Create dashboard/Dockerfile for Next.js. Single 'docker compose up' starts everything. See plans/260605-investor-demo-stack/phase-03-root-docker-compose.md",
+  "activeForm": "Creating root docker-compose",
+  "status": "pending",
+  "blocks": [
+    "4",
+    "5"
+  ],
+  "blockedBy": [
+    "1",
+    "2"
+  ],
+  "metadata": {
+    "phase": 3,
+    "planDir": "plans/260605-investor-demo-stack",
+    "phaseFile": "phase-03-root-docker-compose.md",
+    "priority": "P1",
+    "effort": "1h"
+  }
+}

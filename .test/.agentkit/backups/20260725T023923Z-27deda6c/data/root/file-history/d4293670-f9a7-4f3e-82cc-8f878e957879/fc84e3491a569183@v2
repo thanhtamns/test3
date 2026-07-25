@@ -1,0 +1,282 @@
+//! Shared types and helpers for compliance export formats.
+//!
+//! Provides `AuditRequest`, `AuditFormat`, `AuditStats`, and helper
+//! functions that query provenance.db and cost.db for a given date range.
+
+use anyhow::{Context, Result};
+use std::path::PathBuf;
+
+use crate::core::cost_store::CostStore;
+use crate::core::provenance::{ProvenanceRecord, ProvenanceStore};
+
+// ── Public types ──────────────────────────────────────────────────────────────
+
+/// Specifies which compliance export format to produce.
+#[derive(Debug, Clone, PartialEq)]
+pub enum AuditFormat {
+    Slsa,
+    CycloneDx,
+    Soc2,
+    EuAiAct,
+    All,
+}
+
+impl AuditFormat {
+    /// Parse from a CLI string value (case-insensitive).
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "slsa" => Some(Self::Slsa),
+            "cyclonedx" => Some(Self::CycloneDx),
+            "soc2" => Some(Self::Soc2),
+            "eu-ai-act" | "euaiact" => Some(Self::EuAiAct),
+            "all" => Some(Self::All),
+            _ => None,
+        }
+    }
+
+    /// Human-readable label for display.
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Slsa => "SLSA Provenance v1.0",
+            Self::CycloneDx => "CycloneDX SBOM",
+            Self::Soc2 => "SOC 2 Type II",
+            Self::EuAiAct => "EU AI Act Annex IV",
+            Self::All => "All Formats",
+        }
+    }
+}
+
+/// Parameters for an audit export run.
+#[allow(dead_code)]
+pub struct AuditRequest {
+    pub format: AuditFormat,
+    pub range_days: u32,
+    pub project_filter: Option<String>,
+    pub dev_filter: Option<String>,
+    pub output_dir: Option<PathBuf>,
+}
+
+impl Default for AuditRequest {
+    fn default() -> Self {
+        Self {
+            format: AuditFormat::Slsa,
+            range_days: 90,
+            project_filter: None,
+            dev_filter: None,
+            output_dir: None,
+        }
+    }
+}
+
+/// Aggregated statistics gathered from the local databases.
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct AuditStats {
+    pub total_provenance: u64,
+    pub total_cost_usd: f64,
+    pub quality_findings: u64,
+    /// (from_rfc3339, to_rfc3339)
+    pub date_range: (String, String),
+}
+
+// ── Date range helpers ────────────────────────────────────────────────────────
+
+/// Convert a range specifier string to a start ISO-8601 timestamp (UTC).
+///
+/// Supported values: "30d", "90d", "1y", "all"
+/// Returns `None` for "all" (no lower bound).
+pub fn range_to_since(range: &str) -> Option<String> {
+    let days: i64 = match range.to_lowercase().as_str() {
+        "all" => return None,
+        "30d" => 30,
+        "90d" => 90,
+        "1y" => 365,
+        other => {
+            let n = if let Some(stripped) = other.strip_suffix('d') {
+                stripped.parse::<i64>().ok()?
+            } else {
+                other.parse::<i64>().ok()?
+            };
+            if n <= 0 {
+                return None;
+            }
+            n
+        }
+    };
+    let since = chrono::Utc::now() - chrono::Duration::days(days);
+    Some(since.to_rfc3339())
+}
+
+/// Convert a `range_days` integer to an RFC3339 start timestamp.
+pub fn days_to_since(days: u32) -> String {
+    let since = chrono::Utc::now() - chrono::Duration::days(days as i64);
+    since.to_rfc3339()
+}
+
+// ── Database query helpers ────────────────────────────────────────────────────
+
+/// Query all provenance records within a date range.
+///
+/// `since_rfc3339` is an inclusive lower bound; `None` returns all records.
+pub fn query_provenance_records(
+    since_rfc3339: Option<&str>,
+    project_filter: Option<&str>,
+    dev_filter: Option<&str>,
+) -> Result<Vec<ProvenanceRecord>> {
+    let store = match ProvenanceStore::new() {
+        Ok(s) => s,
+        Err(_) => return Ok(Vec::new()), // DB does not exist yet — empty export
+    };
+
+    store
+        .query_range(since_rfc3339, project_filter, dev_filter)
+        .context("failed to query provenance records")
+}
+
+/// Compute stats from already-fetched provenance records (avoids double DB query).
+pub fn stats_from_records(
+    records: &[ProvenanceRecord],
+    since_rfc3339: Option<&str>,
+) -> Result<AuditStats> {
+    let total_provenance = records.len() as u64;
+
+    let total_cost_usd = match CostStore::new() {
+        Ok(store) => {
+            if let Some(since) = since_rfc3339 {
+                store.total_cost_since(since).unwrap_or(0.0)
+            } else {
+                store.total_cost(None).unwrap_or(0.0)
+            }
+        }
+        Err(_) => 0.0,
+    };
+
+    let now = chrono::Utc::now().to_rfc3339();
+    let from = since_rfc3339.unwrap_or("epoch").to_string();
+
+    Ok(AuditStats {
+        total_provenance,
+        total_cost_usd,
+        quality_findings: 0,
+        date_range: (from, now),
+    })
+}
+
+/// Gather aggregate statistics from both databases for the given range.
+#[allow(dead_code)]
+pub fn gather_stats(
+    since_rfc3339: Option<&str>,
+    project_filter: Option<&str>,
+    dev_filter: Option<&str>,
+) -> Result<AuditStats> {
+    let records = query_provenance_records(since_rfc3339, project_filter, dev_filter)?;
+    let total_provenance = records.len() as u64;
+
+    let total_cost_usd = match CostStore::new() {
+        Ok(store) => {
+            if let Some(since) = since_rfc3339 {
+                store.total_cost_since(since).unwrap_or(0.0)
+            } else {
+                store.total_cost(None).unwrap_or(0.0)
+            }
+        }
+        Err(_) => 0.0,
+    };
+
+    let now = chrono::Utc::now().to_rfc3339();
+    let from = since_rfc3339.unwrap_or("epoch").to_string();
+
+    Ok(AuditStats {
+        total_provenance,
+        total_cost_usd,
+        quality_findings: 0, // Phase 5 stub — quality gate integration is post-MVP
+        date_range: (from, now),
+    })
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn audit_format_from_str_roundtrip() {
+        assert_eq!(AuditFormat::from_str("slsa"), Some(AuditFormat::Slsa));
+        assert_eq!(AuditFormat::from_str("SLSA"), Some(AuditFormat::Slsa));
+        assert_eq!(
+            AuditFormat::from_str("cyclonedx"),
+            Some(AuditFormat::CycloneDx)
+        );
+        assert_eq!(AuditFormat::from_str("soc2"), Some(AuditFormat::Soc2));
+        assert_eq!(
+            AuditFormat::from_str("eu-ai-act"),
+            Some(AuditFormat::EuAiAct)
+        );
+        assert_eq!(AuditFormat::from_str("all"), Some(AuditFormat::All));
+        assert_eq!(AuditFormat::from_str("unknown"), None);
+    }
+
+    #[test]
+    fn range_to_since_all_returns_none() {
+        assert_eq!(range_to_since("all"), None);
+    }
+
+    #[test]
+    fn range_to_since_30d_returns_some() {
+        let result = range_to_since("30d");
+        assert!(result.is_some());
+        let ts = result.unwrap();
+        // Should be a valid RFC3339 timestamp
+        assert!(ts.contains('T'));
+    }
+
+    #[test]
+    fn range_to_since_90d_is_before_30d() {
+        let since_90 = range_to_since("90d").unwrap();
+        let since_30 = range_to_since("30d").unwrap();
+        // 90d ago is earlier (lexicographically smaller ISO timestamp)
+        assert!(since_90 < since_30);
+    }
+
+    #[test]
+    fn range_to_since_1y_returns_some() {
+        let result = range_to_since("1y");
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn days_to_since_produces_valid_timestamp() {
+        let ts = days_to_since(90);
+        assert!(ts.contains('T'));
+        assert!(ts.contains('+') || ts.ends_with('Z'));
+    }
+
+    #[test]
+    fn gather_stats_empty_db_succeeds() {
+        let dir = tempfile::tempdir().unwrap();
+        let prov_db = dir.path().join("provenance.db");
+        let cost_db = dir.path().join("cost.db");
+        std::env::set_var("RTK_PROVENANCE_DB", prov_db.to_str().unwrap());
+        std::env::set_var("RTK_COST_DB", cost_db.to_str().unwrap());
+
+        let stats = gather_stats(None, None, None);
+
+        std::env::remove_var("RTK_PROVENANCE_DB");
+        std::env::remove_var("RTK_COST_DB");
+
+        let stats = stats.unwrap();
+        assert_eq!(stats.total_provenance, 0);
+        assert_eq!(stats.total_cost_usd, 0.0);
+    }
+
+    #[test]
+    fn audit_request_default_values() {
+        let req = AuditRequest::default();
+        assert_eq!(req.format, AuditFormat::Slsa);
+        assert_eq!(req.range_days, 90);
+        assert!(req.project_filter.is_none());
+        assert!(req.dev_filter.is_none());
+        assert!(req.output_dir.is_none());
+    }
+}

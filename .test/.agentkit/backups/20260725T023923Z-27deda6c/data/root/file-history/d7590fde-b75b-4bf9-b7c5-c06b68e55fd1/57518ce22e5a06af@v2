@@ -1,0 +1,97 @@
+---
+phase: 5
+title: "Tests"
+status: pending
+priority: P1
+effort: "3h"
+dependencies: [1, 2, 3, 4]
+---
+
+# Phase 5: Tests
+
+## Overview
+
+Comprehensive test suite for all 3 Intelligence Layer components + pipeline integration. Validates asset class schema, portfolio optimization logic, search rewriting, and quality scoring updates.
+
+## Requirements
+
+- Functional: Test every component independently + integration
+- Non-functional: All tests run without network. No web calls. <30s total runtime.
+
+## Related Code Files
+
+- Create: `D:\code\invesments\master_investments\tests\stage0\test_asset_class_database.py`
+- Create: `D:\code\invesments\master_investments\tests\stage0\test_portfolio_optimizer.py`
+- Create: `D:\code\invesments\master_investments\tests\stage0\test_search_rewriter.py`
+- Modify: `D:\code\invesments\master_investments\tests\stage0\test_capital_deployment.py` (add portfolio tests)
+
+## Implementation Steps
+
+### A. test_asset_class_database.py (~10 tests)
+
+1. `test_asset_classes_file_exists` — data/intelligence/asset-classes.json loads
+2. `test_schema_valid` — all entries pass schema validation
+3. `test_minimum_15_classes` — at least 15 asset classes
+4. `test_every_class_has_3_sources` — data_sources array >= 3 per class
+5. `test_roi_distribution_ordered` — p10 < p25 < p50 < p75 < p90
+6. `test_sleep_yes_outnumber_no` — sleep=YES count > sleep=NO count
+7. `test_tier_0_viable_exists` — at least 5 classes with TIER_0.viable=true
+8. `test_failure_rate_range` — 0 <= failure_rate_year1 <= 1
+9. `test_no_duplicate_ids` — all id fields unique
+10. `test_leverage_class_valid` — all leverage_class in {CODE, MEDIA, CAPITAL, LABOR, HYBRID}
+
+### B. test_portfolio_optimizer.py (~15 tests)
+
+1. `test_load_asset_classes` — loads JSON successfully
+2. `test_filter_by_capital` — $500 excludes classes with entry_min > 500
+3. `test_filter_by_sleep_test` — sleep_required=true excludes sleep=NO
+4. `test_filter_by_founder_tags` — missing required tags excluded
+5. `test_kelly_fraction_positive` — profitable classes get positive fraction
+6. `test_kelly_fraction_negative_clamped` — expected-loss classes get 0
+7. `test_allocations_sum_to_capital` — total allocation <= capital_usd
+8. `test_min_allocation_50` — no allocation below $50
+9. `test_max_assets_respected` — output has <= max_assets classes
+10. `test_monte_carlo_produces_percentiles` — output has p10, p50, p90
+11. `test_excluded_classes_have_reasons` — every excluded class has reason string
+12. `test_labor_comparison_present` — when labor classes excluded, comparison computed
+13. `test_zero_capital_returns_empty` — $0 capital → empty portfolio
+14. `test_tier_0_profile_full_run` — end-to-end with realistic TIER_0 profile
+15. `test_output_schema` — output matches expected JSON structure
+
+### C. test_search_rewriter.py (~10 tests)
+
+1. `test_templates_file_exists` — search-templates.json loads
+2. `test_all_asset_classes_have_templates` — every class in asset-classes.json has templates
+3. `test_minimum_7_queries_per_class` — 3 instance + 2 validation + 2 anti-confirmation
+4. `test_template_expansion_year` — {year} replaced with current year
+5. `test_template_expansion_niche` — {niche} replaced when provided
+6. `test_no_unexpanded_variables` — output contains no {variable} placeholders (except {specific_product})
+7. `test_output_query_count` — total_queries matches sum of per-class queries
+8. `test_no_generic_queries` — output has no "business ideas" or "make money" generic strings
+9. `test_priority_ranking` — higher-allocation classes ranked higher priority
+10. `test_empty_portfolio_returns_empty` — no allocations → no queries
+
+### D. test_capital_deployment.py additions (~5 tests)
+
+1. `test_tier_0_has_portfolio_flag` — TIER_0 output includes portfolio_computation_required=True
+2. `test_tier_1_has_portfolio_flag` — same for TIER_1
+3. `test_tier_2_no_portfolio_flag` — TIER_2 has portfolio_computation_required=False
+4. `test_tier_3_no_portfolio_flag` — same for TIER_3
+5. `test_quality_scorer_portfolio_check` — check_portfolio_context() scores correctly
+
+## Success Criteria
+
+- [ ] ~40 total tests written
+- [ ] All tests pass: `pytest tests/stage0/ -v`
+- [ ] No tests require network access
+- [ ] No tests import LeverageMechanism (avoids import failure)
+- [ ] Tests run in <30s total
+- [ ] Existing 163 tests still pass (no regressions)
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|------|------------|
+| Import path issues (scripts in different dirs) | Use same sys.path pattern as test_leverage_scoring.py |
+| Flaky Monte Carlo tests (random) | Seed random with fixed seed in tests |
+| Asset class JSON changes break tests | Tests check structure, not specific values (except counts) |

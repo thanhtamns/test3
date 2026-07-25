@@ -1,0 +1,25 @@
+strip_ansi = true
+max_lines = 50
+on_empty = "(clean working tree)"
+
+[command]
+name = "git"
+args_contain = ["status"]
+
+[[replace]]
+pattern = '(?m)^(\s+)modified:\s+'
+replacement = '  M '
+
+[[replace]]
+pattern = '(?m)^(\s+)new file:\s+'
+replacement = '  A '
+
+[[replace]]
+pattern = '(?m)^(\s+)deleted:\s+'
+replacement = '  D '
+
+[[strip_lines]]
+pattern = '^\s*\(use "git'
+
+[[strip_lines]]
+pattern = '^\s*$'

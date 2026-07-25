@@ -1,0 +1,288 @@
+"""
+meta_evolution_orchestrator.py — Top-level entry point for the AEVO outer loop.
+
+Coordinates all mechanism evolution components in sequence:
+1. Count outcomes since last meta-edit
+2. If threshold reached → run MetaEditController
+3. If segment active → record verdict Brier + check readiness
+4. Report status
+
+Called by:
+- session-start-evolution.cjs (--mode session_start)
+- feedback-cycle-runner.py (--mode after_outcome)
+- CLI: python meta_evolution_orchestrator.py --mode status
+
+Usage:
+    orchestrator = MetaEvolutionOrchestrator()
+    result = orchestrator.run_session_check()
+    # or
+    result = orchestrator.run_after_outcome(case_id, outcome, verdict)
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import sys
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+_OUTCOMES_PATH = _REPO_ROOT / "data" / "calibration" / "outcomes.jsonl"
+_BRIER_PATH = _REPO_ROOT / "data" / "calibration" / "brier-scores.jsonl"
+
+
+@dataclass
+class OrchestrationResult:
+    mode: str
+    outcomes_since_last_edit: int = 0
+    meta_edit_action: str = ""
+    meta_edit_detail: str = ""
+    segment_status: str = ""
+    attribution_errors: int = 0
+    errors: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "mode": self.mode,
+            "outcomes_since_last_edit": self.outcomes_since_last_edit,
+            "meta_edit_action": self.meta_edit_action,
+            "meta_edit_detail": self.meta_edit_detail,
+            "segment_status": self.segment_status,
+            "attribution_errors": self.attribution_errors,
+            "errors": self.errors,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+
+class MetaEvolutionOrchestrator:
+    """Coordinates the full meta-evolution cycle."""
+
+    def __init__(self, repo_root: Optional[Path] = None):
+        self.repo_root = Path(repo_root or _REPO_ROOT)
+        self._init_components()
+
+    def _init_components(self):
+        """Lazy-init all components with graceful degradation."""
+        from .knob_registry import KnobRegistry
+        from .error_attributor import ErrorAttributor
+        from .meta_edit_controller import MetaEditController
+        from .segment_evaluator import SegmentEvaluator
+        from .safety_harness import SafetyHarness
+        from .bayesian_knob_updater import BayesianKnobUpdater
+
+        self.registry = KnobRegistry()
+        self.attributor = ErrorAttributor()
+        harness = SafetyHarness()
+        updater = BayesianKnobUpdater(self.registry)
+        self.evaluator = SegmentEvaluator()
+        self.controller = MetaEditController(
+            registry=self.registry,
+            attributor=self.attributor,
+            evaluator=self.evaluator,
+            updater=updater,
+            harness=harness,
+        )
+
+    def run_session_check(self) -> OrchestrationResult:
+        """
+        Called at SessionStart. Checks if meta-edit should fire.
+        Budget: <5s total.
+        """
+        result = OrchestrationResult(mode="session_check")
+
+        try:
+            outcome_count = self._count_outcomes_since_last_edit()
+            result.outcomes_since_last_edit = outcome_count
+
+            if self.controller.should_run(outcome_count):
+                edit_result = self.controller.run()
+                result.meta_edit_action = edit_result.action
+                result.meta_edit_detail = edit_result.reason
+            else:
+                active = self.evaluator.get_active_segment()
+                if active:
+                    result.segment_status = (
+                        f"running: {len(active.get('brier_scores', []))}/"
+                        f"{self.evaluator.segment_size} verdicts"
+                    )
+                else:
+                    result.meta_edit_action = "idle"
+                    result.meta_edit_detail = (
+                        f"{outcome_count} outcomes since last edit "
+                        f"(trigger at {self.controller.trigger_interval})"
+                    )
+
+        except Exception as e:
+            result.errors.append(f"session_check failed: {e}")
+            logger.error("Meta-evolution session check failed: %s", e)
+
+        return result
+
+    def run_after_outcome(
+        self, case_id: str, actual_outcome: str, predicted_verdict: str
+    ) -> OrchestrationResult:
+        """
+        Called after outcome is recorded. Runs attribution + maybe meta-edit.
+        """
+        result = OrchestrationResult(mode="after_outcome")
+
+        try:
+            errors = self.attributor.attribute(case_id, actual_outcome, predicted_verdict)
+            if errors:
+                self.attributor.persist(errors)
+                result.attribution_errors = len(errors)
+                logger.info("Attributed %d mechanism errors for %s", len(errors), case_id)
+        except Exception as e:
+            result.errors.append(f"attribution failed: {e}")
+
+        try:
+            active_seg = self.evaluator.get_active_segment()
+            if active_seg:
+                brier = self._get_latest_brier(case_id)
+                if brier is not None:
+                    seg_id = active_seg["segment_id"]
+                    seg_result = self.evaluator.record_verdict(seg_id, brier)
+                    result.segment_status = (
+                        f"{seg_result.verdicts_collected}/{seg_result.verdicts_needed}"
+                    )
+        except Exception as e:
+            result.errors.append(f"segment recording failed: {e}")
+
+        try:
+            outcome_count = self._count_outcomes_since_last_edit()
+            result.outcomes_since_last_edit = outcome_count
+
+            if self.controller.should_run(outcome_count):
+                edit_result = self.controller.run()
+                result.meta_edit_action = edit_result.action
+                result.meta_edit_detail = edit_result.reason
+        except Exception as e:
+            result.errors.append(f"meta-edit check failed: {e}")
+
+        return result
+
+    def get_status(self) -> dict:
+        """Return full meta-evolution status for /meta-status command."""
+        status = {
+            "controller_state": "idle",
+            "active_segment": None,
+            "knobs_modified_total": 0,
+            "last_meta_edit": None,
+            "outcomes_since_last_edit": 0,
+            "trigger_at": self.controller.trigger_interval,
+            "error_summary": {},
+            "weekly_budget_used": 0,
+            "weekly_budget_max": 3,
+        }
+
+        try:
+            state = self.controller._load_state()
+            status["controller_state"] = state.get("status", "idle")
+            if state.get("last_edit"):
+                status["last_meta_edit"] = state["last_edit"]
+            status["outcomes_since_last_edit"] = self._count_outcomes_since_last_edit()
+        except Exception:
+            pass
+
+        try:
+            active = self.evaluator.get_active_segment()
+            if active:
+                status["active_segment"] = {
+                    "id": active["segment_id"],
+                    "verdicts": len(active.get("brier_scores", [])),
+                    "needed": self.evaluator.segment_size,
+                }
+        except Exception:
+            pass
+
+        try:
+            status["error_summary"] = self.attributor.count_errors_by_knob()
+        except Exception:
+            pass
+
+        try:
+            history = self.registry.history(n=100)
+            meta_edits = [h for h in history if h.get("source") == "meta_edit_controller"]
+            status["knobs_modified_total"] = len(meta_edits)
+        except Exception:
+            pass
+
+        return status
+
+    def _count_outcomes_since_last_edit(self) -> int:
+        """Count outcomes recorded since last meta-edit."""
+        state = self.controller._load_state()
+        last_edit_time = state.get("last_edit_time", "")
+
+        if not _OUTCOMES_PATH.exists():
+            return 0
+
+        count = 0
+        try:
+            for line in _OUTCOMES_PATH.read_text(encoding="utf-8").strip().split("\n"):
+                if not line.strip():
+                    continue
+                record = json.loads(line)
+                ts = record.get("timestamp", record.get("recorded_at", ""))
+                if not last_edit_time or ts > last_edit_time:
+                    count += 1
+        except (json.JSONDecodeError, OSError):
+            pass
+
+        return count
+
+    def _get_latest_brier(self, case_id: str) -> Optional[float]:
+        """Get Brier score for a specific case."""
+        if not _BRIER_PATH.exists():
+            return None
+        try:
+            for line in reversed(
+                _BRIER_PATH.read_text(encoding="utf-8").strip().split("\n")
+            ):
+                if not line.strip():
+                    continue
+                record = json.loads(line)
+                if record.get("case_id") == case_id:
+                    return record.get("brier_score", record.get("score"))
+        except (json.JSONDecodeError, OSError):
+            pass
+        return None
+
+
+def main():
+    """CLI entry point for orchestrator."""
+    import argparse
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
+    parser = argparse.ArgumentParser(description="Meta-Evolution Orchestrator")
+    parser.add_argument("--mode", choices=["session_start", "status", "after_outcome"],
+                        default="session_start")
+    parser.add_argument("--case-id", help="Case ID (for after_outcome mode)")
+    parser.add_argument("--outcome", help="Actual outcome (for after_outcome mode)")
+    parser.add_argument("--verdict", help="Predicted verdict (for after_outcome mode)")
+    args = parser.parse_args()
+
+    orchestrator = MetaEvolutionOrchestrator()
+
+    if args.mode == "session_start":
+        result = orchestrator.run_session_check()
+        print(json.dumps(result.to_dict(), indent=2))
+    elif args.mode == "status":
+        status = orchestrator.get_status()
+        print(json.dumps(status, indent=2))
+    elif args.mode == "after_outcome":
+        if not all([args.case_id, args.outcome, args.verdict]):
+            print("ERROR: --case-id, --outcome, --verdict required for after_outcome mode")
+            sys.exit(1)
+        result = orchestrator.run_after_outcome(args.case_id, args.outcome, args.verdict)
+        print(json.dumps(result.to_dict(), indent=2))
+
+
+if __name__ == "__main__":
+    main()

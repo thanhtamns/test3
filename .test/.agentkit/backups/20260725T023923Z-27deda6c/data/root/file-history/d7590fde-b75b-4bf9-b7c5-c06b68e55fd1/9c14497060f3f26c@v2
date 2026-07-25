@@ -1,0 +1,57 @@
+---
+phase: 6
+title: "Stage0 Checklist v25.5 Alignment"
+status: pending
+priority: P2
+effort: "1.5h"
+dependencies: [1, 2, 3, 4, 5]
+---
+
+# Phase 6: Stage0 Checklist v25.5 Alignment
+
+## Overview
+
+Align `stage0-checklist.md` with all Phase 1-5 changes. Checklist is the execution contract — if it doesn't match the spec, LLM will follow the checklist and ignore spec changes.
+
+## Requirements
+
+- Functional: Checklist reflects new DQ codes (DEPLOY_BUDGET, ROI_TARGET, etc.)
+- Functional: Checklist reflects Mountain Test v25 (Q6-ROI, Q7-PORTFOLIO)
+- Functional: Checklist reflects DEPLOY_CANDIDATE verdict class
+- Functional: Quality self-check section includes capital deployment checks
+- Functional: Step 2.6.2 references new track names (MICRO_DEPLOY, ASSET_BUILDER)
+- Non-functional: Version in header updated to v25.5
+
+## Related Code Files
+
+- Modify: `.claude/commands/stage0-checklist.md`
+
+## Implementation Steps
+
+1. Update header: `v25` → `v25.5`
+2. Step 2.6.2: Update routing description — mention MICRO_DEPLOY/ASSET_BUILDER tracks
+3. Step 2.65: Update DQ note — "TIER_0/1=12 (incl DEPLOY_BUDGET, ROI_TARGET, LEVERAGE)" instead of old codes
+4. Step 6: Update Mountain Test reference — "v24" → "v25", add Q6-ROI + Q7-PORTFOLIO
+5. Step 6 verdicts: Add DEPLOY_CANDIDATE to valid list
+6. Step 6 hard cap: Keep "Q4=NO + Q5=LABOR → SIDE_HUSTLE" + add "Q4=YES + Q6>=20% + Q7=YES → DEPLOY_CANDIDATE"
+7. Quality self-check section — add:
+   - [ ] ROI% calculated for every TIER_0/1 model?
+   - [ ] Deployment Portfolio section present for TIER_0/1?
+   - [ ] deploy_cost, payback_days, founder_hours_post_setup per model?
+   - [ ] Kill criteria per asset (30-day)?
+8. Quality self-check: Update quality score reference — "grade ≥C (95+)" (was 93+, new threshold from Phase 4)
+9. Valid verdict list: Add DEPLOY_CANDIDATE
+
+## Success Criteria
+
+- [ ] Header says v25.5
+- [ ] DEPLOY_CANDIDATE in valid verdicts list
+- [ ] Q6-ROI and Q7-PORTFOLIO mentioned in Step 6
+- [ ] New DQ codes referenced in Step 2.65
+- [ ] Quality self-check has ROI/portfolio/deploy_cost checks
+- [ ] Grade threshold updated to 95+ (matches Phase 4)
+- [ ] No references to removed codes (FIRST_500, TIME_TO_CASH) in checklist
+
+## Risk Assessment
+
+- **Checklist diverges from spec:** This phase runs AFTER all others to ensure alignment. Read final state of stage0.md before editing checklist

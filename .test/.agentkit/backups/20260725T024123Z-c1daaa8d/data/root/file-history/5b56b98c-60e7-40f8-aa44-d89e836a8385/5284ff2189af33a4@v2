@@ -1,0 +1,78 @@
+"""
+SBEBridge — selective fire of SBE Orchestrator from ThinkRunner.
+Converts ThinkRunner dim_scores → SBE features, fires SBE with reduced budget,
+returns enriched verdict + kill signals.
+"""
+
+import sys
+from pathlib import Path
+from typing import Callable, Optional
+
+from .synthesis_engine import SynthesisResult
+
+SBE_ROOT = Path(__file__).resolve().parents[1] / "strategic-brain"
+SBE_INTEGRATION = SBE_ROOT / "integration"
+SBE_ENGINE = SBE_ROOT / "engine"
+SBE_MTDE = SBE_ROOT / "mtde"
+
+
+class SBEBridge:
+    def __init__(self, research_fn: Callable, sbe_budget: int = 500):
+        self.research_fn = research_fn
+        self.sbe_budget = sbe_budget
+
+    def fire(self, synthesis_result: SynthesisResult, query: str, facts: list) -> dict:
+        features = self._map_to_sbe_features(synthesis_result, facts)
+        orchestrator = self._load_orchestrator()
+
+        sbe_result = orchestrator.run(
+            topic=query,
+            features=features,
+            search_fn=self._wrap_search_fn(),
+            budget=self.sbe_budget,
+        )
+
+        kill_signals = []
+        if sbe_result.evidence and hasattr(sbe_result.evidence, "kill_signals"):
+            kill_signals = sbe_result.evidence.kill_signals
+
+        return {
+            "sbe_verdict": sbe_result.verdict,
+            "sbe_confidence": sbe_result.confidence,
+            "kill_signals": kill_signals,
+            "enriched_features": sbe_result.enriched_features,
+            "short_circuited": sbe_result.short_circuited,
+        }
+
+    def _map_to_sbe_features(self, result: SynthesisResult, facts: list) -> dict:
+        features: dict = {}
+
+        for dim_name, dim_score in result.dimension_scores.items():
+            features[f"dim_{dim_name}_score"] = dim_score.score
+            features[f"dim_{dim_name}_facts"] = dim_score.fact_count
+            features[f"dim_{dim_name}_zone"] = dim_score.zone_tag
+
+        features["overall_score"] = result.overall_score
+        features["total_facts"] = result.facts_used
+        features["k_facts"] = result.facts_by_zone.get("K", 0)
+        features["t_facts"] = result.facts_by_zone.get("T", 0)
+        features["query_type"] = result.query_type
+
+        top_facts = sorted(facts, key=lambda f: getattr(f, "confidence", 0), reverse=True)[:10]
+        for i, fact in enumerate(top_facts):
+            features[f"fact_{i}"] = getattr(fact, "fact", str(fact))[:200]
+
+        return features
+
+    def _load_orchestrator(self):
+        for p in [str(SBE_INTEGRATION), str(SBE_ENGINE), str(SBE_MTDE)]:
+            if p not in sys.path:
+                sys.path.insert(0, p)
+
+        from sbe_orchestrator import SBEOrchestrator
+        return SBEOrchestrator()
+
+    def _wrap_search_fn(self) -> Callable:
+        def wrapped(query: str) -> str:
+            return self.research_fn(query)
+        return wrapped

@@ -1,0 +1,74 @@
+---
+phase: 6
+title: "Infrastructure & DevOps (P3+P4)"
+status: pending
+priority: P3
+effort: "2h"
+dependencies: []
+---
+
+# Phase 6: Infrastructure & DevOps (P3+P4)
+
+## Overview
+
+Add ClickHouse migration versioning, unify cost model across tiers. Proto sync verification CUT (manual busywork — add CI check when CI pipeline exists). Docker Compose already exists. CI/CD deferred to separate plan.
+
+## Requirements
+
+- Functional: Schema changes tracked via versioned migration files.
+- Non-functional: No new infrastructure. Migration runner is a simple Go binary.
+
+## Related Code Files
+
+- Create: `cloud/cmd/migrate/main.go` (migration runner)
+- Create: `cloud/internal/clickhouse/migrations/` directory
+- Create: `cloud/internal/clickhouse/migrations/001_initial_schema.sql`
+- Modify: `cloud/internal/clickhouse/schema.sql` (keep as reference, add deprecation note)
+- Modify: `cloud/docker-compose.yml` (run migrations on startup instead of raw schema.sql)
+
+## Implementation Steps
+
+### Step 1: Add migration framework — H4
+
+1. Create `cloud/internal/clickhouse/migrations/` directory
+2. Move current `schema.sql` content into `001_initial_schema.sql`
+3. Create `cloud/cmd/migrate/main.go`:
+   - Reads migration files in order
+   - Tracks applied migrations in `codeflow.schema_migrations` table (version, applied_at)
+   - Skips already-applied migrations
+   - Applies pending ones in order
+   - Forward-only (no down migrations — ClickHouse ALTER is limited, manual rollback preferred)
+   - Add `--dry-run` flag to show pending SQL without applying
+4. Update `docker-compose.yml`: replace schema.sql init volume with migrate command on startup
+
+### Step 2: Unify cost model — H5
+
+1. Document canonical pricing in one place: `cli/crates/core/src/router.rs` lines ~19-25
+2. Cloud `client.go` line ~681: reference router pricing or extract to shared config
+3. Dashboard `api.ts`: keep current $3/1M (Sonnet default) — model-aware pricing deferred until API tracks model tiers
+4. Add comment in each file pointing to canonical source
+
+### Step 3: Verify
+
+1. `go build ./cmd/migrate/...` — clean
+2. Run migration against fresh ClickHouse → tables created
+3. Run migration again → no-op (idempotent)
+4. `--dry-run` shows pending SQL
+
+## ~~CUT items (from red team)~~
+
+- **Proto sync verification (H2):** CUT. Manual read-and-compare is busywork — system works today. Add `buf breaking` or proto checksum CI check when CI/CD pipeline is built.
+
+## Success Criteria
+
+- [ ] Migration runner exists and works (create + idempotent rerun)
+- [ ] `schema_migrations` table tracks applied versions
+- [ ] `--dry-run` flag works
+- [ ] Cost model documented with single canonical source
+- [ ] Docker Compose uses migration runner instead of raw schema.sql
+
+## Risk Assessment
+
+- **Migration framework (low risk):** New code, doesn't touch existing tables. First migration IS the current schema.
+- **Forward-only (accepted trade-off):** No down migrations. Manual rollback for ClickHouse is safer than auto-generated rollback SQL. `--dry-run` mitigates accidental applies.
+- **Docker Compose change (low risk):** Local dev only. Production deploys unaffected.

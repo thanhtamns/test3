@@ -1,0 +1,80 @@
+"""
+Stage0Bridge — non-blocking adapter to inject decomposition facts into Stage0 cases.
+Limited to 20 queries max for speed. Catches all exceptions.
+"""
+
+import time
+from pathlib import Path
+from typing import Callable, Optional
+
+from .compound_cache import CompoundCache
+from .decomposer import Decomposer
+from .fact_assembler import FactAssembler
+from .micro_query_runner import MicroQueryRunner
+
+ROOT = Path(__file__).resolve().parents[4]
+DEFAULT_VECTORS_DB = ROOT / ".claude" / "data" / "knowledge-distillation" / "decision-vectors.db"
+
+MAX_QUERIES_STAGE0 = 20
+
+
+class Stage0Bridge:
+    def __init__(
+        self,
+        research_fn: Callable[[str], str],
+        vectors_db: Optional[Path] = None,
+    ):
+        self.research_fn = research_fn
+        self.vectors_db = vectors_db or DEFAULT_VECTORS_DB
+
+    def pre_decompose(self, case: dict) -> dict:
+        """Enrich case with pre-decomposition facts. Non-blocking: returns original on failure."""
+        try:
+            return self._do_decompose(case)
+        except Exception:
+            return case
+
+    def _do_decompose(self, case: dict) -> dict:
+        description = (
+            case.get("opportunity_description")
+            or case.get("description")
+            or case.get("query")
+            or ""
+        )
+        if not description:
+            return case
+
+        start = time.time()
+        decomposer = Decomposer()
+        tree = decomposer.decompose(description)
+
+        queries = tree.queries_to_fire[:MAX_QUERIES_STAGE0]
+        if not queries:
+            return case
+
+        runner = MicroQueryRunner(research_fn=self.research_fn, batch_delay=0.3)
+        results, stats = runner.run_batch(queries)
+
+        assembler = FactAssembler(vectors_db=self.vectors_db)
+        domain = tree.context.get("industry", "general")
+        assembly = assembler.assemble(results, domain=domain)
+
+        facts = []
+        for r in results:
+            if r.parse_success and r.parsed_fact:
+                facts.append({
+                    "query": r.query.text,
+                    "dimension": r.query.dimension,
+                    **r.parsed_fact,
+                })
+
+        case["pre_decomposition_facts"] = facts
+        case["pre_decomposition_meta"] = {
+            "dimensions_decomposed": len(tree.dimensions),
+            "queries_fired": stats.queries_fired,
+            "facts_pre_loaded": len(facts),
+            "facts_stored": assembly.facts_added,
+            "duration_ms": int((time.time() - start) * 1000),
+        }
+
+        return case

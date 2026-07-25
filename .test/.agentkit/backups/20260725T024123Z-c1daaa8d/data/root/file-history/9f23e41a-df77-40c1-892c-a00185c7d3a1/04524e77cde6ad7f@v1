@@ -1,0 +1,8 @@
+pub mod dedup;
+pub mod events;
+pub mod filter;
+pub mod tracking;
+
+pub mod proto {
+    include!(concat!(env!("OUT_DIR"), "/codeflow.events.v1.rs"));
+}

@@ -1,0 +1,214 @@
+use anyhow::{Context, Result};
+use ed25519_dalek::{Signer, SigningKey, Verifier, VerifyingKey};
+use std::path::{Path, PathBuf};
+
+pub struct KeyPair {
+    signing_key: SigningKey,
+}
+
+impl KeyPair {
+    pub fn generate() -> Self {
+        let mut csprng = rand::rngs::OsRng;
+        Self {
+            signing_key: SigningKey::generate(&mut csprng),
+        }
+    }
+
+    pub fn from_bytes(secret: &[u8; 32]) -> Self {
+        Self {
+            signing_key: SigningKey::from_bytes(secret),
+        }
+    }
+
+    pub fn sign(&self, data: &[u8]) -> String {
+        let sig = self.signing_key.sign(data);
+        hex::encode(&sig.to_bytes())
+    }
+
+    pub fn public_key_hex(&self) -> String {
+        hex::encode(self.signing_key.verifying_key().as_bytes())
+    }
+
+    pub fn secret_bytes(&self) -> &[u8; 32] {
+        self.signing_key.as_bytes()
+    }
+
+    pub fn save(&self, path: &Path) -> Result<()> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, self.signing_key.as_bytes())
+            .context("failed to write signing key")?;
+        let pub_path = path.with_extension("pub");
+        std::fs::write(&pub_path, self.signing_key.verifying_key().as_bytes())
+            .context("failed to write public key")?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+        }
+
+        Ok(())
+    }
+
+    pub fn load(path: &Path) -> Result<Self> {
+        let bytes = std::fs::read(path).context("failed to read signing key")?;
+        let secret: [u8; 32] = bytes
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("invalid key length"))?;
+        Ok(Self::from_bytes(&secret))
+    }
+}
+
+pub fn verify(public_key_hex: &str, data: &[u8], signature_hex: &str) -> bool {
+    let Ok(pk_bytes) = hex::decode(public_key_hex) else {
+        return false;
+    };
+    let Ok(pk_arr): Result<[u8; 32], _> = pk_bytes.try_into() else {
+        return false;
+    };
+    let Ok(verifying_key) = VerifyingKey::from_bytes(&pk_arr) else {
+        return false;
+    };
+    let Ok(sig_bytes) = hex::decode(signature_hex) else {
+        return false;
+    };
+    let Ok(sig_arr): Result<[u8; 64], _> = sig_bytes.try_into() else {
+        return false;
+    };
+    let signature = ed25519_dalek::Signature::from_bytes(&sig_arr);
+    verifying_key.verify(data, &signature).is_ok()
+}
+
+pub fn keys_dir() -> PathBuf {
+    dirs::data_dir()
+        .or_else(|| dirs::home_dir().map(|h| h.join(".local/share")))
+        .expect("neither data_dir nor home_dir available — cannot store signing keys")
+        .join("codeflow")
+        .join("keys")
+}
+
+pub fn load_or_generate() -> Result<KeyPair> {
+    let dir = keys_dir();
+    let key_path = dir.join("signing.key");
+
+    match KeyPair::load(&key_path) {
+        Ok(kp) => return Ok(kp),
+        Err(_) => {}
+    }
+
+    if let Some(parent) = key_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let kp = KeyPair::generate();
+
+    // Atomic create-or-fail to prevent TOCTOU race between concurrent hook processes
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&key_path)
+    {
+        Ok(mut f) => {
+            use std::io::Write;
+            f.write_all(kp.secret_bytes())?;
+            drop(f);
+
+            let pub_path = key_path.with_extension("pub");
+            std::fs::write(&pub_path, kp.signing_key.verifying_key().as_bytes())?;
+
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600))?;
+            }
+
+            Ok(kp)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            // Another process won the race — load their key
+            KeyPair::load(&key_path)
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+mod hex {
+    pub fn encode(bytes: &[u8]) -> String {
+        bytes.iter().map(|b| format!("{:02x}", b)).collect()
+    }
+
+    pub fn decode(s: &str) -> Result<Vec<u8>, String> {
+        if s.len() % 2 != 0 {
+            return Err("odd length".to_string());
+        }
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).map_err(|e| e.to_string()))
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generate_and_sign_verify() {
+        let kp = KeyPair::generate();
+        let data = b"test message";
+        let sig = kp.sign(data);
+        let pk = kp.public_key_hex();
+        assert!(verify(&pk, data, &sig));
+    }
+
+    #[test]
+    fn test_wrong_data_fails_verify() {
+        let kp = KeyPair::generate();
+        let sig = kp.sign(b"original");
+        let pk = kp.public_key_hex();
+        assert!(!verify(&pk, b"tampered", &sig));
+    }
+
+    #[test]
+    fn test_wrong_key_fails_verify() {
+        let kp1 = KeyPair::generate();
+        let kp2 = KeyPair::generate();
+        let sig = kp1.sign(b"data");
+        assert!(!verify(&kp2.public_key_hex(), b"data", &sig));
+    }
+
+    #[test]
+    fn test_save_and_load() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.key");
+        let kp = KeyPair::generate();
+        kp.save(&path).unwrap();
+        let loaded = KeyPair::load(&path).unwrap();
+        assert_eq!(kp.secret_bytes(), loaded.secret_bytes());
+    }
+
+    #[test]
+    fn test_from_bytes_roundtrip() {
+        let kp = KeyPair::generate();
+        let bytes = *kp.secret_bytes();
+        let kp2 = KeyPair::from_bytes(&bytes);
+        assert_eq!(kp.public_key_hex(), kp2.public_key_hex());
+    }
+
+    #[test]
+    fn test_invalid_verify_inputs() {
+        assert!(!verify("not-hex", b"data", "not-hex"));
+        assert!(!verify("aabb", b"data", "ccdd"));
+        assert!(!verify("", b"data", ""));
+    }
+
+    #[test]
+    fn test_hex_roundtrip() {
+        let original = vec![0u8, 1, 255, 128, 64];
+        let encoded = hex::encode(&original);
+        let decoded = hex::decode(&encoded).unwrap();
+        assert_eq!(original, decoded);
+    }
+}

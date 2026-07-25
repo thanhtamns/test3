@@ -1,0 +1,21 @@
+{
+  "hunt_id": "HUNT-260524-global-position-scan",
+  "mode": "asymmetry",
+  "created": "2026-05-24T19:30:00+07:00",
+  "updated": "2026-05-24T20:45:00+07:00",
+  "status": "ACTION_READY",
+  "current_step": "A5",
+  "focus_topic": "global zero-capital position-based models with brain leverage",
+  "scanners_completed": ["arbitrage-brokering", "intelligence-data", "supply-chain", "network-referral"],
+  "signals_total": 30,
+  "signals_survived": 15,
+  "chain_mode": null,
+  "stage0_case_id": null,
+  "report_path": "plans/reports/hunt-260524-1930-global-position-scan.md",
+  "notes": [
+    "Broad scan across 4 domains, 48+ searches, 20+ deep page extractions",
+    "Reddit blocked by search API - data gap",
+    "VN forums not probed - data gap",
+    "All Y1 income projections are [T]-tagged estimates"
+  ]
+}

@@ -1,0 +1,130 @@
+---
+phase: 5
+title: "Lặp Lại & Tích Luỹ Dữ Liệu"
+status: pending
+priority: P2
+effort: "15 giờ (Tuần 6-8)"
+dependencies: [4]
+---
+
+# Giai đoạn 5: Lặp Lại & Tích Luỹ Dữ Liệu
+
+## Tổng quan
+
+Lặp lại cải tiến dựa trên phản hồi thật + bắt đầu xây lợi thế tích luỹ dữ liệu. Mỗi phân tích công cụ thực hiện tạo ra dữ liệu làm công cụ thông minh hơn. Đây là nơi infrastructure×code chuyển dần sang data_intelligence×data.
+
+## Yêu cầu
+
+- Chức năng: Cải thiện chất lượng matching dựa trên phản hồi. Bắt đầu theo dõi gợi ý nào THỰC SỰ hiệu quả.
+- Phi chức năng: Pipeline dữ liệu tự động. Không nhập dữ liệu thủ công.
+
+## Các bước thực hiện
+
+### Tuần 6: Lặp lại theo phản hồi (5 giờ)
+
+1. **Phân loại phản hồi người dùng:**
+   - Yêu cầu tính năng → ưu tiên theo tần suất
+   - Báo lỗi → sửa ngay
+   - "Gợi ý kênh sai" → cải thiện matching
+
+2. **Ưu tiên lặp lại hàng đầu (từ case studies):**
+
+   | Phản hồi có thể | Cách sửa |
+   |-----------------|----------|
+   | "Kênh quá chung chung" | Thêm kênh chuyên ngành (50 cho mỗi ngách người dùng yêu cầu) |
+   | "Kịch bản nghe giống AI" | Cải thiện prompt với ví dụ bài đăng thành công thật |
+   | "Tôi thử kênh đó, không hiệu quả" | Thêm THEO DÕI KẾT QUẢ (xem Bước 4) |
+   | "Cần thêm kênh cho danh mục này" | Mở rộng kho từ 500 → 1000 mục |
+   | "Có thể lưu/xuất kết quả không?" | Thêm xuất PDF + gửi email |
+
+3. **Triển khai 3 cải tiến hàng đầu** (dựa trên phản hồi thật, không giả định)
+
+### Tuần 7: Theo dõi kết quả — ĐỘNG CƠ TÍCH LUỸ (5 giờ)
+
+4. **Thêm vòng lặp phản hồi kết quả:**
+   ```
+   Sau khi người dùng nhận kế hoạch phân phối:
+   → 7 ngày sau: email "Bạn đã thử kênh nào? Kết quả thế nào?"
+   → Người dùng báo: "Đăng trên r/SideProject → 50 click, 3 đăng ký"
+   → Chúng ta lưu: kênh × danh_mục_sản_phẩm × kết_quả
+   → Người dùng tiếp theo với sản phẩm tương tự → gợi ý thông minh hơn
+   ```
+
+5. **Schema cơ sở dữ liệu cho kết quả:**
+   ```sql
+   CREATE TABLE outcomes (
+     id TEXT PRIMARY KEY,
+     analysis_id TEXT REFERENCES analyses(id),
+     channel_id TEXT,
+     action_taken BOOLEAN,
+     impressions INTEGER,
+     clicks INTEGER,
+     signups INTEGER,
+     revenue_attributed DECIMAL,
+     user_rating INTEGER, -- 1-5
+     notes TEXT,
+     reported_at DATETIME
+   );
+   ```
+
+6. **Tự động email phản hồi (Resend):**
+   - Kích hoạt: 7 ngày sau phân tích
+   - Mẫu: "Kiểm tra nhanh — gợi ý của chúng tôi có hiệu quả không?"
+   - Bao gồm: danh sách kênh được gợi ý, đánh giá 1 click cho từng kênh
+   - Tự động lưu phản hồi
+
+### Tuần 8: Lớp tri thức dữ liệu (5 giờ)
+
+7. **Xây bảng điều khiển phân tích nội bộ:**
+   - Kênh nào chuyển đổi tốt nhất cho loại sản phẩm nào?
+   - Tỷ lệ click trung bình theo nền tảng × danh mục
+   - Thời điểm đăng tốt nhất (từ dữ liệu kết quả)
+   - Kênh "đang lên" (cộng đồng mới có tương tác cao)
+
+8. **Dùng dữ liệu để cải thiện matching:**
+   ```
+   V1: matching từ khoá (Giai đoạn 2)
+   V2: matching AI (Giai đoạn 3)
+   V3: matching DỰA TRÊN DỮ LIỆU (Giai đoạn 5) ← ĐÂY
+   
+   Điểm = (liên_quan_AI × 0.3) + (chuyển_đổi_lịch_sử × 0.5) + (chấp_nhận_quảng_cáo × 0.2)
+   ```
+   Khi có dữ liệu chuyển đổi lịch sử, nó vượt trội so với AI đoán.
+
+9. **Bánh đà tích luỹ:**
+   ```
+   Nhiều người dùng → nhiều phân tích → nhiều dữ liệu kết quả
+     → gợi ý tốt hơn → chuyển đổi cao hơn
+     → nhiều truyền miệng → nhiều người dùng hơn
+     → LẶP LẠI (đây là vòng lặp antifragile)
+   ```
+
+## Bảng chỉ số
+
+| Chỉ số | Mục tiêu Tuần 6 | Mục tiêu Tuần 8 |
+|--------|-----------------|-----------------|
+| Người dùng hoạt động | 20+ | 50+ |
+| Người trả tiền | 5+ | 10+ |
+| MRR | $50-100 | $100-200 |
+| Phân tích thực hiện | 100+ | 300+ |
+| Báo cáo kết quả nhận được | 10+ | 30+ |
+| Kích thước kho kênh | 500 → 750 | 750 → 1000 |
+| Độ chính xác matching (đánh giá người dùng) | 6/10 | 7.5/10 |
+
+## Tiêu chí thành công
+
+- [ ] 3 cải tiến hàng đầu theo yêu cầu người dùng đã ship
+- [ ] Tự động email theo dõi kết quả hoạt động
+- [ ] 10+ điểm dữ liệu kết quả được thu thập
+- [ ] Thuật toán matching nâng cấp lên V3 (dựa trên dữ liệu)
+- [ ] Bảng điều khiển phân tích nội bộ hoạt động
+- [ ] MRR >$100
+- [ ] Kho kênh mở rộng đến 750+ mục
+
+## Đánh giá rủi ro
+
+| Rủi ro | Xác suất | Cách giảm thiểu |
+|--------|----------|-----------------|
+| Người dùng không phản hồi email kết quả | 40% | Làm 1-click (đánh giá emoji); đổi dùng thử mở rộng lấy phản hồi |
+| Không đủ dữ liệu cho matching V3 | 35% | Giữ V2 dự phòng; V3 kích hoạt cho từng kênh khi n>10 kết quả |
+| Tăng trưởng đình trệ ở <$200 MRR | 30% | Bình thường cho Tháng 2. Tập trung chất lượng, không phải tăng trưởng |

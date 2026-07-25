@@ -1,0 +1,174 @@
+use anyhow::Result;
+use codeflow_core::quality_gate;
+use std::path::Path;
+
+pub fn gate(ci: bool, paths: Vec<String>, json: bool) -> Result<i32> {
+    let files = collect_files(&paths)?;
+
+    if files.is_empty() {
+        if json {
+            println!("{}", serde_json::json!({"findings": [], "blocked": false, "exit_code": 0, "files_scanned": 0}));
+        } else {
+            println!("No files to scan.");
+        }
+        return Ok(0);
+    }
+
+    let result = quality_gate::run_gate(&files);
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else {
+        println!("\n  CODEFLOW Quality Gate\n");
+        println!(
+            "  Files scanned: {}    Findings: {}",
+            result.files_scanned,
+            result.findings.len()
+        );
+
+        if result.findings.is_empty() {
+            println!("\n  \x1b[32m✓ All checks passed\x1b[0m\n");
+        } else {
+            println!();
+            println!(
+                "  {:<40} {:<8} {:<10} {}",
+                "File", "Line", "Severity", "Message"
+            );
+            println!("  {}", "─".repeat(90));
+
+            for f in &result.findings {
+                let sev_color = match f.severity {
+                    quality_gate::Severity::Critical => "\x1b[31m",
+                    quality_gate::Severity::High => "\x1b[91m",
+                    quality_gate::Severity::Medium => "\x1b[33m",
+                    quality_gate::Severity::Low => "\x1b[36m",
+                    quality_gate::Severity::Info => "\x1b[37m",
+                };
+                println!(
+                    "  {:<40} {:<8} {}{:<10}\x1b[0m {}",
+                    truncate(&f.file, 40),
+                    f.line,
+                    sev_color,
+                    format!("{:?}", f.severity),
+                    f.message
+                );
+            }
+            println!();
+        }
+
+        if result.blocked {
+            println!("  \x1b[31m⛔ Gate BLOCKED — {} issue(s) require attention\x1b[0m\n",
+                result.findings.iter().filter(|f| matches!(f.severity, quality_gate::Severity::Critical | quality_gate::Severity::High)).count());
+        } else {
+            println!("  \x1b[32m✓ Gate passed (warnings only)\x1b[0m\n");
+        }
+    }
+
+    if ci && result.blocked {
+        std::process::exit(1);
+    }
+
+    Ok(result.exit_code)
+}
+
+pub fn scan(file: String, json: bool) -> Result<()> {
+    let content = std::fs::read_to_string(&file)?;
+    let files = vec![(file.clone(), content)];
+    let result = quality_gate::run_gate(&files);
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else {
+        if result.findings.is_empty() {
+            println!("✓ No issues found in {}", file);
+        } else {
+            for f in &result.findings {
+                println!("  L{}: [{:?}] {}", f.line, f.severity, f.message);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn collect_files(paths: &[String]) -> Result<Vec<(String, String)>> {
+    let mut files = Vec::new();
+
+    if paths.is_empty() {
+        let output = std::process::Command::new("git")
+            .args(["diff", "--cached", "--name-only", "--diff-filter=ACMR"])
+            .output();
+
+        if let Ok(out) = output {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            for line in stdout.lines() {
+                let line = line.trim();
+                if !line.is_empty() {
+                    if let Ok(content) = std::fs::read_to_string(line) {
+                        files.push((line.to_string(), content));
+                    }
+                }
+            }
+        }
+
+        if files.is_empty() {
+            let output = std::process::Command::new("git")
+                .args(["diff", "--name-only", "--diff-filter=ACMR"])
+                .output();
+
+            if let Ok(out) = output {
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                for line in stdout.lines() {
+                    let line = line.trim();
+                    if !line.is_empty() {
+                        if let Ok(content) = std::fs::read_to_string(line) {
+                            files.push((line.to_string(), content));
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        for path in paths {
+            let p = Path::new(path);
+            if p.is_file() {
+                if let Ok(content) = std::fs::read_to_string(p) {
+                    files.push((path.clone(), content));
+                }
+            } else if p.is_dir() {
+                collect_dir(p, &mut files)?;
+            }
+        }
+    }
+
+    Ok(files)
+}
+
+fn collect_dir(dir: &Path, files: &mut Vec<(String, String)>) -> Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_file() {
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            if matches!(ext, "js" | "jsx" | "ts" | "tsx" | "py" | "rs" | "go" | "java" | "kt" | "rb" | "c" | "cpp" | "h") {
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    files.push((path.to_string_lossy().to_string(), content));
+                }
+            }
+        } else if path.is_dir() {
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if !matches!(name, "node_modules" | ".git" | "target" | "__pycache__" | "dist" | "build" | ".next") {
+                collect_dir(&path, files)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn truncate(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        s.to_string()
+    } else {
+        format!("...{}", &s[s.len() - max + 3..])
+    }
+}

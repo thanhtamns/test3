@@ -1,0 +1,146 @@
+"""Persona debate — generates prompts for parallel persona agents, merges their outputs."""
+
+import argparse
+import json
+import sys
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
+
+ROOT = Path(__file__).resolve().parents[4]
+PERSONAS_DIR = ROOT / ".claude" / "agents" / "personas"
+
+PERSONA_SELECTION = {
+    "power_infiltration": ["charlie-munger", "peter-thiel", "robert-kuok"],
+    "wealth_strategy": ["naval-ravikant", "charlie-munger", "li-ka-shing"],
+    "market_entry": ["alex-hormozi", "pieter-levels", "nassim-taleb"],
+    "deal_analysis": ["warren-buffett", "charlie-munger", "marc-rich"],
+    "career_path": ["naval-ravikant", "peter-thiel", "felix-dennis"],
+    "custom": ["charlie-munger", "nassim-taleb", "naval-ravikant"],
+}
+
+_PERSONA_PROMPT_TEMPLATE = """\
+## Your Identity
+{identity_snippet}
+
+## Analysis Task
+Analyze this opportunity through YOUR specific lens: {query}
+
+## ThinkRunner Intelligence (compressed)
+{scores}
+Overall score: {overall_score}
+
+## Instructions
+- Max 300 words
+- Must include: (1) your verdict GO/CAUTION/KILL
+- (2) What you see that others miss
+- (3) What kills this
+- Use [K], [T], [?] zone tags on factual claims\
+"""
+
+_MERGE_TEMPLATE = """\
+Merge these {n} expert perspectives:
+
+{perspectives}
+## Merge Rules
+- Where 2+ experts AGREE -> high confidence finding
+- Where experts DISAGREE -> state both sides, do NOT resolve
+- What NO expert addressed -> blind spot
+- Max 200 words synthesis
+- Structure: Agreements | Disagreements | Blind Spots\
+"""
+
+
+@dataclass
+class PersonaConfig:
+    name: str
+    category: str
+    identity_snippet: str
+
+
+class PersonaDebate:
+    def __init__(self, query: str, query_type: str, thinkrunner_output: dict):
+        self.query = query
+        self.query_type = query_type
+        self.thinkrunner_output = thinkrunner_output
+
+    def select_personas(self, n: int = 3) -> list[PersonaConfig]:
+        names = PERSONA_SELECTION.get(self.query_type, PERSONA_SELECTION["custom"])
+        configs: list[PersonaConfig] = []
+        for name in names:
+            matches = list(PERSONAS_DIR.glob(f"**/{name}.md"))
+            if not matches:
+                continue
+            md_path = matches[0]
+            category = md_path.parent.name
+            try:
+                lines = md_path.read_text(encoding="utf-8").splitlines()
+            except Exception:
+                continue
+            snippet = "\n".join(lines[:80])
+            configs.append(PersonaConfig(name=name, category=category, identity_snippet=snippet))
+            if len(configs) >= n:
+                break
+        return configs
+
+    def generate_persona_prompts(self) -> list[tuple[str, str]]:
+        personas = self.select_personas()
+        scores = self._format_scores(self.thinkrunner_output.get("dimension_scores", {}))
+        overall = self.thinkrunner_output.get("overall_score", 0.0)
+        result = []
+        for pc in personas:
+            prompt = _PERSONA_PROMPT_TEMPLATE.format(
+                identity_snippet=pc.identity_snippet,
+                query=self.query,
+                scores=scores,
+                overall_score=f"{overall:.2f}",
+            )
+            result.append((pc.name, prompt))
+        return result
+
+    def generate_merge_prompt(self, persona_outputs: dict[str, str]) -> str:
+        perspectives_parts = []
+        for name, output in persona_outputs.items():
+            perspectives_parts.append(f"### {name}\n{output}\n")
+        perspectives = "\n".join(perspectives_parts)
+        return _MERGE_TEMPLATE.format(
+            n=len(persona_outputs),
+            perspectives=perspectives,
+        )
+
+    def _format_scores(self, scores: dict) -> str:
+        if not scores:
+            return "(no scores)"
+        lines = []
+        for dim, val in scores.items():
+            if isinstance(val, dict):
+                score = val.get("score", 0.0)
+            else:
+                score = float(val)
+            lines.append(f"{dim}: {score:.2f}")
+        return "\n".join(lines)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--query", required=True)
+    parser.add_argument("--query-type", default="custom")
+    parser.add_argument("--thinkrunner", required=True, help="Path to ThinkRunner JSON")
+    parser.add_argument("--stage", choices=["select", "prompt", "merge"], required=True)
+    parser.add_argument("--persona-outputs", help="Path to JSON with persona outputs (for merge)")
+    args = parser.parse_args()
+
+    with open(args.thinkrunner) as f:
+        tr = json.load(f)
+
+    debate = PersonaDebate(args.query, args.query_type, tr)
+
+    if args.stage == "select":
+        personas = debate.select_personas()
+        print(json.dumps([{"name": p.name, "category": p.category} for p in personas]))
+    elif args.stage == "prompt":
+        prompts = debate.generate_persona_prompts()
+        print(json.dumps([{"name": n, "prompt_length": len(p)} for n, p in prompts]))
+    elif args.stage == "merge":
+        outputs = json.loads(Path(args.persona_outputs).read_text()) if args.persona_outputs else {}
+        print(debate.generate_merge_prompt(outputs))

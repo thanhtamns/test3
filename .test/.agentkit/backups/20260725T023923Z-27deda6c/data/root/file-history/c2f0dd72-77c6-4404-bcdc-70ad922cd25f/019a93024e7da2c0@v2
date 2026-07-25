@@ -1,0 +1,307 @@
+# Phân Tích Sâu 8 Lỗ Hổng Tri Thức — Thâm Nhập Dòng Tiền VC Việt Nam
+
+**Nguồn:** ThinkRunner xác định 8 gaps với điểm trung bình 0.39/1.0 (vùng "?")
+**40 micro-queries → 39 facts → 20 dimension weights cập nhật**
+**Ngày:** 2026-05-11
+
+---
+
+## 1. Đòn Bẩy Ngược (Reverse Leverage) — Điểm: 0.373
+
+**Câu hỏi cốt lõi:** Làm sao để quỹ VC CẦN bạn, thay vì bạn xin họ?
+
+### Bằng Chứng Đã Xác Minh
+
+**Mô hình Scout → Partner:** [K] Các quỹ lớn như Sequoia, Accel, a16z, Lightspeed đều có chương trình scout. Scout KHÔNG CẦN kinh nghiệm VC — chỉ cần mạng lưới founder tốt. ([SuperScout](https://superscout.co/post/from-scout-to-vc-partner))
+
+**Ví dụ cụ thể đã xác minh:** [K]
+- **Jason Calacanis** — entrepreneur, trở thành scout đầu tiên của Sequoia, giới thiệu Uber khi còn nhỏ. Khoản đầu tư scout biến thành hàng chục triệu USD.
+- **Jeff Morris Jr.** — product lead tại Tinder, bắt đầu syndicate angel → scout cho Index Ventures → tự mở quỹ Chapter One.
+- **Jamshed Vesuna** — engineering manager, được Accel cho $25K-$50K tickets qua chương trình Starters, đầu tư như "night job."
+
+**Cơ chế hoạt động:** [K] Scout được cấp vốn nhỏ ($25K-$200K) để đầu tư vào startup theo phán đoán riêng. Thù lao = 2.5-10% carry trên phần lợi nhuận 20% của quỹ từ các deal scout tìm ra. Không lương cố định — hoàn toàn dựa trên kết quả. ([VC Stack](https://www.vcstack.io/blog/scout-programs))
+
+**Điểm mấu chốt:** [K] Track record scout tốt giờ được đánh giá CAO HƠN MBA hay kinh nghiệm banking truyền thống. Sequoia, Accel theo dõi hiệu suất scout và thăng chức scout có kết quả tốt thành associate, principal, hoặc partner.
+
+### Áp Dụng Cho User
+
+Bạn không cần XIN việc tại quỹ VC. Bạn cần CHỨNG MINH khả năng tìm deal. Cách nhanh nhất: tìm 3 startup Việt Nam chất lượng cao mà chưa ai biết → giới thiệu cho 3 quỹ khác nhau → nếu 1 deal thành, bạn có track record. Track record = vé vào cửa không cần CV.
+
+---
+
+## 2. Đường Tắt (Shortcut Paths) — Điểm: 0.374
+
+**Câu hỏi cốt lõi:** Có cách nào bỏ qua thang nghề truyền thống (intern → analyst → associate → partner) không?
+
+### Bằng Chứng Đã Xác Minh
+
+**Solo GP Micro-Fund:** [K] 53.4% tất cả quỹ VC mới thành lập năm 2024 là solo GP (1 người quản lý). 67% nhắm dưới $10M. ([0100 Conferences](https://0100conferences.substack.com/p/venture-capitals-solo-gp-movement))
+
+**Thời gian gây quỹ thực tế:** [K] Trung bình ngành = 15 tháng. Trường hợp cực đoan: 1 solo GP mất 2 năm gọi vốn $12.5M, liên hệ ~1,200 LP tiềm năng, tỷ lệ chuyển đổi 5% (58 nhà đầu tư). ([Founder Collective](https://foundercollective.com/blog/the-brutal-math-of-micro-funds-is-the-solo-gp-era-ending/))
+
+**Kinh tế học tàn nhẫn:** [K] $40M AUM × 2% management fee = $800K/năm — đủ cho 1 GP + 1 associate. Dưới $30M, hầu hết solo GP cần thu nhập phụ hoặc tiêu tiết kiệm trong 1-5 năm đầu. Carry thường mất 8-10 năm mới có ý nghĩa. ([Angel Investors Network](https://angelinvestorsnetwork.com/capital-raising/solo-gp-fund-economics-what-emerging-managers-actually-make))
+
+**SPV — con đường thay thế:** [K] Thay vì gọi vốn quỹ truyền thống, dùng SPV (special purpose vehicle) để syndicate từng deal riêng. Chi phí setup: $5K-$25K/deal. Phí: 2% management + 20% carry. Mỗi SPV $150K → lead nhận $3K phí + $28.4K upside tiềm năng. ([Auptimate](https://auptimate.com/resources/what-is-syndicate-spv-for-angel-investors-syndicate-leads/))
+
+**Ví dụ cụ thể:** [K]
+- **Francesco** — từ code, xây cộng đồng deep tech lớn nhất châu Âu 15,000+ thành viên → chạy quỹ £5M micro-fund.
+- **Ben Zises** — đầu tư ~$4M vào ~30 công ty pre-product, pre-revenue. Bắt đầu từ angel, dần thành solo GP.
+
+### Áp Dụng Cho User
+
+**Đường tắt thực tế nhất cho Việt Nam:**
+1. **Bước 1: SPV trước, quỹ sau.** Tìm 1 deal → gom 5-10 angel investors Việt Nam → setup SPV → đầu tư. Chi phí: $5K-$25K. Rủi ro: thấp. Kinh nghiệm thu được: vô giá.
+2. **Bước 2: 3-5 SPV thành công → track record → gọi vốn micro-fund $1-3M từ family offices Việt Nam.**
+3. **Bước 3: Micro-fund + intelligence platform = vị thế không thể thay thế.**
+
+---
+
+## 3. Chuỗi Cung Ứng Thông Tin (Information Supply Chain) — Điểm: 0.388
+
+**Câu hỏi cốt lõi:** Thông tin nào trong ngành VC mà insider có nhưng outsider không? Và có thể TẠO RA thông tin mà insider cần không?
+
+### Bằng Chứng Đã Xác Minh
+
+**Thị trường deal intelligence toàn cầu:** [K]
+- **Harmonic** — phát hiện startup trước khi ai biết, theo dõi 30M+ công ty, hiring signals, founder movements. Định giá $1.45 tỷ USD năm 2025. ([Qubit Capital](https://qubit.capital/blog/top-deal-sourcing-platforms-for-startups))
+- **Evertrace** — phát hiện founders TRƯỚC khi họ announce, theo dõi 10+ nguồn dữ liệu real-time (trade registries, GitHub, patent filings).
+- **Specter** — phát hiện early talent signals, company formations, team moves.
+- **PitchBook** — nền tảng chính cho PE/VC data toàn cầu.
+
+**Thống kê quan trọng:** [K]
+- 85% dealmakers dùng AI tự động hóa công việc hàng ngày (tăng từ 76% năm trước). ([Affinity](https://www.affinity.co/guides/vc-ai-tools))
+- 35% quỹ dữ liệu cho biết tool của họ tìm được ~50% tổng số deal.
+- 70% VC deals đến từ mạng lưới cá nhân của nhà đầu tư (Harvard Business School research).
+
+**Lỗ hổng Việt Nam:** [T] Không có Harmonic hay PitchBook cho VN. Dữ liệu startup VN nằm rải rác trong:
+- Nhóm Zalo riêng của giới VC
+- Cuộc nói chuyện cà phê ở Quận 1, HCMC
+- Báo cáo nội bộ của Do Ventures, VPCA (chỉ ra năm 1 lần)
+- Tin tức Tech In Asia, DealStreetAsia (có paywall)
+
+**Ai cung cấp data VN hiện tại:** [K]
+- **Do Ventures** — báo cáo năm "Vietnam Innovation & Tech Investment Report" ([Do Ventures](https://doventures.vc/en/insights/reports/vietnam-innovation-and-tech-investment-report-2024))
+- **VPCA** — "Vietnam Innovation & Private Capital Report" ([VPCA](https://www.vpca.vn/insights/vietnam-innovation-private-capital-report-2025))
+- **Insignia Ventures** — Insignia Business Review
+- **Tracxn** — 141 quỹ VN, 3.7M companies toàn cầu
+- **NIC (National Innovation Center)** — đồng xuất bản với Do Ventures
+
+### Áp Dụng Cho User
+
+**Lỗ hổng CỰC LỚN:** Tất cả các nguồn trên đều ra báo cáo HÀNG NĂM. Không ai cung cấp WEEKLY intelligence cho VN startup ecosystem. Đây là thị trường trống — Harmonic (định giá $1.45B) chứng minh thị trường toàn cầu có nhu cầu khổng lồ.
+
+**Thứ user có mà không ai có:** Hệ thống ThinkRunner có thể tự động:
+- Scrape hiring signals từ LinkedIn/VietnamWorks
+- Theo dõi app rankings từ App Store/Google Play
+- Monitor domain registrations mới
+- Track funding rumors từ DealStreetAsia/Tech In Asia
+- Tổng hợp thành weekly briefing tự động
+
+Đây không phải "tạo newsletter" — đây là xây dựng **cơ sở hạ tầng thông tin** cho ngành VC Việt Nam.
+
+---
+
+## 4. Vị Thế Quyền Lực (Power Position) — Điểm: 0.39
+
+**Câu hỏi cốt lõi:** Ai THỰC SỰ quyết định tiền đi đâu trong hệ sinh thái VC Việt Nam?
+
+### Bằng Chứng Đã Xác Minh
+
+**Cơ cấu quyền lực VC:** [K] Investment Committee (IC) quyết định. Tại CVC (corporate venture capital) như KVision, IC nằm ở HQ (Thailand). Country rep như Thành chỉ RECOMMEND, không DECIDE. ([DealStreetAsia](https://www.dealstreetasia.com/stories/vietnam-kasikornbank-deals-270090))
+
+**Lương thưởng thực tế:** [K]
+- US VC Associate trung bình: $126K/năm (2025 survey). ([Venture5](https://venture5.com/salary-survey/))
+- Scout: KHÔNG có lương cố định. Thù lao = carry (2.5-10% trên 20%), thường mất 3-12 năm mới nhận.
+- Vietnam VC rep: không có dữ liệu công khai [?]. Ước tính $3-5K/tháng dựa trên thị trường lao động local.
+
+**Phân biệt Scout vs Partner:** [K]
+- **Scout:** Tìm deal, giới thiệu cho quỹ. Không ngồi board. Không quyết định đầu tư. Nhận carry nhỏ.
+- **Partner:** Ngồi IC, quyết định đầu tư, ngồi board công ty portfolio. Nhận carry lớn + management fee.
+- **Country Rep (Thành):** Ở giữa — tìm deal + xây community + recommend cho IC. Không phải partner, không có quyền quyết.
+
+### Áp Dụng Cho User
+
+**Vị trí quyền lực THỰC:** Người kiểm soát DEAL FLOW kiểm soát hệ thống. Nếu 5 quỹ đều dựa vào intelligence của bạn để tìm deal, bạn có quyền lực hơn 1 country rep chỉ phục vụ 1 quỹ. Thành phục vụ KVision. Bạn nên phục vụ TOÀN BỘ hệ sinh thái.
+
+---
+
+## 5. Cộng Đồng Như Tài Sản (Community as Asset) — Điểm: 0.439
+
+**Câu hỏi cốt lõi:** Có ai biến cộng đồng thành quỹ đầu tư không? Cách nào?
+
+### Bằng Chứng Đã Xác Minh
+
+**Packy McCormick — Not Boring → Not Boring Capital:** [K]
+- Tháng 4/2020: bắt đầu viết newsletter "Not Boring" từ tầng hầm nhà mẹ vợ.
+- 2021: gọi $8M cho Fund 1. Bắt đầu bằng syndicate $4M vào 20 công ty.
+- Sau đó: gọi $30M cho Fund 2.
+- Hiện tại: 239K subscribers, 79 portfolio companies, 19 verticals.
+- LP gồm: Bain Capital Ventures, Marc Andreessen, Chris Dixon (a16z), Neil Mehta (Greenoaks).
+- Đầu tư nổi bật: Ramp, Scale AI, Replit.
+([Not Boring](https://www.notboring.co/p/introducing-not-boring-capital), [VC Sheet](https://www.vcsheet.com/fund/not-boring-capital))
+
+**Harry Stebbings — 20VC Podcast → $400M Fund:** [K]
+- 2015: bắt đầu podcast từ phòng ngủ với £50, lúc 17 tuổi.
+- 2018: đồng sáng lập Stride.VC với £100M.
+- 2020: ra mắt quỹ riêng 20VC Fund.
+- 2024: quỹ $400M+, 1,000+ cuộc phỏng vấn, 13+ unicorn investments.
+- LP base: 40+ founder unicorn + tổ chức toàn cầu.
+([Wikipedia](https://en.wikipedia.org/wiki/Harry_Stebbings))
+
+**Turner Novak — Banana Capital:** [K] Xây audience trên Twitter/newsletter → tự mở quỹ. Packy McCormick ghi nhận Turner giúp đỡ với "incredible generosity with advice and LP introductions."
+
+**Francesco — Deep Tech Community → £5M Fund:** [K] Xây cộng đồng deep tech 15,000+ thành viên ở châu Âu → chạy micro-fund £5M với backing từ Molten Ventures + unicorn founders.
+
+### Áp Dụng Cho User
+
+**Pattern rõ ràng:** Content/Community → Audience → Trust → Deal Flow → Fund.
+- Stebbings dùng PODCAST (5 năm → quỹ đầu tiên)
+- Packy dùng NEWSLETTER (1 năm → syndicate → quỹ)
+- Francesco dùng CỘNG ĐỒNG (community → quỹ)
+
+**Ở Việt Nam:** Không ai đang làm điều này. Do Ventures ra báo cáo năm. VPCA tổ chức summit. Nhưng KHÔNG AI cung cấp weekly intelligence + cộng đồng đầu tư. Đây là khoảng trống.
+
+---
+
+## 6. Tiếp Cận Mạng Lưới (Network Access) — Điểm: 0.304
+
+**Câu hỏi cốt lõi:** Làm sao vào được giới VC khi chưa quen ai?
+
+### Bằng Chứng Đã Xác Minh
+
+**Mạng lưới angel investor Việt Nam:** [K]
+- **Vietnam Angel Network (VAN)** — thành lập 2018, thuộc ASEAN Angels Alliance. Kết nối angel investors với Bộ KHCN. ([VAN](https://www.vietnamangelnetwork.org/for-investor))
+- **iAngel** — từ 2016, mạng lưới angel investors đầu tư early stage tại VN. ([Facebook](https://www.facebook.com/iangelvietnam/))
+- **AngelCentral Vietnam** — workshops angel investing + deal flow + syndication. ([AngelCentral](https://www.angelcentral.vn/))
+- **VAIC** — Delaware LLC, cung cấp seed/angel capital cho entrepreneurs VN.
+- **HATCH!** — từ 2012, hỗ trợ 100+ công ty, 10,000+ entrepreneurs, tổ chức angel networks tại Hà Nội.
+
+**Sự kiện quan trọng:** [T]
+- VPCA Vietnam Innovation & Private Capital Summit (hàng năm)
+- InnoEx (nơi Thành xuất hiện với tư cách speaker)
+- HATCH! Fair
+- Techfest (Bộ KHCN tổ chức)
+
+### Áp Dụng Cho User
+
+**Cách tiếp cận KHÔNG cần CV:**
+1. Tham gia VAN/iAngel/AngelCentral — đây là cửa mở, không cần giới thiệu.
+2. Đăng ký speaker tại InnoEx/Techfest với chủ đề "AI in Deal Sourcing" hoặc "Startup Intelligence" — thể hiện năng lực kỹ thuật.
+3. Viết intelligence briefing → gửi cho 20 fund managers → QUAN HỆ tự đến.
+
+**Lưu ý:** 70% deals VC đến từ mạng lưới cá nhân (Harvard). Nhưng mạng lưới có thể XÂY từ 0 nếu bạn CUNG CẤP GIÁ TRỊ trước. Intelligence briefing = giá trị. Events = exposure. Cộng đồng = credibility.
+
+---
+
+## 7. Tiến Nhập Gián Tiếp (Indirect Entry) — Điểm: 0.459
+
+**Câu hỏi cốt lõi:** Gatekeeper trong hệ sinh thái VC cần gì mà chưa được phục vụ?
+
+### Phân Tích Cơ Chế
+
+**Cái quỹ VC Việt Nam thực sự THIẾU:** [T]
+1. **Deal flow chất lượng** — 90% pitch họ nhận là rác. Người lọc được signal từ noise = vàng.
+2. **Due diligence data** — Không có Dun & Bradstreet cho VN. Xác minh doanh thu startup VN = gọi điện hỏi đối tác, kiểm tra thuế thủ công.
+3. **Post-investment operational support** — Hầu hết quỹ VN nhỏ, không có platform team. Portfolio companies cần giúp: marketing, tech, hiring.
+4. **LP updates sạch** — Nhiều quỹ mới không biết viết LP report chuẩn.
+5. **Cross-border intelligence** — Quỹ Singapore/Thailand muốn biết VN market nhưng không đọc được tiếng Việt.
+
+**Điểm gắn ký sinh (parasitic attachment):** [T] Cung cấp miễn phí 1 trong 5 thứ trên → trở thành người KHÔNG THỂ THIẾU → dần chuyển sang co-invest.
+
+### Áp Dụng Cho User
+
+**Chiến thuật cụ thể:**
+- Xây deal flow filter (dùng ThinkRunner) → gửi "Top 5 VN Startups This Month" cho 20 quỹ → miễn phí 6 tháng
+- Cung cấp due diligence mini-reports cho quỹ đang xem xét deal VN → miễn phí 3 deal đầu → thu phí deal thứ 4+
+- Viết LP update templates + VN market context → quỹ mới dùng free → referral loop
+
+---
+
+## 8. Loại Đòn Bẩy (Leverage Type) — Điểm: 0.31
+
+**Câu hỏi cốt lõi:** VC dùng đòn bẩy gì? Đòn bẩy nào không cần xin phép?
+
+### Phân Tích Theo Naval Framework
+
+**VC truyền thống = Capital Leverage** [K]: Dùng tiền người khác (OPM) để đầu tư. Cần permission từ LP. Gatekeeper: track record + credentials.
+
+**Đòn bẩy không cần xin phép (permissionless):**
+- **Code leverage** [K]: Xây platform/tool mà practitioners dùng. Harmonic ($1.45B) = code leverage trong VC space.
+- **Media leverage** [K]: Stebbings (20VC podcast), Packy (Not Boring newsletter). Không ai cho phép hay cấm viết newsletter.
+- **Data leverage** [T]: Sở hữu database startup mà quỹ cần. Mỗi ngày data tích lũy → moat dày thêm.
+
+### Áp Dụng Cho User
+
+**User có CODE LEVERAGE (ThinkRunner) + DATA LEVERAGE (decision-vectors.db) — cả hai đều permissionless.** Không cần ai cho phép xây hệ thống intelligence. Không cần credentials. Không cần network ban đầu. Output (intelligence briefing) tự chứng minh giá trị.
+
+So sánh:
+| Con đường | Đòn bẩy | Cần xin phép? | Thời gian compound |
+|---|---|---|---|
+| Xin việc VC | Labor | Có (CV, phỏng vấn) | Không compound |
+| Scout program | Capital (nhỏ) | Có (giới thiệu) | 3-12 năm |
+| Newsletter/Podcast | Media | KHÔNG | 1-3 năm |
+| Intelligence platform | Code + Data | KHÔNG | 6-18 tháng |
+| SPV syndicate | Capital | Bán phần (cần deal) | Per-deal |
+
+**Intelligence platform = fastest compound, lowest permission barrier.**
+
+---
+
+## 9. Khoảng Cách Thực Hiện (Execution Distance) — Điểm: 0.465
+
+### Lộ Trình 18 Tháng: Từ 0 → Giữa Dòng Tiền
+
+| Tháng | Hành Động | Milestone | Tài Sản Tích Lũy |
+|---|---|---|---|
+| 1-2 | Xây VN Startup Tracker MVP bằng ThinkRunner. Track 200 startups. | MVP hoạt động | Database 200 companies |
+| 3-4 | Phát hành "VN Startup Signals Weekly" miễn phí cho 20 quỹ. Tham gia VAN/iAngel. | 5+ fund managers mở email | Database 300+ companies, 20 contacts |
+| 5-6 | Giới thiệu 2-3 deals cho quỹ đang tìm kiếm. Đề xuất scout/co-source arrangement. | 1 warm relationship với fund manager | Database 400+, 1 deal pipeline |
+| 7-9 | Setup SPV đầu tiên nếu có deal chất lượng. Bắt đầu newsletter công khai (Substack). | 1 SPV closed hoặc 1 scout agreement | Database 500+, audience 200+ |
+| 10-12 | Scale intelligence → 50+ quỹ. Speak tại InnoEx/Techfest. 2-3 SPV deals. | Known name trong ecosystem | Database 500+, audience 500+, 2-3 deals |
+| 13-18 | Gọi micro-fund $1-3M từ VN family offices/HNW. Track record = co-sourced deals + intelligence reputation. | Fund I closed | Micro-fund + platform + audience + data |
+
+### Kỹ Năng Cần Phát Triển
+
+1. **Đã có:** Kỹ thuật (ThinkRunner, data systems, automation)
+2. **Cần xây:** Financial modeling cơ bản (DCF, unit economics, cap table)
+3. **Cần xây:** Communication — viết briefing ngắn gọn, thuyết phục fund managers
+4. **Cần xây:** Deal evaluation — đọc pitch deck, đánh giá founder, spot red flags
+5. **Cần network:** 3-5 fund managers sẵn sàng nhận intelligence briefing
+
+---
+
+## Tổng Kết: ThinkRunner Đã Đúng Ở Đâu
+
+| Gap ThinkRunner Xác Định | Kết Quả Deep-Dive | Hành Động |
+|---|---|---|
+| reverse_leverage (0.373) | Scout programs = proven path, không cần kinh nghiệm VC | Bắt đầu bằng deal giới thiệu |
+| shortcut_paths (0.374) | Solo GP + SPV = bỏ qua career ladder hoàn toàn | SPV trước, quỹ sau |
+| information_supply_chain (0.388) | Harmonic = $1.45B, VN chưa có ai → LỖ HỔNG LỚN NHẤT | Xây VN intelligence platform |
+| power_position (0.39) | IC quyết định, country rep chỉ recommend | Phục vụ NHIỀU quỹ, không 1 quỹ |
+| community_as_asset (0.439) | Packy $30M, Stebbings $400M — community → fund pattern đã chứng minh | Newsletter + community + fund |
+| network_access (0.304) | VAN, iAngel, AngelCentral — cửa mở không cần credentials | Tham gia ngay tháng 1 |
+| indirect_entry (0.459) | Quỹ VN thiếu deal flow filter + due diligence data | Cung cấp miễn phí → trở nên không thể thiếu |
+| leverage_type (0.31) | Code + Data leverage = permissionless, compound nhanh nhất | Intelligence platform = đòn bẩy chính |
+
+**ThinkRunner đã xác định đúng 8/8 gaps.** Mỗi gap khi deep-dive đều tìm ra cơ hội cụ thể. Gap lớn nhất = information_supply_chain (chưa có Harmonic cho VN) — đây chính là nơi user nên tập trung.
+
+---
+
+## Nguồn Tham Khảo
+
+- [SuperScout — Scout to Partner](https://superscout.co/post/from-scout-to-vc-partner)
+- [Solo GP Movement](https://0100conferences.substack.com/p/venture-capitals-solo-gp-movement)
+- [Solo GP Economics](https://angelinvestorsnetwork.com/capital-raising/solo-gp-fund-economics-what-emerging-managers-actually-make)
+- [Brutal Math of Micro-Funds](https://foundercollective.com/blog/the-brutal-math-of-micro-funds-is-the-solo-gp-era-ending/)
+- [Harmonic AI Deal Sourcing](https://qubit.capital/blog/top-deal-sourcing-platforms-for-startups)
+- [Affinity VC AI Tools](https://www.affinity.co/guides/vc-ai-tools)
+- [Not Boring Capital](https://www.notboring.co/p/introducing-not-boring-capital)
+- [Harry Stebbings Wikipedia](https://en.wikipedia.org/wiki/Harry_Stebbings)
+- [Do Ventures Report 2024](https://doventures.vc/en/insights/reports/vietnam-innovation-and-tech-investment-report-2024)
+- [VPCA Report 2025](https://www.vpca.vn/insights/vietnam-innovation-private-capital-report-2025)
+- [Tracxn VN Funds](https://tracxn.com/d/investor-lists/venture-capital-funds-in-vietnam/__-RtUJuuV5YyotVqUJDPy1xq6y04_MR8apm8GpSMdJY0)
+- [Vietnam Angel Network](https://www.vietnamangelnetwork.org/for-investor)
+- [AngelCentral Vietnam](https://www.angelcentral.vn/)
+- [VC Salary Survey 2024](https://johngannonblog.com/venture-capital-salary-survey/)
+- [KVision DealStreetAsia](https://www.dealstreetasia.com/stories/vietnam-kasikornbank-deals-270090)
+- [KVision $1B Vietnam Plan](https://theinvestor.vn/thailands-kasikornbank-eyes-to-invest-1-bln-in-vietnam-till-2027-d6385.html)

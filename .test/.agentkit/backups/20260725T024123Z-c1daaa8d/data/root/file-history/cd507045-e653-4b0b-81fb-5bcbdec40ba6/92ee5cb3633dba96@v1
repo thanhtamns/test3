@@ -1,0 +1,53 @@
+---
+title: "Operator Evolution: Revenue-Grounded Fitness Rewiring"
+description: "Shift evolution fitness from analysis-quality proxies (Brier/yield/parse) to revenue-grounded signals ($, velocity, execution effectiveness). System evolves to make money, not just predict opportunities."
+status: pending
+priority: P0
+effort: 8d
+branch: "master"
+tags: [evolution, fitness, revenue, operator-mindset, paradigm-shift]
+blockedBy: []
+blocks: []
+created: "2026-05-16T14:04:34.117Z"
+createdBy: "ck:plan"
+source: skill
+---
+
+# Operator Evolution: Revenue-Grounded Fitness Rewiring
+
+## Problem Statement
+
+System has 4-layer self-evolution (template→strategy→meta→meta-meta) technically superior to academic papers (EvoAgentX, AgentEvolver, AEVO). But fitness function is 100% analysis-quality proxies:
+- `brier × 0.6 + fact_yield × 0.25 + parse_success × 0.15`
+
+Result: system evolves to be a better ANALYST, not a better MONEY-MAKER. Deal pipeline exists (7 stages) but has 0 entries. No revenue signal feeds evolution.
+
+## Solution
+
+Wire revenue outcomes into fitness function. Extend evolution scope to execution (not just analysis). Add complexity penalty + velocity metric.
+
+**New fitness:** `brier×0.3 + revenue_signal×0.4 + velocity×0.2 + yield×0.1`
+
+## Target Repo
+
+`D:/code/invesments/master_investments` (all code changes there, plan lives in _mmo)
+
+## Phases
+
+| Phase | Name | Status | Effort |
+|-------|------|--------|--------|
+| 1 | [Wire Deal Pipeline to Outcome Tracker](./phase-01-wire-deal-pipeline-to-outcome-tracker.md) | Pending | 1d |
+| 2 | [Revenue-Grounded Fitness Function](./phase-02-revenue-grounded-fitness-function.md) | Pending | 2d |
+| 3 | [Execution Template Evolution](./phase-03-execution-template-evolution.md) | Pending | 3d |
+| 4 | [Complexity Penalty and Velocity Metric](./phase-04-complexity-penalty-and-velocity-metric.md) | Pending | 1d |
+| 5 | [Integration Test and Cold-Start Bootstrap](./phase-05-integration-test-and-cold-start-bootstrap.md) | Pending | 1d |
+
+## Dependencies
+
+- Depends on completed: `260516-2035-meta-evolution-layer-strategy-level` (L4 strategy evolution infra)
+- Depends on completed: `260516-1511-meta-evolution-layer` (meta-edit controller, knob registry)
+- Complements (no block): `260516-1630-meta-evolution-template-mutation` (template mutator)
+
+## Key Architectural Insight
+
+Academic self-evolving agent papers (EvoAgentX, AgentEvolver, AlphaEvolve) beat baselines because their fitness = TASK COMPLETION (binary pass/fail). Our system currently lacks this — we measure prediction accuracy (a proxy) not execution success (the terminal metric). This plan fixes that gap.

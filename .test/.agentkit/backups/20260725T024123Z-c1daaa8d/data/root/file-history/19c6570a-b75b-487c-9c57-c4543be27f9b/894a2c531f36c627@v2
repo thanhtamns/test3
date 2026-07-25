@@ -1,0 +1,25 @@
+{
+  "$schema": "monetization-tracker-v1",
+  "version": "1.0.0",
+  "created": "2026-05-09",
+  "specialization_statement": null,
+  "revenue_models": {
+    "retainer_clients": [],
+    "success_fees": [],
+    "co_investments": [],
+    "advisory_positions": []
+  },
+  "monthly_income": [],
+  "quitting_dashboard": {
+    "current_salary_vnd": 0,
+    "last_3_months_commission": [0, 0, 0],
+    "commission_gte_70pct_salary": false,
+    "active_deals_in_pipeline": 0,
+    "inbound_inquiries_this_month": 0,
+    "fulltime_blocking_deals": false,
+    "diversification": {
+      "largest_client_pct": 0,
+      "passes_40pct_rule": true
+    }
+  }
+}

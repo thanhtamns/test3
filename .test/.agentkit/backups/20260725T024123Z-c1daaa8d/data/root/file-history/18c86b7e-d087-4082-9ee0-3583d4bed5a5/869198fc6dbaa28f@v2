@@ -1,0 +1,133 @@
+package api
+
+import (
+	"compress/gzip"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"time"
+
+	"github.com/codeflow-dev/codeflow/cloud/internal/clickhouse"
+	"google.golang.org/protobuf/proto"
+
+	pb "github.com/codeflow-dev/codeflow/cloud/proto"
+)
+
+type handler struct {
+	ch     *clickhouse.Client
+	logger *slog.Logger
+}
+
+func (h *handler) handleIngestEvents(w http.ResponseWriter, r *http.Request) {
+	tenantID := extractTenantID(r)
+	if tenantID == "" {
+		tenantID = "default"
+	}
+
+	var reader io.Reader = r.Body
+	if r.Header.Get("Content-Encoding") == "gzip" {
+		gz, err := gzip.NewReader(r.Body)
+		if err != nil {
+			http.Error(w, "invalid gzip", http.StatusBadRequest)
+			return
+		}
+		defer gz.Close()
+		reader = gz
+	}
+
+	body, err := io.ReadAll(io.LimitReader(reader, 10*1024*1024))
+	if err != nil {
+		http.Error(w, "read error", http.StatusBadRequest)
+		return
+	}
+
+	var batch pb.EventBatch
+	if err := proto.Unmarshal(body, &batch); err != nil {
+		http.Error(w, fmt.Sprintf("invalid protobuf: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	rows := make([]clickhouse.EventRow, 0, len(batch.Events))
+	for _, ev := range batch.Events {
+		row := clickhouse.EventRow{
+			EventID:    ev.Id,
+			TenantID:   tenantID,
+			Timestamp:  time.UnixMilli(ev.TimestampMs),
+			SessionID:  ev.SessionId,
+			ProjectDir: ev.ProjectDir,
+			Command:    ev.Command,
+			CLIVersion: batch.CliVersion,
+			MachineID:  batch.MachineId,
+		}
+
+		if ev.Compression != nil {
+			row.EventType = "compression"
+			row.InputBytes = ev.Compression.InputBytes
+			row.OutputBytes = ev.Compression.OutputBytes
+			row.InputTokens = ev.Compression.InputTokens
+			row.OutputTokens = ev.Compression.OutputTokens
+			row.TokensSaved = ev.Compression.TokensSaved
+			row.FilterName = ev.Compression.FilterName
+			row.CompressionLevel = ev.Compression.CompressionLevel
+			row.LatencyMs = ev.Compression.LatencyMs
+		}
+
+		if ev.Dedup != nil {
+			row.EventType = "dedup"
+			row.ContentHash = ev.Dedup.ContentHash
+			row.CacheHit = ev.Dedup.CacheHit
+			row.TokensSaved = ev.Dedup.TokensSaved
+			row.LatencyMs = ev.Dedup.LatencyMs
+		}
+
+		rows = append(rows, row)
+	}
+
+	if err := h.ch.InsertEvents(r.Context(), rows); err != nil {
+		h.logger.Error("clickhouse insert failed", "error", err, "count", len(rows))
+		http.Error(w, "insert failed", http.StatusInternalServerError)
+		return
+	}
+
+	h.logger.Info("events ingested",
+		"tenant", tenantID,
+		"count", len(rows),
+		"cli_version", batch.CliVersion,
+	)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]any{
+		"accepted": len(rows),
+	})
+}
+
+func (h *handler) handleOverview(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.URL.Query().Get("tenant_id")
+	if tenantID == "" {
+		tenantID = extractTenantID(r)
+	}
+	if tenantID == "" {
+		tenantID = "default"
+	}
+
+	stats, err := h.ch.GetOverview(r.Context(), tenantID)
+	if err != nil {
+		h.logger.Error("overview query failed", "error", err)
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(stats)
+}
+
+func extractTenantID(r *http.Request) string {
+	if auth := r.Header.Get("Authorization"); auth != "" {
+		// Future: extract tenant_id from JWT claims
+		// For MVP: use X-Tenant-ID header (server-trusted in prod via gateway)
+	}
+	return r.Header.Get("X-Tenant-ID")
+}

@@ -1,0 +1,119 @@
+"""Tests for ExecutionFitnessTracker — Loop 2 revenue-grounded fitness."""
+
+import math
+
+import pytest
+
+from ..execution_fitness_tracker import ExecutionFitnessTracker
+
+
+@pytest.fixture
+def tracker(tmp_path):
+    from ..case_archiver import CaseArchiver
+    archiver = CaseArchiver(db_path=tmp_path / "test-archive.db")
+    return ExecutionFitnessTracker(archiver=archiver)
+
+
+class TestStateTransitions:
+    def test_register_verdict_creates_state(self, tracker):
+        tracker.register_verdict("case_001", "strat_a", "MOUNTAIN_CANDIDATE")
+        state = tracker.get_state("case_001")
+        assert state["state"] == "not_acted"
+        assert state["revenue"] == 0.0
+        assert state["verdict_class"] == "MOUNTAIN_CANDIDATE"
+
+    def test_record_action_updates_state(self, tracker):
+        tracker.register_verdict("case_001", "strat_a", "MOUNTAIN_CANDIDATE")
+        tracker.record_action("case_001")
+        state = tracker.get_state("case_001")
+        assert state["state"] == "acted"
+        assert state["acted_at"] is not None
+
+    def test_record_outcome_with_revenue(self, tracker):
+        tracker.register_verdict("case_001", "strat_a", "MOUNTAIN_CANDIDATE")
+        tracker.record_action("case_001")
+        tracker.record_outcome("case_001", revenue=500.0, notes="first sale")
+        state = tracker.get_state("case_001")
+        assert state["state"] == "outcome_reported"
+        assert state["revenue"] == 500.0
+        assert state["notes"] == "first sale"
+
+
+class TestBlendedFitness:
+    def test_blended_fitness_all_components(self, tracker):
+        tracker.register_verdict("case_001", "strat_a", "MOUNTAIN_CANDIDATE")
+        tracker.record_action("case_001")
+        tracker.record_outcome("case_001", revenue=1000.0)
+        # Manually set time_to_outcome for deterministic test
+        tracker._set_time_to_outcome("case_001", days=30)
+        score = tracker.compute_blended_fitness("case_001", brier_score=0.2)
+        assert 0.0 < score <= 1.0
+        # brier=0.8*0.3=0.24, action=1.0*0.25=0.25, revenue>0, speed>0
+        assert score > 0.5
+
+    def test_blended_fitness_no_outcome_yet(self, tracker):
+        tracker.register_verdict("case_001", "strat_a", "MOUNTAIN_CANDIDATE")
+        tracker.record_action("case_001")
+        score = tracker.compute_blended_fitness("case_001", brier_score=0.3)
+        # action=1.0, revenue=0, speed=0 → partial score
+        assert 0.0 < score < 0.7
+
+    def test_blended_fitness_no_action(self, tracker):
+        tracker.register_verdict("case_001", "strat_a", "KILL")
+        score = tracker.compute_blended_fitness("case_001", brier_score=0.1)
+        # Only brier contributes: (1-0.1)*0.3 + info_gain*0.1
+        assert 0.0 < score < 0.5
+
+
+class TestRevenueScaling:
+    def test_revenue_log_scaled(self, tracker):
+        tracker.register_verdict("case_a", "s", "MOUNTAIN_CANDIDATE")
+        tracker.record_action("case_a")
+        tracker.record_outcome("case_a", revenue=100.0)
+
+        tracker.register_verdict("case_b", "s", "MOUNTAIN_CANDIDATE")
+        tracker.record_action("case_b")
+        tracker.record_outcome("case_b", revenue=10000.0)
+
+        score_a = tracker.compute_blended_fitness("case_a", brier_score=0.2)
+        score_b = tracker.compute_blended_fitness("case_b", brier_score=0.2)
+        # Log scale: 10000 is NOT 100x more fitness than 100
+        ratio = score_b / score_a
+        assert ratio < 3.0  # log-scaled, not linear
+
+
+class TestSpeedScore:
+    def test_speed_score_faster_is_better(self, tracker):
+        tracker.register_verdict("case_fast", "s", "MOUNTAIN_CANDIDATE")
+        tracker.record_action("case_fast")
+        tracker.record_outcome("case_fast", revenue=500.0)
+        tracker._set_time_to_outcome("case_fast", days=7)
+
+        tracker.register_verdict("case_slow", "s", "MOUNTAIN_CANDIDATE")
+        tracker.record_action("case_slow")
+        tracker.record_outcome("case_slow", revenue=500.0)
+        tracker._set_time_to_outcome("case_slow", days=90)
+
+        score_fast = tracker.compute_blended_fitness("case_fast", brier_score=0.2)
+        score_slow = tracker.compute_blended_fitness("case_slow", brier_score=0.2)
+        assert score_fast > score_slow
+
+
+class TestAutoDetect:
+    def test_auto_detect_interest_from_repeat_topic(self, tracker):
+        tracker.register_verdict("case_1", "s", "MOUNTAIN_CANDIDATE")
+        tracker.log_query("AI writing tools")
+        tracker.log_query("AI writing tools")
+        tracker.log_query("AI writing tools")
+        detected = tracker.detect_interest("AI writing tools", threshold=3)
+        assert detected is True
+
+
+class TestStrategyAggregation:
+    def test_get_strategy_fitness_aggregates_all_cases(self, tracker):
+        for i in range(5):
+            tracker.register_verdict(f"case_{i}", "strat_x", "MOUNTAIN_CANDIDATE")
+            tracker.record_action(f"case_{i}")
+            tracker.record_outcome(f"case_{i}", revenue=float(i * 100))
+        fitness = tracker.get_strategy_fitness("strat_x", default_brier=0.3)
+        assert 0.0 < fitness <= 1.0

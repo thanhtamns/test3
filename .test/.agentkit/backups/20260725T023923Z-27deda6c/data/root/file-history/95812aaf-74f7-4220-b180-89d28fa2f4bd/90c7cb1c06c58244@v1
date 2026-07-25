@@ -1,0 +1,267 @@
+"""
+DimensionRegistry — 15+ analysis dimensions with weighted query templates.
+Pure data + lookup. Zero LLM calls.
+"""
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
+
+
+@dataclass
+class Dimension:
+    name: str
+    weight: float
+    templates: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {"name": self.name, "weight": self.weight, "templates": self.templates}
+
+
+DIMENSION_REGISTRY: dict[str, Dimension] = {
+    "career_path": Dimension(
+        name="career_path",
+        weight=1.5,
+        templates=[
+            "Average age of {role} in {market}?",
+            "Required experience years for {role}?",
+            "Typical career ladder steps to reach {role}?",
+            "What credentials/degrees are common among {role}?",
+            "Salary/compensation range for {role} in {market}?",
+            # benchmark_comparison additions
+            "What corporate roles did {target} hold before {role}?",
+            "Fastest path from {current_position} to {role} without {target}'s background?",
+        ],
+    ),
+    "deal_skills": Dimension(
+        name="deal_skills",
+        weight=1.0,
+        templates=[
+            "Typical deal sizes for {industry} in {market}?",
+            "Standard due diligence checklist for {industry}?",
+            "Key financial metrics evaluated in {industry} deals?",
+            "Common deal structures in {industry}?",
+            # benchmark_comparison additions
+            "What deal sizes are typical for first-time {role} in {industry}?",
+            "Minimum track record to manage a {metric} fund?",
+        ],
+    ),
+    "network_access": Dimension(
+        name="network_access",
+        weight=1.5,
+        templates=[
+            "How to access {industry} professional circles in {market}?",
+            "Key networking events for {industry} in {market}?",
+            "Who are the gatekeepers in {industry} in {market}?",
+            "What professional associations exist for {industry}?",
+        ],
+    ),
+    "founder_experience": Dimension(
+        name="founder_experience",
+        weight=1.0,
+        templates=[
+            "Revenue benchmark for founders aged {target} in {industry}?",
+            "Typical team size at seed stage for {industry}?",
+            "Most common founder background for {industry}?",
+        ],
+    ),
+    "base_rates": Dimension(
+        name="base_rates",
+        weight=2.0,
+        templates=[
+            "What % of {industry} businesses fail in year 1?",
+            "What % of people achieve {target} by age 30?",
+            "Survivorship bias in {industry} career data?",
+            "Base rate of success for {target} globally?",
+            "Median vs mean outcome for {industry} entrants?",
+        ],
+    ),
+    "capital_requirements": Dimension(
+        name="capital_requirements",
+        weight=1.5,
+        templates=[
+            "Minimum capital to start {industry} business?",
+            "Typical GP commit % for {industry}?",
+            "Working capital cycle for {industry}?",
+            "Break-even timeline for {industry} ventures?",
+        ],
+    ),
+    "competitive_landscape": Dimension(
+        name="competitive_landscape",
+        weight=1.5,
+        templates=[
+            "Top 5 players in {industry} by {metric}?",
+            "Market leader's entry barriers in {industry}?",
+            "Free alternatives covering >70% of {target} value prop?",
+            "Recent new entrants in {industry} in last 2 years?",
+        ],
+    ),
+    "moat_patterns": Dimension(
+        name="moat_patterns",
+        weight=1.5,
+        templates=[
+            "What moat type works for {industry}?",
+            "Switching cost for customers in {industry}?",
+            "Network effects present in {industry}?",
+            "Data moat feasibility for {industry}?",
+        ],
+    ),
+    "timing_windows": Dimension(
+        name="timing_windows",
+        weight=1.0,
+        templates=[
+            "Current market cycle position for {industry}?",
+            "Regulatory deadlines affecting {industry}?",
+            "Seasonal demand patterns for {industry}?",
+            "Technology inflection points in {industry}?",
+        ],
+    ),
+    "unit_economics": Dimension(
+        name="unit_economics",
+        weight=1.5,
+        templates=[
+            "Typical CAC for {industry}?",
+            "Average LTV for {industry} customers?",
+            "Gross margins for {industry}?",
+            "Revenue per employee in {industry}?",
+        ],
+    ),
+    "regulatory_risks": Dimension(
+        name="regulatory_risks",
+        weight=1.0,
+        templates=[
+            "Legal barriers to entry in {industry} in {market}?",
+            "Compliance cost for {industry}?",
+            "Recent regulatory changes affecting {industry}?",
+        ],
+    ),
+    "failure_patterns": Dimension(
+        name="failure_patterns",
+        weight=2.0,
+        templates=[
+            "Top 3 failure reasons for {industry}?",
+            "% failure rate in first 2 years for {industry}?",
+            "Most common mistake by first-time {role}?",
+            "What kills {industry} businesses after initial traction?",
+        ],
+    ),
+    "compounding_mechanisms": Dimension(
+        name="compounding_mechanisms",
+        weight=1.0,
+        templates=[
+            "What compounds in {industry}? (data/network/brand)?",
+            "Time to flywheel activation for {industry}?",
+            "Compound growth rate for top performers in {industry}?",
+        ],
+    ),
+    "execution_distance": Dimension(
+        name="execution_distance",
+        weight=1.5,
+        templates=[
+            "Steps from {current_position} to {target}?",
+            "Skills gap between {current_position} and {target}?",
+            "Time estimate from {current_position} to {target}?",
+            "Prerequisite milestones before reaching {target}?",
+        ],
+    ),
+    "leverage_type": Dimension(
+        name="leverage_type",
+        weight=1.0,
+        templates=[
+            "Is {industry} code/media/capital/labor leverage?",
+            "Permissionless leverage available in {industry}?",
+            "How do top performers in {industry} leverage their time?",
+        ],
+    ),
+    "indirect_entry": Dimension(
+        name="indirect_entry",
+        weight=1.5,
+        templates=[
+            "Who controls the supply chain for {target}?",
+            "What do gatekeepers in {industry} need that's underserved?",
+            "What free value could a newcomer provide to {industry} ecosystem?",
+            "What's the parasitic attachment opportunity in {industry}?",
+            "Who are the Level 3 underserved players in {industry}?",
+        ],
+    ),
+}
+
+QUESTION_TYPE_DIMENSIONS: dict[str, list[tuple[str, float]]] = {
+    "career_path": [
+        ("career_path", 2.0), ("base_rates", 2.0), ("network_access", 1.5),
+        ("execution_distance", 1.5), ("capital_requirements", 1.0),
+        ("failure_patterns", 1.5), ("deal_skills", 1.0), ("leverage_type", 0.8),
+    ],
+    "deal_analysis": [
+        ("deal_skills", 2.0), ("competitive_landscape", 1.5), ("unit_economics", 1.5),
+        ("moat_patterns", 1.5), ("base_rates", 1.5), ("failure_patterns", 1.5),
+        ("capital_requirements", 1.0), ("timing_windows", 1.0),
+    ],
+    "market_entry": [
+        ("competitive_landscape", 2.0), ("base_rates", 2.0), ("unit_economics", 1.5),
+        ("regulatory_risks", 1.5), ("capital_requirements", 1.5),
+        ("failure_patterns", 1.5), ("timing_windows", 1.0), ("moat_patterns", 1.0),
+    ],
+    "competitor_audit": [
+        ("competitive_landscape", 2.0), ("moat_patterns", 1.5), ("unit_economics", 1.5),
+        ("failure_patterns", 1.0), ("timing_windows", 1.0),
+    ],
+    "wealth_strategy": [
+        ("capital_requirements", 2.0), ("compounding_mechanisms", 2.0), ("leverage_type", 1.5),
+        ("base_rates", 1.5), ("execution_distance", 1.5),
+        ("failure_patterns", 1.0), ("timing_windows", 1.0),
+    ],
+    "indirect_strategy": [
+        ("indirect_entry", 2.0), ("network_access", 1.5), ("execution_distance", 1.5),
+        ("competitive_landscape", 1.0), ("failure_patterns", 1.0),
+        ("leverage_type", 1.0), ("capital_requirements", 0.8),
+    ],
+    "custom": [
+        ("base_rates", 1.5), ("failure_patterns", 1.5), ("competitive_landscape", 1.0),
+        ("unit_economics", 1.0), ("capital_requirements", 1.0),
+        ("execution_distance", 1.0), ("moat_patterns", 0.8), ("leverage_type", 0.8),
+    ],
+    "benchmark_comparison": [
+        ("career_path", 2.0), ("deal_skills", 2.0), ("network_access", 1.5),
+        ("founder_experience", 1.5), ("capital_requirements", 1.5),
+        ("execution_distance", 2.0), ("base_rates", 1.5), ("leverage_type", 1.0),
+        ("timing_windows", 0.8), ("failure_patterns", 1.0),
+    ],
+}
+
+
+def get_dimensions(
+    question_type: str,
+    min_weight: float = 0.5,
+    weight_overrides: Optional[dict[str, float]] = None,
+) -> list[Dimension]:
+    type_dims = QUESTION_TYPE_DIMENSIONS.get(question_type, QUESTION_TYPE_DIMENSIONS["custom"])
+    result = []
+    for dim_name, weight_override in type_dims:
+        dim = DIMENSION_REGISTRY.get(dim_name)
+        if not dim:
+            continue
+        final_weight = weight_overrides.get(dim_name, weight_override) if weight_overrides else weight_override
+        if final_weight >= min_weight:
+            result.append(Dimension(
+                name=dim.name,
+                weight=final_weight,
+                templates=list(dim.templates),
+            ))
+    return result
+
+
+def load_evolved_weights(db_path: Path) -> dict[str, float]:
+    """Load evolved weights from template_metrics table. Returns dict, no global mutation."""
+    import sqlite3
+    if not db_path.exists():
+        return {}
+    try:
+        with sqlite3.connect(str(db_path)) as conn:
+            rows = conn.execute(
+                "SELECT dimension, current_weight FROM template_metrics "
+                "GROUP BY dimension"
+            ).fetchall()
+        return {dim_name: evolved_weight for dim_name, evolved_weight in rows}
+    except sqlite3.DatabaseError:
+        return {}

@@ -1,0 +1,75 @@
+# Brainstorm: Auto-Hunt Engine (SessionStart)
+
+**Date:** 2026-05-30
+**Status:** APPROVED
+**Target repo:** D:\code\invesments\master_investments
+
+## Problem
+
+Stage0/hunt system has ALL components (hypothesis engine, knowledge hunter, KB with 63 cases, feedback loop, self-evolution) but requires HUMAN to trigger each hunt manually. No automated niche discovery.
+
+## Approved Design
+
+3-phase hybrid orchestrator triggered by SessionStart hook:
+
+### Phase 1: SIGNAL SCAN (Python, deterministic, <30s)
+- Scan 63 KB cases → extract gap patterns (domains <3 cases, unexplored intersections)
+- Scan outcome patterns → what killed/passed share
+- External signals: WebSearch trending + forum scan (ladder-runner)
+- Load founder profile from phamt-260411
+- Output: ranked signal_candidates[] (0-10)
+- 0 candidates → STOP
+
+### Phase 2: HYPOTHESIS GENERATE (Python + LLM, adaptive)
+- Wire existing hypothesis_engine for niche generation
+- First-principles filter (NOT web-first)
+- Dedupe against existing 63 KB cases
+- Output: 3-5 novel niche hypotheses
+
+### Phase 3: HUNT + VERDICT (LLM stage0 pipeline, deep)
+- Each hypothesis → mini stage0 run
+- Mountain test v22
+- Anti-confirmation queries mandatory
+- Output: Top 3 ranked niches + GO/KILL + Day 1 action
+- Auto-persist new cases → KB grows
+
+### Output Format
+```
+auto-hunt-report-YYMMDD.md
+  Top 3 niches:
+  1. [NICHE] — [GO/KILL] — [WHY 1 sentence] — [Day 1 action]
+  2. ...
+  3. ...
+```
+
+### Adaptive Budget
+- STRONG signal (3+ data points): Full stage0 run (~100K tokens)
+- MEDIUM (1-2 points): Quick validation (~30K tokens)
+- WEAK (<1): Skip, log reason
+- Max 3 full hunts per session
+
+### Touchpoints
+- `.claude/hooks/startup.cjs` — add trigger
+- `nui-hunter/scripts/` — new auto-hunt-signal-scanner.py
+- `data_intelligence/reasoning/hypothesis_engine.py` — wire as Phase 2
+- `nui-hunter/kb/cases/` — auto-persist
+- `nui-hunter/scripts/kb-add.py` — reuse
+- `feedback_loop/` — wire outcomes
+
+### Scope OUT
+- Changing stage0 pipeline itself
+- UI/dashboard
+- Auto-execution (recommend only)
+- Changing feedback loop scripts
+
+### Kill Criteria
+- >70% false positive (already in KB) = broken dedup
+- >20 min runtime = too slow
+- 5 sessions with 0 actionable output = scanner rewrite needed
+
+## Decisions Made
+1. Trigger: SessionStart hook (not cron, not manual)
+2. Signal sources: KB patterns + external scan (both)
+3. Profile: Load from file, no re-capture
+4. Budget: Adaptive (system decides depth per signal strength)
+5. Output: Top 3 niches + verdict + Day 1 action (concise, not full reports)

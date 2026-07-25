@@ -1,0 +1,369 @@
+"""
+Operator Mastery Layer - Deep patterns from actual operators.
+
+Goes BEYOND axioms to:
+1. Marc Rich - Control contracts, not commodities
+2. Buffett - Float is free capital
+3. Soros - Reflexivity and position sizing
+4. Munger - Inversion and second-order thinking
+5. Thiel - Monopoly thinking and 0-to-1
+
+This layer produces OPERATOR-LEVEL insights, not textbook knowledge.
+"""
+
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Tuple
+
+
+@dataclass
+class OperatorPattern:
+    """A pattern from a specific operator's playbook."""
+    operator: str
+    pattern_name: str
+    core_insight: str
+    mechanism: str
+    application: str
+    anti_pattern: str  # What most people do wrong
+    relevance_score: float = 0.0
+
+
+@dataclass
+class OperatorMasteryOutput:
+    """Output from operator mastery analysis."""
+    patterns_applied: List[OperatorPattern]
+    deep_insight: str
+    inversion_check: str  # What would Munger say about avoiding failure?
+    second_order_effects: List[str]
+    operator_action: str  # What would this operator DO, not say
+
+
+class OperatorMastery:
+    """
+    Operator-level thinking patterns.
+    These are not axioms - they are BATTLE-TESTED patterns from real operators.
+    """
+
+    OPERATORS = {
+        "MARC_RICH": {
+            "name": "Marc Rich",
+            "domain": "commodity_trading",
+            "core_philosophy": "Control contracts, never own commodities",
+            "patterns": [
+                {
+                    "name": "OPM Pattern",
+                    "insight": "Never use your capital when you can use others'",
+                    "mechanism": "L/C from buyer's bank funds entire transaction. Pre-shipment from local bank. You operate $100M with $0.",
+                    "application": "In ANY deal: map who has capital → how to access it → what's your cut for orchestrating",
+                    "anti_pattern": "Saving up capital before starting. Waiting until you 'have enough'.",
+                    "keywords": ["capital", "funding", "invest", "vốn", "tiền"]
+                },
+                {
+                    "name": "Information Arbitrage",
+                    "insight": "Know both sides of every deal better than they know each other",
+                    "mechanism": "Buyer doesn't know seller's true cost. Seller doesn't know buyer's true budget. You know BOTH.",
+                    "application": "Before any deal: What does A not know about B? What does B not know about A? That gap = your margin.",
+                    "anti_pattern": "Being transparent about all information. Revealing your sources.",
+                    "keywords": ["deal", "negotiate", "margin", "giao dịch"]
+                },
+                {
+                    "name": "Contract vs Commodity",
+                    "insight": "Never touch the physical. Control the paper.",
+                    "mechanism": "Own contracts for delivery, not inventory. Risk is on paper, not in warehouse.",
+                    "application": "How can I structure this so I control the TRANSACTION without owning the THING?",
+                    "anti_pattern": "Owning inventory. Holding physical assets. Taking delivery.",
+                    "keywords": ["inventory", "stock", "warehouse", "hàng hóa"]
+                }
+            ]
+        },
+
+        "BUFFETT": {
+            "name": "Warren Buffett",
+            "domain": "capital_allocation",
+            "core_philosophy": "Float is free capital if you price risk correctly",
+            "patterns": [
+                {
+                    "name": "Float Economics",
+                    "insight": "Get paid BEFORE you deliver value",
+                    "mechanism": "Insurance: collect premiums Day 0, pay claims Day 365. $100B float invested at 10% = $10B/year from thin air.",
+                    "application": "How can I get paid BEFORE I incur costs? Prepay, deposits, subscriptions, retainers.",
+                    "anti_pattern": "Delivering value then invoicing. Net-30 terms. Working then getting paid.",
+                    "keywords": ["prepay", "deposit", "subscription", "trả trước"]
+                },
+                {
+                    "name": "Circle of Competence",
+                    "insight": "Edge comes from knowing what you DON'T know",
+                    "mechanism": "Stay inside circle = consistent returns. Step outside = random outcomes.",
+                    "application": "What's my UNFAIR advantage here? If none, pass.",
+                    "anti_pattern": "Chasing opportunities outside your domain. 'Anyone can do this.'",
+                    "keywords": ["opportunity", "cơ hội", "new market"]
+                },
+                {
+                    "name": "Moat Thinking",
+                    "insight": "Sustainable advantage > temporary profit",
+                    "mechanism": "Network effects, switching costs, brand, cost advantages compound over time.",
+                    "application": "What makes this hard for others to copy? If nothing, it's a race to zero.",
+                    "anti_pattern": "Competing on price alone. No differentiation. Easy entry.",
+                    "keywords": ["competition", "cạnh tranh", "differentiate"]
+                }
+            ]
+        },
+
+        "SOROS": {
+            "name": "George Soros",
+            "domain": "macro_trading",
+            "core_philosophy": "Reflexivity - your position affects the market which affects your position",
+            "patterns": [
+                {
+                    "name": "Reflexivity",
+                    "insight": "Markets are not external reality - they're created by participants",
+                    "mechanism": "Your bet → others see → they bet same way → price moves → your bet looks genius → more follow → self-fulfilling.",
+                    "application": "How does my action change the environment I'm acting in?",
+                    "anti_pattern": "Treating markets as objective. Assuming your actions don't affect outcomes.",
+                    "keywords": ["market", "trend", "momentum", "thị trường"]
+                },
+                {
+                    "name": "Asymmetric Betting",
+                    "insight": "Bet size matters more than bet frequency",
+                    "mechanism": "Small bets to test thesis. MASSIVE bets when thesis confirmed. Wrong often, rich anyway.",
+                    "application": "Start small. Scale ONLY when evidence confirms. Never average down on losing thesis.",
+                    "anti_pattern": "Equal position sizes. Not scaling winners. Averaging losers.",
+                    "keywords": ["bet", "risk", "size", "scale"]
+                },
+                {
+                    "name": "Fallibility Principle",
+                    "insight": "Being wrong is normal. Recognizing it fast is edge.",
+                    "mechanism": "Set invalidation criteria BEFORE entering. Exit immediately when hit. No ego.",
+                    "application": "What would prove me WRONG? Write it down. Exit immediately when triggered.",
+                    "anti_pattern": "Holding losers hoping for recovery. Moving stop losses. Ego trading.",
+                    "keywords": ["wrong", "fail", "exit", "sai"]
+                }
+            ]
+        },
+
+        "MUNGER": {
+            "name": "Charlie Munger",
+            "domain": "mental_models",
+            "core_philosophy": "Invert, always invert. Avoid stupidity rather than seeking brilliance.",
+            "patterns": [
+                {
+                    "name": "Inversion",
+                    "insight": "Instead of how to succeed, ask how to FAIL",
+                    "mechanism": "List all ways to fail → avoid them → success by subtraction.",
+                    "application": "How would I GUARANTEE failure here? Now avoid those things.",
+                    "anti_pattern": "Only thinking about success paths. Ignoring failure modes.",
+                    "keywords": ["succeed", "win", "thành công"]
+                },
+                {
+                    "name": "Second-Order Thinking",
+                    "insight": "And then what? And then what after that?",
+                    "mechanism": "First-order: This will help. Second-order: Everyone does it → oversupply → margins collapse.",
+                    "application": "If this works, what happens next? Who else does it? What changes?",
+                    "anti_pattern": "Thinking one step ahead only. Ignoring competitive response.",
+                    "keywords": ["if", "then", "effect", "nếu"]
+                },
+                {
+                    "name": "Lollapalooza Effect",
+                    "insight": "Multiple forces in same direction = exponential outcome",
+                    "mechanism": "Social proof + authority + scarcity + reciprocity = unstoppable.",
+                    "application": "How many forces push in my direction? If only one, weak. If four, strong.",
+                    "anti_pattern": "Single-factor analysis. Ignoring reinforcing loops.",
+                    "keywords": ["combine", "multiple", "kết hợp"]
+                }
+            ]
+        },
+
+        "THIEL": {
+            "name": "Peter Thiel",
+            "domain": "startup_strategy",
+            "core_philosophy": "Competition is for losers. Build monopoly or don't bother.",
+            "patterns": [
+                {
+                    "name": "Zero to One",
+                    "insight": "Create something new, don't copy existing",
+                    "mechanism": "0→1 = monopoly profits. 1→n = competition → zero profits.",
+                    "application": "What NEW thing am I creating? If just better version, I'm competing.",
+                    "anti_pattern": "Incremental improvement. 10% better. Competing on features.",
+                    "keywords": ["new", "create", "mới", "tạo"]
+                },
+                {
+                    "name": "Definite Optimism",
+                    "insight": "Have a specific plan, not vague hope",
+                    "mechanism": "Definite optimist: specific future → specific plan → specific actions. Indefinite: options, diversification, waiting.",
+                    "application": "What's my SPECIFIC bet? Not 'one of these will work'. THIS ONE.",
+                    "anti_pattern": "Diversification. Hedging. Keeping options open forever.",
+                    "keywords": ["option", "plan", "bet", "kế hoạch"]
+                },
+                {
+                    "name": "Last Mover Advantage",
+                    "insight": "First mover is myth. Last mover captures market.",
+                    "mechanism": "Early movers educate market, make mistakes. Late mover learns from all, captures value.",
+                    "application": "Who's already tried this? What did they learn? How do I avoid their mistakes?",
+                    "anti_pattern": "Racing to be first. Ignoring incumbents' lessons. Not-invented-here syndrome.",
+                    "keywords": ["first", "market", "compete", "đầu tiên"]
+                }
+            ]
+        }
+    }
+
+    def __init__(self):
+        pass
+
+    def analyze(self, query: str, context: Dict = None) -> OperatorMasteryOutput:
+        """Analyze query through operator-level thinking."""
+        context = context or {}
+        query_lower = query.lower()
+
+        # Find applicable patterns
+        patterns = self._find_applicable_patterns(query_lower)
+
+        # Generate deep insight
+        deep_insight = self._generate_deep_insight(patterns)
+
+        # Munger inversion check
+        inversion = self._inversion_check(query)
+
+        # Second-order effects
+        second_order = self._second_order_analysis(query, context)
+
+        # What would operators DO
+        operator_action = self._generate_operator_action(patterns, context)
+
+        return OperatorMasteryOutput(
+            patterns_applied=patterns,
+            deep_insight=deep_insight,
+            inversion_check=inversion,
+            second_order_effects=second_order,
+            operator_action=operator_action
+        )
+
+    def _find_applicable_patterns(self, query: str) -> List[OperatorPattern]:
+        """Find patterns that apply to this query."""
+        applicable = []
+
+        for op_key, operator in self.OPERATORS.items():
+            for pattern in operator["patterns"]:
+                score = 0.0
+                for kw in pattern["keywords"]:
+                    if kw in query:
+                        score += 0.25
+                score = min(1.0, score)
+
+                if score > 0.1:
+                    applicable.append(OperatorPattern(
+                        operator=operator["name"],
+                        pattern_name=pattern["name"],
+                        core_insight=pattern["insight"],
+                        mechanism=pattern["mechanism"],
+                        application=pattern["application"],
+                        anti_pattern=pattern["anti_pattern"],
+                        relevance_score=score
+                    ))
+
+        # Sort by relevance
+        applicable.sort(key=lambda x: -x.relevance_score)
+
+        return applicable[:5]  # Top 5
+
+    def _generate_deep_insight(self, patterns: List[OperatorPattern]) -> str:
+        """Generate deep insight from applicable patterns."""
+        if not patterns:
+            return "No specific operator patterns matched."
+
+        parts = []
+        for p in patterns[:3]:
+            parts.append(f"[{p.operator}] {p.core_insight}")
+            parts.append(f"  Mechanism: {p.mechanism}")
+            parts.append(f"  Apply: {p.application}")
+            parts.append(f"  AVOID: {p.anti_pattern}")
+            parts.append("")
+
+        return "\n".join(parts)
+
+    def _inversion_check(self, query: str) -> str:
+        """Munger-style inversion: How to guarantee FAILURE?"""
+        return """INVERSION CHECK (Munger):
+Để CHẮC CHẮN THẤT BẠI, hãy:
+1. Dùng hết vốn trước khi có revenue
+2. Deliver trước, invoice sau (Net-30)
+3. Chỉ có 1 khách hàng / 1 nguồn
+4. Không set kill criteria
+5. Ego trading - không chịu sai
+
+→ TRÁNH tất cả những điều trên."""
+
+    def _second_order_analysis(self, query: str, context: Dict) -> List[str]:
+        """Second-order thinking: And then what?"""
+        effects = [
+            "Order 1: Nếu thành công → có revenue",
+            "Order 2: Nếu có revenue → competitors thấy → copy → margin compression",
+            "Order 3: Margin compression → cần moat hoặc scale → decide NOW what moat to build",
+            "Order 4: Moat building takes time → start moat investment BEFORE margin compression hits"
+        ]
+        return effects
+
+    def _generate_operator_action(self, patterns: List[OperatorPattern], context: Dict) -> str:
+        """What would operators DO, not say?"""
+        if not patterns:
+            return "Không đủ context để recommend operator action."
+
+        actions = []
+        for p in patterns[:2]:
+            if "Marc Rich" in p.operator:
+                actions.append("Marc Rich sẽ: Map ai có tiền → cấu trúc để DÙNG tiền của họ → giữ % cho orchestration")
+            elif "Buffett" in p.operator:
+                actions.append("Buffett sẽ: Cấu trúc để GET PAID FIRST → dùng float → chỉ operate trong circle of competence")
+            elif "Soros" in p.operator:
+                actions.append("Soros sẽ: Bet nhỏ test thesis → scale MASSIVE khi confirmed → exit NGAY khi invalidated")
+            elif "Munger" in p.operator:
+                actions.append("Munger sẽ: List cách FAIL → avoid all → success by not being stupid")
+            elif "Thiel" in p.operator:
+                actions.append("Thiel sẽ: Tìm góc monopoly → bet definite → không diversify")
+
+        return " | ".join(actions) if actions else "Execute với operator mindset, không textbook approach."
+
+
+def format_operator_mastery(output: OperatorMasteryOutput) -> str:
+    """Format operator mastery output."""
+    lines = [
+        "=" * 70,
+        "OPERATOR MASTERY LAYER (Step -9) - Battle-tested patterns",
+        "=" * 70,
+        "",
+        "PATTERNS APPLIED:",
+    ]
+
+    for p in output.patterns_applied:
+        lines.append(f"  [{p.operator}] {p.pattern_name} ({p.relevance_score:.0%})")
+        lines.append(f"      Insight: {p.core_insight}")
+        lines.append(f"      Apply: {p.application}")
+        lines.append(f"      AVOID: {p.anti_pattern}")
+        lines.append("")
+
+    lines.append("INVERSION CHECK:")
+    lines.append(output.inversion_check)
+    lines.append("")
+
+    lines.append("SECOND-ORDER EFFECTS:")
+    for e in output.second_order_effects:
+        lines.append(f"  → {e}")
+    lines.append("")
+
+    lines.append("OPERATOR ACTION:")
+    lines.append(f"  {output.operator_action}")
+    lines.append("=" * 70)
+
+    return "\n".join(lines)
+
+
+# CLI for testing
+if __name__ == "__main__":
+    import sys
+
+    if len(sys.argv) > 1:
+        query = " ".join(sys.argv[1:])
+    else:
+        query = "tôi cần vốn để xuất khẩu cà phê"
+
+    mastery = OperatorMastery()
+    output = mastery.analyze(query)
+    print(format_operator_mastery(output))

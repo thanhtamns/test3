@@ -1,0 +1,208 @@
+---
+name: deal-drill-protocol
+description: >-
+  Phase 4.5 — Drill top-1 mechanism-verified hypothesis into specific actionable output.
+  5 drills: WHO pays (named entities), PRICING (verified), ENTRY (specific channel + script),
+  EDGE (đường vòng), KILL (measurable thresholds). Max 15 targeted web searches.
+---
+
+# Deal Drill Protocol
+
+## Purpose
+
+Take a mechanism-verified hypothesis and drill it to SPECIFIC ACTIONABLE output. Not "companies in industry X" — actual company names. Not "find a community" — specific LinkedIn group with member count. Not "differentiate" — exact đường vòng (indirect approach) the founder can execute.
+
+## When This Runs
+
+Phase 4.5 in Stage0 pipeline — AFTER synthesis (Phase 4), BEFORE final output.
+Also used by /hunt after anomaly cross-reference (Step 6.5).
+
+**Activation gate:** Only runs if top-1 hypothesis confidence >= 0.7. If lower, skip with note "Confidence too low for deal-specific output — verify mechanism first."
+
+## Input
+
+- `hypothesis` — top-1 from synthesis: title, mechanism (causal chain), evidence profile, Elo score
+- `founder_profile` — from data/founder-profile.json: capital, skills, location, hours/day, language
+- `knowledge_graph` — serialized (if available), for evidence lookup during drills
+- `competitor_analysis` — from evidence vault (competitor names, pricing, weaknesses)
+
+## Search Budget
+
+**15 web searches maximum** across all 5 drills. Allocation:
+
+| Drill | Budget | Query Type |
+|-------|--------|------------|
+| WHO PAYS | 3 | Company lists, affected businesses, industry directories |
+| PRICING | 3 | Competitor pricing pages, cost-of-doing-nothing |
+| ENTRY | 3 | Communities, groups, conferences, associations |
+| EDGE | 0 | Pure analysis — no search, uses existing data |
+| KILL | 0 | Pure reasoning — derives from mechanism + founder constraints |
+| **Buffer** | **6** | Redistribute to whichever drill needs more specificity |
+
+## Drill 1: WHO PAYS (Customer Drill)
+
+Find SPECIFIC entities that match the hypothesis's target customer.
+
+Search queries (adapt to hypothesis):
+- `"{industry}" "{regulation}" companies affected list`
+- `"{product category}" buyers directory`
+- `"{pain point}" "looking for" site:linkedin.com OR site:reddit.com`
+
+Output requirements:
+- 5-10 specific company/segment names with size indicator
+- 3-5 target contact roles (title level, e.g., "Compliance Officer" — not individual names)
+- WHY each company needs this (link to mechanism)
+- Urgency indicator: HIGH (forced spend / deadline) / MED (efficiency gain) / LOW (nice-to-have)
+
+## Drill 2: PRICING (Price Drill)
+
+Find VERIFIED competitor prices and quantify cost-of-doing-nothing.
+
+Search queries:
+- `"{competitor name}" pricing`
+- `"{product category}" pricing comparison 2026`
+- `"{pain point}" cost manual process annual`
+
+Output requirements:
+- Competitor price table with verified URLs (not estimated)
+- Cost-of-doing-nothing calculation (what customer currently spends on manual/alternative)
+- Recommended price point with margin analysis
+- Price positioning: undercut, match, or premium — with rationale
+
+## Drill 3: ENTRY POINT (Channel Drill)
+
+Find SPECIFIC communities/channels where target customers congregate.
+
+Search queries:
+- `"{industry}" LinkedIn group members`
+- `"{industry}" community forum`
+- `"{industry}" conference 2026 expo`
+
+Output requirements:
+- 3-5 specific communities with member/subscriber counts
+- Ranked by: (a) target customer density, (b) founder's ability to access
+- Recommended first-contact channel with reasoning
+- Cold outreach script template (<100 words, adapted to founder's language/style)
+
+Script template structure:
+```
+[Hook — reference specific pain from mechanism]
+[Credibility — 1 sentence on why you, from founder_profile.skills]
+[Ask — specific low-commitment CTA]
+```
+
+## Drill 4: EDGE (Differentiation + Đường Vòng)
+
+NO web search — pure analysis from existing data.
+
+Input: founder_profile.skills × competitor_gaps × mechanism
+
+**Đường vòng (indirect approach) analysis — MANDATORY:**
+
+Identify how founder can bypass direct competition. Categories:
+
+a. **Adjacent market entry** — serve a segment competitors ignore, then expand
+   - Example: competitors serve Enterprise → founder serves SMB with simpler version → expands up
+   
+b. **Bundle with existing trust** — partner with someone customers already trust
+   - Example: accountant already has client trust → bundle compliance tool with accounting service
+
+c. **Geographic/language advantage** — founder's location or language creates access others lack
+   - Example: VN founder + Mandarin → serve cross-border VN-China trade that US competitors can't
+
+d. **Distribution hack** — use unconventional channel that competitors haven't discovered
+   - Example: competitors use Google Ads → founder uses TikTok education content in local language
+
+e. **Time arbitrage** — enter during regulation transition when incumbents are slow to adapt
+   - Example: new regulation in 6 months → build now while competitors wait
+
+Output requirements:
+- 2-3 specific founder advantages over competitors (from skill × gap intersection)
+- 1-2 đường vòng strategies with concrete first step
+- Honest assessment: if no đường vòng exists, state "Direct competition only — differentiate on execution speed and price"
+
+## Drill 5: KILL CRITERIA (Validation Drill)
+
+NO web search — pure reasoning from mechanism + founder constraints.
+
+Output: 3 measurable kill conditions. Each must have:
+- **Metric:** what to measure (signups, replies, revenue, etc.)
+- **Threshold:** specific number below which = KILL
+- **Timeframe:** days/weeks to measure
+- **Measurement method:** how exactly to count
+
+Calibration source:
+- If ground-truth data available (V16, 30+ outcomes): calibrate from historical patterns
+- If insufficient data: use conservative defaults from case study library
+- Always err toward stricter kills — better to kill fast and try next than bleed slowly
+
+Example kill criteria:
+```
+| # | Metric | Threshold | Timeframe | How to Measure |
+|---|--------|-----------|-----------|----------------|
+| 1 | Cold outreach replies | < 5 replies | 50 emails / 14 days | Track in spreadsheet |
+| 2 | Landing page signups | < 20 signups | 500 visitors / 7 days | Analytics tool |
+| 3 | First paid customer | $0 revenue | 30 days from launch | Bank account |
+```
+
+## Final Output Template
+
+```markdown
+## DEAL DRILL: {hypothesis_title}
+
+### MECHANISM
+{A} → {B} → {C}
+Why this works: {1-sentence}
+
+### WHO PAYS
+| Company/Segment | Size | Why They Need This | Urgency |
+|----------------|------|-------------------|---------|
+| {name} | {size} | {specific pain from mechanism} | {HIGH/MED} |
+
+Target roles: {titles}
+
+### PRICING
+| Reference | Price | Source |
+|-----------|-------|--------|
+| Competitor A | $X/mo | {URL} |
+| Cost of doing nothing | $Y/mo | {calculation} |
+| **Recommended** | **$Z/mo** | **{rationale}** |
+
+Margin: {X}% at {Y} customers/mo
+
+### ENTRY POINT
+**Primary channel:** {specific community} ({member count})
+**Cold outreach script:**
+> {< 100 words, ready to send}
+
+### EDGE + ĐƯỜNG VÒNG
+**Advantages:**
+1. {founder skill × market gap}
+2. {competitor weakness founder can exploit}
+
+**Đường vòng:**
+{indirect approach description + concrete first step}
+
+### KILL CRITERIA
+| # | Metric | Threshold | Timeframe | How to Measure |
+|---|--------|-----------|-----------|----------------|
+| 1 | {metric} | < {X} | {days} | {method} |
+| 2 | {metric} | < {X} | {days} | {method} |
+| 3 | {metric} | < {X} | {days} | {method} |
+
+### 7-DAY SPRINT
+Day 1: {exact action with expected output}
+Day 2-3: {exact actions}
+Day 4-5: {exact actions}
+Day 6-7: {actions + first kill check against criteria #1}
+```
+
+## Critical Rules
+
+1. NO GENERIC OUTPUT. "Companies in industry X" = FAIL. Must name actual entities.
+2. Pricing MUST have verified URLs. Estimated prices get [ESTIMATED] tag.
+3. Cold outreach script must be READY TO SEND — not a template with [insert here].
+4. Đường vòng is MANDATORY. If genuinely none exists, explain why and state "direct competition."
+5. Kill criteria must be MEASURABLE in the stated timeframe. "If market is bad" = FAIL.
+6. 7-day sprint actions must be executable by founder ALONE with stated capital.
+7. If hypothesis mechanism doesn't survive the drill (e.g., no companies found, prices don't work), state honestly: "Drill invalidated mechanism — recommend kill."

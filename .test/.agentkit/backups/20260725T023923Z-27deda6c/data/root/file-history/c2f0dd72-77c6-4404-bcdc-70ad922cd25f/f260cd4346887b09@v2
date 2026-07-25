@@ -1,0 +1,104 @@
+"""Tests for evolution bootstrap — ground truth, dimension quality, weight evolution."""
+
+import sqlite3
+from pathlib import Path
+
+import pytest
+
+from ..template_evolver import TemplateEvolver
+
+
+@pytest.fixture
+def evolver(tmp_path):
+    return TemplateEvolver(db_path=tmp_path / "test_evo.db")
+
+
+class TestEvolveWeightsCalled:
+    def test_evolve_weights_changes_after_data(self, evolver):
+        evolver.record_template_usage("dim_a", "template_1", facts_produced=5, avg_confidence=0.9, parse_success=1.0)
+        evolver.record_template_usage("dim_b", "template_2", facts_produced=0, avg_confidence=0.2, parse_success=0.3)
+
+        evolved = evolver.evolve_weights()
+        assert "dim_a" in evolved
+        assert "dim_b" in evolved
+        assert evolved["dim_a"] != evolved["dim_b"]
+
+    def test_evolve_weights_empty_db(self, evolver):
+        evolved = evolver.evolve_weights()
+        assert evolved == {}
+
+    def test_weight_cap_respected(self, evolver):
+        evolver.record_template_usage("dim_a", "t1", facts_produced=100, avg_confidence=1.0, parse_success=1.0)
+        evolver.record_template_usage("dim_b", "t2", facts_produced=0, avg_confidence=0.0, parse_success=0.0)
+
+        evolved = evolver.evolve_weights()
+        for weight in evolved.values():
+            assert 0.1 <= weight <= 2.0
+
+
+class TestGroundTruth:
+    def test_seed_and_retrieve(self, evolver):
+        pid = evolver.seed_ground_truth(
+            topic="coffee export", path="bridge",
+            prediction="GO", confidence=0.7, due_date="2026-08-01",
+        )
+        assert pid > 0
+
+        pending = evolver.get_pending_predictions()
+        assert len(pending) == 1
+        assert pending[0]["topic"] == "coffee export"
+        assert pending[0]["confidence"] == 0.7
+
+    def test_record_outcome_clears_pending(self, evolver):
+        pid = evolver.seed_ground_truth(
+            topic="test", path="x", prediction="KILL",
+            confidence=0.8, due_date="2026-09-01",
+        )
+        evolver.record_outcome(pid, actual_outcome="Failed as predicted", correct=True)
+
+        pending = evolver.get_pending_predictions()
+        assert len(pending) == 0
+
+    def test_multiple_predictions(self, evolver):
+        evolver.seed_ground_truth("topic1", "path1", "GO", 0.6, "2026-08-01")
+        evolver.seed_ground_truth("topic2", "path2", "KILL", 0.9, "2026-08-15")
+
+        pending = evolver.get_pending_predictions()
+        assert len(pending) == 2
+
+    def test_pending_on_empty_db(self, evolver):
+        pending = evolver.get_pending_predictions()
+        assert pending == []
+
+
+class TestDimensionQuality:
+    def test_first_recording(self, evolver):
+        evolver.record_dimension_quality("failure_patterns", "opportunity", 3, 1, 0)
+
+        with sqlite3.connect(str(evolver.db_path)) as conn:
+            row = conn.execute(
+                "SELECT k_facts, t_facts, q_facts, sessions FROM dimension_quality "
+                "WHERE dimension='failure_patterns'"
+            ).fetchone()
+        assert row == (3, 1, 0, 1)
+
+    def test_accumulates_across_sessions(self, evolver):
+        evolver.record_dimension_quality("unit_economics", "opportunity", 2, 1, 0)
+        evolver.record_dimension_quality("unit_economics", "opportunity", 1, 2, 1)
+
+        with sqlite3.connect(str(evolver.db_path)) as conn:
+            row = conn.execute(
+                "SELECT k_facts, t_facts, q_facts, sessions FROM dimension_quality "
+                "WHERE dimension='unit_economics'"
+            ).fetchone()
+        assert row == (3, 3, 1, 2)
+
+    def test_separate_query_types(self, evolver):
+        evolver.record_dimension_quality("timing", "opportunity", 1, 0, 0)
+        evolver.record_dimension_quality("timing", "career", 0, 1, 2)
+
+        with sqlite3.connect(str(evolver.db_path)) as conn:
+            rows = conn.execute(
+                "SELECT query_type, k_facts FROM dimension_quality WHERE dimension='timing'"
+            ).fetchall()
+        assert len(rows) == 2

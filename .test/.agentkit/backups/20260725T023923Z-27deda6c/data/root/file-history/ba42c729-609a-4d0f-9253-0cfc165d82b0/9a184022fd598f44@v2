@@ -1,0 +1,155 @@
+use serde::Serialize;
+use crate::provenance::ProvenanceRecord;
+
+#[derive(Debug, Serialize)]
+pub struct AgentTrace {
+    pub version: String,
+    pub generator: TraceGenerator,
+    pub entries: Vec<TraceEntry>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TraceGenerator {
+    pub name: String,
+    pub version: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TraceEntry {
+    pub timestamp: String,
+    pub file_path: String,
+    pub code_hash: String,
+    pub contributor: TraceContributor,
+    pub lines: TraceLineRange,
+    pub attestation: TraceAttestation,
+    pub session_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TraceContributor {
+    #[serde(rename = "type")]
+    pub contributor_type: String,
+    pub model_id: String,
+    pub model_version: String,
+    pub developer_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TraceLineRange {
+    pub start: u32,
+    pub end: u32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TraceAttestation {
+    pub algorithm: String,
+    pub signature: String,
+}
+
+pub fn to_agent_trace(record: &ProvenanceRecord) -> TraceEntry {
+    let ts = chrono::DateTime::from_timestamp_millis(record.timestamp_ms)
+        .map(|dt| dt.to_rfc3339())
+        .unwrap_or_else(|| record.timestamp_ms.to_string());
+
+    TraceEntry {
+        timestamp: ts,
+        file_path: record.file_path.clone(),
+        code_hash: record.code_hash.clone(),
+        contributor: TraceContributor {
+            contributor_type: record.contributor_type.as_str().to_string(),
+            model_id: record.model_id.clone(),
+            model_version: record.model_version.clone(),
+            developer_id: record.developer_id.clone(),
+        },
+        lines: TraceLineRange {
+            start: record.start_line,
+            end: record.end_line,
+        },
+        attestation: TraceAttestation {
+            algorithm: "ed25519".to_string(),
+            signature: record.attestation_sig.clone(),
+        },
+        session_id: record.session_id.clone(),
+    }
+}
+
+pub fn export_agent_trace(records: &[ProvenanceRecord]) -> Result<String, serde_json::Error> {
+    let trace = AgentTrace {
+        version: "0.1.0".to_string(),
+        generator: TraceGenerator {
+            name: "codeflow".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        },
+        entries: records.iter().map(to_agent_trace).collect(),
+    };
+    serde_json::to_string_pretty(&trace)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::provenance::ContributorType;
+
+    fn sample_record() -> ProvenanceRecord {
+        ProvenanceRecord {
+            id: Some(1),
+            session_id: "sess-123".to_string(),
+            timestamp_ms: 1717430400000,
+            file_path: "src/main.rs".to_string(),
+            code_hash: "abc123def456".to_string(),
+            model_id: "claude-opus-4-6".to_string(),
+            model_version: "2025-06-01".to_string(),
+            contributor_type: ContributorType::Ai,
+            start_line: 10,
+            end_line: 50,
+            attestation_sig: "sig_hex".to_string(),
+            developer_id: "dev@example.com".to_string(),
+            prompt_hash: "prompt_hash_123".to_string(),
+            project_dir: "/project".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_to_agent_trace() {
+        let rec = sample_record();
+        let entry = to_agent_trace(&rec);
+        assert_eq!(entry.file_path, "src/main.rs");
+        assert_eq!(entry.contributor.contributor_type, "ai");
+        assert_eq!(entry.contributor.model_id, "claude-opus-4-6");
+        assert_eq!(entry.lines.start, 10);
+        assert_eq!(entry.lines.end, 50);
+        assert_eq!(entry.attestation.algorithm, "ed25519");
+    }
+
+    #[test]
+    fn test_export_agent_trace_json() {
+        let records = vec![sample_record()];
+        let json = export_agent_trace(&records).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["version"], "0.1.0");
+        assert_eq!(parsed["generator"]["name"], "codeflow");
+        assert_eq!(parsed["entries"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_export_empty() {
+        let json = export_agent_trace(&[]).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["entries"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_contributor_types() {
+        for (ct, expected) in [
+            (ContributorType::Human, "human"),
+            (ContributorType::Ai, "ai"),
+            (ContributorType::Mixed, "mixed"),
+            (ContributorType::Unknown, "unknown"),
+        ] {
+            let mut rec = sample_record();
+            rec.contributor_type = ct;
+            let entry = to_agent_trace(&rec);
+            assert_eq!(entry.contributor.contributor_type, expected);
+        }
+    }
+}

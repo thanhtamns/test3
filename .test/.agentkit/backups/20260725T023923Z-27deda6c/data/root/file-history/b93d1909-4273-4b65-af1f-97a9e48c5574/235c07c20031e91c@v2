@@ -1,0 +1,50 @@
+'use strict';
+
+const history = new Map();
+
+function getSessionKey() {
+  return process.env.CLAUDE_SESSION_ID || process.ppid || 'default';
+}
+
+function getHistory() {
+  const key = getSessionKey();
+  if (!history.has(key)) {
+    history.set(key, { iterations: [], startedAt: Date.now() });
+  }
+  return history.get(key);
+}
+
+function recordIteration(gaps) {
+  const h = getHistory();
+  h.iterations.push({
+    timestamp: Date.now(),
+    gapIds: gaps.map(g => g.id),
+    counts: {
+      critical: gaps.filter(g => g.severity === 'critical').length,
+      major: gaps.filter(g => g.severity === 'major').length,
+      minor: gaps.filter(g => g.severity === 'minor').length
+    }
+  });
+}
+
+function getIterationCount() {
+  return getHistory().iterations.length;
+}
+
+function getLastGapIds() {
+  const iters = getHistory().iterations;
+  if (iters.length === 0) return [];
+  return iters[iters.length - 1].gapIds;
+}
+
+function getPreviousGapIds() {
+  const iters = getHistory().iterations;
+  if (iters.length < 2) return [];
+  return iters[iters.length - 2].gapIds;
+}
+
+function reset() {
+  history.delete(getSessionKey());
+}
+
+module.exports = { recordIteration, getHistory, getIterationCount, getLastGapIds, getPreviousGapIds, reset };

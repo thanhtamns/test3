@@ -1,0 +1,212 @@
+#!/usr/bin/env python3
+"""
+Compound Filter — 5-Year Compound Test for Empire Pipeline V1.
+Gates opportunities BEFORE deep analysis. Kills freelance-tier,
+passes SaaS/product opportunities with compound growth potential.
+"""
+
+import argparse
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+DATA_DIR = Path(__file__).parent.parent / "data"
+CONFIG_PATH = DATA_DIR / "compound-config.json"
+
+DEFAULT_CONFIG = {
+    "pass_threshold": 3,
+    "downgrade_threshold": 2,
+    "timing_weight": 0.3,
+    "stair_overrides": {
+        "0": {"allow_downgrade": True},
+        "1": {"allow_downgrade": True},
+        "2": {"allow_downgrade": False},
+        "3": {"allow_downgrade": False},
+        "4": {"allow_downgrade": False},
+        "5": {"allow_downgrade": False},
+    },
+}
+
+
+def load_config() -> dict:
+    if CONFIG_PATH.exists():
+        with open(CONFIG_PATH) as f:
+            return json.load(f)
+    return DEFAULT_CONFIG
+
+
+def score_recurring_revenue(opp: dict) -> tuple[int, str]:
+    model = opp.get("revenue_model", "").lower()
+    recurring_signals = ["subscription", "mrr", "arr", "saas", "recurring", "monthly", "annual"]
+    if any(s in model for s in recurring_signals):
+        return 1, "Recurring revenue model detected"
+    one_time_signals = ["project", "one-time", "freelance", "hourly", "contract", "gig"]
+    if any(s in model for s in one_time_signals):
+        return 0, "One-time/project-based revenue — no compound"
+    return 0, f"Revenue model unclear: '{model}' — defaulting to non-recurring"
+
+
+def score_marginal_cost(opp: dict) -> tuple[int, str]:
+    cost = opp.get("cost_structure", "").lower()
+    scale_signals = ["software", "digital", "content", "data", "api", "platform", "saas", "template"]
+    if any(s in cost for s in scale_signals):
+        return 1, "Marginal cost decreases with scale"
+    linear_signals = ["labor", "hourly", "per-project", "manual", "service", "consulting", "freelance"]
+    if any(s in cost for s in linear_signals):
+        return 0, "Linear cost structure — scales with labor"
+    return 0, f"Cost structure unclear: '{cost}' — defaulting to linear"
+
+
+def score_moat(opp: dict) -> tuple[int, str]:
+    moat = opp.get("moat_claims", "").lower()
+    moat_signals = ["data", "brand", "switching cost", "proprietary", "patent", "network", "expertise", "integration"]
+    if any(s in moat for s in moat_signals):
+        return 1, f"Moat potential: {moat}"
+    no_moat_signals = ["commodity", "no moat", "none", "generic", "replicable"]
+    if any(s in moat for s in no_moat_signals):
+        return 0, "No defensible moat — commodity offering"
+    return 0, f"Moat unclear: '{moat}' — defaulting to no moat"
+
+
+def score_network_effect(opp: dict) -> tuple[int, str]:
+    network = opp.get("network_dynamic", "").lower()
+    network_signals = ["marketplace", "platform", "community", "users attract", "viral", "referral", "social"]
+    if any(s in network for s in network_signals):
+        return 1, "Network effect potential detected"
+    return 0, "No network effect dynamic"
+
+
+def score_founder_independence(opp: dict) -> tuple[int, str]:
+    dep = opp.get("founder_dependency", "").lower()
+    independent_signals = ["automated", "passive", "self-serve", "product", "software", "runs itself"]
+    if any(s in dep for s in independent_signals):
+        return 1, "Founder can step away — revenue continues"
+    dependent_signals = ["manual", "founder-dependent", "personal", "hands-on", "active", "freelance"]
+    if any(s in dep for s in dependent_signals):
+        return 0, "Founder-dependent — revenue stops without founder"
+    return 0, f"Independence unclear: '{dep}' — defaulting to dependent"
+
+
+def run_compound_filter(opportunity: dict, config: dict | None = None) -> dict:
+    if config is None:
+        config = load_config()
+
+    scorers = [
+        ("recurring_revenue", score_recurring_revenue),
+        ("marginal_cost", score_marginal_cost),
+        ("moat", score_moat),
+        ("network_effect", score_network_effect),
+        ("founder_independence", score_founder_independence),
+    ]
+
+    results = {}
+    total_score = 0
+    reasons = []
+
+    for name, scorer in scorers:
+        score, reason = scorer(opportunity)
+        results[name] = {"score": score, "reason": reason}
+        total_score += score
+        reasons.append(f"{'[+]' if score else '[-]'} {name}: {reason}")
+
+    pass_threshold = config.get("pass_threshold", 3)
+    downgrade_threshold = config.get("downgrade_threshold", 2)
+
+    if total_score >= pass_threshold:
+        verdict = "PASS"
+    elif total_score >= downgrade_threshold:
+        verdict = "DOWNGRADE"
+    else:
+        verdict = "KILL"
+
+    return {
+        "opportunity_name": opportunity.get("name", "unknown"),
+        "compound_score": total_score,
+        "max_score": 5,
+        "verdict": verdict,
+        "dimension_results": results,
+        "reasons": reasons,
+        "pass_threshold": pass_threshold,
+        "downgrade_threshold": downgrade_threshold,
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Empire Pipeline V1 — Compound Filter")
+    parser.add_argument("--json", type=str, help="Opportunity as JSON string")
+    parser.add_argument("--file", type=str, help="Path to opportunity JSON file")
+    parser.add_argument("--test", action="store_true", help="Run built-in test cases")
+    args = parser.parse_args()
+
+    if args.test:
+        run_tests()
+        return
+
+    if args.json:
+        opp = json.loads(args.json)
+    elif args.file:
+        with open(args.file) as f:
+            opp = json.load(f)
+    else:
+        parser.print_help()
+        sys.exit(1)
+
+    result = run_compound_filter(opp)
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+
+
+def run_tests():
+    test_cases = [
+        {
+            "name": "Upwork AI Freelancing",
+            "type": "service",
+            "revenue_model": "hourly project-based",
+            "cost_structure": "labor per-project",
+            "moat_claims": "none, commodity",
+            "network_dynamic": "none",
+            "founder_dependency": "founder-dependent manual",
+            "expected_verdict": "KILL",
+        },
+        {
+            "name": "SaaS Analytics Tool",
+            "type": "saas",
+            "revenue_model": "monthly subscription SaaS MRR",
+            "cost_structure": "software digital API",
+            "moat_claims": "data moat, switching cost",
+            "network_dynamic": "users attract more users via sharing",
+            "founder_dependency": "automated self-serve product",
+            "expected_verdict": "PASS",
+        },
+        {
+            "name": "n8n Workflow Templates",
+            "type": "digital_product",
+            "revenue_model": "one-time per template",
+            "cost_structure": "digital content",
+            "moat_claims": "none, replicable",
+            "network_dynamic": "none",
+            "founder_dependency": "passive after creation",
+            "expected_verdict": "DOWNGRADE",
+        },
+    ]
+
+    print("=== Compound Filter Test Suite ===\n")
+    passed = 0
+    for tc in test_cases:
+        expected = tc.pop("expected_verdict")
+        result = run_compound_filter(tc)
+        status = "PASS" if result["verdict"] == expected else "FAIL"
+        if status == "PASS":
+            passed += 1
+        print(f"[{status}] {tc['name']}: score={result['compound_score']}/5, "
+              f"verdict={result['verdict']} (expected={expected})")
+        for r in result["reasons"]:
+            print(f"  {r}")
+        print()
+
+    print(f"Results: {passed}/{len(test_cases)} passed")
+    sys.exit(0 if passed == len(test_cases) else 1)
+
+
+if __name__ == "__main__":
+    main()

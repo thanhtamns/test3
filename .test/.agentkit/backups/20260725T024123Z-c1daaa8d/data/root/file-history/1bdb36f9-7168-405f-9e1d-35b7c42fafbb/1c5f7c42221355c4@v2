@@ -1,0 +1,75 @@
+"""
+ChainTracer — full audit trail as JSONL for every reasoning chain verdict.
+"""
+
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+from .atomic_resolver import Resolution
+from .chain_assembler import ChainResult
+from .verdict_generator import ChainVerdict
+
+ROOT = Path(__file__).resolve().parents[4]
+DEFAULT_TRACE_PATH = ROOT / ".claude" / "data" / "reasoning" / "chain_traces.jsonl"
+
+
+class ChainTracer:
+    def __init__(self, trace_path: Path | None = None):
+        self.trace_path = trace_path or DEFAULT_TRACE_PATH
+
+    def trace(
+        self,
+        query: str,
+        query_type: str,
+        resolutions: list[Resolution],
+        chain: ChainResult,
+        verdict: ChainVerdict,
+    ) -> dict:
+        record = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "query": query,
+            "query_type": query_type,
+            "atoms_total": len(resolutions),
+            "atoms_resolved": len(chain.resolved),
+            "atoms_gap": len(chain.gaps),
+            "contradictions": len(chain.contradictions),
+            "aggregate_confidence": round(chain.aggregate_confidence, 3),
+            "coverage_ratio": round(chain.coverage_ratio, 3),
+            "weighted_score": round(chain.weighted_score, 3),
+            "verdict": verdict.verdict,
+            "verdict_reason": verdict.reason,
+            "chain_detail": [r.to_dict() for r in resolutions],
+        }
+        if chain.contradictions:
+            record["contradiction_detail"] = [c.to_dict() for c in chain.contradictions]
+        if verdict.kill_signals:
+            record["kill_signals"] = verdict.kill_signals
+
+        self._append_jsonl(record)
+        return record
+
+    def _append_jsonl(self, record: dict) -> None:
+        self.trace_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.trace_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    def read_traces(self, limit: int = 50) -> list[dict]:
+        if not self.trace_path.exists():
+            return []
+        lines = self.trace_path.read_text(encoding="utf-8").strip().split("\n")
+        traces = []
+        for line in lines[-limit:]:
+            if line.strip():
+                traces.append(json.loads(line))
+        return traces
+
+    def verdict_stats(self) -> dict:
+        traces = self.read_traces(limit=1000)
+        if not traces:
+            return {"total": 0}
+        counts: dict[str, int] = {}
+        for t in traces:
+            v = t.get("verdict", "UNKNOWN")
+            counts[v] = counts.get(v, 0) + 1
+        return {"total": len(traces), "verdicts": counts}

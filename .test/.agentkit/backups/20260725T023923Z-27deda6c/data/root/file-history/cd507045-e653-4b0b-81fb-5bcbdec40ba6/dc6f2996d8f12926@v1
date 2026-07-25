@@ -1,0 +1,185 @@
+"""
+fitness.py — Multi-metric fitness scoring for strategy evaluation.
+
+Fitness = 0.5*brier_improvement + 0.2*correct_ratio + 0.2*info_gain + 0.1*diversity_bonus
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
+
+from .schema import Strategy
+
+logger = logging.getLogger(__name__)
+
+_REPO_ROOT = Path(__file__).resolve().parents[5]
+_BRIER_PATH = _REPO_ROOT / "data" / "calibration" / "brier-scores.jsonl"
+
+
+@dataclass
+class FitnessScore:
+    strategy_id: str
+    brier_improvement_rate: float
+    correct_verdict_ratio: float
+    information_gain: float
+    diversity_bonus: float
+    total: float
+    verdicts_evaluated: int
+    window_start: int
+    window_end: int
+
+    def to_dict(self) -> dict:
+        return {
+            "strategy_id": self.strategy_id,
+            "brier_improvement_rate": round(self.brier_improvement_rate, 4),
+            "correct_verdict_ratio": round(self.correct_verdict_ratio, 4),
+            "information_gain": round(self.information_gain, 4),
+            "diversity_bonus": round(self.diversity_bonus, 4),
+            "total": round(self.total, 4),
+            "verdicts_evaluated": self.verdicts_evaluated,
+            "window": [self.window_start, self.window_end],
+        }
+
+
+class StrategyFitness:
+    WEIGHTS = {
+        "brier_improvement_rate": 0.50,
+        "correct_verdict_ratio": 0.20,
+        "information_gain": 0.20,
+        "diversity_bonus": 0.10,
+    }
+
+    def __init__(self, sandbox_results_path: Optional[Path] = None):
+        self._sandbox_path = sandbox_results_path or (
+            _REPO_ROOT / "data" / "evolution" / "sandbox-results.jsonl"
+        )
+
+    def score(
+        self,
+        strategy: Strategy,
+        population: list[Strategy],
+        window_size: int = 10,
+    ) -> FitnessScore:
+        """Compute fitness for a strategy over recent window."""
+        sandbox_results = self._get_strategy_results(strategy.id)
+        evaluated = [r for r in sandbox_results if r.get("actual_outcome")]
+
+        n = min(window_size, len(evaluated))
+        window = evaluated[-n:] if n > 0 else []
+
+        brier_rate = self._brier_improvement_rate(strategy)
+        correct_ratio = self._correct_verdict_ratio(strategy.id, window)
+        info_gain = self._information_gain(strategy, window)
+        diversity = self._diversity_bonus(strategy, population)
+
+        total = (
+            self.WEIGHTS["brier_improvement_rate"] * brier_rate
+            + self.WEIGHTS["correct_verdict_ratio"] * correct_ratio
+            + self.WEIGHTS["information_gain"] * info_gain
+            + self.WEIGHTS["diversity_bonus"] * diversity
+        )
+
+        return FitnessScore(
+            strategy_id=strategy.id,
+            brier_improvement_rate=brier_rate,
+            correct_verdict_ratio=correct_ratio,
+            information_gain=info_gain,
+            diversity_bonus=diversity,
+            total=total,
+            verdicts_evaluated=n,
+            window_start=strategy.total_verdicts - n,
+            window_end=strategy.total_verdicts,
+        )
+
+    def _brier_improvement_rate(self, strategy: Strategy) -> float:
+        """Rate of Brier score improvement across fitness history."""
+        history = strategy.fitness_history
+        if len(history) < 2:
+            return 0.5
+
+        briers = [h.get("avg_brier", 0.5) for h in history if "avg_brier" in h]
+        if len(briers) < 2:
+            return 0.5
+
+        improvements = 0
+        for i in range(1, len(briers)):
+            if briers[i] < briers[i - 1]:
+                improvements += 1
+
+        return improvements / (len(briers) - 1)
+
+    def _correct_verdict_ratio(self, strategy_id: str, window: list[dict]) -> float:
+        """Fraction of verdicts where strategy was correct."""
+        if not window:
+            return 0.5
+
+        correct = 0
+        for r in window:
+            cf = r.get("counterfactuals", {}).get(strategy_id, {})
+            verdict = cf.get("verdict", "")
+            outcome = r.get("actual_outcome", "")
+            if self._matches(verdict, outcome):
+                correct += 1
+
+        return correct / len(window)
+
+    def _information_gain(self, strategy: Strategy, window: list[dict]) -> float:
+        """How much new signal compared to parent strategy."""
+        if not strategy.parent_id or not window:
+            return 0.5
+
+        parent_correct = 0
+        child_correct = 0
+        for r in window:
+            cfs = r.get("counterfactuals", {})
+            parent_cf = cfs.get(strategy.parent_id, {})
+            child_cf = cfs.get(strategy.id, {})
+            outcome = r.get("actual_outcome", "")
+
+            if self._matches(parent_cf.get("verdict", ""), outcome):
+                parent_correct += 1
+            if self._matches(child_cf.get("verdict", ""), outcome):
+                child_correct += 1
+
+        if not window:
+            return 0.5
+        parent_rate = parent_correct / len(window)
+        child_rate = child_correct / len(window)
+        return max(0.0, min(1.0, 0.5 + (child_rate - parent_rate)))
+
+    def _diversity_bonus(self, strategy: Strategy, population: list[Strategy]) -> float:
+        """Reward strategies that are different from population average."""
+        if not population:
+            return 0.5
+        distances = [strategy.jaccard_distance(s) for s in population if s.id != strategy.id]
+        if not distances:
+            return 0.5
+        avg_distance = sum(distances) / len(distances)
+        return min(1.0, avg_distance * 2)
+
+    def _matches(self, verdict: str, outcome: str) -> bool:
+        outcome_lower = outcome.lower()
+        if verdict == "GO":
+            return outcome_lower in ("success", "profitable", "go", "positive")
+        elif verdict == "NO-GO":
+            return outcome_lower in ("failure", "loss", "no-go", "negative", "killed")
+        return False
+
+    def _get_strategy_results(self, strategy_id: str) -> list[dict]:
+        if not self._sandbox_path.exists():
+            return []
+        results = []
+        for line in self._sandbox_path.read_text(encoding="utf-8").strip().split("\n"):
+            if not line.strip():
+                continue
+            try:
+                r = json.loads(line)
+                if strategy_id in r.get("counterfactuals", {}):
+                    results.append(r)
+            except json.JSONDecodeError:
+                continue
+        return results

@@ -1,0 +1,107 @@
+-- CODEFLOW ClickHouse Schema
+-- Phase 2 MVP: single instance, no replication
+
+CREATE DATABASE IF NOT EXISTS codeflow;
+
+CREATE TABLE IF NOT EXISTS codeflow.events (
+    event_id String,
+    tenant_id String,
+    timestamp DateTime64(3),
+    session_id String,
+    project_dir String,
+    command String,
+    event_type Enum8('compression' = 1, 'dedup' = 2),
+    input_bytes UInt64,
+    output_bytes UInt64,
+    input_tokens UInt64,
+    output_tokens UInt64,
+    tokens_saved UInt64,
+    filter_name String,
+    compression_level String,
+    latency_ms Float64,
+    content_hash String,
+    cache_hit UInt8,
+    cli_version String,
+    machine_id String,
+    inserted_at DateTime64(3) DEFAULT now64(3)
+) ENGINE = MergeTree()
+PARTITION BY toYYYYMM(timestamp)
+ORDER BY (tenant_id, toDate(timestamp), command, event_id)
+TTL toDateTime(timestamp) + INTERVAL 90 DAY;
+
+-- Materialized view: daily cost by project
+CREATE MATERIALIZED VIEW IF NOT EXISTS codeflow.mv_cost_by_project_daily
+ENGINE = SummingMergeTree()
+PARTITION BY toYYYYMM(day)
+ORDER BY (tenant_id, day, project_dir)
+AS SELECT
+    tenant_id,
+    toDate(timestamp) AS day,
+    project_dir,
+    sum(input_tokens) AS total_input_tokens,
+    sum(output_tokens) AS total_output_tokens,
+    sum(tokens_saved) AS total_saved,
+    count() AS event_count
+FROM codeflow.events
+GROUP BY tenant_id, day, project_dir;
+
+-- Materialized view: hourly savings by layer
+CREATE MATERIALIZED VIEW IF NOT EXISTS codeflow.mv_savings_by_layer_hourly
+ENGINE = SummingMergeTree()
+PARTITION BY toYYYYMM(hour)
+ORDER BY (tenant_id, hour, event_type)
+AS SELECT
+    tenant_id,
+    toStartOfHour(timestamp) AS hour,
+    event_type,
+    sum(tokens_saved) AS total_saved,
+    count() AS event_count
+FROM codeflow.events
+GROUP BY tenant_id, hour, event_type;
+
+-- Materialized view: savings by command
+CREATE MATERIALIZED VIEW IF NOT EXISTS codeflow.mv_savings_by_command
+ENGINE = SummingMergeTree()
+PARTITION BY toYYYYMM(day)
+ORDER BY (tenant_id, day, command)
+AS SELECT
+    tenant_id,
+    toDate(timestamp) AS day,
+    command,
+    sum(tokens_saved) AS total_saved,
+    sum(input_tokens) AS total_input,
+    count() AS event_count
+FROM codeflow.events
+GROUP BY tenant_id, day, command;
+
+-- Waste findings from batch analysis
+CREATE TABLE IF NOT EXISTS codeflow.waste_findings (
+    tenant_id String,
+    session_id String,
+    project_dir String,
+    pattern_type Enum8('redundant_command' = 1, 're_read_waste' = 2, 'build_loop' = 3),
+    command String,
+    occurrences UInt32,
+    tokens_wasted UInt64,
+    suggestion String,
+    analyzed_at DateTime64(3) DEFAULT now64(3)
+) ENGINE = MergeTree()
+PARTITION BY toYYYYMM(analyzed_at)
+ORDER BY (tenant_id, toDate(analyzed_at), pattern_type, project_dir)
+TTL toDateTime(analyzed_at) + INTERVAL 90 DAY;
+
+-- Materialized view: per-session stats
+CREATE MATERIALIZED VIEW IF NOT EXISTS codeflow.mv_savings_by_session
+ENGINE = SummingMergeTree()
+PARTITION BY toYYYYMM(day)
+ORDER BY (tenant_id, day, session_id, project_dir)
+AS SELECT
+    tenant_id,
+    toDate(timestamp) AS day,
+    session_id,
+    project_dir,
+    sum(tokens_saved) AS total_saved,
+    sum(input_tokens) AS total_input,
+    count() AS event_count
+FROM codeflow.events
+GROUP BY tenant_id, day, session_id, project_dir;

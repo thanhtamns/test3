@@ -1,0 +1,92 @@
+---
+phase: 5
+title: "Integration and Wiring"
+status: completed
+priority: P1
+effort: "2h"
+dependencies: [1, 2, 3, 4]
+completedAt: "2026-05-10T09:12:00.000Z"
+---
+
+# Phase 5: Integration and Wiring
+
+## Overview
+
+Wire all 4 modules into stage0 pipeline. Update stage0.md, checklist, schema, learned-rules, quality-score. Expand side-door from 4→8 agents. Test end-to-end.
+
+## Related Code Files
+
+- Modify: `.claude/commands/stage0.md`
+- Modify: `.claude/commands/stage0-checklist.md`
+- Modify: `.claude/skills/business/transaction-layer/nui-hunter/kb/schema-case.json`
+- Modify: `.claude/skills/business/transaction-layer/nui-hunter/scripts/stage0-quality-score.py`
+- Modify: `.claude/skills/business/transaction-layer/nui-hunter/scripts/side-door-trigger.py`
+- Modify: `.claude/rules/learned-rules.md`
+
+## Implementation Steps
+
+### A. Stage0 Pipeline
+
+1. Add **Step 6.8.4** (NEW — Wound Extraction):
+   - Trigger: same as 6.8.5 (KILL + relationship barrier)
+   - `wound-extractor.py --case-file --profile-file`
+   - Output: wound_map → stored in case, injected into 6.8.5
+
+2. Upgrade **Step 6.8.5**:
+   - 4→8 agents (add ego-leverage-specialist, patron-acquisition-strategist, chameleon-communicator, value-fabricator)
+   - All agents receive: wound_map, compound objective rule, persona instruction, voice instruction
+   - Post-synthesis: run compound-objective-validator.py
+
+3. Add **Step 7.05** (NEW — Voice Quality Check):
+   - `output-voice-enforcer.py --verdict-text`
+   - Operator mode + score <70 → REWRITE
+   - Analyst mode + score <40 → FLAG
+
+### B. Schema Updates
+
+4. Add to `schema-case.json`:
+   - `wound_map` object, `compound_density` float, `persona_matrix` array
+   - `info_asymmetry` object, `voice_quality_score` integer
+   - `agents_fired_layer2` array
+   - Expand `side_door_paths` with: persona, hidden_objectives, info_reveal_sequence
+
+### C. Checklist Updates
+
+5. Add to `stage0-checklist.md`:
+   - Step 6.8.4 line, updated Step 6.8.5 (8 agents), Step 7.05 line
+   - Quality self-checks: wound extraction, compound density ≥2.0, persona matrix, voice score
+
+### D. Quality Score
+
+6. Add to `stage0-quality-score.py`:
+   - `check_wound_extraction(text)` — max 5 pts
+   - `check_compound_objectives(text)` — max 5 pts
+   - Update `check_side_door()` max 10→15 (+3 persona, +2 info asymmetry)
+   - Max score: 125→135, grade thresholds: A≥110, B≥95, C≥70, D≥55
+
+### E. Learned Rules
+
+7. Add to `learned-rules.md`:
+   - [WOUND-BEFORE-APPROACH] — extract target's problems BEFORE designing approach
+   - [COMPOUND-OBJECTIVE-MANDATORY] — every action ≥2 objectives
+   - [PERSONA-PER-LINK] — different persona per chain link
+   - [INFO-ASYMMETRY-DESIGN] — map what each party knows, design revelation timing
+   - [HUMAN-VOICE-GATE] — operator output must score ≥70, zero LLM artifacts
+
+### F. Agent Expansion
+
+8. Expand side-door-trigger.py `generate_agent_prompts()`:
+   - 4 new prompts: ego-leverage-specialist, patron-acquisition-strategist, chameleon-communicator, value-fabricator
+   - Each receives: wound_map, compound rule, persona instruction, voice instruction
+
+## Success Criteria
+
+- [x] Step 6.8.4 → 6.8.5 → 7 → 7.05 → 7.1 flows correctly
+- [x] 8 agents spawn on relationship-barrier KILL (4→8 agents upgraded)
+- [x] wound_map, compound_density, persona_matrix, info_asymmetry in case JSON (schema updated)
+- [x] Quality score max=135, thresholds updated (140 max in code review fix)
+- [x] 5 new learned rules added (learned-rules.md updated)
+- [x] side-door-trigger.py generates 8 agent prompts
+- [x] End-to-end: KILL + barrier → wound → 8 agents → compound check → voice check → human output
+- [x] All 8/8 tests passing
+- [x] Code review: grade_map 135→140, regex flags, encoding guards, dead code removed

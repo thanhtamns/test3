@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+"""Convert completed/killed deal outcomes into prediction records for Brier scoring.
+
+Bridges deal tracker → feedback_loop learning system.
+Run after /deal kill or /deal complete to close the learning loop.
+
+Usage:
+    python deal-outcome-to-prediction.py --deal-id DEAL-001
+    python deal-outcome-to-prediction.py --all  # process all completed/killed deals without predictions
+"""
+
+import argparse
+import hashlib
+import json
+import sys
+from datetime import datetime
+from pathlib import Path
+
+DEALS_DIR = Path(__file__).parent.parent.parent.parent.parent / "data" / "deals"
+PREDICTIONS_DIR = Path(__file__).parent / "data" / "predictions"
+
+
+def load_deal(deal_id: str) -> dict | None:
+    deal_file = DEALS_DIR / f"{deal_id}.json"
+    if not deal_file.exists():
+        print(f"Error: {deal_file} not found", file=sys.stderr)
+        return None
+    with open(deal_file, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def deal_to_prediction(deal: dict) -> dict | None:
+    predicted = deal.get("predicted", {})
+    actual = deal.get("actual", {})
+
+    if not predicted.get("first_dollar_day") and not predicted.get("day30_revenue"):
+        return None
+
+    pred_revenue = predicted.get("day30_revenue")
+    actual_revenue = actual.get("day30_revenue") or actual.get("total_revenue", 0)
+
+    observed = 1 if actual_revenue and actual_revenue > 0 else 0
+
+    pred_id = f"pred-deal-{deal['id']}-{hashlib.md5(deal['id'].encode()).hexdigest()[:6]}"
+
+    return {
+        "id": pred_id,
+        "source": "deal-tracker",
+        "deal_id": deal["id"],
+        "claim": f"Deal '{deal['name']}' will generate revenue by day 30",
+        "confidence": predicted.get("confidence", 0.5),
+        "domain": deal.get("type", "unknown"),
+        "status": "resolved",
+        "outcome": observed,
+        "predicted_revenue": pred_revenue,
+        "actual_revenue": actual_revenue,
+        "predicted_first_dollar_day": predicted.get("first_dollar_day"),
+        "actual_first_dollar_day": actual.get("first_dollar_day"),
+        "created": deal.get("created"),
+        "resolved": datetime.now().strftime("%Y-%m-%d"),
+        "lessons": actual.get("lessons", []),
+    }
+
+
+def save_prediction(pred: dict) -> Path:
+    PREDICTIONS_DIR.mkdir(parents=True, exist_ok=True)
+    filename = f"{pred['id']}.json"
+    filepath = PREDICTIONS_DIR / filename
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(pred, f, indent=2, ensure_ascii=False)
+    return filepath
+
+
+def find_unprocessed_deals() -> list[dict]:
+    if not DEALS_DIR.exists():
+        return []
+    existing_pred_ids = set()
+    if PREDICTIONS_DIR.exists():
+        for f in PREDICTIONS_DIR.glob("pred-deal-*.json"):
+            with open(f, "r", encoding="utf-8") as fh:
+                p = json.load(fh)
+                existing_pred_ids.add(p.get("deal_id"))
+
+    deals = []
+    for f in DEALS_DIR.glob("DEAL-*.json"):
+        with open(f, "r", encoding="utf-8") as fh:
+            deal = json.load(fh)
+            if deal.get("status") in ("completed", "killed") and deal["id"] not in existing_pred_ids:
+                deals.append(deal)
+    return deals
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Convert deal outcomes to predictions")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--deal-id", help="Specific deal ID to process")
+    group.add_argument("--all", action="store_true", help="Process all unprocessed deals")
+    args = parser.parse_args()
+
+    if args.deal_id:
+        deal = load_deal(args.deal_id)
+        if not deal:
+            sys.exit(1)
+        if deal.get("status") not in ("completed", "killed"):
+            print(f"Deal {args.deal_id} status is '{deal.get('status')}' - must be completed or killed")
+            sys.exit(1)
+        pred = deal_to_prediction(deal)
+        if not pred:
+            print(f"Deal {args.deal_id} has no predictions to convert (no predicted values)")
+            sys.exit(0)
+        path = save_prediction(pred)
+        print(f"Prediction created: {path}")
+        print(f"  Confidence: {pred['confidence']} | Outcome: {pred['outcome']} | Revenue: ${pred['actual_revenue']}")
+    else:
+        deals = find_unprocessed_deals()
+        if not deals:
+            print("No unprocessed deals found")
+            sys.exit(0)
+        for deal in deals:
+            pred = deal_to_prediction(deal)
+            if pred:
+                path = save_prediction(pred)
+                print(f"Created: {path} ({deal['id']} -> outcome={pred['outcome']})")
+        print(f"\nProcessed {len(deals)} deals. Run brier-update-from-outcome.py to update scores.")
+
+
+if __name__ == "__main__":
+    main()

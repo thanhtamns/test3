@@ -1,0 +1,166 @@
+# Phase 2: Agent Prompts (hunt-lib/)
+
+**Priority:** P1 — enhances quality but v1 can inline instructions
+**Status:** pending
+**Estimated time:** 2-3 hours
+**Depends on:** Phase 1
+
+## Context
+- Stage0 uses `commands/stage0-lib/` for sub-agent prompts
+- Hunt needs 5 focused agent prompts in `commands/hunt-lib/`
+- Each prompt: under 100 lines, single responsibility, structured output schema
+
+## Files to Create
+
+### 1. hunt-lib/prey-profiler.md
+
+**Purpose:** Transform vague "group of people" into structured prey_profile with verifiable data.
+
+**Key behaviors:**
+- NEVER accept "small businesses" — force specificity: industry + role + size + geography
+- MUST find where_they_gather (3+ specific URLs/groups/forums)
+- MUST estimate count from NAMED source (government data, industry association, platform user count)
+- MUST identify founder's ACCESS ADVANTAGE to this group
+
+**Output schema:**
+```json
+{
+  "who": "string — specific role + industry + geography",
+  "count_estimate": "number",
+  "count_source": "string — named source with date",
+  "count_confidence": "[K] | [T] | [?]",
+  "where_they_gather": ["url1", "url2", "url3"],
+  "how_founder_reaches_them": "string — specific channel, zero-cost method",
+  "money_flow_they_sit_in": "string — from→to with amounts",
+  "founder_advantage": "string — why THIS founder, not generic"
+}
+```
+
+**Agents to compose with:** `customer-obsession-researcher` (existing)
+
+### 2. hunt-lib/pain-miner.md
+
+**Purpose:** Mine REAL complaints from forums/groups where prey gathers. Quantify in dollars.
+
+**Key behaviors:**
+- Search ONLY in where_they_gather URLs (not Google generic)
+- Search in target language (VN forums → Vietnamese keywords, EN forums → English)
+- Count frequency: same complaint from 3+ different people = signal
+- Quantify EVERY pain in money: time × rate, or direct cost
+- Map current solutions: what do they use NOW? What's missing?
+
+**Search keyword templates:**
+```
+EN: "waste of time" | "so frustrated" | "anyone know" | "looking for" | "hate doing" | "takes forever"
+VN: "chán quá" | "mất thời gian" | "ai biết cách" | "có tool nào" | "quá mệt" | "lâu quá"
+CN: "太麻烦" | "浪费时间" | "有没有工具" | "求推荐"
+```
+
+**Output schema:**
+```json
+{
+  "pains": [{
+    "pain": "string — specific action that hurts",
+    "frequency": "string — how often",
+    "time_cost_per_occurrence": "string",
+    "money_cost_per_occurrence": "string — in USD",
+    "forum_mentions": "number",
+    "forum_sources": ["url1", "url2"],
+    "current_solution": "string",
+    "existing_paid_tools": [{"name": "string", "price": "string", "gap": "string"}],
+    "gap": "string — what's missing"
+  }],
+  "top_pain_by_money": "index",
+  "top_pain_by_frequency": "index"
+}
+```
+
+**Agents to compose with:** `niche-archaeologist`, `reddit-twitter-demand-miner` (existing)
+
+### 3. hunt-lib/proof-tracker.md
+
+**Purpose:** Generate outreach scripts for human validation. Track proof metrics.
+
+**Key behaviors:**
+- Scripts must be UNDER 50 WORDS — nobody reads long DMs from strangers
+- Tone: curious peer, NOT salesperson
+- Purpose: LEARN, not sell — "Do you experience X?" not "I built X"
+- Generate list of 20 specific people/handles from where_they_gather
+- Define clear thresholds: PASSED / WEAK / FAILED
+
+**Output:**
+- 3 outreach script variants (DM, email, comment)
+- List of 20 targets with names/handles + where to reach them
+- Tracking template (sent/replied/confirmed/asked-for-solution)
+- ACTION file for human execution
+
+**Agents to compose with:** `outreach-synthesizer` (existing)
+
+### 4. hunt-lib/offer-designer.md
+
+**Purpose:** Design minimum viable offer from VERIFIED pain + WTP data.
+
+**Key behaviors:**
+- Offer must solve EXACTLY the verified pain — no scope creep
+- Build time MUST be ≤ 2 weeks for MVP
+- Price derived from WTP data, NOT "industry benchmarks"
+- Must pass delegation test: "who runs this when founder stops?"
+- Must identify money flow position: where in existing $ flow does this sit?
+
+**Output schema:**
+```json
+{
+  "offer_name": "string",
+  "solves": "string — one sentence",
+  "format": "string — web app | service | template | API | other",
+  "price": "string with currency",
+  "price_rationale": "string — derived from WTP",
+  "build_time": "string",
+  "revenue_model": {
+    "tam": "number",
+    "conversion_1pct": "number",
+    "mrr_at_1pct": "string",
+    "mrr_at_3pct": "string"
+  },
+  "money_flow_position": "string",
+  "delegation_test": "string — who replaces founder, at what cost",
+  "kill_30d": "string — specific threshold"
+}
+```
+
+**Agents to compose with:** `first-dollar-hunter` (existing)
+
+### 5. hunt-lib/script-writer.md
+
+**Purpose:** Generate copy-paste sales materials from offer + proof data.
+
+**Key behaviors:**
+- Cold outreach: UNDER 50 words. Lead with their pain, not your product.
+- Landing page: UNDER 200 words. Structure: Pain → Cost → Solution → Price → CTA
+- Follow-up: 3 messages. Day 2 (value add), Day 5 (social proof/case), Day 10 (last chance)
+- Objections: top 5 from industry + standard (too expensive, don't trust, already have solution, don't need, too busy)
+- All scripts use VERBATIM QUOTES from proof interviews where possible
+
+**Output:**
+- `scripts/cold-outreach-dm.md` — 3 variants
+- `scripts/cold-outreach-email.md` — 3 variants
+- `scripts/landing-page-copy.md` — full page copy
+- `scripts/follow-up-sequence.md` — 3 messages
+- `scripts/objection-handling.md` — 5 objections + responses
+- `scripts/week-1-action-plan.md` — day-by-day for first 7 days
+
+**Agents to compose with:** `outreach-synthesizer`, `chris-voss` (existing)
+
+## Implementation Steps
+
+1. Create `commands/hunt-lib/` directory
+2. Write each of the 5 agent prompt files
+3. Update `hunt.md` to reference hunt-lib/ prompts instead of inline instructions
+4. Test: verify agents produce structured output matching schemas
+
+## Success Criteria
+- [ ] Each prompt under 100 lines
+- [ ] Output schemas are JSON-parseable
+- [ ] No references to "business model" scanning
+- [ ] Scripts are genuinely short (50 words DM, 200 words landing page)
+- [ ] Proof tracker has clear PASSED/WEAK/FAILED thresholds

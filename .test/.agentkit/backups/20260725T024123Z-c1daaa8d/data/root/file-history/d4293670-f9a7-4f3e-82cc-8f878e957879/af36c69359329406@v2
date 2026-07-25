@@ -1,0 +1,105 @@
+use anyhow::{Context, Result};
+use colored::Colorize;
+
+use crate::core::agent_trace;
+use crate::core::provenance::{ContributorType, ProvenanceStore};
+
+pub fn run_blame(file: &str, json: bool, session: Option<&str>) -> Result<()> {
+    let store = ProvenanceStore::new()
+        .context("failed to open provenance store")?;
+
+    let records = if let Some(sess) = session {
+        let all = store.query_by_session(sess)?;
+        all.into_iter()
+            .filter(|r| r.file_path == file)
+            .collect()
+    } else {
+        store.query_by_file(file)?
+    };
+
+    if json {
+        let output = agent_trace::export_agent_trace(&records);
+        println!("{}", output);
+        return Ok(());
+    }
+
+    if records.is_empty() {
+        println!("No provenance records found for: {}", file);
+        return Ok(());
+    }
+
+    let file_content = std::fs::read_to_string(file).ok();
+    let lines: Vec<&str> = file_content
+        .as_deref()
+        .map(|c| c.lines().collect())
+        .unwrap_or_default();
+
+    println!(
+        "{:>6} | {:>8} | {:>30} | {:>20} | {}",
+        "LINE".bold(),
+        "TYPE".bold(),
+        "MODEL".bold(),
+        "TIMESTAMP".bold(),
+        "CODE".bold(),
+    );
+    println!("{}", "-".repeat(100));
+
+    for record in &records {
+        let start = record.start_line as usize;
+        let end = record.end_line as usize;
+
+        for line_num in start..=end {
+            let code = lines
+                .get(line_num.saturating_sub(1))
+                .unwrap_or(&"<no source>");
+
+            let contributor = format_contributor(record.contributor_type);
+            let model = truncate_str(&record.model_id, 30);
+            let ts = truncate_str(&record.timestamp, 20);
+
+            println!(
+                "{:>6} | {} | {:>30} | {:>20} | {}",
+                line_num, contributor, model, ts, code,
+            );
+        }
+    }
+
+    println!(
+        "\n{} provenance record(s) for {}",
+        records.len(),
+        file,
+    );
+    Ok(())
+}
+
+fn format_contributor(ct: ContributorType) -> String {
+    let s = ct.as_str();
+    let padded = format!("{:>8}", s);
+    match ct {
+        ContributorType::Human => padded.green().to_string(),
+        ContributorType::Ai => padded.yellow().to_string(),
+        ContributorType::Mixed => padded.cyan().to_string(),
+        ContributorType::Unknown => padded.dimmed().to_string(),
+    }
+}
+
+fn truncate_str(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        s.to_string()
+    } else {
+        let boundary = s
+            .char_indices()
+            .take_while(|(i, _)| *i <= max.saturating_sub(3))
+            .last()
+            .map(|(i, c)| i + c.len_utf8())
+            .unwrap_or(0);
+        format!("{}...", &s[..boundary])
+    }
+}
+
+pub fn run_enrich(session_id: &str, model_id: &str) -> Result<()> {
+    let store = ProvenanceStore::new()?;
+    let updated = store.enrich_model_id(session_id, model_id)?;
+    println!("Enriched {} record(s) in session {}", updated, session_id);
+    Ok(())
+}

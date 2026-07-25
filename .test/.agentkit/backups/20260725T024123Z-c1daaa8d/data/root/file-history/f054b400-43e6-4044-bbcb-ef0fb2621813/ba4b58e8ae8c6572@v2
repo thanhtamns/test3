@@ -1,0 +1,245 @@
+# VERDICT: Brain-Leverage Business Models — Breadth Scan
+
+**Case ID:** stage0-260522-brain-leverage-breadth-scan
+**Mode:** --breadth (INSTANCE-LITE, 12 models) | FOUNDER_SPECIFIC
+**Capital:** TIER_0 ($0-500) | **Founder:** phamt-260507 (Vietnam, 30h/wk, dev skills)
+**Verdict:** SIDE_HUSTLE_WITH_STAIRCASE | **Confidence:** 0.68
+
+---
+
+## REALITY ANCHOR
+
+- 75% of nonemployer businesses make <$50K/yr revenue [K] [SOURCE: US Census Nonemployer Statistics, 2024] ⚠️
+- 92% micro-SaaS fail within 18 months [K] [SOURCE: MicroConf community survey, 2024] ⚠️
+- 81% "passive income" seekers quit within 6 months [K] [SOURCE: Side Hustle Nation survey, 2024] ⚠️
+- AI displaced 79% of freelance platform spending 2021-2025 [K] [SOURCE: Bloomberg/Upwork earnings, Feb 2025] ✅
+- Solo founding rate rising: 23.7% → 36.3% [K] [SOURCE: NBER Working Paper, 2024] ⚠️
+- IH base rate: 54% of indie products make $0, only 5% exceed $100K/yr [K] [SOURCE: ScrapingFish IH analysis, 2024] ⚠️
+- Below $5K MRR, "brain leverage" is disguised labor — survivors had existing audience or distribution [T]
+- Power-law: P10=$0/mo, P50=$200/mo, P90=$3K/mo, P99=$15K+/mo for solo digital businesses [T]
+
+---
+
+## 12 MODELS — RANKED BY (Lindy × Leverage × Sleep × AI-Resistance × Founder-Fit)
+
+### 1. NICHE JOB BOARD — 8.2/10
+**Sub-niche:** Industry-specific job listings (ranch work, maritime, mining, renewable energy)
+**Precedent:** Peter Askew — ranchwork.com, acquired ~$0, $10K+/mo from posting fees [SOURCE: IndieHackers, 2019] ❌
+**Unit econ:** $50-200/post × 50-200 posts/mo = $2.5K-$40K/mo. Employer pays, jobseeker free.
+**Capital:** $0-50 | **Leverage:** MEDIA+CODE | **Lindy:** 9/10 (job boards since 1990s)
+**Sleep test:** PASS after 6mo — employers self-post, SEO drives traffic
+**AI risk:** LOW — AI can't replace the NETWORK EFFECT of being THE place for [niche] jobs
+**Competition:** Fragmented. Most niches have 0-2 dedicated boards. Google "[niche] jobs" — no dedicated board on page 1 = opportunity.
+**Founder fit:** Vietnam location irrelevant (global English niches). Zero capital. SEO skill required.
+**Kill:** <20 posts/mo after 6mo → KILL. Zero organic traffic growth after 3mo → KILL.
+**Staircase:** Job board → recruiter partnerships → talent marketplace → SaaS for that industry
+
+### 2. MICRO-SaaS (BORING B2B WORKFLOW) — 7.8/10
+**Sub-niche:** Single-purpose tool (invoice PDF parser for accountants, permit tracker for contractors, shift scheduler for clinics)
+**Precedent:** TypingMind — Nguyen Thai Khoa (Vietnamese), ChatGPT wrapper, $50K+ MRR [SOURCE: IndieHackers, 2024] ⚠️; survivors hit $4.2K median MRR [SOURCE: MicroConf 2024] ⚠️
+**Unit econ:** $15-49/mo × 100-500 users = $1.5K-$24.5K/mo. Marginal cost ~$0.
+**Capital:** $0-100 | **Leverage:** CODE | **Lindy:** 7/10
+**Sleep test:** PASS at scale
+**AI risk:** MEDIUM — lowers build barrier (more competition), but also YOUR build cost. Distribution > code.
+**Founder fit:** STRONG — dev skills, Vietnam = low burn, fast iteration
+**Kill:** <10 paying users after 90 days → KILL. Zero organic signups → KILL.
+**Staircase:** Single tool → tool suite → vertical SaaS → acquisition target (3-5x ARR)
+
+### 3. PROGRAMMATIC SEO DIRECTORY — 7.5/10
+**Sub-niche:** Auto-generated listing pages for fragmented markets (coworking by city, therapists by specialty, solar installers by zip)
+**Precedent:** Nomad List (Pieter Levels) — spreadsheet → $2.7M+/yr ARR [SOURCE: levels.io Twitter, 2024] ⚠️; VisaList — same founder, 90% automated, ~$200K/yr [SOURCE: IndieHackers, 2023] ❌
+**Unit econ:** 1K-50K pages × $0.01-0.10 RPM or $20-200/listing = $500-$50K/mo
+**Capital:** $0-50 | **Leverage:** CODE+MEDIA | **Lindy:** 8/10 (directories since Yellow Pages)
+**Sleep test:** PASS — pages rank, traffic arrives
+**AI risk:** LOW for aggregation; MEDIUM for content — AI builds directories faster (threat AND opportunity)
+**Founder fit:** Good — coding for programmatic generation, location irrelevant
+**Kill:** <1K organic sessions/mo after 6mo → KILL.
+**Staircase:** Directory → premium listings → lead gen → vertical marketplace → SaaS
+
+### 4. IMPORT/EXPORT COMMISSION AGENT — 7.3/10
+**Sub-niche:** Connect Vietnamese manufacturer with foreign buyer, earn 10-15% perpetual commission
+**Precedent:** Model is 200+ years old (East India Company era). Vietnam coffee/seafood/textile commission networks active [SOURCE: Exporteers.com, ExportImportPractical.com] ⚠️
+**Unit econ:** 10-15% per transaction. $100K order = $10K-$15K. Recurring if relationship maintained.
+**Capital:** $0-50 | **Leverage:** NETWORK | **Lindy:** 9/10
+**Sleep test:** FAIL — active relationship maintenance required
+**AI risk:** LOW — trust, cultural translation, problem resolution are human skills
+**Founder fit:** STRONG — Vietnam-based, product knowledge edge, zero capital at risk
+**Primary kill mode:** BYPASS — buyer/seller cut you out after introduction. Solved only with multi-year exclusive commission agreement signed BEFORE introduction.
+**Kill:** No product-specific expertise → KILL. No formal agreement → working for free.
+**Staircase:** Commission agent → exclusive mandates → trading company → own supply chain
+
+### 5. NICHE CALCULATOR/COMPARISON TOOL — 7.1/10
+**Sub-niche:** Decision-support tool attracting high-intent buyers (solar ROI, freight estimator, mortgage analyzer)
+**Precedent:** CalcXML — financial calcs, 20+ years [SOURCE: calcxml.com, verified 2026-05-22] ✅; Omni Calculator — 3,300+ calcs, millions visits [SOURCE: TechCrunch, 2023] ❌
+**Unit econ:** 10K visits/mo × 2% conversion × $5-50/lead = $1K-$10K/mo
+**Capital:** $0-30 | **Leverage:** CODE+MEDIA | **Lindy:** 9/10
+**Sleep test:** PASS — runs 24/7, no updates needed
+**AI risk:** MEDIUM — ChatGPT calculates but can't rank in Google or capture leads. Distribution moat.
+**Founder fit:** STRONG — coding, zero capital, global audience
+**Kill:** <500 organic visits after 4mo → KILL. No monetization path → KILL.
+**Staircase:** Calculator → suite → lead gen platform → data business (aggregate decisions)
+
+### 6. CURATED NEWSLETTER + SPONSOR — 7.0/10
+**Sub-niche:** Weekly digest for specific professionals (AI tools for HR, regulatory changes for fintech)
+**Precedent:** TLDR Newsletter — $5M+/yr at 1.25M subs [SOURCE: Dan Ni, 2024] ⚠️; Stacked Marketer $517K in 2024 [SOURCE: Gaps.com] ⚠️; Lenny's Newsletter $5M+ ARR [SOURCE: The Information, 2024] ⚠️
+**Unit econ:** Sponsor CPM $25-75 niche B2B. 5K subs × $50 CPM × 4/mo = $1K/mo. 20K subs = $4K/mo.
+**Capital:** $0 (Beehiiv free to 2,500) | **Leverage:** MEDIA | **Lindy:** 8/10
+**Sleep test:** PARTIAL — recurring content creation until hired/automated
+**AI risk:** MEDIUM — AI can curate but can't replicate TASTE and TRUST
+**Founder fit:** CONDITIONAL — requires English writing for B2B Western. VN B2B audience too small.
+**Kill:** <500 subs after 3mo → KILL. <$200/mo sponsor revenue at 2K subs → KILL.
+**Staircase:** Newsletter → sponsored → paid tier → community → products → events
+
+### 7. MICRO-ACQUISITION + OPERATE — 6.9/10
+**Sub-niche:** Buy tiny profitable websites for $300-$5K, optimize and grow
+**Precedent:** Microns.io lists at $300+ [SOURCE: microns.io, verified 2026-05-22] ✅; Duuce.com sold 38x multiple [SOURCE: Flippa, 2023] ❌
+**Unit econ:** Buy 12-24x monthly profit → improve to 36-60x. $500 site @ $30/mo → optimize to $80/mo → worth $2K-$4K.
+**Capital:** $300-500 | **Leverage:** CAPITAL+CODE | **Lindy:** 7/10
+**Sleep test:** PASS if buying already-passive sites
+**AI risk:** LOW — deal sourcing + improvement judgment are human
+**Founder fit:** CONDITIONAL — $300-500 is at capital ceiling. Start with 1.
+**Kill:** First acquisition fails to cover purchase in 12mo → reassess.
+**Staircase:** 1 site → portfolio 3-5 → holding company → acquire $5K-$50K assets
+
+### 8. DOMAIN FLIPPING — 6.8/10
+**Sub-niche:** Buy undervalued domains ($8-500), sell to businesses ($500-$50K)
+**Precedent:** $185M aftermarket in 2024, +32.8% YoY [SOURCE: DNJournal, 2024] ⚠️; median reported sale $2,488; .ai extensions +300% registrations [SOURCE: Dynadot, 2024] ⚠️
+**Unit econ:** $300 buy → $3K sell = $2,430 net after fees. 2-5% portfolio sell-through/year.
+**Capital:** $200-400 (portfolio of 20-40 names) | **Leverage:** CAPITAL | **Lindy:** 8/10
+**Sleep test:** PARTIAL — research is active, listing is passive
+**AI risk:** LOW — AI can't predict which brands startups want in 6 months
+**Founder fit:** CONDITIONAL — learning curve steep; most beginners buy worthless names
+**Kill:** <2 sales from first 30 domains → reassess niche selection.
+**Staircase:** Single flips → premium portfolio → brokerage → domain development
+
+### 9. NICHE DATA PACKAGING — 6.7/10
+**Sub-niche:** Collect+clean+sell scattered public data (health inspections, patent filings, competitor pricing)
+**Precedent:** BuiltWith — 1 person, scrapes tech stacks, ~$14M/yr [SOURCE: Andrew Wilkinson tweet, 2022] ❌; CB Insights started scraping press releases [SOURCE: Forbes, 2023] ❌
+**Unit econ:** $49-299/mo × 20-200 subscribers = $980-$59.8K/mo. Data MORE valuable over time.
+**Capital:** $0-100 | **Leverage:** CODE+DATA | **Lindy:** 8/10
+**Sleep test:** CONDITIONAL — scrapers need maintenance when formats change
+**AI risk:** MEDIUM for scraping, LOW for curation/insight
+**Founder fit:** STRONG — dev skills, low infra cost from Vietnam
+**Kill:** <5 paying subs after 90 days → KILL. Primary source blocks scraping → KILL.
+**Staircase:** Raw data → analytics dashboard → API → predictive models → consulting
+
+### 10. API INTEGRATION BRIDGE — 6.5/10
+**Sub-niche:** Connect two systems nobody else bothers to (Shopify → VN accounting, niche CRM → email tool)
+**Precedent:** SyncSpider — e-commerce integrations, bootstrapped [SOURCE: ProductHunt, 2022] ❌
+**Unit econ:** $19-99/mo × 50-500 users = $950-$49.5K/mo. Very sticky (switching cost).
+**Capital:** $0-50 | **Leverage:** CODE | **Lindy:** 6/10 (APIs break when platforms change)
+**Sleep test:** CONDITIONAL — works until API breaks, then urgent fix
+**AI risk:** MEDIUM — AI writes code but maintaining across versions needs domain knowledge
+**Founder fit:** STRONG for dev. Vietnam-specific integrations (VN accounting + global SaaS) = ZERO competition.
+**Kill:** <5 paying users after 60 days → KILL. Platform launches native integration → KILL immediately.
+**Staircase:** 1 integration → suite → middleware → vertical SaaS
+
+### 11. AUTOMATED MONITORING/ALERT SERVICE — 6.3/10
+**Sub-niche:** Track changes and alert (competitor prices, regulatory filings, trademark, domain expiry)
+**Precedent:** VisualPing — $3M+ ARR [SOURCE: SaaSworthy, 2024] ⚠️; Distill.io, bootstrapped [SOURCE: distill.io, verified 2026-05-22] ✅
+**Unit econ:** $9-29/mo × 100-1K users = $900-$29K/mo. Very sticky.
+**Capital:** $0-50 | **Leverage:** CODE | **Lindy:** 7/10
+**Sleep test:** PASS — monitors run 24/7
+**AI risk:** MEDIUM — AI builds monitors, but NICHE KNOWLEDGE of what to monitor is human insight
+**Founder fit:** STRONG — dev, low capital, global audience
+**Kill:** <20 users after 60 days → KILL. Target unscrapeable → KILL.
+**Staircase:** Alerts → analytics → predictive → API/enterprise
+
+### 12. BUSINESS BROKERAGE (MAIN STREET M&A) — 6.1/10
+**Sub-niche:** Broker $200K-$2M business sales, 8-12% commission at close
+**Precedent:** IBBA 1,200+ member brokers; Baby Boomer succession wave 2025-2035 [SOURCE: IBBA 2025] ⚠️; avg broker 3-4 deals/yr at $30K-$80K/deal [SOURCE: Salary.com/Glassdoor, 2025] ✅
+**Unit econ:** $500K business × 10% = $50K/deal. 3 deals/yr = $150K.
+**Capital:** $0-200 | **Leverage:** NETWORK | **Lindy:** 9/10 (100+ years)
+**Sleep test:** FAIL — active deal management, high-touch
+**AI risk:** LOW — trust, emotional intelligence, deal navigation are human
+**Founder fit:** WEAK — requires local US professional network (accountants, lawyers). Vietnam = wrong geography. Ranked lower despite strong model because FOUNDER-REALITY-GATE fails on geography+network.
+**Kill:** Zero professional network in target market → 18+ months to first deal.
+**Staircase:** Small deals → larger deals ($2M-$10M) → M&A advisory → portfolio
+
+---
+
+## CROSS-MODEL SYNTHESIS
+
+### Structural Patterns Across All 12 Models
+
+**What separates survivors from the 81% who quit:**
+1. **Distribution before product.** Every precedent (ranchwork.com, TypingMind, Nomad List, Lenny's Newsletter) had a DISTRIBUTION CHANNEL before building. SEO, audience, or community presence. Building first = gambling. [T]
+2. **Toll booth > content.** Models 1, 3, 5, 10, 11 are TOLL BOOTHS — sit between parties who need each other. Structurally superior to content businesses because toll booths grow with transactions, not creator output. [T]
+3. **Lindy > novelty.** Job boards, directories, calculators, data services existed 20+ years. Novel types (AI wrappers, crypto) have higher upside but <3yr Lindy. At $0-500 capital, you can't afford novelty bets. [T]
+
+### Founder-Specific Ranking (phamt-260507)
+
+**Primary strength:** Dev skills + Vietnam cost base
+**Primary weakness:** No existing audience, $0-500 capital, English as L2, no US professional network
+
+**RECOMMENDED PRIORITY ORDER:**
+1. **Model 5 (Calculator tool)** — zero capital, pure code leverage, sleep-test pass, no audience needed (SEO acquires), AI-resistant distribution moat. BUILD THIS FIRST.
+2. **Model 1 (Niche job board)** — if calculator validates, layer job board on same vertical. Network effect compounds.
+3. **Model 11 (Monitoring service)** — pure code, sticky churn, parallel to above.
+
+**DO NOT start with:** Models 4, 6, 8, 12 — require audience/network/English fluency/sales skill not yet in founder profile.
+
+### Information Asymmetry Models (from arbitrage research)
+
+The arbitrage agent tested 7 pure-information-asymmetry models. Key finding: **solo operators survive in markets requiring trust, local knowledge, relationship access, or human judgment. They get CRUSHED in automated/quantitative arbitrage** [T]. Crypto arbitrage opportunity windows compressed from 12.3 seconds to 2.7 seconds (Q1 2026) — human operators cannot compete [K] [SOURCE: prediction market research, 2026] ✅.
+
+Viable information-asymmetry plays at $0-500:
+- Import/export commission (Model 4): structural info gap, but founder needs product expertise
+- Business brokerage (Model 12): structural, but wrong geography for this founder
+- Domain flipping (Model 8): information edge in trend prediction, $200 minimum
+
+Non-viable at $0-500: freight brokerage ($75K bond), traffic arbitrage (burns $500 in learning), crypto arbitrage (bot-dominated).
+
+### Mountain Test
+
+**Can any single model reach $10K/mo NET within 12 months from $0-500?**
+**CONDITIONAL.** P90 for top 3 models = $3K-$8K/mo at 12 months. $10K/mo requires either:
+- (a) Portfolio of 2-3 running simultaneously, or
+- (b) Model 2 (micro-SaaS) hitting PMF in high-WTP niche
+
+Neither guaranteed. **SIDE_HUSTLE_WITH_STAIRCASE** — each model staircases into mountain territory over 18-36 months with compounding.
+
+---
+
+## RISK FACTORS
+
+| Risk | Severity | Source |
+|------|----------|--------|
+| [RISK:AI_DISRUPTION] AI lowers barrier to build all 12 | HIGH | All models become easier to build → more competition |
+| [RISK:HIGH_FAILURE_RATE] 81% quit within 6mo, 54% IH make $0 | HIGH | Base rate is brutal |
+| "Brain leverage" = disguised labor below $5K MRR | MEDIUM | Accept labor phase 6-12mo, design for automation at $3K MRR |
+| Power-law: P50 = $200/mo across solo digital | HIGH | Portfolio approach reduces variance |
+| No existing audience = cold start | HIGH | SEO-first models (1,3,5,11) don't require audience |
+| Vietnam timezone friction for B2B Western | LOW | Async products are timezone-agnostic |
+
+**Layer 0 flags triggered:** 3/7 (AI_DISRUPTION, HIGH_FAILURE_RATE, FREE_ALTERNATIVE for templates)
+**Layer 1 organic:** POWER_LAW_MEDIAN confirmed across all solo models
+
+---
+
+## EXPERIENCE BRAIN — Day 1/3/7
+
+**Day 1:** Pick ONE niche for Model 5 (calculator). Search Google "[industry] calculator" for 10 industries. Find one where top result is ugly/outdated/missing key feature. Register domain ($10). Build MVP in 4 hours.
+
+**Day 3:** Calculator live. Submit to 3 relevant subreddits + 1 HN Show HN. Install analytics. Target: >50 visits.
+
+**Day 7:** If >50 visits + >0 search impressions → CONTINUE. Add 2 more calculators for adjacent queries. Plan monetization (affiliate links). If <50 from ALL channels → evaluate niche, not model.
+
+---
+
+## VERDICT
+
+**SIDE_HUSTLE_WITH_STAIRCASE** (confidence: 0.68)
+
+No single $0-500 model reliably reaches $10K/mo NET in 12 months — that's P95+ territory. A PORTFOLIO of 2-3 code-leverage models (calculator + directory + monitoring) operated by a dev founder from Vietnam can realistically reach $3-8K/mo in 12 months and staircase to $10K+ in 18-24 months.
+
+**The staircase:** Month 1-3 calculator suite (Model 5) → Month 4-6 directory for same niche (Model 3) → Month 7-9 monitoring for same audience (Model 11) → Month 10-12 portfolio $3-8K/mo → Month 13-18 micro-acquire competitors (Model 7) → Month 18-24 mountain territory.
+
+**Key insight:** At $0-500, the product IS founder's time × coding skill × niche selection accuracy. Capital constraint forces CODE LEVERAGE as only viable type. This is an ADVANTAGE — filters out capital-heavy competitors, selects for the exact skill this founder has.
+
+**Knowledge fired:** SCH-012 (base rate), SCH-029 (power law), MM-01 (leverage hierarchy), MM-03 (Lindy), ARCH-001 (retreating city founder)
+
+---
+
+*Agents fired: 12 (8 Wave 1 + 4 Wave 2). Research: WebSearch ×8, toll-booth-agent, digital-assets-agent, failure-archaeology-agent, arbitrage-agent. Engines: operator-mastery, power-law-sizer, vicarious-knowledge. Experience brain: DEGRADED.*
+*Tags: [DEGRADED_EXPERIENCE_BRAIN] [LOCAL_LOW_CONFIDENCE] [DEGRADED_NO_POSITIONING]*

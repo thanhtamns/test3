@@ -1,0 +1,87 @@
+---
+phase: 1
+title: "Mountain Test v24"
+status: pending
+priority: P1
+effort: "2h"
+dependencies: []
+---
+
+# Phase 1: Mountain Test v24
+
+## Overview
+
+Add Q4-SLEEP and Q5-LEVERAGE to Mountain Test in `stage0.md` Step 6. These two questions gate whether a model can ever reach MOUNTAIN_CANDIDATE. Labor models (Q4=NO + Q5=LABOR) are hard-capped at SIDE_HUSTLE regardless of Q1-Q3 results.
+
+## Related Code Files
+
+- Modify: `D:\code\invesments\master_investments\.claude\commands\stage0.md` (Step 6, lines ~1827-1863)
+- Modify: `D:\code\invesments\master_investments\.claude\commands\stage0-spec-detail.md` (Mountain Test rationale)
+- Modify: `D:\code\invesments\master_investments\.claude\commands\stage0-checklist.md` (checklist items)
+
+## Implementation Steps
+
+1. In `stage0.md` Step 6 header, change `Mountain Test v23` → `Mountain Test v24`
+
+2. After Q3-LINDY + Compounding block (line ~1837), add:
+```
+Q4-SLEEP: Revenue continues when founder does zero work for 30 days? (YES/NO/PARTIAL)
+  - YES: recurring subscription, royalties, automated systems, passive income
+  - PARTIAL: some revenue continues but requires periodic maintenance (<5h/week)
+  - NO: revenue stops when founder stops working
+
+Q5-LEVERAGE: Primary leverage type (Naval hierarchy):
+  - CODE: software product, SaaS, automation tool
+  - MEDIA: content library, audience, brand asset
+  - CAPITAL: investment returns, lending, portfolio income
+  - LABOR: service delivery, consulting, freelancing, agency work
+  - HYBRID: labor phase with explicit code/media transition path
+  Classification source: archetype-registry.json → leverage_class field
+  If not in registry: classify from business model description
+```
+
+3. Update verdict deterministic rules. Replace existing rules block (lines ~1853-1858) with:
+```
+Verdict deterministic rules:
+- Q1=no → KILL or INSUFFICIENT_SIGNAL
+- Q4=NO + Q5=LABOR → SIDE_HUSTLE (HARD CAP — labor without sleep = job, not business)
+- Q4=NO + Q5=HYBRID → SIDE_HUSTLE_WITH_STAIRCASE (labor phase acknowledged, transition path required)
+- Q4=PARTIAL → apply -0.10 confidence penalty, proceed with Q1-Q3 logic
+- Q1=yes + Q2=no → SIDE_HUSTLE
+- Q1=yes + Q2=yes + Q3-LINDY=yes + Compounding=yes + Q4∈{YES,PARTIAL} → MOUNTAIN_CANDIDATE (LINDY-VERIFIED)
+- Q1=yes + Q2=yes + Q3-LINDY=no + Compounding=yes + Q4∈{YES,PARTIAL} → MOUNTAIN_CANDIDATE (LINDY_WARNING)
+- Q1=yes + Q2=yes + Compounding=no → SIDE_HUSTLE
+```
+
+Key change: Q4/Q5 gate runs BEFORE Q1-Q3 can promote to MOUNTAIN_CANDIDATE. Labor + no sleep = SIDE_HUSTLE regardless.
+
+4. Add SIDE_HUSTLE_WITH_STAIRCASE to valid verdict classes list (line ~16):
+```
+- Verdict class MUST be valid (KILL/SIDE_HUSTLE/SIDE_HUSTLE_WITH_STAIRCASE/MOUNTAIN_CANDIDATE/INSUFFICIENT_SIGNAL)
+```
+
+5. Update `stage0-spec-detail.md` Mountain Test section with v24 rationale:
+   - Q4 rationale: "Sleep test separates businesses from jobs. Naval: 'If you can't earn while you sleep, you'll work until you die.'"
+   - Q5 rationale: "Leverage classification determines ceiling. CODE/MEDIA scale without marginal labor cost. LABOR scales linearly with hours."
+
+6. Update `stage0-checklist.md` — add checklist items:
+   - `[ ] Q4-SLEEP answered (YES/NO/PARTIAL)`
+   - `[ ] Q5-LEVERAGE classified (CODE/MEDIA/CAPITAL/LABOR/HYBRID)`
+   - `[ ] Labor models (Q4=NO + Q5=LABOR) capped at SIDE_HUSTLE`
+   - `[ ] HYBRID models have explicit transition path documented`
+
+## Success Criteria
+
+- [ ] Mountain Test header says v24
+- [ ] Q4-SLEEP and Q5-LEVERAGE present in Step 6
+- [ ] Deterministic rules enforce SIDE_HUSTLE hard cap for Q4=NO+Q5=LABOR
+- [ ] SIDE_HUSTLE_WITH_STAIRCASE in valid verdict classes
+- [ ] spec-detail.md updated with v24 rationale
+- [ ] checklist.md has Q4/Q5 items
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|------|-----------|
+| Stair-step detector (Step 6.3) conflict | Q5=HYBRID triggers SIDE_HUSTLE_WITH_STAIRCASE BEFORE stair-step runs. Stair-step still applies to KILL verdicts only. No conflict. |
+| Q4=PARTIAL ambiguity | Defined as <5h/week maintenance. Confidence penalty (-0.10) reflects uncertainty. |

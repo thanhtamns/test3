@@ -1,0 +1,241 @@
+"""Tests for FirstPrinciplesHypothesis models."""
+
+import pytest
+
+from ..first_principles_models import (
+    FirstPrinciplesHypothesis,
+    GenerationResult,
+    GENERATION_TECHNIQUES,
+    MIN_FOUNDER_FIT,
+    MAX_HYPOTHESES,
+    filter_by_founder_fit,
+    cap_hypotheses,
+)
+
+
+def _make_hypothesis(
+    id: str = "FP01",
+    title: str = "AI Cost Gateway",
+    thesis: str = "Route LLM calls via cost-optimizing proxy",
+    mechanism: str = "Enterprises overpay → gateway routes to cheapest model per task → 30% savings",
+    technique: str = "T1_STRUCTURAL",
+    falsification: list[str] | None = None,
+    gaps: list[str] | None = None,
+    fit: int = 7,
+    novelty: str = "No existing gateway optimizes per-task model selection",
+    biz_model: str = "SaaS",
+    segment: str = "B2B",
+    revenue: str = "$5K-20K/mo",
+) -> FirstPrinciplesHypothesis:
+    return FirstPrinciplesHypothesis(
+        id=id,
+        title=title,
+        thesis=thesis,
+        mechanism=mechanism,
+        generation_technique=technique,
+        falsification_criteria=["If OpenAI bundles routing natively"] if falsification is None else falsification,
+        evidence_gaps=["Enterprise AI spend data needed"] if gaps is None else gaps,
+        founder_fit_score=fit,
+        novelty_claim=novelty,
+        business_model_type=biz_model,
+        customer_segment=segment,
+        estimated_revenue_range=revenue,
+    )
+
+
+class TestFirstPrinciplesHypothesis:
+    def test_creation_all_fields(self):
+        h = _make_hypothesis()
+        assert h.id == "FP01"
+        assert h.title == "AI Cost Gateway"
+        assert h.generation_technique == "T1_STRUCTURAL"
+        assert h.founder_fit_score == 7
+        assert h.verified is False
+        assert h.verification_evidence == []
+        assert h.attack_results == []
+
+    def test_to_dict_roundtrip(self):
+        original = _make_hypothesis()
+        d = original.to_dict()
+        restored = FirstPrinciplesHypothesis.from_dict(d)
+        assert restored.id == original.id
+        assert restored.title == original.title
+        assert restored.mechanism == original.mechanism
+        assert restored.falsification_criteria == original.falsification_criteria
+        assert restored.evidence_gaps == original.evidence_gaps
+        assert restored.founder_fit_score == original.founder_fit_score
+        assert restored.novelty_claim == original.novelty_claim
+        assert restored.verified == original.verified
+
+    def test_to_dict_with_verification_data(self):
+        h = _make_hypothesis()
+        h.verified = True
+        h.verification_evidence = ["https://example.com/proof"]
+        h.attack_results = ["Market saturating per Gartner 2025"]
+        d = h.to_dict()
+        restored = FirstPrinciplesHypothesis.from_dict(d)
+        assert restored.verified is True
+        assert len(restored.verification_evidence) == 1
+        assert len(restored.attack_results) == 1
+
+    def test_to_tournament_hypothesis(self):
+        h = _make_hypothesis()
+        t = h.to_tournament_hypothesis()
+        assert t["id"] == "FP01"
+        assert t["source_phase"] == "first_principles"
+        assert t["business_model_type"] == "SaaS"
+        assert t["customer_segment"] == "B2B"
+        assert "first_principles:T1_STRUCTURAL" in t["evidence_refs"]
+
+    def test_to_tournament_includes_verification_evidence(self):
+        h = _make_hypothesis()
+        h.verification_evidence = ["url1", "url2"]
+        t = h.to_tournament_hypothesis()
+        assert "url1" in t["evidence_refs"]
+        assert "url2" in t["evidence_refs"]
+
+    def test_is_valid_passes(self):
+        h = _make_hypothesis()
+        assert h.is_valid() is True
+
+    def test_is_valid_fails_empty_id(self):
+        h = _make_hypothesis(id="")
+        assert h.is_valid() is False
+
+    def test_is_valid_fails_empty_mechanism(self):
+        h = _make_hypothesis(mechanism="")
+        assert h.is_valid() is False
+
+    def test_is_valid_fails_bad_technique(self):
+        h = _make_hypothesis(technique="INVALID")
+        assert h.is_valid() is False
+
+    def test_is_valid_fails_no_falsification(self):
+        h = _make_hypothesis(falsification=[])
+        assert h.is_valid() is False
+
+    def test_is_valid_fails_no_gaps(self):
+        h = _make_hypothesis(gaps=[])
+        assert h.is_valid() is False
+
+    def test_is_valid_fails_fit_out_of_range(self):
+        h = _make_hypothesis(fit=0)
+        assert h.is_valid() is False
+        h2 = _make_hypothesis(fit=11)
+        assert h2.is_valid() is False
+
+    def test_is_valid_fails_empty_novelty(self):
+        h = _make_hypothesis(novelty="")
+        assert h.is_valid() is False
+
+    def test_passes_founder_gate(self):
+        assert _make_hypothesis(fit=4).passes_founder_gate() is True
+        assert _make_hypothesis(fit=3).passes_founder_gate() is False
+        assert _make_hypothesis(fit=10).passes_founder_gate() is True
+
+    def test_all_techniques_valid(self):
+        for tech in GENERATION_TECHNIQUES:
+            h = _make_hypothesis(technique=tech)
+            assert h.is_valid() is True
+
+
+class TestFilterByFounderFit:
+    def test_filters_low_scores(self):
+        hypotheses = [
+            _make_hypothesis(id="FP01", fit=7),
+            _make_hypothesis(id="FP02", fit=2),
+            _make_hypothesis(id="FP03", fit=5),
+        ]
+        kept, reasons = filter_by_founder_fit(hypotheses)
+        assert len(kept) == 2
+        assert kept[0].id == "FP01"
+        assert kept[1].id == "FP03"
+        assert len(reasons) == 1
+        assert "FP02" in reasons[0]
+
+    def test_custom_min_score(self):
+        hypotheses = [_make_hypothesis(id="FP01", fit=6)]
+        kept, reasons = filter_by_founder_fit(hypotheses, min_score=7)
+        assert len(kept) == 0
+        assert len(reasons) == 1
+
+    def test_all_pass(self):
+        hypotheses = [_make_hypothesis(id=f"FP0{i}", fit=8) for i in range(5)]
+        kept, reasons = filter_by_founder_fit(hypotheses)
+        assert len(kept) == 5
+        assert len(reasons) == 0
+
+    def test_empty_input(self):
+        kept, reasons = filter_by_founder_fit([])
+        assert kept == []
+        assert reasons == []
+
+
+class TestCapHypotheses:
+    def test_under_cap_returns_all(self):
+        hypotheses = [_make_hypothesis(id=f"FP0{i}") for i in range(5)]
+        result = cap_hypotheses(hypotheses)
+        assert len(result) == 5
+
+    def test_at_cap_returns_all(self):
+        hypotheses = [_make_hypothesis(id=f"FP{i:02d}") for i in range(MAX_HYPOTHESES)]
+        result = cap_hypotheses(hypotheses)
+        assert len(result) == MAX_HYPOTHESES
+
+    def test_over_cap_keeps_highest_fit(self):
+        hypotheses = [
+            _make_hypothesis(id="FP01", fit=9),
+            _make_hypothesis(id="FP02", fit=3),
+            _make_hypothesis(id="FP03", fit=7),
+        ]
+        result = cap_hypotheses(hypotheses, max_count=2)
+        assert len(result) == 2
+        assert result[0].id == "FP01"
+        assert result[1].id == "FP03"
+
+    def test_empty_input(self):
+        assert cap_hypotheses([]) == []
+
+
+class TestGenerationResult:
+    def test_creation_and_roundtrip(self):
+        h1 = _make_hypothesis(id="FP01", fit=8)
+        h2 = _make_hypothesis(id="FP02", fit=2)
+        result = GenerationResult(
+            hypotheses=[h1, h2],
+            techniques_used=["T1_STRUCTURAL", "T2_INVERSION"],
+            killed_count=1,
+            killed_reasons=["FP03 too generic"],
+            domain_decomposition={"payers": ["enterprises"], "bottleneck": "cost visibility"},
+        )
+        d = result.to_dict()
+        restored = GenerationResult.from_dict(d)
+        assert len(restored.hypotheses) == 2
+        assert restored.killed_count == 1
+        assert restored.domain_decomposition["bottleneck"] == "cost visibility"
+
+    def test_valid_hypotheses_filters(self):
+        h1 = _make_hypothesis(id="FP01", fit=8)
+        h2 = _make_hypothesis(id="FP02", fit=2)
+        result = GenerationResult(
+            hypotheses=[h1, h2],
+            techniques_used=["T1_STRUCTURAL"],
+            killed_count=0,
+            killed_reasons=[],
+        )
+        valid = result.valid_hypotheses()
+        assert len(valid) == 1
+        assert valid[0].id == "FP01"
+
+    def test_tournament_candidates(self):
+        h1 = _make_hypothesis(id="FP01", fit=8, biz_model="SaaS", segment="B2B")
+        result = GenerationResult(
+            hypotheses=[h1],
+            techniques_used=["T1_STRUCTURAL"],
+            killed_count=0,
+            killed_reasons=[],
+        )
+        candidates = result.tournament_candidates()
+        assert len(candidates) == 1
+        assert candidates[0]["source_phase"] == "first_principles"
+        assert candidates[0]["business_model_type"] == "SaaS"

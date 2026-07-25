@@ -1,0 +1,124 @@
+---
+phase: 3
+title: "Search Rewriter"
+status: pending
+priority: P1
+effort: "4h"
+dependencies: [1]
+---
+
+# Phase 3: Search Rewriter
+
+## Overview
+
+Python script that converts portfolio optimizer output into targeted search queries per winning asset class. Replaces generic "business ideas $500" searches with specific instance-finding queries.
+
+## Requirements
+
+- Functional: Accept portfolio allocation JSON → output search queries per asset class
+- Functional: 3 query types per class: instance_search, validation, anti_confirmation
+- Functional: Template system with {niche}, {year}, {platform} variables
+- Non-functional: No web calls. Pure template expansion. JSON I/O.
+
+## Architecture
+
+```
+search-rewriter.py
+  ├── loads search-templates.json (per-asset-class query templates)
+  ├── receives portfolio allocations from optimizer
+  ├── expands templates with context variables
+  └── outputs structured query plan JSON
+```
+
+Two files:
+- `search-rewriter.py` — template expansion engine
+- `data/intelligence/search-templates.json` — query templates per asset class
+
+## Related Code Files
+
+- Create: `D:\code\invesments\master_investments\.claude\skills\business\transaction-layer\nui-hunter\scripts\search-rewriter.py`
+- Create: `D:\code\invesments\master_investments\data\intelligence\search-templates.json`
+
+## Implementation Steps
+
+1. Create `data/intelligence/search-templates.json`:
+   ```json
+   {
+     "micro-saas": {
+       "instance_search": [
+         {"query": "site:microacquire.com SaaS under $5000 revenue", "purpose": "find_real_listings"},
+         {"query": "site:reddit.com/r/SaaS 'MRR' OR '$' micro SaaS {year}", "purpose": "find_income_reports"},
+         {"query": "indie hackers micro SaaS revenue report {year}", "purpose": "find_public_metrics"}
+       ],
+       "validation": [
+         {"query": "{specific_product} reviews users", "purpose": "demand_signal"},
+         {"query": "{specific_niche} SaaS free alternative open source", "purpose": "moat_check"}
+       ],
+       "anti_confirmation": [
+         {"query": "micro SaaS failure rate statistics {year}", "purpose": "base_rate"},
+         {"query": "why micro SaaS fails common mistakes", "purpose": "failure_archaeology"}
+       ]
+     },
+     "digital-template-library": { ... },
+     ...
+   }
+   ```
+
+2. Populate templates for all 15+ asset classes. Per class, minimum:
+   - 3 instance_search queries (find real sellers/products)
+   - 2 validation queries (verify demand + check moat)
+   - 2 anti_confirmation queries (failure rate + failure patterns)
+
+3. Create `search-rewriter.py` with:
+   - `load_templates()` — loads search-templates.json
+   - `expand_template(query_str, context)` — replaces {year}, {niche}, {platform}, {specific_product} with actual values from portfolio context
+   - `rewrite_searches(portfolio_output, context)` — main function
+     - For each asset class in portfolio allocations
+     - Load that class's templates
+     - Expand with context variables
+     - Return structured query plan
+
+4. Context variables auto-populated:
+   - `{year}` = current year (2026)
+   - `{niche}` = from founder profile or "general" default
+   - `{platform}` = primary platform for that asset class (Gumroad, Etsy, etc.)
+   - `{specific_product}` = placeholder for instance-level drilldown (filled later by LLM during research)
+
+5. Output format:
+   ```json
+   {
+     "query_plan": [
+       {
+         "asset_class": "digital-template-library",
+         "allocation_usd": 100,
+         "queries": {
+           "instance_search": ["site:gumroad.com notion template revenue 2026", ...],
+           "validation": [...],
+           "anti_confirmation": [...]
+         },
+         "total_queries": 7,
+         "priority": "HIGH"
+       }
+     ],
+     "total_queries": 21,
+     "generic_queries_replaced": ["business ideas $500 capital", "micro business profitable 2026"]
+   }
+   ```
+
+6. Wire CLI: `--portfolio-json` or `--portfolio-file` input, JSON output
+
+## Success Criteria
+
+- [ ] `search-templates.json` has templates for all 15+ asset classes
+- [ ] Each class has >= 7 queries (3 instance + 2 validation + 2 anti-confirmation)
+- [ ] Template expansion replaces all {variables} correctly
+- [ ] Output includes total_queries count and priority ranking
+- [ ] No generic "business ideas" queries in output — all asset-class-specific
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|------|------------|
+| Templates go stale (platforms change) | Year variable auto-updated; templates structured for easy edit |
+| Too many queries slows pipeline | Priority ranking ensures top classes get searched first; query budget cap configurable |
+| Some queries return no results | Fallback: if instance_search returns <3 results, widen to category-level search |

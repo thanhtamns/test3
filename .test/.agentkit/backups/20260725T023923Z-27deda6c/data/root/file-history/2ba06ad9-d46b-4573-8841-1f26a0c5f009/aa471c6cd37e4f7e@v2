@@ -1,0 +1,350 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
+import {
+  fetchOverview,
+  fetchSavingsTrend,
+  formatTokens,
+  estimateCost,
+  type OverviewStats,
+  type DailySavings,
+} from "@/lib/api";
+import { useLiveMetrics } from "@/hooks/use-live-metrics";
+import { DateRangeSelector } from "@/components/date-range-selector";
+
+export default function OverviewPage() {
+  const [stats, setStats] = useState<OverviewStats | null>(null);
+  const [trend, setTrend] = useState<DailySavings[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [days, setDays] = useState(30);
+  const { metrics: live, connected } = useLiveMetrics();
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([fetchOverview(), fetchSavingsTrend(days)])
+      .then(([s, t]) => {
+        if (cancelled) return;
+        setStats(s);
+        setTrend(t || []);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [days]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold">Overview</h1>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-muted-foreground">
+              Could not connect to CODEFLOW API. Make sure the ingest server is
+              running.
+            </p>
+            <p className="text-sm text-muted-foreground mt-2">
+              Run:{" "}
+              <code className="bg-muted px-1 rounded">
+                cd cloud && go run ./cmd/ingest
+              </code>
+            </p>
+          </CardContent>
+        </Card>
+        <DemoStats />
+      </div>
+    );
+  }
+
+  if (!stats || stats.event_count === 0) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold">Overview</h1>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-muted-foreground">
+              No events yet. Install CODEFLOW hooks and start coding.
+            </p>
+            <p className="text-sm text-muted-foreground mt-2">
+              Run:{" "}
+              <code className="bg-muted px-1 rounded">
+                codeflow init && codeflow sync --once
+              </code>
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return <StatsView stats={stats} trend={trend} live={live} connected={connected} days={days} onDaysChange={setDays} />;
+}
+
+function StatsView({
+  stats,
+  trend,
+  live,
+  connected,
+  days,
+  onDaysChange,
+}: {
+  stats: OverviewStats;
+  trend: DailySavings[];
+  live: { tokens_saved_today: number; events_today: number } | null;
+  connected: boolean;
+  days: number;
+  onDaysChange: (d: number) => void;
+}) {
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold">Overview</h1>
+          {connected && (
+            <span className="flex items-center gap-1.5 text-xs text-green-600">
+              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              Live
+            </span>
+          )}
+        </div>
+        <DateRangeSelector value={days} onChange={onDaysChange} />
+      </div>
+
+      {live && (live.tokens_saved_today > 0 || live.events_today > 0) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <MetricCard
+            title="Saved This Session"
+            value={formatTokens(live.tokens_saved_today)}
+            description="tokens saved since page load"
+          />
+          <MetricCard
+            title="Events This Session"
+            value={live.events_today.toString()}
+            description="new events since page load"
+          />
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <MetricCard
+          title="Tokens Saved"
+          value={formatTokens(stats.total_saved)}
+          description={`${estimateCost(stats.total_saved)} estimated savings`}
+        />
+        <MetricCard
+          title="Savings Rate"
+          value={`${stats.savings_pct.toFixed(1)}%`}
+          description="of input tokens saved"
+        />
+        <MetricCard
+          title="Events Tracked"
+          value={formatTokens(stats.event_count)}
+          description="command executions"
+        />
+        <MetricCard
+          title="Input Tokens"
+          value={formatTokens(stats.total_input_tokens)}
+          description={`${formatTokens(stats.total_output_tokens)} after compression`}
+        />
+      </div>
+
+      {trend.length > 0 && <SavingsTrendChart data={trend} />}
+
+      {stats.top_commands && stats.top_commands.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Top Commands by Savings</CardTitle>
+            <CardDescription>
+              Commands with the highest token savings
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Command</TableHead>
+                  <TableHead className="text-right">Tokens Saved</TableHead>
+                  <TableHead className="text-right">Executions</TableHead>
+                  <TableHead className="text-right">Est. Cost Saved</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {stats.top_commands.map((cmd) => (
+                  <TableRow key={cmd.command}>
+                    <TableCell>
+                      <code className="bg-muted px-1.5 py-0.5 rounded text-sm">
+                        {cmd.command}
+                      </code>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Badge variant="secondary">
+                        {formatTokens(cmd.saved)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">{cmd.count}x</TableCell>
+                    <TableCell className="text-right">
+                      {estimateCost(cmd.saved)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function SavingsTrendChart({ data }: { data: DailySavings[] }) {
+  const formatted = data.map((d) => ({
+    ...d,
+    day: d.day.slice(5),
+  }));
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Daily Savings Trend</CardTitle>
+        <CardDescription>Tokens saved per day (last 30 days)</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={formatted}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+              <XAxis dataKey="day" className="text-xs" />
+              <YAxis tickFormatter={(v) => formatTokens(Number(v))} className="text-xs" />
+              <Tooltip
+                formatter={(value, name) => [
+                  formatTokens(Number(value)),
+                  String(name) === "compression_saved" ? "Compression" : "Dedup",
+                ]}
+              />
+              <Area
+                type="monotone"
+                dataKey="compression_saved"
+                stackId="1"
+                stroke="hsl(221, 83%, 53%)"
+                fill="hsl(221, 83%, 53%)"
+                fillOpacity={0.3}
+                name="compression_saved"
+              />
+              <Area
+                type="monotone"
+                dataKey="dedup_saved"
+                stackId="1"
+                stroke="hsl(142, 71%, 45%)"
+                fill="hsl(142, 71%, 45%)"
+                fillOpacity={0.3}
+                name="dedup_saved"
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DemoStats() {
+  const demo: OverviewStats = {
+    total_input_tokens: 125000,
+    total_output_tokens: 62500,
+    total_saved: 62500,
+    savings_pct: 50.0,
+    event_count: 847,
+    top_commands: [
+      { command: "git diff", saved: 28000, count: 156 },
+      { command: "git status", saved: 12400, count: 312 },
+      { command: "cargo test", saved: 9800, count: 89 },
+      { command: "npm test", saved: 7200, count: 142 },
+      { command: "tsc", saved: 5100, count: 148 },
+    ],
+  };
+
+  const demoTrend: DailySavings[] = Array.from({ length: 14 }, (_, i) => {
+    const seed = (i * 2654435761) >>> 0;
+    const r1 = (seed % 4000);
+    const r2 = ((seed * 3) % 4000);
+    const r3 = ((seed * 7) % 40);
+    const r4 = ((seed * 11) % 2500);
+    const r5 = ((seed * 13) % 1500);
+    return {
+      day: `2026-05-${String(i + 18).padStart(2, "0")}`,
+      total_saved: 3000 + r1,
+      total_input: 8000 + r2,
+      event_count: 40 + r3,
+      compression_saved: 2000 + r4,
+      dedup_saved: 1000 + r5,
+    };
+  });
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground italic">
+        Showing demo data:
+      </p>
+      <StatsView stats={demo} trend={demoTrend} live={null} connected={false} days={30} onDaysChange={() => {}} />
+    </div>
+  );
+}
+
+function MetricCard({
+  title,
+  value,
+  description,
+}: {
+  title: string;
+  value: string;
+  description: string;
+}) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardDescription>{title}</CardDescription>
+        <CardTitle className="text-3xl">{value}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </CardContent>
+    </Card>
+  );
+}

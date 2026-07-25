@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""
+LiveThinkRunner — CLI entry point for ThinkRunner with real web research.
+Usage: python live_think_runner.py --query "..." [--max-queries 20] [--format markdown|json]
+
+This is the WIRING that connects the decomposition engine to actual research.
+"""
+
+import argparse
+import json
+import sys
+import os
+from pathlib import Path
+
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(ROOT / ".claude" / "lib"))
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Run ThinkRunner with live web research")
+    parser.add_argument("--query", required=True, help="The question/topic to analyze")
+    parser.add_argument("--max-queries", type=int, default=20, help="Max micro-queries to fire")
+    parser.add_argument("--format", choices=["markdown", "json", "brief"], default="json")
+    parser.add_argument("--delay", type=float, default=1.5, help="Delay between search calls (seconds)")
+    parser.add_argument("--verbose", action="store_true", help="Print progress messages")
+    args = parser.parse_args()
+
+    from intelligence.decomposition.web_research_bridge import create_research_fn
+    from intelligence.decomposition.think_runner import ThinkRunner
+
+    research_fn = create_research_fn(delay_s=args.delay)
+
+    def progress(msg):
+        if args.verbose:
+            print(f"[THINK] {msg}", file=sys.stderr)
+
+    runner = ThinkRunner(research_fn=research_fn)
+    result = runner.think(args.query, progress_fn=progress)
+
+    if args.format == "json":
+        print(json.dumps(result.to_dict(), indent=2, ensure_ascii=False, default=str))
+    elif args.format == "brief":
+        print(f"Score: {result.overall_score:.2f}")
+        print(f"Facts: {result.facts_used} ({result.facts_by_zone})")
+        print(f"Gaps: {len(result.gaps)}")
+        for rec in result.recommendations:
+            print(f"  → {rec}")
+        if result.strategy:
+            print(f"Strategy: {result.strategy.get('recommended_path', 'N/A')}")
+    else:
+        print(runner.format(result))
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,70 @@
+---
+phase: 02
+status: complete
+priority: high
+solution: S-2, S-7
+---
+
+# Phase 02: Gate Validator + Quality Scorer
+
+## Overview
+Python code enforcement for brainstorm gates B0-B6. Currently all gates are prompt-only text. This phase creates validators that can be called after VEMRA output to check compliance and score quality.
+
+## Files to Create
+- `D:/code/invesments/master_investments/.claude/lib/intelligence/decomposition/gate_validator.py`
+- `D:/code/invesments/master_investments/.claude/lib/intelligence/decomposition/quality_scorer.py`
+- `D:/code/invesments/master_investments/.claude/lib/intelligence/decomposition/tests/test_gate_validator.py`
+
+## Implementation Steps
+
+### gate_validator.py (~150 lines)
+
+1. `validate_vemra(output: str) -> GateReport` — main entry point
+   - Returns GateReport with pass/fail per gate + overall pass/fail
+
+2. Gate checks (regex + heuristic, no LLM):
+   - `B0_thinkrunner`: check for "Gate B0 Score:" or "overall_score" in output
+   - `B2_five_humans`: count patterns matching "**Name** (Org, Title)" — require >= 5
+   - `B4_munger`: check for "Munger" + "/10" pattern — require present
+   - `B4_1_economics`: check for "$" + "/mo" or "/month" or "Year 1" — require income math
+   - `B4_2_response_rates`: check for "%" + "response" or "probability" — require present
+   - `B4_3_money_flows`: count distinct money flow items (numbered list under "Alternative") — require >= 4
+   - `B6_word_count`: count words — require <= 900 (800 target + 12.5% tolerance)
+   - `B6_vemra_sections`: check for V, E, M, R, A section headers
+
+3. `GateReport` dataclass:
+   - gates: dict[str, GateCheck] (name → passed/failed + detail)
+   - overall_passed: bool
+   - failures: list[str] — gate names that failed
+   - score: float (0-1, ratio of gates passed)
+
+### quality_scorer.py (~100 lines)
+
+1. `score_vemra(output: str, query: str) -> QualityScore` — main entry
+2. Metrics:
+   - `named_humans`: count real names (First Last pattern)
+   - `k_facts_ratio`: count [K] tags / total fact tags
+   - `economics_present`: bool — income math detected
+   - `execution_rates`: bool — response rate % detected
+   - `word_count`: int
+   - `zone_tags_present`: count [K] + [T] + [?] tags
+   - `anti_copy_pass`: check output doesn't contain MM-19 default phrases ("build intelligence product", "newsletter for")
+
+3. `store_quality(query, score, db_path)` — store to quality_history table in decision-vectors.db
+4. `compare_with_previous(query, score, db_path)` — regression detection vs last run on similar query
+
+### CLI entry point (at bottom of each file)
+```python
+if __name__ == "__main__":
+    import sys
+    text = sys.stdin.read()
+    report = validate_vemra(text)
+    print(json.dumps(report.to_dict(), indent=2))
+```
+
+## Success Criteria
+- [ ] `gate_validator.py` correctly identifies gate failures in V1 VEMRA
+- [ ] `gate_validator.py` shows V2 VEMRA passes more gates than V1
+- [ ] `quality_scorer.py` produces numeric scores
+- [ ] CLI mode works: `cat vemra.md | python gate_validator.py`
+- [ ] Tests pass

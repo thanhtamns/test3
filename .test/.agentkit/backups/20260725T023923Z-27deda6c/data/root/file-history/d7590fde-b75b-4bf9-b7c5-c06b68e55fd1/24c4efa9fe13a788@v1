@@ -1,0 +1,156 @@
+{
+  "type": "stage0",
+  "trigger_patterns": ["/stage0", "## Stage 0", "VERDICT:", "Kill Probability", "## Verdict", "GO/NO-GO"],
+  "min_length": 1000,
+  "dimensions": {
+    "completeness": {
+      "weight": 0.2,
+      "checks": [
+        {
+          "id": "s0_profile",
+          "rule": "section_exists('profile|founder|constraints|position')",
+          "severity": "critical",
+          "description": "Missing founder profile/constraints section — analysis without knowing WHO is useless",
+          "fix": "Add founder profile section: capital ($X), skills (list), time (hrs/wk), location, existing assets. Analysis MUST be filtered through these constraints.",
+          "fix_cost": "medium"
+        },
+        {
+          "id": "s0_verdict",
+          "rule": "section_exists('verdict|recommendation|GO|KILL|decision')",
+          "severity": "critical",
+          "description": "Missing verdict/recommendation — listing without deciding is not analysis",
+          "fix": "Add clear GO/KILL/CONDITIONAL verdict with specific justification tied to founder constraints"
+        },
+        {
+          "id": "s0_execution",
+          "rule": "contains('week 1|day 1|first week|immediate|step 1|tomorrow')",
+          "severity": "major",
+          "description": "No immediate action steps — vague 'next steps' are worthless without week-1 specifics",
+          "fix": "Add SPECIFIC week-1 actions: what to do on day 1, who to contact, what to build/test first"
+        },
+        {
+          "id": "s0_risk",
+          "rule": "section_exists('risk|danger|kill criteria|warning|why this fails')",
+          "severity": "major",
+          "description": "Missing risk/kill-criteria section",
+          "fix": "Add risk factors with kill criteria: 'If X happens within Y weeks, KILL this path'"
+        }
+      ]
+    },
+    "evidence": {
+      "weight": 0.25,
+      "checks": [
+        {
+          "id": "s0_failure_arch",
+          "rule": "count_pattern('failed|bankrupt|closed|shut down|post-mortem|collapsed|died|went under') >= 3",
+          "severity": "critical",
+          "description": "Insufficient failure archaeology — need 3+ specific failure examples, not generic warnings",
+          "fix": "Search '[business type] failed' for SPECIFIC named examples with $ amounts and dates. Generic 'most businesses fail' is NOT failure archaeology.",
+          "fix_cost": "large"
+        },
+        {
+          "id": "s0_zone_tags",
+          "rule": "zone_tag_ratio() >= 0.25",
+          "severity": "major",
+          "description": "Insufficient zone tags [K]/[T]/[?] — over 75% of factual claims untagged",
+          "fix": "Add [K]/[T]/[?] tags to ALL lines containing numbers, $, %, or specific claims"
+        },
+        {
+          "id": "s0_sourced_numbers",
+          "rule": "unsourced_number_count() <= 8",
+          "severity": "major",
+          "description": "Too many unsourced numeric claims — numbers without sources are confabulation risk",
+          "fix": "Tag remaining unsourced numbers with [K] (verified), [T] (inferred), or [?] (unverified). Prioritize revenue/market claims."
+        },
+        {
+          "id": "s0_median_not_ceiling",
+          "rule": "contains('median|mode|typical|average outcome|most people|base rate.*\\$|P50|realistic')",
+          "severity": "critical",
+          "description": "Only showing revenue CEILINGS (survivor bias) without MEDIAN/TYPICAL outcomes — this is deceptive",
+          "fix": "For every revenue ceiling mentioned, add the MEDIAN outcome: 'Ceiling: $67M (SparkFun). Median: $0-3K/mo after 2 years [T]'. Revenue ceiling without base rate = marketing lie."
+        }
+      ]
+    },
+    "depth": {
+      "weight": 0.25,
+      "checks": [
+        {
+          "id": "s0_mechanism",
+          "rule": "count_pattern('because|the reason|this works because|driven by|the mechanism is|what makes this work') >= 8",
+          "severity": "critical",
+          "description": "Insufficient causal reasoning — LISTING models is not ANALYZING them. Need 8+ 'because/why' explanations.",
+          "fix": "Each model needs a paragraph explaining WHY it works, WHO it works for, and WHAT makes it fail. 'Connect buyer-seller' is WHAT, not WHY. Add: 'This works because [specific mechanism]. It fails when [specific condition].'",
+          "fix_cost": "medium"
+        },
+        {
+          "id": "s0_prose_depth",
+          "rule": "prose_ratio() >= 0.30",
+          "severity": "major",
+          "description": "Output is mostly tables/lists — tables present data, prose presents THINKING. Need 30%+ prose.",
+          "fix": "Replace some tables with analytical paragraphs. For each tier: 2-3 paragraphs explaining WHY these models rank here, what the TRADEOFFS are, and which founder profile fits each."
+        },
+        {
+          "id": "s0_founder_filter",
+          "rule": "contains('for you|given your|with \\$|at your level|for a founder with|your constraint|your situation')",
+          "severity": "major",
+          "description": "Analysis not filtered through founder constraints — generic advice applies to no one",
+          "fix": "Filter every recommendation through founder's actual constraints. 'SaaS needs technical skill — given your [skill level], this means [specific implication]'"
+        },
+        {
+          "id": "s0_elimination",
+          "rule": "contains('eliminate|kill|remove|not viable|ruled out|disqualified|cannot work')",
+          "severity": "major",
+          "description": "No elimination logic — good analysis REMOVES options, not just LISTS them",
+          "fix": "Explicitly eliminate models that don't fit founder constraints. 'Model X is eliminated because [constraint Y]. Remaining viable: [list].' Listing 18 models without killing any = no thinking."
+        }
+      ]
+    },
+    "consistency": {
+      "weight": 0.15,
+      "checks": [
+        {
+          "id": "s0_no_contradiction",
+          "rule": "no_score_contradiction()",
+          "severity": "critical",
+          "description": "Contradicting scores detected",
+          "fix": "Reconcile contradicting assessments — explain why scores differ"
+        },
+        {
+          "id": "s0_verdict_matches",
+          "rule": "verdict_aligned_with_scores()",
+          "severity": "major",
+          "description": "Verdict direction conflicts with evidence",
+          "fix": "Align verdict with evidence or explain override reasoning"
+        }
+      ]
+    },
+    "domain_specific": {
+      "weight": 0.15,
+      "checks": [
+        {
+          "id": "s0_anti_survivor",
+          "rule": "contains('survivor bias|survivorship|selection bias|base rate|failure rate|most.*fail|never exceed|0\\.0|1 in \\d')",
+          "severity": "critical",
+          "description": "No survivor bias acknowledgment — citing success examples without noting they're extreme outliers is DECEPTIVE",
+          "fix": "Pair success examples with failure base rates: 'SparkFun ($67M) — but 96% never exceed $100K/yr'. Mention survivor bias explicitly."
+        },
+        {
+          "id": "s0_anti_confirm",
+          "rule": "count_pattern('against|\\brisk\\b|\\bfail\\b|competition|weakness|threat|danger|downside|problem with') >= 5",
+          "severity": "major",
+          "description": "Insufficient contrarian analysis — need 5+ critical challenges, not just one 'warnings' section",
+          "fix": "For EACH recommended model: add at least 1 specific reason it could fail for this founder. Generic 'takes 6 months' is not contrarian — 'Trade brokering fails when [specific scenario]' is."
+        },
+        {
+          "id": "s0_specific_example",
+          "rule": "count_pattern('for example|e\\.g\\.|such as.*\\d|case:.*|story:.*|real example') >= 3",
+          "severity": "major",
+          "description": "Insufficient specific examples — claims without concrete cases are ungrounded",
+          "fix": "Add 3+ specific real-world examples with names, dates, and outcomes (both success AND failure)"
+        }
+      ]
+    }
+  },
+  "pass_criteria": { "critical": 0, "major": 0 },
+  "max_iterations": 4
+}

@@ -1,0 +1,205 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { DateRangeSelector } from "@/components/date-range-selector";
+import {
+  fetchROISummary,
+  exportCSV,
+  formatTokens,
+  type ROISummary,
+} from "@/lib/api";
+
+export default function ROIPage() {
+  const [summary, setSummary] = useState<ROISummary | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [days, setDays] = useState(90);
+  const [costPerDev, setCostPerDev] = useState(12);
+  const [teamSize, setTeamSize] = useState(5);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchROISummary(days)
+      .then((s) => { if (!cancelled) setSummary(s); })
+      .catch((e) => { if (!cancelled) setError(e.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [days]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
+
+  if (error || !summary) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold">ROI Calculator</h1>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-muted-foreground">
+              Could not load ROI data. Make sure the API is running.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const monthlyCost = costPerDev * teamSize;
+  const periodMonths = Math.ceil(days / 30);
+  const totalCost = monthlyCost * periodMonths;
+  const roi =
+    totalCost > 0
+      ? ((summary.estimated_cost_saved - totalCost) / totalCost) * 100
+      : 0;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">ROI Calculator</h1>
+        <div className="flex items-center gap-2">
+          <DateRangeSelector value={days} onChange={setDays} />
+          <Button variant="outline" size="sm" onClick={() => exportCSV(days).catch((e) => setError(e.message))}>
+            Export CSV
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <MetricCard
+          title="Tokens Saved"
+          value={formatTokens(summary.total_saved)}
+          description={`across ${summary.project_count} projects`}
+        />
+        <MetricCard
+          title="Est. Cost Saved"
+          value={`$${summary.estimated_cost_saved.toFixed(2)}`}
+          description={`${summary.savings_pct.toFixed(1)}% savings rate`}
+        />
+        <MetricCard
+          title="CODEFLOW Cost"
+          value={`$${totalCost}`}
+          description={`$${costPerDev}/dev × ${teamSize} devs × ${periodMonths}mo`}
+        />
+        <MetricCard
+          title="ROI"
+          value={`${roi > 0 ? "+" : ""}${roi.toFixed(0)}%`}
+          description={
+            roi > 0 ? "net positive return" : "building toward breakeven"
+          }
+        />
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Adjust Assumptions</CardTitle>
+        </CardHeader>
+        <CardContent className="flex gap-8">
+          <div>
+            <label className="text-sm text-muted-foreground">
+              Cost per dev/mo
+            </label>
+            <input
+              type="number"
+              value={costPerDev}
+              onChange={(e) => setCostPerDev(Number(e.target.value))}
+              className="block mt-1 w-24 border rounded px-2 py-1 text-sm"
+            />
+          </div>
+          <div>
+            <label className="text-sm text-muted-foreground">Team size</label>
+            <input
+              type="number"
+              value={teamSize}
+              onChange={(e) => setTeamSize(Number(e.target.value))}
+              className="block mt-1 w-24 border rounded px-2 py-1 text-sm"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {summary.monthly && summary.monthly.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Monthly Breakdown</CardTitle>
+            <CardDescription>Savings by month</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Month</TableHead>
+                  <TableHead className="text-right">Input Tokens</TableHead>
+                  <TableHead className="text-right">Tokens Saved</TableHead>
+                  <TableHead className="text-right">Events</TableHead>
+                  <TableHead className="text-right">Est. Saved</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {summary.monthly.map((m) => (
+                  <TableRow key={m.month}>
+                    <TableCell className="font-medium">{m.month}</TableCell>
+                    <TableCell className="text-right">
+                      {formatTokens(m.input_tokens)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatTokens(m.tokens_saved)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {m.event_count}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      ${((m.tokens_saved / 1000) * 0.003).toFixed(2)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function MetricCard({
+  title,
+  value,
+  description,
+}: {
+  title: string;
+  value: string;
+  description: string;
+}) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardDescription>{title}</CardDescription>
+        <CardTitle className="text-3xl">{value}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </CardContent>
+    </Card>
+  );
+}

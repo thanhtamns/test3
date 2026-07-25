@@ -1,0 +1,152 @@
+"""Tests for TraceLogger — structured step-level tracing for stage0 pipeline."""
+
+import json
+from pathlib import Path
+
+import pytest
+
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
+from intelligence.mechanism.trace_logger import (
+    TraceLogger,
+    StepTrace,
+    VerdictComposition,
+)
+
+
+@pytest.fixture
+def traces_dir(tmp_path):
+    d = tmp_path / "traces"
+    d.mkdir()
+    return d
+
+
+def test_log_step_records_entry(traces_dir):
+    trace = TraceLogger(case_id="T-001", traces_dir=traces_dir)
+    entry = trace.log_step("3.5_wave1", "Wave 1 Agent Dispatch",
+                           knobs_used=["wave1_base_agent_count"],
+                           signal={"direction": "GO", "confidence": 0.72},
+                           agents=["researcher"])
+    assert isinstance(entry, StepTrace)
+    assert entry.step == "3.5_wave1"
+    assert len(trace.steps) == 1
+
+
+def test_log_multiple_steps(traces_dir):
+    trace = TraceLogger(case_id="T-002", traces_dir=traces_dir)
+    for i, step in enumerate(TraceLogger.TRACED_STEPS[:5]):
+        trace.log_step(step, f"Step {i}",
+                       signal={"direction": "GO", "confidence": 0.5 + i * 0.05})
+    assert len(trace.steps) == 5
+
+
+def test_log_verdict_composition(traces_dir):
+    trace = TraceLogger(case_id="T-003", traces_dir=traces_dir)
+    trace.log_verdict_composition("MOUNTAIN_CANDIDATE",
+                                  step_weights={"3.5_wave1": 0.5, "6_mountain_test": 0.5},
+                                  final_confidence=0.78)
+    assert trace.verdict is not None
+    assert trace.verdict.final_verdict == "MOUNTAIN_CANDIDATE"
+    assert trace.verdict.final_confidence == 0.78
+
+
+def test_save_creates_json(traces_dir):
+    trace = TraceLogger(case_id="T-004", traces_dir=traces_dir)
+    trace.log_step("3.5_wave1", "Wave 1",
+                   signal={"direction": "GO", "confidence": 0.7},
+                   agents=["researcher", "niche-archaeologist"],
+                   token_cost=5000, wall_time_ms=12000)
+    trace.log_verdict_composition("GO", final_confidence=0.7)
+    filepath = trace.save()
+
+    assert filepath.exists()
+    assert filepath.name == "stage0-trace-T-004.json"
+
+    data = json.loads(filepath.read_text(encoding="utf-8"))
+    assert data["case_id"] == "T-004"
+    assert len(data["steps"]) == 1
+    assert data["verdict"]["final_verdict"] == "GO"
+    assert data["summary"]["total_token_cost"] == 5000
+    assert "researcher" in data["summary"]["agents_fired"]
+
+
+def test_save_without_verdict(traces_dir):
+    trace = TraceLogger(case_id="T-005", traces_dir=traces_dir)
+    trace.log_step("1.8_local_prescreen", "Pre-screen",
+                   signal={"direction": "KILL", "confidence": 0.9})
+    filepath = trace.save()
+
+    data = json.loads(filepath.read_text(encoding="utf-8"))
+    assert data["verdict"] is None
+
+
+def test_load_existing_trace(traces_dir):
+    trace = TraceLogger(case_id="T-006", traces_dir=traces_dir)
+    trace.log_step("3.5_wave1", "Wave 1", signal={"direction": "GO", "confidence": 0.6})
+    trace.save()
+
+    loaded = TraceLogger.load("T-006", traces_dir=traces_dir)
+    assert loaded is not None
+    assert loaded["case_id"] == "T-006"
+    assert len(loaded["steps"]) == 1
+
+
+def test_load_missing_returns_none(traces_dir):
+    assert TraceLogger.load("NONEXISTENT", traces_dir=traces_dir) is None
+
+
+def test_list_traces(traces_dir):
+    for cid in ["A-001", "B-002", "C-003"]:
+        trace = TraceLogger(case_id=cid, traces_dir=traces_dir)
+        trace.log_step("3.5_wave1", "Wave 1", signal={"direction": "GO", "confidence": 0.5})
+        trace.save()
+
+    listed = TraceLogger.list_traces(traces_dir=traces_dir)
+    assert set(listed) == {"A-001", "B-002", "C-003"}
+
+
+def test_list_traces_empty_dir(tmp_path):
+    empty = tmp_path / "empty_traces"
+    assert TraceLogger.list_traces(traces_dir=empty) == []
+
+
+def test_summary_aggregates_agents(traces_dir):
+    trace = TraceLogger(case_id="T-AGG", traces_dir=traces_dir)
+    trace.log_step("3.5_wave1", "Wave 1", agents=["researcher", "niche-archaeologist"],
+                   signal={"direction": "GO", "confidence": 0.7}, token_cost=3000)
+    trace.log_step("3.5_wave2", "Wave 2", agents=["bullshit-detector", "researcher"],
+                   signal={"direction": "GO", "confidence": 0.8}, token_cost=5000)
+    filepath = trace.save()
+
+    data = json.loads(filepath.read_text(encoding="utf-8"))
+    summary = data["summary"]
+    assert summary["total_steps"] == 2
+    assert summary["total_token_cost"] == 8000
+    assert set(summary["agents_fired"]) == {"researcher", "niche-archaeologist", "bullshit-detector"}
+
+
+def test_step_trace_to_dict():
+    entry = StepTrace(step="test", step_name="Test Step",
+                      knobs_used=["k1"], signal={"direction": "GO"},
+                      agents=["a1"], token_cost=100, wall_time_ms=500)
+    d = entry.to_dict()
+    assert d["step"] == "test"
+    assert d["token_cost"] == 100
+    assert "timestamp" in d
+
+
+def test_verdict_composition_to_dict():
+    v = VerdictComposition(final_verdict="KILL", final_confidence=0.85,
+                           step_weights={"a": 0.5, "b": 0.5})
+    d = v.to_dict()
+    assert d["final_verdict"] == "KILL"
+    assert d["final_confidence"] == 0.85
+
+
+def test_save_creates_directory(tmp_path):
+    nested = tmp_path / "deep" / "nested" / "traces"
+    trace = TraceLogger(case_id="T-NEST", traces_dir=nested)
+    trace.log_step("3.5_wave1", "Wave 1", signal={"direction": "GO", "confidence": 0.5})
+    filepath = trace.save()
+    assert filepath.exists()

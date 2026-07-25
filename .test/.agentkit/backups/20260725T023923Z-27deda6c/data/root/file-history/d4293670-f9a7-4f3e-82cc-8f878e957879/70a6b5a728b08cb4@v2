@@ -1,0 +1,139 @@
+use super::dep_validator::Severity;
+use super::hallucination_detector::{CheckType, Finding};
+
+/// Check a package's license against the allow/deny lists in config.
+///
+/// Returns `Some(Finding)` when the license is denied or unknown,
+/// `None` when the license is explicitly allowed.
+pub fn check_license(
+    pkg_name: &str,
+    license_id: &str,
+    denied: &[String],
+    allowed: &[String],
+    file_path: &str,
+) -> Option<Finding> {
+    let lic = license_id.trim();
+
+    if denied.iter().any(|d| d.eq_ignore_ascii_case(lic)) {
+        return Some(Finding {
+            check_type: CheckType::LicenseViolation, // repurposed: license violation
+            severity: Severity::High,
+            file_path: file_path.to_string(),
+            line: 0,
+            message: format!(
+                "Package '{}' uses license '{}' which is on the denied list",
+                pkg_name, lic
+            ),
+            suggestion: Some(format!(
+                "Replace '{}' with a package that uses an approved license ({})",
+                pkg_name,
+                allowed.join(", ")
+            )),
+        });
+    }
+
+    if allowed.iter().any(|a| a.eq_ignore_ascii_case(lic)) {
+        return None; // explicitly allowed
+    }
+
+    // Unknown license — warn at Medium so it doesn't block by default
+    Some(Finding {
+        check_type: CheckType::LicenseViolation,
+        severity: Severity::Medium,
+        file_path: file_path.to_string(),
+        line: 0,
+        message: format!(
+            "Package '{}' has unknown or unlisted license '{}' — review manually",
+            pkg_name, lic
+        ),
+        suggestion: Some("Check the license on the package's registry page".to_string()),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn default_denied() -> Vec<String> {
+        vec!["GPL-3.0".to_string(), "AGPL-3.0".to_string()]
+    }
+
+    fn default_allowed() -> Vec<String> {
+        vec![
+            "MIT".to_string(),
+            "Apache-2.0".to_string(),
+            "BSD-2-Clause".to_string(),
+            "BSD-3-Clause".to_string(),
+            "ISC".to_string(),
+        ]
+    }
+
+    #[test]
+    fn denied_license_flagged() {
+        let f = check_license(
+            "some-gpl-pkg",
+            "GPL-3.0",
+            &default_denied(),
+            &default_allowed(),
+            "Cargo.toml",
+        );
+        assert!(f.is_some(), "GPL-3.0 should be flagged");
+        let f = f.unwrap();
+        assert_eq!(f.severity, Severity::High);
+        assert!(f.message.contains("GPL-3.0"));
+        assert!(f.message.contains("denied list"));
+    }
+
+    #[test]
+    fn agpl_denied() {
+        let f = check_license(
+            "some-agpl-pkg",
+            "AGPL-3.0",
+            &default_denied(),
+            &default_allowed(),
+            "package.json",
+        );
+        assert!(f.is_some());
+        assert_eq!(f.unwrap().severity, Severity::High);
+    }
+
+    #[test]
+    fn allowed_license_passes() {
+        for lic in &["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC"] {
+            let f = check_license(
+                "some-pkg",
+                lic,
+                &default_denied(),
+                &default_allowed(),
+                "package.json",
+            );
+            assert!(f.is_none(), "{} should be allowed", lic);
+        }
+    }
+
+    #[test]
+    fn unknown_license_is_medium_warning() {
+        let f = check_license(
+            "some-pkg",
+            "SSPL-1.0",
+            &default_denied(),
+            &default_allowed(),
+            "Cargo.toml",
+        );
+        assert!(f.is_some(), "unknown license should produce a warning");
+        assert_eq!(f.unwrap().severity, Severity::Medium);
+    }
+
+    #[test]
+    fn case_insensitive_match() {
+        // "mit" should match "MIT"
+        let f = check_license(
+            "some-pkg",
+            "mit",
+            &default_denied(),
+            &default_allowed(),
+            "package.json",
+        );
+        assert!(f.is_none(), "case-insensitive MIT match should be allowed");
+    }
+}

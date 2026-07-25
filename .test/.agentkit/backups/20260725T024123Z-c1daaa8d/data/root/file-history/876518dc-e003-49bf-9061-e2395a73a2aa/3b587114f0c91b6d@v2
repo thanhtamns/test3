@@ -1,0 +1,23 @@
+package api
+
+import (
+	"context"
+
+	"github.com/codeflow-dev/codeflow/cloud/internal/clickhouse"
+)
+
+type Storage interface {
+	Ping(ctx context.Context) error
+	InsertEvents(ctx context.Context, rows []clickhouse.EventRow) error
+	GetOverview(ctx context.Context, tenantID string) (*clickhouse.OverviewStats, error)
+	GetProjects(ctx context.Context, tenantID string) ([]clickhouse.ProjectSummary, error)
+	GetProjectStats(ctx context.Context, tenantID, projectDir string) (*clickhouse.ProjectStats, error)
+	GetSavingsTrend(ctx context.Context, tenantID string, days int) ([]clickhouse.DailySavings, error)
+	GetWasteReport(ctx context.Context, tenantID string, days int) ([]clickhouse.WasteReport, error)
+	GetProjectWasteScores(ctx context.Context, tenantID string, days int) ([]clickhouse.ProjectWasteScore, error)
+	GetSecurityAlerts(ctx context.Context, tenantID string, days int) ([]clickhouse.SecurityAlert, error)
+	GetExportData(ctx context.Context, tenantID string, days int, project string) ([]clickhouse.ExportRow, error)
+	GetROISummary(ctx context.Context, tenantID string, days int) (*clickhouse.ROISummary, error)
+	GetBillingStatus(ctx context.Context, tenantID string) (*clickhouse.BillingInfo, error)
+	SetBillingStatus(ctx context.Context, tenantID, plan, status string) error
+}

@@ -1,0 +1,296 @@
+"""
+Memory Tree Ingestor — deterministic pipeline from [K]-tagged facts to KB.
+
+Pipeline: Raw claims → Classify → Dedup → Store (MD + cognitive + AgentMemory) → Index
+
+Usage:
+  python memory-tree-ingestor.py <claims.json>        # from file
+  python memory-tree-ingestor.py --stdin               # from stdin (JSON array)
+  python memory-tree-ingestor.py --stage0 <case_id>    # from cached stage0 output
+
+Only ingests [K]-tagged claims. [T] and [?] stay in session context.
+"""
+
+import hashlib
+import json
+import logging
+import os
+import sys
+from datetime import datetime
+from pathlib import Path
+from typing import List
+from urllib.error import URLError
+from urllib.request import Request, urlopen
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+logger = logging.getLogger(__name__)
+
+SCRIPT_DIR = Path(__file__).parent
+COGNITIVE_ROOT = SCRIPT_DIR.parent
+PROJECT_ROOT = COGNITIVE_ROOT.parent
+TRAINING_DIR = PROJECT_ROOT / "data" / "training"
+INDEX_PATH = COGNITIVE_ROOT / "INDEX.json"
+CUSTOM_DIR = COGNITIVE_ROOT / "custom"
+
+AGENTMEMORY_URL = os.environ.get("AGENTMEMORY_URL", "http://localhost:3111")
+AGENTMEMORY_SECRET = os.environ.get("AGENTMEMORY_SECRET", "")
+
+MAX_MD_LINES = 500
+
+CATEGORY_TO_FILE = {
+    "failure_case": "failure-cases.md",
+    "margin_data": "margins-and-unit-economics.md",
+    "pattern": "patterns-and-mechanisms.md",
+    "base_rate": "base-rates-and-statistics.md",
+    "mechanism": "patterns-and-mechanisms.md",
+}
+
+CATEGORY_HEADERS = {
+    "failure_case": "# Failure Cases\n\nAuto-ingested [K]-tagged failure cases from stage0 analysis.\n\n",
+    "margin_data": "# Margins & Unit Economics\n\nAuto-ingested [K]-tagged margin data from stage0 analysis.\n\n",
+    "pattern": "# Patterns & Mechanisms\n\nAuto-ingested [K]-tagged patterns from stage0 analysis.\n\n",
+    "base_rate": "# Base Rates & Statistics\n\nAuto-ingested [K]-tagged base rates from stage0 analysis.\n\n",
+    "mechanism": "# Patterns & Mechanisms\n\nAuto-ingested [K]-tagged patterns from stage0 analysis.\n\n",
+}
+
+
+def load_claims_from_file(filepath: str) -> List[str]:
+    with open(filepath, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if isinstance(data, list):
+        return [str(c) for c in data if c]
+    if isinstance(data, dict) and "claims" in data:
+        return [str(c) for c in data["claims"] if c]
+    return []
+
+
+def load_claims_from_stage0(case_id: str) -> List[str]:
+    calibration_dir = PROJECT_ROOT / "data" / "calibration"
+    for json_file in calibration_dir.glob(f"*{case_id}*.json"):
+        try:
+            data = json.loads(json_file.read_text(encoding="utf-8"))
+            claims = []
+            for fact in data.get("k_tagged_facts", data.get("facts", [])):
+                if isinstance(fact, str):
+                    claims.append(fact)
+                elif isinstance(fact, dict):
+                    claims.append(fact.get("claim", fact.get("text", "")))
+            if claims:
+                logger.info("Loaded %d claims from %s", len(claims), json_file.name)
+                return claims
+        except Exception:
+            continue
+    logger.warning("No stage0 output found for case_id: %s", case_id)
+    return []
+
+
+def filter_k_tagged(claims: List[str]) -> List[str]:
+    return [c for c in claims if "[K]" in c]
+
+
+def run_classifier(claims: List[str]) -> List[dict]:
+    sys.path.insert(0, str(SCRIPT_DIR))
+    from importlib import import_module
+    classifier = import_module("claim-classifier")
+    return classifier.classify_claims(claims)
+
+
+def run_dedup(claims: List[str]) -> List[dict]:
+    sys.path.insert(0, str(SCRIPT_DIR))
+    dedup = import_module("dedup-checker")
+    return dedup.check_dedup(claims)
+
+
+from importlib import import_module as _import_module
+
+
+def import_module(name: str):
+    safe_name = name.replace("-", "_")
+    spec_path = SCRIPT_DIR / f"{name}.py"
+    if spec_path.exists():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(safe_name, spec_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+    raise ImportError(f"Cannot find {name}.py in {SCRIPT_DIR}")
+
+
+def store_to_md(classified: List[dict], dedup_results: List[dict]) -> int:
+    claim_to_dedup = {d["claim"]: d for d in dedup_results}
+    by_category = {}
+
+    for item in classified:
+        claim = item["claim"]
+        dedup = claim_to_dedup.get(claim, {})
+        if dedup.get("status") == "SKIP":
+            continue
+
+        category = item["category"]
+        if category not in by_category:
+            by_category[category] = []
+
+        prefix = "[FLAG] " if dedup.get("status") == "FLAG" else ""
+        by_category[category].append(f"- {prefix}{claim}")
+
+    count = 0
+    for category, entries in by_category.items():
+        filename = CATEGORY_TO_FILE.get(category, "uncategorized.md")
+        filepath = TRAINING_DIR / filename
+
+        if filepath.exists():
+            content = filepath.read_text(encoding="utf-8")
+            line_count = content.count("\n")
+
+            if line_count > MAX_MD_LINES:
+                archive_name = f"{filepath.stem}-archive-{datetime.utcnow().strftime('%Y%m%d')}{filepath.suffix}"
+                archive_path = TRAINING_DIR / archive_name
+                archive_path.write_text(content, encoding="utf-8")
+                content = CATEGORY_HEADERS.get(category, f"# {category}\n\n")
+                logger.info("Archived %s → %s (%d lines)", filepath.name, archive_name, line_count)
+        else:
+            content = CATEGORY_HEADERS.get(category, f"# {category}\n\n")
+
+        timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+        content += f"\n## Ingested {timestamp}\n\n"
+        content += "\n".join(entries) + "\n"
+
+        filepath.write_text(content, encoding="utf-8")
+        count += len(entries)
+        logger.info("Stored %d claims → %s", len(entries), filepath.name)
+
+    return count
+
+
+def store_to_cognitive(classified: List[dict], dedup_results: List[dict]) -> int:
+    claim_to_dedup = {d["claim"]: d for d in dedup_results}
+    chunks_path = CUSTOM_DIR / "ingested-claims.jsonl"
+
+    count = 0
+    with open(chunks_path, "a", encoding="utf-8") as f:
+        for item in classified:
+            dedup = claim_to_dedup.get(item["claim"], {})
+            if dedup.get("status") == "SKIP":
+                continue
+
+            chunk = {
+                "id": f"mt-{hashlib.sha256(item['claim'].encode()).hexdigest()[:12]}",
+                "claim": item["claim"],
+                "category": item["category"],
+                "confidence": item["confidence"],
+                "ingested_at": datetime.utcnow().isoformat(),
+                "dedup_status": dedup.get("status", "NEW"),
+            }
+            f.write(json.dumps(chunk, ensure_ascii=False) + "\n")
+            count += 1
+
+    if count:
+        logger.info("Stored %d chunks → %s", count, chunks_path.name)
+    return count
+
+
+def store_to_agentmemory(classified: List[dict], dedup_results: List[dict]) -> int:
+    claim_to_dedup = {d["claim"]: d for d in dedup_results}
+    count = 0
+
+    for item in classified:
+        dedup = claim_to_dedup.get(item["claim"], {})
+        if dedup.get("status") == "SKIP":
+            continue
+
+        try:
+            body = {
+                "content": item["claim"],
+                "tags": [item["category"], "memory_tree", "k_tagged"],
+                "metadata": {
+                    "confidence": item["confidence"],
+                    "source": "memory_tree_ingestor",
+                },
+            }
+            headers = {"Content-Type": "application/json"}
+            if AGENTMEMORY_SECRET:
+                headers["Authorization"] = f"Bearer {AGENTMEMORY_SECRET}"
+
+            data = json.dumps(body).encode()
+            req = Request(
+                f"{AGENTMEMORY_URL}/agentmemory/remember",
+                data=data, headers=headers, method="POST",
+            )
+            with urlopen(req, timeout=5) as resp:
+                if resp.status == 200:
+                    count += 1
+        except (URLError, Exception):
+            break
+
+    if count:
+        logger.info("Stored %d claims → AgentMemory MCP", count)
+    return count
+
+
+def update_index(stats: dict) -> None:
+    if not INDEX_PATH.exists():
+        return
+
+    index = json.loads(INDEX_PATH.read_text(encoding="utf-8"))
+
+    if "memory_tree" not in index:
+        index["memory_tree"] = {}
+
+    index["memory_tree"]["last_ingest"] = datetime.utcnow().isoformat()
+    index["memory_tree"]["stats"] = stats
+
+    INDEX_PATH.write_text(json.dumps(index, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    logger.info("INDEX.json updated with ingest stats")
+
+
+def ingest(claims: List[str]) -> dict:
+    stats = {
+        "input_count": len(claims),
+        "k_filtered": 0,
+        "classified": 0,
+        "skipped_dedup": 0,
+        "flagged_dedup": 0,
+        "new_claims": 0,
+        "stored_md": 0,
+        "stored_cognitive": 0,
+        "stored_agentmemory": 0,
+    }
+
+    k_claims = filter_k_tagged(claims)
+    stats["k_filtered"] = len(k_claims)
+    if not k_claims:
+        logger.info("No [K]-tagged claims to ingest")
+        update_index(stats)
+        return stats
+
+    classified = run_classifier(k_claims)
+    stats["classified"] = len(classified)
+
+    dedup_results = run_dedup(k_claims)
+    stats["skipped_dedup"] = sum(1 for d in dedup_results if d["status"] == "SKIP")
+    stats["flagged_dedup"] = sum(1 for d in dedup_results if d["status"] == "FLAG")
+    stats["new_claims"] = sum(1 for d in dedup_results if d["status"] == "NEW")
+
+    stats["stored_md"] = store_to_md(classified, dedup_results)
+    stats["stored_cognitive"] = store_to_cognitive(classified, dedup_results)
+    stats["stored_agentmemory"] = store_to_agentmemory(classified, dedup_results)
+
+    update_index(stats)
+    logger.info("Ingest complete: %s", json.dumps(stats))
+    return stats
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "--stdin":
+        raw = sys.stdin.read()
+        claims = json.loads(raw)
+    elif len(sys.argv) > 2 and sys.argv[1] == "--stage0":
+        claims = load_claims_from_stage0(sys.argv[2])
+    elif len(sys.argv) > 1:
+        claims = load_claims_from_file(sys.argv[1])
+    else:
+        print("Usage: memory-tree-ingestor.py <claims.json> | --stdin | --stage0 <case_id>")
+        sys.exit(1)
+
+    result = ingest(claims)
+    print(json.dumps(result, indent=2))

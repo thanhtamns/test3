@@ -1,0 +1,82 @@
+---
+title: Auto-Hunt Engine — SessionStart Niche Discovery
+description: >-
+  3-phase auto-hunt: signal scan → hypothesis gen → mini stage0 → top 3 niches
+  with verdict. Triggered by SessionStart hook.
+status: pending
+priority: P1
+branch: master
+tags:
+  - auto-hunt
+  - stage0
+  - session-hook
+  - niche-discovery
+blockedBy: []
+blocks: []
+created: '2026-05-30T07:56:05.334Z'
+createdBy: 'ck:plan'
+source: skill
+target_repo: 'D:\code\invesments\master_investments'
+brainstorm_ref: plans/reports/brainstorm-260530-auto-hunt-engine.md
+---
+
+# Auto-Hunt Engine — SessionStart Niche Discovery
+
+## Overview
+
+Automated niche discovery pipeline triggered by SessionStart hook. Scans existing 28+ KB cases for gap patterns + external signals → generates novel niche hypotheses via existing hypothesis_engine → runs mini stage0 per hypothesis → outputs Top 3 niches with GO/KILL verdict + Day 1 action. All new cases auto-persist to KB.
+
+**Problem:** System has all components (hypothesis engine, knowledge hunter, stage0 pipeline, feedback loop, 63 case files) but requires human to trigger each hunt manually.
+
+**Solution:** 1 new Python orchestrator + 1 hook integration. Reuses existing infrastructure.
+
+## Architecture
+
+```
+SessionStart Hook (hunger-session-start.cjs pattern)
+  │  Cooldown: 12h between runs
+  │
+  ▼
+auto-hunt-orchestrator.py
+  │
+  ├── Phase 1: signal_scanner() — Python, <30s
+  │   ├── KB gap analysis (domain coverage, verdict patterns)
+  │   ├── External signal scan (DuckDuckGo trending, ladder-runner)
+  │   └── Output: signal_candidates[] (0-10)
+  │
+  ├── Phase 2: hypothesis_generator() — Python + hypothesis_engine
+  │   ├── First-principles niche generation
+  │   ├── Dedupe against KB
+  │   └── Output: 3-5 novel hypotheses
+  │
+  └── Phase 3: mini_stage0_runner() — LLM via agent prompt
+      ├── Mountain test v22 per hypothesis
+      ├── Anti-confirmation mandatory
+      └── Output: auto-hunt-report-YYMMDD.md (Top 3)
+```
+
+## Phases
+
+| Phase | Name | Status | Effort | Notes |
+|-------|------|--------|--------|-------|
+| 1 | [Signal Scanner](./phase-01-signal-scanner.md) | Pending | 4h | Completed |
+| 2 | [Hypothesis Wiring](./phase-02-hypothesis-wiring.md) | Pending | 2h | Completed |
+| 3 | [Mini Stage0 Runner](./phase-03-mini-stage0-runner.md) | Pending | 3h | Completed |
+| 4 | [Hook Integration](./phase-04-hook-integration.md) | Pending | 2h | Completed |
+| 5 | [Smoke Test](./phase-05-smoke-test.md) | Pending | 1h | Completed |
+
+**Total estimated:** 12h
+
+## Dependencies
+
+- Depends on: `260527-hypothesis-driven-intelligence-engine` (status: complete)
+- Reuses: hypothesis_engine.py, stage0-local-orchestrator.py, kb-add.py, ladder-runner.py
+- Does NOT modify: stage0 pipeline, feedback loop scripts, existing cases
+
+## Kill Criteria
+
+| Metric | Threshold | Action |
+|--------|-----------|--------|
+| False positive rate | >70% niches already in KB | Fix dedup logic |
+| Runtime | >20 min/session | Reduce scope or add budget caps |
+| Zero actionable output | 5 consecutive sessions | Rewrite signal scanner |

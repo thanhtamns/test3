@@ -1,0 +1,172 @@
+use anyhow::Result;
+use std::path::Path;
+
+use crate::paths;
+
+pub fn install(global: bool) -> Result<()> {
+    let claude_dir = paths::claude_hooks_dir();
+    let settings_path = if global {
+        claude_dir.join("settings.json")
+    } else {
+        Path::new(".claude").join("settings.json")
+    };
+
+    let codeflow_bin = find_codeflow_binary();
+
+    check_rtk_conflict(&settings_path)?;
+
+    let settings = read_or_create_settings(&settings_path)?;
+    let updated = inject_hooks(&settings, &codeflow_bin)?;
+    write_settings(&settings_path, &updated)?;
+
+    let scope = if global { "global" } else { "project" };
+    println!("✓ CODEFLOW hooks installed ({} scope)", scope);
+    println!("  Settings: {}", settings_path.display());
+    println!("  Binary: {}", codeflow_bin);
+    println!();
+    println!("Bash tool output will now be compressed automatically.");
+    println!("Run `codeflow stats` to see your token savings.");
+
+    Ok(())
+}
+
+pub fn uninstall(global: bool) -> Result<()> {
+    let claude_dir = paths::claude_hooks_dir();
+    let settings_path = if global {
+        claude_dir.join("settings.json")
+    } else {
+        Path::new(".claude").join("settings.json")
+    };
+
+    if !settings_path.exists() {
+        println!("No settings file found at {}", settings_path.display());
+        return Ok(());
+    }
+
+    let settings = std::fs::read_to_string(&settings_path)?;
+    let mut json: serde_json::Value = serde_json::from_str(&settings)?;
+
+    if let Some(hooks) = json.get_mut("hooks") {
+        if let Some(obj) = hooks.as_object_mut() {
+            obj.remove("PreToolUse");
+            obj.remove("PostToolUse");
+            if obj.is_empty() {
+                json.as_object_mut().unwrap().remove("hooks");
+            }
+        }
+    }
+
+    let output = serde_json::to_string_pretty(&json)?;
+    std::fs::write(&settings_path, output)?;
+    println!("✓ CODEFLOW hooks removed from {}", settings_path.display());
+
+    Ok(())
+}
+
+fn find_codeflow_binary() -> String {
+    std::env::current_exe()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| "codeflow".to_string())
+}
+
+fn check_rtk_conflict(settings_path: &Path) -> Result<()> {
+    if !settings_path.exists() {
+        return Ok(());
+    }
+    let content = std::fs::read_to_string(settings_path)?;
+    if content.contains("rtk") || content.contains("RTK") {
+        eprintln!("⚠ Warning: Existing RTK hooks detected in {}", settings_path.display());
+        eprintln!("  CODEFLOW will override RTK hooks. Remove RTK hooks manually if needed.");
+    }
+    Ok(())
+}
+
+fn read_or_create_settings(path: &Path) -> Result<String> {
+    if path.exists() {
+        Ok(std::fs::read_to_string(path)?)
+    } else {
+        Ok("{}".to_string())
+    }
+}
+
+fn inject_hooks(settings_json: &str, codeflow_bin: &str) -> Result<String> {
+    let mut json: serde_json::Value = serde_json::from_str(settings_json)?;
+
+    let bin_escaped = codeflow_bin.replace('\\', "\\\\");
+
+    let hooks = serde_json::json!({
+        "PreToolUse": [
+            {
+                "matcher": "Bash",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": format!(
+                            "{} hook pre-tool-use",
+                            bin_escaped
+                        )
+                    }
+                ]
+            }
+        ],
+        "PostToolUse": [
+            {
+                "matcher": "Bash",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": format!(
+                            "{} hook post-tool-use",
+                            bin_escaped
+                        )
+                    }
+                ]
+            }
+        ]
+    });
+
+    if let Some(existing) = json.get_mut("hooks").and_then(|h| h.as_object_mut()) {
+        existing.insert("PreToolUse".to_string(), hooks["PreToolUse"].clone());
+        existing.insert("PostToolUse".to_string(), hooks["PostToolUse"].clone());
+    } else {
+        json["hooks"] = hooks;
+    }
+
+    Ok(serde_json::to_string_pretty(&json)?)
+}
+
+fn write_settings(path: &Path, content: &str) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, content)?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_inject_hooks_empty() {
+        let result = inject_hooks("{}", "/usr/local/bin/codeflow").unwrap();
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert!(json["hooks"]["PreToolUse"].is_array());
+        assert!(json["hooks"]["PostToolUse"].is_array());
+    }
+
+    #[test]
+    fn test_inject_hooks_preserves_existing() {
+        let existing = r#"{"permissions":{"allow":["Bash"]}}"#;
+        let result = inject_hooks(existing, "codeflow").unwrap();
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert!(json["permissions"]["allow"].is_array());
+        assert!(json["hooks"]["PreToolUse"].is_array());
+    }
+
+    #[test]
+    fn test_inject_hooks_windows_path() {
+        let result = inject_hooks("{}", r"C:\Users\dev\.cargo\bin\codeflow.exe").unwrap();
+        assert!(result.contains("codeflow.exe"));
+    }
+}

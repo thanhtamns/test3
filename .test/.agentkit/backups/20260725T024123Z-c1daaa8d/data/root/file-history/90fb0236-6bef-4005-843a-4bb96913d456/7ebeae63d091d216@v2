@@ -1,0 +1,72 @@
+---
+phase: 2
+title: "Compound Objective Engine"
+status: completed
+priority: P1
+effort: "2h"
+dependencies: [1]
+completedAt: "2026-05-10T07:20:00.000Z"
+---
+
+# Phase 2: Compound Objective Engine
+
+## Overview
+
+Create `compound-objective-validator.py` — enforces that every recommended action in side-door paths achieves ≥2 objectives simultaneously. Single-purpose actions get flagged SINGLE_OBJECTIVE and must be rewritten or merged.
+
+User's rule: "mục tiêu phải là mục tiêu kép trở lên" — every goal must be dual/compound or more.
+
+## Architecture
+
+```
+Side-door agent outputs (chains, scripts, value_exchanges)
+         ↓
+compound-objective-validator.py --actions-file
+         ↓
+For each action/step:
+  - Extract stated objectives
+  - If objectives < 2 → flag SINGLE_OBJECTIVE
+  - Suggest compound upgrade (add hidden objective)
+  - Score compound_density (total objectives / total actions)
+         ↓
+Output: validated actions + compound_density score (target ≥2.0)
+```
+
+## Related Code Files
+
+- Create: `.claude/skills/business/transaction-layer/nui-hunter/scripts/compound-objective-validator.py`
+- Modify: `.claude/skills/business/transaction-layer/nui-hunter/scripts/side-door-trigger.py` — add compound objective instruction to ALL agent prompts
+
+## Implementation Steps
+
+1. Create `compound-objective-validator.py`:
+   - `extract_actions(text)` — parse steps, chain links, scripts from agent output
+   - `classify_objectives(action)` — detect 6 objective types:
+     - `surface` — stated goal ("get introduction to TARGET")
+     - `hidden` — unstated gain ("learn fund strategy from conversation")
+     - `relationship` — trust/debt created ("founder now owes you ơn")
+     - `intelligence` — info gathered ("discover portfolio pain points")
+     - `positioning` — perception shaped ("appear as peer, not supplicant")
+     - `dependency` — lock-in created ("can't replace your data source")
+   - `validate_compound(actions)` — flag if any action has <2 objective types
+   - `suggest_compound_upgrade(action)` — for single-purpose actions, suggest adding hidden/intelligence/positioning layer
+   - `score_compound_density(actions)` — total unique objectives / total actions
+
+2. Pattern detection for single-purpose actions:
+   - "Send LinkedIn message to X" → SINGLE (just surface contact)
+   - Upgrade: "Send message sharing Y insight (surface: contact + intelligence: test response speed + positioning: appear as expert)"
+   - "Attend event Z" → SINGLE (just proximity)
+   - Upgrade: "Attend event Z, sit near target's table (proximity + intelligence: observe who they talk to + positioning: be seen by lieutenants)"
+
+3. Inject compound requirement into agent prompts (side-door-trigger.py):
+   - Add to EVERY agent prompt: `"COMPOUND RULE: Every action MUST achieve ≥2 of: surface goal, hidden gain, relationship debt, intelligence extraction, positioning, dependency creation. Single-purpose actions REJECTED."`
+
+4. CLI: `--actions-file` (JSON), `--actions-text` (markdown), `--stdin`
+
+## Success Criteria
+
+- [x] Correctly identifies single-purpose vs compound actions
+- [x] Suggests specific compound upgrades (not generic)
+- [x] compound_density score computed correctly (203 lines, created)
+- [x] Agent prompts include compound requirement
+- [x] Validates on sample side-door output

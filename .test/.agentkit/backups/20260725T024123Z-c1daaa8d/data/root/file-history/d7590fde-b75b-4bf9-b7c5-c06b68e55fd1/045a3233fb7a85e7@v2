@@ -1,0 +1,337 @@
+# Brainstorm: Intelligence Layer for Stage0
+
+**Date:** 2026-05-18
+**Status:** DESIGN PENDING APPROVAL
+**Trigger:** User critique: "system changed language, not thinking" — confirmed by /stage0 verdict returning 15 labor models
+
+---
+
+## Problem Statement
+
+Stage0 pipeline currently operates as: **Search Google -> Summarize -> Format**.
+
+The capital deployment paradigm shift (v25.5) added new fields (sleep_test, ROI_per_dollar, asset_slots) but the LLM still:
+1. Searches "business ideas $500 capital" on Google
+2. Gets SEO-optimized blog posts listing labor models
+3. Formats them into verdict template with new fields bolted on
+
+**Proof:** The 260518 breadth verdict returned 15 models. Tier 1 models (#1 SDR, #3 Brokering, #4 Newsletter) are all labor-first. Only #2 (Templates) passes the sleep test. The P50 outcomes ($200-5K/mo) are labor income, not capital returns.
+
+**Root cause:** No computation happens before search. The system has no mathematical model of what $500 SHOULD return — so it accepts whatever Google suggests.
+
+---
+
+## Proposed Architecture: Calculate -> Search -> Validate
+
+### Current Flow (broken)
+```
+User query "$500 business" 
+  -> WebSearch("business ideas $500") 
+  -> LLM summarizes results 
+  -> Format into verdict template
+  -> Bolt on sleep_test/ROI fields retroactively
+```
+
+### New Flow (Intelligence Layer)
+```
+User query "$500 business"
+  -> [1] Asset Class DB lookup: which asset classes accept $500?
+  -> [2] Portfolio Optimizer: given $500, what allocation maximizes risk-adjusted return?
+  -> [3] Search Rewriter: search for SPECIFIC INSTANCES within winning classes
+  -> LLM evaluates instances against computed benchmarks
+  -> Verdict includes math-first recommendations
+```
+
+---
+
+## Component 1: Asset Class Database
+
+**Purpose:** Static reference data — what asset classes exist, their historical ROI distributions at each capital level, and structural properties.
+
+**Location:** `data/intelligence/asset-classes.json`
+
+**Schema per asset class:**
+```json
+{
+  "id": "micro_saas",
+  "name": "Micro-SaaS (single-feature tool)",
+  "category": "digital_product",
+  "capital_entry_min": 0,
+  "capital_entry_max": 5000,
+  "roi_distribution": {
+    "p10": -1.0,
+    "p25": -0.5,
+    "p50": 0.5,
+    "p75": 3.0,
+    "p90": 10.0
+  },
+  "time_to_first_dollar_days": {
+    "p25": 90,
+    "p50": 180,
+    "p75": 365
+  },
+  "sleep_test": true,
+  "leverage_class": "CODE",
+  "lindy_years": 30,
+  "compound_mechanism": "subscriber_base + codebase + brand",
+  "failure_rate_year1": 0.70,
+  "structural_risks": ["AI_DISRUPTION", "BIGTECH_ADJACENT"],
+  "data_sources": ["flippa_marketplace_2024", "microacquire_2024", "indie_hackers_survey_2023"],
+  "founder_fit_tags": ["can_code", "english_fluent"],
+  "capital_tiers": {
+    "TIER_0": {"viable": true, "expected_roi_p50": 0.5, "notes": "no-code MVP only"},
+    "TIER_1": {"viable": true, "expected_roi_p50": 2.0, "notes": "custom code possible"},
+    "TIER_2": {"viable": true, "expected_roi_p50": 3.0, "notes": "full product"}
+  }
+}
+```
+
+**Initial asset classes (15-20):**
+
+| ID | Name | Sleep? | Leverage | $500 viable? | P50 ROI |
+|----|------|--------|----------|---------------|---------|
+| micro_saas | Micro-SaaS | YES | CODE | Yes (no-code) | 0.5x |
+| digital_template_library | Digital Templates | YES | MEDIA | Yes | 1.0x |
+| newsletter_paid | Paid Newsletter | PARTIAL | MEDIA | Yes | 0.3x |
+| affiliate_microsite | Affiliate Micro-Site | YES | MEDIA | Yes | 0.2x |
+| domain_portfolio | Domain Portfolio | YES | CAPITAL | Yes | -0.5x* |
+| content_site | Content/Authority Site | YES | MEDIA | Yes | 0.5x |
+| api_wrapper | AI API Wrapper | YES | CODE | Yes | 1.0x |
+| chrome_extension | Chrome Extension | YES | CODE | Yes | 0.5x |
+| notion_template_store | Notion/Figma Templates | YES | MEDIA | Yes | 0.8x |
+| course_mini | Mini Course (<$50) | YES | MEDIA | Yes | 2.0x |
+| community_paid | Paid Community | PARTIAL | MEDIA+LABOR | Yes | 0.2x |
+| sdr_agency | SDR/Lead Gen Agency | NO | LABOR | Yes | 3.0x** |
+| content_repurposing | Content Repurposing | NO | LABOR | Yes | 2.0x** |
+| productized_audit | Productized Audit | NO | LABOR | Yes | 1.5x** |
+| commodity_broker | Commodity Micro-Broker | NO | LABOR+CAPITAL | $100-500 | 1.0x |
+
+*domain: most never sell, survivors skew data
+**labor models: ROI misleading — it's wage income, not capital return
+
+**Data sources (verified from research):**
+- Flippa 2024: micro-SaaS median 2-4x profit multiple, 70% earn <$1K/mo [K]
+- Gumroad 2023-2024: $171M GMV, 20-30% creator margins, median 66 days to first $ [K]
+- Beehiiv/Substack: $2.37 subscriber acquisition cost, 5-20% free->paid, 50% annual churn [T]
+- Domain aftermarket: $400M+/yr, but survivorship bias extreme [T]
+- Broad: 67% passive income attempts never generate meaningful revenue, 12% Americans earn >$500/mo passive [K]
+
+**Population method:**
+1. Manual curation of 15-20 classes from research + existing knowledge files
+2. Each class requires minimum 3 data sources with zone tags
+3. Annual refresh cycle (asset class properties change slowly)
+4. New classes added via `/stage0 --add-asset-class` with evidence gate
+
+---
+
+## Component 2: Portfolio Optimizer
+
+**Purpose:** Given $X capital + founder constraints, compute optimal allocation across asset classes.
+
+**Location:** `scripts/portfolio-optimizer.py` (in nui-hunter/scripts/)
+
+**Input:**
+```json
+{
+  "capital_usd": 500,
+  "founder_tags": ["english_fluent", "no_code", "vietnam", "30h_week"],
+  "risk_tolerance": "moderate",
+  "time_horizon_months": 12,
+  "sleep_test_required": true,
+  "max_assets": 3
+}
+```
+
+**Algorithm:**
+1. Filter asset classes: `capital_entry_min <= capital <= capital_entry_max` AND `founder_fit_tags` match
+2. If `sleep_test_required=true`, filter to sleep_test=YES only
+3. Apply Kelly criterion (existing `kelly-criterion-position-sizing-calculator.py`) to size positions
+4. Apply Monte Carlo (existing `monte-carlo-sim.py`) to simulate portfolio outcomes
+5. Apply power-law sizer (existing `power-law-sizer.py`) to model tail outcomes
+6. Output: ranked allocations with expected P10/P50/P90 portfolio return
+
+**Output:**
+```json
+{
+  "portfolio": [
+    {"asset_class": "digital_template_library", "allocation_usd": 100, "allocation_pct": 0.20, "expected_roi_p50": 1.0},
+    {"asset_class": "mini_course", "allocation_usd": 200, "allocation_pct": 0.40, "expected_roi_p50": 2.0},
+    {"asset_class": "chrome_extension", "allocation_usd": 200, "allocation_pct": 0.40, "expected_roi_p50": 0.5}
+  ],
+  "portfolio_expected": {"p10": -200, "p50": 600, "p90": 3500},
+  "portfolio_monthly_passive": {"p10": 0, "p50": 150, "p90": 800},
+  "excluded_classes": [
+    {"id": "sdr_agency", "reason": "sleep_test_required=true, this class sleep_test=NO"},
+    {"id": "commodity_broker", "reason": "founder_fit_tags missing: supply_chain_access"}
+  ],
+  "computation_log": "kelly_fractions: {...}, monte_carlo_runs: 10000, survival_rate: 0.35"
+}
+```
+
+**Key insight:** This replaces "what business should I start?" with "given $500, what's the mathematically optimal allocation across asset classes?" — investor thinking, not laborer thinking.
+
+---
+
+## Component 3: Search Rewriter
+
+**Purpose:** Convert portfolio optimizer output into targeted search queries that find SPECIFIC INSTANCES, not generic advice.
+
+**Location:** `scripts/search-rewriter.py` (in nui-hunter/scripts/)
+
+**Current search pattern (broken):**
+```
+WebSearch("micro business started under $500 capital profitable 2024")
+-> Returns: SEO blog posts listing "50 business ideas"
+```
+
+**New search pattern:**
+```python
+# For asset_class = "digital_template_library":
+queries = [
+    "site:gumroad.com notion template revenue 2025",
+    "site:reddit.com/r/Notion 'sold' OR 'revenue' template",
+    "Etsy digital template shop analytics 2025 monthly sales",
+    "site:twitter.com 'template' 'MRR' OR '$' OR 'revenue' 2025",
+]
+
+# For asset_class = "mini_course":
+queries = [
+    "site:gumroad.com course under $50 sales 2025",
+    "udemy instructor revenue per course statistics 2025",
+    "skillshare teacher income 2025 per class",
+    "site:reddit.com/r/passive_income course revenue",
+]
+
+# For asset_class = "chrome_extension":
+queries = [
+    "chrome extension revenue per user statistics 2025",
+    "indie chrome extension MRR examples 2025",
+    "site:reddit.com/r/SideProject chrome extension income",
+    "chrome web store developer revenue model freemium",
+]
+```
+
+**Template structure per asset class:**
+```json
+{
+  "asset_class_id": "digital_template_library",
+  "instance_search_queries": [
+    {"query": "site:gumroad.com {niche} template revenue {year}", "purpose": "find_real_sellers"},
+    {"query": "site:reddit.com/r/{subreddit} 'sold' OR 'revenue' template", "purpose": "find_income_reports"},
+    {"query": "{platform} {niche} template shop analytics monthly sales", "purpose": "validate_volume"}
+  ],
+  "validation_queries": [
+    {"query": "{specific_product} reviews OR complaints", "purpose": "demand_signal"},
+    {"query": "{specific_niche} template free alternative", "purpose": "moat_check"}
+  ],
+  "anti_confirmation_queries": [
+    {"query": "{asset_class} failure rate statistics", "purpose": "base_rate"},
+    {"query": "why {asset_class} fails", "purpose": "failure_archaeology"}
+  ]
+}
+```
+
+**Integration point:** Search Rewriter output replaces the current Wave 1 WebSearch queries in stage0.md Step 3.5.
+
+---
+
+## Integration with Stage0 Pipeline
+
+### Where it plugs in:
+
+```
+Step 1: Profile capture (unchanged)
+Step 2: Capital classification (unchanged — uses capital-path-classifier.py)
+Step 2.5: [NEW] Asset Class DB lookup + Portfolio Optimizer
+Step 3: DQ generation (enhanced — DQs now reference computed portfolio)
+Step 3.5: Wave 1 research (CHANGED — uses Search Rewriter queries instead of generic)
+Step 4-7: Analysis + verdict (enhanced — benchmark against computed expected returns)
+```
+
+### Stage0 spec changes needed:
+1. **Step 2.5 (new):** Run `portfolio-optimizer.py` after capital classification, inject results as `PORTFOLIO_CONTEXT` into all subsequent steps
+2. **Step 3.5 DEPLOYMENT_CONTEXT:** Replace generic search queries with Search Rewriter output
+3. **Step 5 ROI hypothesis:** Compare against Portfolio Optimizer P50 — if model ROI < portfolio P50, flag as suboptimal
+4. **Step 6 Mountain Test:** Add Q8-PORTFOLIO-OPTIMAL: "Does this model outperform the computed portfolio allocation?"
+
+### Files to modify (all in master_investments):
+| File | Change |
+|------|--------|
+| `data/intelligence/asset-classes.json` | NEW — asset class database |
+| `nui-hunter/scripts/portfolio-optimizer.py` | NEW — computation engine |
+| `nui-hunter/scripts/search-rewriter.py` | NEW — query generator |
+| `nui-hunter/scripts/capital-path-classifier.py` | Minor — emit portfolio context |
+| `.claude/commands/stage0.md` | Add Step 2.5, modify Step 3.5 queries |
+| `.claude/commands/stage0-checklist.md` | Add portfolio checks |
+| `tests/stage0/test_portfolio_optimizer.py` | NEW — optimizer tests |
+| `tests/stage0/test_search_rewriter.py` | NEW — rewriter tests |
+
+---
+
+## What Changes in Output
+
+### Before (current verdict):
+```
+Model: SDR Lead Gen Agency
+P50: $2K-5K/mo
+Sleep test: PARTIAL
+ROI: [not computed]
+```
+
+### After (with Intelligence Layer):
+```
+Portfolio Allocation: $500 -> 3 assets
+  $200 -> Mini Course (P50 ROI: 2.0x, sleep: YES)
+  $200 -> Chrome Extension (P50 ROI: 0.5x, sleep: YES)
+  $100 -> Digital Templates (P50 ROI: 1.0x, sleep: YES)
+
+Portfolio P50 monthly passive: $150/mo
+Portfolio P50 12-month return: $600 (1.2x on $500)
+Portfolio P10 (worst case): -$200 (0.6x)
+
+SDR Lead Gen NOT in portfolio:
+  Reason: sleep_test=NO, leverage=LABOR
+  Math: $2K-5K/mo is WAGE, not RETURN ON CAPITAL
+  Compare: $150/mo passive > $5K/mo labor (per hour, passive wins at month 8)
+```
+
+**Key shift:** The system now COMPUTES what $500 should do, then SEARCHES for instances within computed winners — instead of asking Google "what business for $500?" and getting labor answers.
+
+---
+
+## Risks & Mitigations
+
+| Risk | Severity | Mitigation |
+|------|----------|------------|
+| Asset class data stale/wrong | HIGH | Zone tags on every data point, annual refresh, minimum 3 sources per class |
+| Over-fitting to historical ROI | MEDIUM | Monte Carlo with wide distributions, survival analysis filter |
+| Computation creates false precision | MEDIUM | Always show P10-P90 range, never single-point estimate |
+| Founder ignores portfolio, picks labor | LOW | Show hourly-rate comparison: "$5K/mo labor @ 160h = $31/hr vs $150/mo passive @ 2h = $75/hr" |
+| Existing calc engines don't fit new use case | LOW | Kelly/Monte Carlo are generic — just need new input format |
+
+---
+
+## Success Criteria
+
+1. Given "$500 capital" query, system returns portfolio allocation BEFORE any web search
+2. Web searches target specific asset class instances, not "business ideas"
+3. Verdict includes computed P10/P50/P90 portfolio return
+4. Labor models are explicitly compared against passive portfolio on per-hour basis
+5. All 45 existing tests + new tests pass
+6. Stage0 checklist updated with portfolio checks
+
+---
+
+## Implementation Order
+
+1. **Asset Class Database** (~4h) — JSON schema + 15-20 classes + data sources
+2. **Portfolio Optimizer** (~6h) — Python script wiring Kelly + Monte Carlo + power-law
+3. **Search Rewriter** (~4h) — Query templates per asset class + integration with stage0 spec
+4. **Pipeline Integration** (~4h) — stage0.md/checklist updates + Step 2.5 injection
+5. **Tests** (~3h) — optimizer + rewriter + integration tests
+
+Total: ~21h estimated
+
+---
+
+*This design shifts stage0 from "ask Google what business to start" to "compute optimal capital allocation, then find specific instances." The system thinks like an investor deploying capital, not a worker looking for a job.*

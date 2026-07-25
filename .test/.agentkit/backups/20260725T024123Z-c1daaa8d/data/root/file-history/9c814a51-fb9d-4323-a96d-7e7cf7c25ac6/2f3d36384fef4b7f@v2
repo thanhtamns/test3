@@ -1,0 +1,137 @@
+---
+phase: 1
+title: "Decomposer + Dimension Registry"
+status: pending
+priority: P1
+effort: "2d"
+dependencies: []
+---
+
+# Phase 1: Decomposer + Dimension Registry
+
+## Overview
+
+Build the core decomposition engine that breaks arbitrary big questions into structured dimension trees, then generates micro-factual queries per dimension. 15+ dimension templates covering career, network, capital, market, timing, regulatory, execution, founder-fit, etc.
+
+## Requirements
+
+- Functional: Accept any natural language question → output structured dimension tree → generate 3-5 micro-queries per dimension
+- Functional: Auto-classify question type (career_path, deal_analysis, market_entry, competitor_audit, wealth_strategy, custom)
+- Functional: Each micro-query must be factual, verifiable, and answerable with a single data point
+- Non-functional: Zero LLM calls in decomposition — pure template + keyword matching
+- Non-functional: Extensible dimension registry (add new dimensions without code changes)
+
+## Architecture
+
+```
+BigQuestion
+  → QueryClassifier: keyword + pattern → question_type
+  → DimensionSelector: question_type → relevant dimensions (5-8 from 15+)
+  → MicroQueryGenerator: dimension × context → 3-5 factual micro-queries
+  → Output: DecompositionTree (dimensions[], micro_queries[], metadata)
+```
+
+### Dimension Registry (15+ dimensions)
+
+| Dimension | Example Micro-Queries |
+|-----------|----------------------|
+| career_path | "Average age of VC fund directors in SEA?", "Required experience for $100M+ fund?" |
+| deal_skills | "Typical deal sizes for Series A in Vietnam?", "Standard DD checklist items?" |
+| network_access | "How to access Thai banking circles?", "Key networking events in SEA finance?" |
+| founder_experience | "Revenue benchmark for 22-year-old founders?", "Typical team size at seed?" |
+| base_rates | "% of fund directors under 25 globally?", "Survivorship bias in VC career data?" |
+| capital_requirements | "Minimum AUM to launch a VC fund?", "Typical GP commit %?" |
+| competitive_landscape | "Top 5 VC funds in SEA by deal count?", "Market leader's entry barriers?" |
+| moat_patterns | "What moat type works for X?", "Switching cost in category Y?" |
+| timing_windows | "Market cycle position for X?", "Regulatory deadline affecting X?" |
+| unit_economics | "CAC/LTV for X category?", "Typical margins in X?" |
+| regulatory_risks | "Legal barriers in market X?", "Compliance cost for Y?" |
+| failure_patterns | "Top 3 failure reasons for X?", "% failure rate in first 2 years?" |
+| compounding_mechanisms | "What compounds in X? (data/network/brand)?", "Time to flywheel activation?" |
+| execution_distance | "Steps from current position to X?", "Skills gap analysis?" |
+| leverage_type | "Code/media/capital/labor classification?", "Permissionless leverage available?" |
+
+### Data Structures
+
+```python
+@dataclass
+class Dimension:
+    name: str
+    weight: float  # 0.0-2.0, importance for this question type
+    templates: list[str]  # query templates with {context} placeholders
+
+@dataclass  
+class MicroQuery:
+    text: str
+    dimension: str
+    expected_type: str  # "number", "list", "boolean", "text"
+    verification_hint: str  # how to verify the answer
+
+@dataclass
+class DecompositionTree:
+    original_query: str
+    query_type: str
+    dimensions: list[Dimension]
+    micro_queries: list[MicroQuery]
+    context: dict  # extracted context from original query
+```
+
+## Related Code Files
+
+- Create: `.claude/lib/intelligence/decomposition/__init__.py`
+- Create: `.claude/lib/intelligence/decomposition/decomposer.py`
+- Create: `.claude/lib/intelligence/decomposition/dimension_registry.py`
+- Create: `.claude/lib/intelligence/decomposition/query_classifier.py`
+- Create: `.claude/lib/intelligence/decomposition/micro_query_generator.py`
+- Create: `.claude/lib/intelligence/decomposition/tests/__init__.py`
+- Create: `.claude/lib/intelligence/decomposition/tests/test_decomposer.py`
+- Read: `.claude/lib/intelligence/reasoning/problem_decomposer.py` — extend TEMPLATES pattern
+- Read: `.claude/lib/intelligence/coverage/gap_detector.py` — reuse GAP_TEMPLATES approach
+
+## Implementation Steps
+
+1. Create `dimension_registry.py`:
+   - `DIMENSION_REGISTRY: dict[str, Dimension]` with 15+ dimensions
+   - Each dimension has: name, default_weight, query_templates (3-5 per dimension)
+   - Templates use `{target}`, `{industry}`, `{market}`, `{role}` placeholders
+   - `get_dimensions(question_type) → list[Dimension]` — returns weighted subset
+
+2. Create `query_classifier.py`:
+   - `QueryClassifier.classify(query: str) → str` — keyword + pattern matching
+   - 6+ question types: career_path, deal_analysis, market_entry, competitor_audit, wealth_strategy, custom
+   - Each type maps to 5-8 relevant dimensions with weights
+   - `_extract_context(query: str) → dict` — pull out entities, numbers, roles
+
+3. Create `micro_query_generator.py`:
+   - `MicroQueryGenerator.generate(dimension: Dimension, context: dict) → list[MicroQuery]`
+   - Fill templates with context values
+   - Add verification hints per expected_type
+   - Cap at 5 queries per dimension, 40 total per decomposition
+
+4. Create `decomposer.py`:
+   - `Decomposer.decompose(query: str) → DecompositionTree`
+   - Orchestrates: classify → select dimensions → generate micro-queries
+   - Checks local KB first (via AtomicResolver) — skip queries with existing answers
+   - Returns tree with pre-resolved vs needs-research split
+
+5. Create `tests/test_decomposer.py`:
+   - Test classification for each question type
+   - Test dimension selection weights
+   - Test micro-query generation (template filling)
+   - Test KB-first resolution (pre-resolved queries)
+   - Test edge cases: empty query, unknown type, very long query
+   - Target: 25+ tests
+
+## Success Criteria
+
+- [ ] 15+ dimensions in registry with 3-5 templates each
+- [ ] 6+ question types in classifier
+- [ ] Decomposer produces 15-40 micro-queries per big question
+- [ ] Zero LLM calls during decomposition
+- [ ] Pre-resolves queries against existing KB (AtomicResolver)
+- [ ] All tests pass (25+)
+
+## Risk Assessment
+
+- Template quality determines decomposition quality → mitigation: start with well-researched dimensions, evolve in P4
+- Over-decomposition waste → mitigation: hard cap at 40 micro-queries, dimension weight filtering

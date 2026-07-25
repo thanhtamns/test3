@@ -1,0 +1,41 @@
+---
+status: complete
+created: 2026-05-13
+target_repo: D:/code/invesments/master_investments
+plan_repo: D:/code/invesments/master_investments_mmo
+phases: 6
+estimated_effort: 14 days
+---
+
+# Deep Intelligence Wiring — Wire All Components Into Brainstorm Pipeline
+
+## Summary
+Wire 7 disconnected intelligence components (bullshit-detector, personas, compound learning, iterative deepening, research ladder, gate validator, quality scorer) into the brainstorm pipeline. Currently: Ferrari engine in a box. Target: assembled race car.
+
+## Phases
+
+| Phase | Solution(s) | Files | Effort | Dependencies |
+|-------|------------|-------|--------|-------------|
+| 01 | S-4: Compound learning bridge | compound_cache.py | 1 day | None | ✅ DONE |
+| 02 | S-2+S-7: Gate validator + quality scorer | NEW: gate_validator.py, quality_scorer.py | 2 days | None | ✅ DONE |
+| 03 | S-5+S-6: ThinkRunner iterative deepening + ladder | think_runner.py, web_research_bridge.py | 3 days | None | ✅ DONE |
+| 04 | S-1: Multi-agent adversarial orchestration | NEW: adversarial_orchestrator.py | 3 days | None | ✅ DONE |
+| 05 | S-3: Persona debate integration | NEW: persona_debate.py | 2 days | Phase 04 | ✅ DONE |
+| 06 | Wire into brainstorm SKILL.md | SKILL.md (_mmo repo) | 1 day | Phases 01-05 | ✅ DONE |
+
+## Key Constraints
+- Code changes: `D:/code/invesments/master_investments/.claude/lib/intelligence/decomposition/`
+- SKILL.md changes: `D:/code/invesments/master_investments_mmo/.claude/skills/brainstorm/SKILL.md`
+- Tests: `D:/code/invesments/master_investments/.claude/lib/intelligence/decomposition/tests/`
+- Python venv: `.claude/skills/.venv/Scripts/python.exe`
+- Keep files under 200 lines each
+- All new modules must have tests
+- Existing 13 test files must still pass
+
+## Phase Details
+- [Phase 01](phase-01-compound-learning-bridge.md) — S-4: Wire brainstorm_claims into CompoundCache
+- [Phase 02](phase-02-gate-validator-quality-scorer.md) — S-2+S-7: Python enforcement for gates
+- [Phase 03](phase-03-thinkrunner-iterative-deepening.md) — S-5+S-6: Multi-pass research + ladder
+- [Phase 04](phase-04-adversarial-orchestrator.md) — S-1: Analyst→Critic→Synthesizer pipeline
+- [Phase 05](phase-05-persona-debate.md) — S-3: Spawn parallel persona agents
+- [Phase 06](phase-06-skill-wiring.md) — Wire Python modules into SKILL.md

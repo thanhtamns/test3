@@ -1,0 +1,250 @@
+#!/usr/bin/env python3
+"""Side-Door Scanner Trigger — Step 6.8.5
+
+Checks if KILL verdict has relationship-type barriers that power-network
+agents can bypass via side-door paths. Outputs agent prompts for 4 agents.
+
+Usage:
+  python side-door-trigger.py --verdict-file /tmp/case-xxx.json --profile-file path/to/profile.json
+  python side-door-trigger.py --verdict-file /tmp/case-xxx.json --profile-file path/to/profile.json --dry-run
+"""
+
+import argparse
+import json
+import os
+import sys
+import re
+from pathlib import Path
+
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8")
+
+SIDE_DOOR_TRIGGERS = {
+    "network_barrier",
+    "capital_barrier",
+    "track_record_gap",
+    "entry_window_closed",
+    "no_precedent",
+    "credential_gap",
+    "network_gap",
+}
+
+SKIP_KILL_TYPES = {
+    "median_income_too_low",
+    "market_too_saturated",
+    "jurisdiction_block",
+    "regulatory_block",
+    "math_infeasible",
+    "tam_too_small",
+}
+
+
+def extract_kill_mechanisms(case: dict) -> list[str]:
+    mechs = case.get("kill_mechanisms", [])
+    if not mechs:
+        mt = case.get("mountain_test_v2", {})
+        if mt.get("verdict") in ("KILL", "HARD_KILL"):
+            mechs = case.get("kill_reasons", [])
+    return mechs
+
+
+def should_fire(kill_mechanisms: list[str]) -> tuple[bool, list[str], str]:
+    mech_set = set(kill_mechanisms)
+    matched = mech_set & SIDE_DOOR_TRIGGERS
+    skip_only = mech_set & SKIP_KILL_TYPES
+
+    if not matched:
+        if skip_only:
+            return False, [], "kill_type_not_relationship_barrier"
+        return False, [], "no_matching_kill_mechanisms"
+
+    return True, sorted(matched), "relationship_barriers_detected"
+
+
+def extract_target_context(case: dict, profile: dict) -> dict:
+    topic = case.get("first_query", case.get("topic", case.get("title_en", "")))
+    domain = case.get("domain", "")
+    kill_mechs = extract_kill_mechanisms(case)
+
+    geo = "Vietnam"
+    if profile:
+        locs = profile.get("location", profile.get("geo_advantage", []))
+        if isinstance(locs, list) and locs:
+            geo = locs[0]
+        elif isinstance(locs, str):
+            geo = locs
+
+    founder_skills = []
+    if profile:
+        founder_skills = profile.get("skills", profile.get("skill_required", []))
+        if isinstance(founder_skills, str):
+            founder_skills = [s.strip() for s in founder_skills.split(",")]
+
+    founder_assets = []
+    if profile:
+        founder_assets = profile.get("assets", profile.get("strengths", []))
+        if isinstance(founder_assets, str):
+            founder_assets = [a.strip() for a in founder_assets.split(",")]
+
+    return {
+        "topic": topic,
+        "domain": domain,
+        "kill_mechanisms": kill_mechs,
+        "geography": geo,
+        "founder_skills": founder_skills,
+        "founder_assets": founder_assets,
+        "founder_profile": profile or {},
+    }
+
+
+def generate_agent_prompts(ctx: dict) -> dict:
+    topic = ctx["topic"]
+    domain = ctx["domain"]
+    geo = ctx["geography"]
+    kills = ", ".join(ctx["kill_mechanisms"])
+    skills = ", ".join(ctx["founder_skills"][:5]) if ctx["founder_skills"] else "unspecified"
+    assets = ", ".join(ctx["founder_assets"][:5]) if ctx["founder_assets"] else "unspecified"
+
+    base_context = (
+        f"Topic: {topic}\n"
+        f"Domain: {domain}\n"
+        f"Kill mechanisms (relationship barriers): {kills}\n"
+        f"Geography: {geo}\n"
+        f"Founder skills: {skills}\n"
+        f"Founder assets: {assets}\n"
+    )
+
+    prompts = {
+        "power-cartographer": {
+            "agent": "power-cartographer",
+            "prompt": (
+                f"Map the power structure around decision-makers in this domain.\n\n"
+                f"{base_context}\n"
+                f"TASK:\n"
+                f"1. Identify 3-5 specific decision-maker ROLES (not orgs) who control access to this opportunity\n"
+                f"2. For each: map lieutenants, gatekeepers, known associates\n"
+                f"3. Find approach vectors — side doors, not front doors\n"
+                f"4. Identify psychological wounds, ego patterns, what they need\n\n"
+                f"OUTPUT FORMAT (JSON):\n"
+                f'{{"targets": [{{"role": "...", "archetype": "...", "org_type": "...", '
+                f'"lieutenants": ["..."], "approach_vectors": ["..."], "side_doors": ["..."], '
+                f'"wounds_needs": "..."}}]}}\n\n'
+                f"QUALITY: Name specific ROLE TYPES (not 'investors' but 'CTO of portfolio company' "
+                f"or 'Association president'). Generic = REJECTED."
+            ),
+        },
+        "gate-broker": {
+            "agent": "gate-broker",
+            "prompt": (
+                f"Design introduction chains to reach top 2 decision-makers in this domain.\n\n"
+                f"{base_context}\n"
+                f"TASK:\n"
+                f"1. For top 2 targets, design chain: Founder → Introducer A → (optional B) → TARGET\n"
+                f"2. Each link: WHO introduces, WHY they would, WHAT to say, WHEN to ask\n"
+                f"3. Script per encounter — exact words, not categories\n"
+                f"4. Value exchange per link — what founder GIVES before asking\n"
+                f"5. Timing: weeks, not months\n\n"
+                f"OUTPUT FORMAT (JSON):\n"
+                f'{{"chains": [{{"target": "...", "chain": ["Founder", "Person A (role)", "TARGET"], '
+                f'"scripts_per_link": ["...", "..."], "value_exchange_per_link": ["...", "..."], '
+                f'"timing_weeks": N, "kill_criterion": "..."}}]}}\n\n'
+                f"QUALITY: Each chain must have SPECIFIC role types and EXACT scripts. "
+                f"'Network at events' = REJECTED."
+            ),
+        },
+        "tay-trang-positioner": {
+            "agent": "tay-trang-positioner",
+            "prompt": (
+                f"Reframe founder's assets to create value for each chain link.\n\n"
+                f"{base_context}\n"
+                f"TASK:\n"
+                f"1. For each person in the introduction chain, identify what they NEED\n"
+                f"2. Map founder's skills/assets to that need — even if indirect\n"
+                f"3. Create 'useful before asked' actions — deliver value BEFORE requesting anything\n"
+                f"4. Design perception reframes — how to make zero-capital founder appear indispensable\n\n"
+                f"OUTPUT FORMAT (JSON):\n"
+                f'{{"value_props_per_link": [{{"target_role": "...", "their_need": "...", '
+                f'"founder_offer": "...", "useful_before_asked_action": "...", '
+                f'"perception_reframe": "..."}}]}}\n\n'
+                f"QUALITY: Each value prop must be SPECIFIC and ACTIONABLE. "
+                f"'Help them with their business' = REJECTED. "
+                f"'Run free AI pipeline audit on their portfolio company X' = ACCEPTED."
+            ),
+        },
+        "proximity-engineer": {
+            "agent": "proximity-engineer",
+            "prompt": (
+                f"Find physical and digital proximity opportunities to target decision-makers.\n\n"
+                f"{base_context}\n"
+                f"TASK:\n"
+                f"1. Search for events, conferences, meetups where targets appear\n"
+                f"2. Identify associations, clubs, online communities they participate in\n"
+                f"3. Design manufactured coincidences — natural-seeming encounters\n"
+                f"4. Map timing windows — when targets are most accessible\n\n"
+                f"OUTPUT FORMAT (JSON):\n"
+                f'{{"events": [{{"name": "...", "date_range": "...", "targets_likely": ["..."], '
+                f'"approach_plan": "..."}}], '
+                f'"communities": [{{"platform": "...", "name": "...", "targets_active": ["..."]}}], '
+                f'"manufactured_coincidences": [{{"scenario": "...", "timing": "...", '
+                f'"natural_pretext": "..."}}]}}\n\n'
+                f"QUALITY: Use WebSearch to find REAL events and communities. "
+                f"Generic 'attend industry events' = REJECTED. "
+                f"'Vietnam Venture Summit 2026 on June 15 at GEM Center' = ACCEPTED."
+            ),
+        },
+    }
+
+    return prompts
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Side-Door Scanner Trigger (Step 6.8.5)")
+    parser.add_argument("--verdict-file", required=True, help="Path to case JSON")
+    parser.add_argument("--profile-file", default=None, help="Path to founder profile JSON")
+    parser.add_argument("--dry-run", action="store_true", help="Output prompts without spawning agents")
+    args = parser.parse_args()
+
+    verdict_path = Path(args.verdict_file)
+    if not verdict_path.exists():
+        print(json.dumps({"fires": False, "reason": f"verdict file not found: {args.verdict_file}"}))
+        sys.exit(1)
+
+    with open(verdict_path, "r", encoding="utf-8") as f:
+        case = json.load(f)
+
+    profile = {}
+    if args.profile_file:
+        profile_path = Path(args.profile_file)
+        if profile_path.exists():
+            with open(profile_path, "r", encoding="utf-8") as f:
+                profile = json.load(f)
+
+    kill_mechs = extract_kill_mechanisms(case)
+    fires, matched, reason = should_fire(kill_mechs)
+
+    if not fires:
+        print(json.dumps({
+            "fires": False,
+            "reason": reason,
+            "kill_mechanisms_found": kill_mechs,
+            "matched_triggers": [],
+        }, indent=2))
+        sys.exit(0)
+
+    ctx = extract_target_context(case, profile)
+    prompts = generate_agent_prompts(ctx)
+
+    output = {
+        "fires": True,
+        "reason": reason,
+        "kill_mechanisms_found": kill_mechs,
+        "matched_triggers": matched,
+        "agents": list(prompts.values()),
+        "dry_run": args.dry_run,
+    }
+
+    print(json.dumps(output, indent=2, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

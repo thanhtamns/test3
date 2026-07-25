@@ -1,0 +1,74 @@
+---
+title: "Money Architecture Layer — Structural Leverage Upgrade"
+description: "Add 3 new computational layers (flow topology, structural leverage, position intelligence) to money_mechanisms + wire into stage0 pipeline as quality multiplier"
+status: pending
+priority: P1
+branch: "master"
+tags: [stage0, money-intelligence, structural-leverage]
+blockedBy: []
+blocks: []
+created: "2026-05-17T12:38:38.618Z"
+createdBy: "ck:plan"
+source: skill
+---
+
+# Money Architecture Layer — Structural Leverage Upgrade
+
+## Overview
+
+Stage0 analyzes opportunities as ANALYST (verify, score) but not as MONEY ARCHITECT (design money flows, structural leverage, exit-first). This plan adds 3 new layers to `money_mechanisms/` and wires them into the stage0 pipeline as a quality multiplier (not a kill gate).
+
+**Problem:** Current money_mechanisms (6 modules: leverage, float, velocity, arbitrage, runway, compound) cover single-entity production economics. Missing: multi-entity leverage, money flow topology, trust arbitrage, info asymmetry design, exit-first architecture, risk/liability routing.
+
+**Solution:** 3 new Python modules + 6 KB case studies + stage0 integration at Steps -8, 2.65, 3.5, 6, 7.
+
+**Target repo:** `D:\code\invesments\master_investments` (NOT _mmo)
+
+## Phases
+
+| Phase | Name | Status | Effort | Dependencies |
+|-------|------|--------|--------|--------------|
+| 1 | [Knowledge Layer (Case Studies)](./phase-01-knowledge-layer-case-studies.md) | Pending | 1d | None |
+| 2 | [Scoring Modules (3 engines)](./phase-02-scoring-modules-3-engines.md) | Pending | 2d | Phase 1 (case patterns inform classifier) |
+| 3 | [Stage0 Wiring](./phase-03-stage0-wiring.md) | Pending | 2d | Phase 2 |
+| 4 | [Learning Loop Integration](./phase-04-learning-loop-integration.md) | Pending | 0.5d | Phase 3 |
+
+**Total estimated effort:** ~5.5 days
+
+## Architecture
+
+```
+money_mechanisms/
+├── leverage.py          (existing — Naval 4-type, UNCHANGED)
+├── float_calc.py        (existing — UNCHANGED)
+├── velocity.py          (existing — UNCHANGED)
+├── arbitrage.py         (existing — UNCHANGED)
+├── runway.py            (existing — UNCHANGED)
+├── compound.py          (existing — UNCHANGED)
+├── flow_topology.py     (NEW — Layer A: money flow graph model)
+├── structural_leverage.py (NEW — Layer B: 5 structural types beyond Naval)
+├── position_intelligence.py (NEW — Layer C: value chain position + exit-first)
+└── __init__.py          (MODIFY — add 3 new exports)
+```
+
+## Key Constraints
+
+- All 3 new modules are ADVISORY, not BLOCKING — stage0 works without them (graceful degrade)
+- Structure Score is a quality MULTIPLIER, not a kill gate
+- LEGAL patterns only — fraud patterns go in ANTI-PATTERN section (detect, not replicate)
+- Each module ~150-200 lines, same interface as existing `leverage.py` (CLI + importable)
+- No changes to existing modules (additive only)
+
+## Dependencies
+
+- No cross-plan blockers. 260517-S0 (deadlock breaker) is already complete.
+- AEVO-X evolution system (260516) can consume structural patterns once shipped.
+
+## Risk Summary
+
+| Risk | Severity | Mitigation |
+|------|----------|------------|
+| Token bloat from structural analysis | Medium | Position analyzer fires only when multi-entity keywords detected (~20% queries) |
+| Grey/illegal structure recommendations | High | RED LINE: only LEGAL patterns. Anti-pattern section for detection only |
+| Over-engineering simple opportunities | Low | Structure layer ADVISORY. Score 2/10 is perfectly fine |
+| Complexity creep in stage0 | Medium | All modules OPTIONAL. Graceful degradation if import fails |

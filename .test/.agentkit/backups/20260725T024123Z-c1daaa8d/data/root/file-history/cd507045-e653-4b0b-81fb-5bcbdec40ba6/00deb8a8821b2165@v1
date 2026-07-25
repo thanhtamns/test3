@@ -1,0 +1,113 @@
+"""Evolution Orchestrator — coordinates mutation lifecycle and integrates with ThinkRunner."""
+
+from pathlib import Path
+from typing import Callable, Optional
+
+from .fitness_scorer import FitnessScorer
+from .promoter import Promoter
+from .registry import EvolutionRegistry
+from .sandbox_runner import SandboxRunner
+from .schemas import EvalResult
+from .template_mutator import TemplateMutator
+
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from decomposition.template_evolver import TemplateEvolver
+
+ROOT = Path(__file__).resolve().parents[4]
+DEFAULT_DB = ROOT / "data" / "evolution" / "evolution-registry.db"
+DEFAULT_EVOLUTION_DB = ROOT / ".claude" / "data" / "decomposition" / "evolution.db"
+
+
+class EvolutionOrchestrator:
+    def __init__(
+        self,
+        research_fn: Callable[[str], str],
+        llm_fn: Optional[Callable[[str], str]] = None,
+        db_path: Optional[Path] = None,
+        evolver_db_path: Optional[Path] = None,
+    ):
+        self.registry = EvolutionRegistry(db_path or DEFAULT_DB)
+        self.evolver = TemplateEvolver(db_path=evolver_db_path or DEFAULT_EVOLUTION_DB)
+        self.mutator = TemplateMutator(
+            registry=self.registry,
+            evolver=self.evolver,
+            llm_fn=llm_fn or research_fn,
+        )
+        self.sandbox = SandboxRunner(
+            registry=self.registry,
+            research_fn=research_fn,
+        )
+        self.scorer = FitnessScorer(self.registry)
+        self.promoter = Promoter(self.registry, self.evolver)
+
+    def post_think_hook(self, query: str, dimension_stats: dict[str, dict]):
+        """Called after ThinkRunner.think() completes. Non-blocking evolution logic."""
+        active = self.registry.get_active_mutations(component="template")
+
+        for mutation in active:
+            dim = mutation.target_path.replace("dimension:", "")
+            if dim in dimension_stats:
+                stats = dimension_stats[dim]
+                variants = self.registry.get_variants(mutation.id)
+                # Log fitness for variant 0 (original) from live query
+                original = next((v for v in variants if v.variant_index == 0), None)
+                if original:
+                    self.registry.log_fitness(
+                        variant_id=original.id,
+                        case_id=f"live-{query[:30]}",
+                        brier=None,
+                        fact_yield=stats.get("facts_produced", 0.0),
+                        parse_success=stats.get("parse_success", 0.0),
+                    )
+
+        # Evaluate mutations with enough data
+        for mutation in active:
+            result = self.scorer.evaluate(mutation.id)
+            if result.decision == "PROMOTE":
+                self.promoter.promote(result, mutation.id)
+            elif result.decision == "KILL":
+                self.promoter.kill(mutation.id, result.reason)
+
+        # Trigger new mutations if idle
+        if not active:
+            flagged = self.evolver.flag_poor_templates()
+            if flagged:
+                self.mutator.mutate_batch(max_mutations=1)
+
+    def on_brier_update(self, case_id: str, brier_score: float):
+        """Called when Brier score resolved for a past case."""
+        self.registry.update_brier_for_case(case_id, brier_score)
+
+        active = self.registry.get_active_mutations(component="template")
+        for mutation in active:
+            result = self.scorer.evaluate(mutation.id)
+            if result.decision == "PROMOTE":
+                self.promoter.promote(result, mutation.id)
+            elif result.decision == "KILL":
+                self.promoter.kill(mutation.id, result.reason)
+
+    def check_regressions(self):
+        """Periodic check — rollback promoted mutations that regressed."""
+        promoted = self.registry.get_recently_promoted(days=30)
+        for mutation in promoted:
+            if self.scorer.check_regression(mutation.id):
+                self.promoter.rollback(mutation.id)
+
+    def run_sandbox_competition(self, mutation_id: int, query: str):
+        """Manually trigger a sandbox competition for a specific mutation."""
+        return self.sandbox.run_competition(mutation_id, query)
+
+    def status(self) -> dict:
+        """Return current evolution system status."""
+        active = self.registry.get_active_mutations()
+        promoted = self.registry.get_recently_promoted(days=90)
+        return {
+            "active_mutations": len(active),
+            "active_details": [
+                {"id": m.id, "component": m.component, "target": m.target_path}
+                for m in active
+            ],
+            "promotions_last_90d": len(promoted),
+            "flagged_templates": len(self.evolver.flag_poor_templates()),
+        }

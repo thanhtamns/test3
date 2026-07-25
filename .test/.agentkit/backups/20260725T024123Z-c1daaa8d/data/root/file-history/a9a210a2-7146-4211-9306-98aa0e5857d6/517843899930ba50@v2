@@ -1,0 +1,198 @@
+#!/usr/bin/env python3
+"""
+Compound Dashboard — Weekly snapshot of empire trajectory.
+Reads asset registry, calculates compound rate, generates markdown report.
+"""
+
+import argparse
+import json
+import sqlite3
+import sys
+from datetime import datetime
+from pathlib import Path
+
+DB_PATH = Path(__file__).parent.parent.parent.parent.parent / "data" / "empire" / "assets.db"
+REPORTS_DIR = Path(__file__).parent.parent.parent.parent.parent / "data" / "empire" / "reports"
+TARGET_MRR = 50000
+
+
+def get_db() -> sqlite3.Connection:
+    if not DB_PATH.exists():
+        print("No asset database found. Run asset-registry-cli.py add first.")
+        sys.exit(1)
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def get_category_summary(db) -> list[dict]:
+    rows = db.execute(
+        "SELECT category, COUNT(*) as cnt, "
+        "COALESCE(SUM(estimated_value_usd), 0) as total_val, "
+        "COALESCE(SUM(recurring_monthly_usd), 0) as total_mrr "
+        "FROM assets GROUP BY category ORDER BY category"
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_previous_snapshot(db) -> dict | None:
+    row = db.execute(
+        "SELECT * FROM compound_snapshots ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def calculate_compound_rate(current_mrr: float, previous: dict | None) -> float:
+    if not previous:
+        return 0.0
+    prev_mrr = previous["total_mrr_usd"]
+    if prev_mrr == 0:
+        return 100.0 if current_mrr > 0 else 0.0
+    return round(((current_mrr - prev_mrr) / prev_mrr) * 100, 1)
+
+
+def save_snapshot(db, total_assets: int, total_value: float, total_mrr: float, compound_rate: float):
+    gap = TARGET_MRR - total_mrr
+    db.execute(
+        "INSERT INTO compound_snapshots (total_assets, total_value_usd, total_mrr_usd, compound_rate, gap_to_target_usd) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (total_assets, total_value, total_mrr, compound_rate, gap),
+    )
+    db.commit()
+
+
+def generate_report(categories: list[dict], total_mrr: float, total_value: float,
+                    total_assets: int, compound_rate: float, previous: dict | None) -> str:
+    now = datetime.now()
+    gap = TARGET_MRR - total_mrr
+
+    from functools import reduce
+    stair = 0
+    thresholds = [0, 1, 3000, 10000, 30000, 50000]
+    for i, t in enumerate(thresholds):
+        if total_mrr >= t:
+            stair = i
+
+    lines = [
+        f"# Empire Dashboard — {now.strftime('%Y-%m-%d')}",
+        "",
+        "## Snapshot",
+        "",
+        f"| Metric | Value |",
+        f"|--------|-------|",
+        f"| Total Assets | {total_assets} |",
+        f"| Total Value | ${total_value:,.0f} |",
+        f"| Total MRR | ${total_mrr:,.0f}/mo |",
+        f"| Compound Rate | {compound_rate:+.1f}% WoW |",
+        f"| Current Stair | {stair} |",
+        f"| Gap to $50K/mo | ${gap:,.0f}/mo |",
+    ]
+
+    if total_mrr > 0 and gap > 0:
+        months_linear = gap / total_mrr
+        lines.append(f"| Months to Target (linear) | {months_linear:.0f} |")
+
+    lines += [
+        "",
+        "## Assets by Category",
+        "",
+        f"| Category | Count | Value | MRR |",
+        f"|----------|-------|-------|-----|",
+    ]
+    for c in categories:
+        lines.append(f"| {c['category']} | {c['cnt']} | ${c['total_val']:,.0f} | ${c['total_mrr']:,.0f} |")
+
+    # Recommendation
+    cat_counts = {c["category"]: c["cnt"] for c in categories}
+    all_cats = ["code", "audience", "data", "relationship", "revenue"]
+    missing = [c for c in all_cats if c not in cat_counts]
+    weakest = min(categories, key=lambda x: x["cnt"]) if categories else None
+
+    lines += ["", "## Recommended Next Move", ""]
+    if missing:
+        lines.append(f"Missing categories: **{', '.join(missing)}** — start building these assets.")
+    elif weakest:
+        lines.append(f"Weakest category: **{weakest['category']}** ({weakest['cnt']} assets) — invest here next.")
+    else:
+        lines.append("All categories balanced. Focus on increasing MRR in revenue assets.")
+
+    if previous:
+        lines += [
+            "",
+            "## Change from Last Snapshot",
+            "",
+            f"| Metric | Previous | Current | Delta |",
+            f"|--------|----------|---------|-------|",
+            f"| MRR | ${previous['total_mrr_usd']:,.0f} | ${total_mrr:,.0f} | ${total_mrr - previous['total_mrr_usd']:+,.0f} |",
+            f"| Value | ${previous['total_value_usd']:,.0f} | ${total_value:,.0f} | ${total_value - previous['total_value_usd']:+,.0f} |",
+            f"| Assets | {previous['total_assets']} | {total_assets} | {total_assets - previous['total_assets']:+d} |",
+        ]
+
+    return "\n".join(lines)
+
+
+def cmd_generate(args):
+    db = get_db()
+    categories = get_category_summary(db)
+    previous = get_previous_snapshot(db)
+
+    total_assets = sum(c["cnt"] for c in categories)
+    total_value = sum(c["total_val"] for c in categories)
+    total_mrr = sum(c["total_mrr"] for c in categories)
+    compound_rate = calculate_compound_rate(total_mrr, previous)
+
+    save_snapshot(db, total_assets, total_value, total_mrr, compound_rate)
+
+    report = generate_report(categories, total_mrr, total_value, total_assets, compound_rate, previous)
+
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    report_path = REPORTS_DIR / f"compound-{datetime.now().strftime('%Y-%m-%d')}.md"
+    report_path.write_text(report, encoding="utf-8")
+
+    print(report)
+    print(f"\nSaved to: {report_path}")
+    db.close()
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Empire Compound Dashboard")
+    sub = parser.add_subparsers(dest="command")
+    sub.add_parser("generate")
+    sub.add_parser("test")
+
+    args = parser.parse_args()
+    if not args.command:
+        args.command = "generate"
+
+    if args.command == "test":
+        run_tests()
+    else:
+        cmd_generate(args)
+
+
+def run_tests():
+    print("=== Compound Dashboard Tests ===\n")
+    passed = 0
+
+    # Test compound rate calculation
+    r = calculate_compound_rate(1000, {"total_mrr_usd": 800, "total_value_usd": 0, "total_assets": 0})
+    ok = r == 25.0
+    print(f"[{'PASS' if ok else 'FAIL'}] Compound rate: $800->$1000 = {r}% (expected 25.0%)")
+    passed += ok
+
+    r = calculate_compound_rate(0, None)
+    ok = r == 0.0
+    print(f"[{'PASS' if ok else 'FAIL'}] Compound rate: no previous = {r}% (expected 0.0%)")
+    passed += ok
+
+    r = calculate_compound_rate(100, {"total_mrr_usd": 0, "total_value_usd": 0, "total_assets": 0})
+    ok = r == 100.0
+    print(f"[{'PASS' if ok else 'FAIL'}] Compound rate: $0->$100 = {r}% (expected 100.0%)")
+    passed += ok
+
+    print(f"\nResults: {passed}/3 passed")
+    sys.exit(0 if passed == 3 else 1)
+
+
+if __name__ == "__main__":
+    main()

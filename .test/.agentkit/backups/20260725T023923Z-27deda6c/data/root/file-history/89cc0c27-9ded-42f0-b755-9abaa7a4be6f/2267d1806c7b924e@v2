@@ -1,0 +1,140 @@
+use serde::Serialize;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub enum CopyleftRisk {
+    Strong,
+    Weak,
+    None,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LicenseFinding {
+    pub pattern: String,
+    pub risk: CopyleftRisk,
+    pub line_number: usize,
+}
+
+const STRONG_COPYLEFT: &[&str] = &[
+    "GNU General Public License",
+    "GPL-2.0",
+    "GPL-3.0",
+    "AGPL-3.0",
+    "GNU Affero General Public License",
+    "EUPL",
+];
+
+const WEAK_COPYLEFT: &[&str] = &[
+    "LGPL-2.1",
+    "LGPL-3.0",
+    "GNU Lesser General Public License",
+    "Mozilla Public License",
+    "MPL-2.0",
+];
+
+pub fn scan_file(content: &str) -> Vec<LicenseFinding> {
+    let mut findings = Vec::new();
+
+    for (line_idx, line) in content.lines().enumerate() {
+        let mut matched: Vec<(&str, CopyleftRisk)> = Vec::new();
+
+        for pattern in WEAK_COPYLEFT {
+            if line.contains(pattern) {
+                matched.push((pattern, CopyleftRisk::Weak));
+            }
+        }
+        for pattern in STRONG_COPYLEFT {
+            if line.contains(pattern) {
+                matched.push((pattern, CopyleftRisk::Strong));
+            }
+        }
+
+        matched.sort_by_key(|b| std::cmp::Reverse(b.0.len()));
+        let mut used_ranges: Vec<(usize, usize)> = Vec::new();
+        for (pattern, risk) in &matched {
+            if let Some(pos) = line.find(pattern) {
+                let end = pos + pattern.len();
+                let overlaps = used_ranges.iter().any(|(s, e)| pos < *e && end > *s);
+                if !overlaps {
+                    used_ranges.push((pos, end));
+                    findings.push(LicenseFinding {
+                        pattern: pattern.to_string(),
+                        risk: risk.clone(),
+                        line_number: line_idx + 1,
+                    });
+                }
+            }
+        }
+    }
+
+    findings
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_detects_gpl_header() {
+        let content = "// Licensed under the GNU General Public License v3\n// Some code here\n";
+        let findings = scan_file(content);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].risk, CopyleftRisk::Strong);
+        assert!(findings[0].pattern.contains("GNU General Public License"));
+    }
+
+    #[test]
+    fn test_detects_agpl() {
+        let content = "# SPDX-License-Identifier: AGPL-3.0\n";
+        let findings = scan_file(content);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].risk, CopyleftRisk::Strong);
+    }
+
+    #[test]
+    fn test_detects_lgpl_as_weak() {
+        let content = "License: LGPL-3.0\n";
+        let findings = scan_file(content);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].risk, CopyleftRisk::Weak);
+    }
+
+    #[test]
+    fn test_detects_mpl_as_weak() {
+        let content = "Licensed under Mozilla Public License 2.0\n";
+        let findings = scan_file(content);
+        assert!(!findings.is_empty());
+        assert_eq!(findings[0].risk, CopyleftRisk::Weak);
+    }
+
+    #[test]
+    fn test_ignores_mit() {
+        let content = "MIT License\nPermission is hereby granted...\n";
+        let findings = scan_file(content);
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn test_ignores_apache() {
+        let content = "Licensed under the Apache License, Version 2.0\n";
+        let findings = scan_file(content);
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn test_returns_line_numbers() {
+        let content = "line one\nline two\nGPL-3.0 here\nline four\n";
+        let findings = scan_file(content);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].line_number, 3);
+    }
+
+    #[test]
+    fn test_multiple_findings() {
+        let content = "GPL-2.0\nAGPL-3.0\nMPL-2.0\n";
+        let findings = scan_file(content);
+        assert_eq!(findings.len(), 3);
+        assert_eq!(findings[0].risk, CopyleftRisk::Strong);
+        assert_eq!(findings[1].risk, CopyleftRisk::Strong);
+        assert_eq!(findings[2].risk, CopyleftRisk::Weak);
+    }
+}

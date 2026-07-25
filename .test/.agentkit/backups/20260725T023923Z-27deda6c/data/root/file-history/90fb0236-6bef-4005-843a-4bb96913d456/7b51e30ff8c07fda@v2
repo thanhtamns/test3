@@ -1,0 +1,235 @@
+#!/usr/bin/env python3
+"""Anti-Orthodox Quality Gate — Step 7.1
+
+Checks if recommendations are "ChatGPT-obvious". Flags generic advice
+that any AI or career blog would produce. Orthodox recs get rewritten
+with power-network thinking or removed.
+
+Usage:
+  python anti-orthodox-gate.py --verdict-text "recommendation text here"
+  python anti-orthodox-gate.py --verdict-file /tmp/verdict-xxx.md
+  echo "text" | python anti-orthodox-gate.py --stdin
+"""
+
+import argparse
+import json
+import re
+import sys
+from pathlib import Path
+
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8")
+
+ORTHODOX_PATTERNS = [
+    # Networking
+    r"attend\s+(events?|conferences?|meetups?|seminars?)",
+    r"build\s+(your\s+)?(network|connections|relationships|community)",
+    r"join\s+(communities|groups|associations|clubs)",
+    r"go\s+to\s+(networking|industry)\s+events?",
+    r"expand\s+(your\s+)?(network|circle|connections)",
+
+    # Content
+    r"create\s+(content|blog|podcast|youtube|linkedin\s+posts?)",
+    r"build\s+(your\s+)?(personal\s+brand|online\s+presence|thought\s+leadership)",
+    r"post\s+(regularly|consistently|weekly|daily)",
+    r"share\s+(your\s+)?(expertise|knowledge|insights|experience)",
+    r"start\s+a\s+(blog|newsletter|podcast|youtube\s+channel)",
+
+    # Cold outreach
+    r"(cold\s+)?(email|dm|message|outreach)\s+\d*\s*(people|investors|founders|companies)",
+    r"reach\s+out\s+to\s+\d+\s+(people|companies|investors|VCs)",
+    r"send\s+(linkedin|cold)\s+(messages?|invitations?|emails?)",
+    r"apply\s+to\s+\d+\s+(jobs|positions|companies|funds)",
+
+    # Generic learning
+    r"learn\s+(about|more\s+about|the\s+basics\s+of)",
+    r"take\s+(a\s+)?(course|class|certification|bootcamp)",
+    r"read\s+(books?|articles?)\s+(about|on)",
+    r"study\s+(the\s+)?(market|industry|competition)",
+
+    # Volunteer / Free work
+    r"volunteer\s+(at|for|with)",
+    r"offer\s+(free|pro\s+bono)\s+(work|services?|help|consulting)",
+    r"work\s+for\s+free\s+(to|at|with)",
+    r"intern\s+(at|with|for)",
+
+    # Generic strategy
+    r"leverage\s+(your\s+)?(skills?|experience|expertise)",
+    r"find\s+(a\s+)?(mentor|advisor|coach)",
+    r"get\s+(a\s+)?(certification|credential|degree)",
+    r"build\s+(credibility|authority|trust|reputation)",
+    r"start\s+small\s+and\s+scale",
+    r"focus\s+on\s+(value|quality|consistency)",
+]
+
+SPECIFICITY_SIGNALS = [
+    r"@\w+",                                      # Social handle
+    r"https?://\S+",                               # URL
+    r'"[^"]{15,}"',                                # Quoted script >=15 chars
+    r"(Mr|Ms|Mrs|Dr)\.\s+\w+",                    # Named person with title
+    r"\b[A-Z][a-z]+\s+[A-Z][a-z]+\b",             # Proper name (2 capitalized words)
+    r"(CEO|CTO|CFO|COO|VP|Director|Head)\s+of\s+\w+",  # Titled role at named org
+    r"(Sendo|Tiki|Shopee|Grab|VNG|FPT|Viettel|VinGroup|Masan)\b",  # Named VN companies
+    r"(Do\s+Ventures|VinaCapital|IDG|Sequoia|500\s+Global)\b",  # Named funds
+    r"say\s+(this|exactly):\s*['\"]",              # Exact script instruction
+    r"search\s+['\"].{10,}['\"]",                  # Specific search query
+    r"DM\s+[A-Z][a-z]+",                          # DM specific person
+]
+
+FRONT_DOOR_PATTERNS = [
+    r"apply\s+(to|for|directly)",
+    r"submit\s+(your\s+)?(cv|resume|application|proposal)",
+    r"compete\s+(with|against)\s+other",
+    r"cold\s+(email|call|outreach|dm)",
+    r"send\s+(your\s+)?(portfolio|pitch\s+deck|proposal)",
+    r"sign\s+up\s+(for|on|at)",
+]
+
+SIDE_DOOR_SIGNALS = [
+    r"introduc(e|tion)\s+(chain|through|via)",
+    r"(indirect|side|back)\s+(door|channel|path|route)",
+    r"manufactured\s+(proximity|coincidence)",
+    r"value.{0,20}before.{0,20}ask",
+    r"help\s+.{5,30}\s+first.{0,20}then",
+    r"→|->",  # Chain notation
+]
+
+
+def count_pattern_matches(text: str, patterns: list[str], case_sensitive: bool = False) -> int:
+    count = 0
+    flags = 0 if case_sensitive else re.IGNORECASE
+    for pattern in patterns:
+        if re.search(pattern, text, flags):
+            count += 1
+    return count
+
+
+def score_orthodoxy(recommendation: str) -> dict:
+    orthodox_hits = count_pattern_matches(recommendation, ORTHODOX_PATTERNS, case_sensitive=False)
+    specificity_hits = count_pattern_matches(recommendation, SPECIFICITY_SIGNALS, case_sensitive=True)
+    front_door_hits = count_pattern_matches(recommendation, FRONT_DOOR_PATTERNS, case_sensitive=False)
+    side_door_hits = count_pattern_matches(recommendation, SIDE_DOOR_SIGNALS, case_sensitive=False)
+
+    is_orthodox = False
+    reasons = []
+
+    # Test A: Orthodox pattern match
+    if orthodox_hits >= 2 and specificity_hits < 2:
+        is_orthodox = True
+        reasons.append(f"orthodox_pattern_match ({orthodox_hits} patterns, {specificity_hits} specificity)")
+
+    # Test B: Specificity check — no named person/company/script
+    if specificity_hits == 0 and len(recommendation) > 50:
+        is_orthodox = True
+        reasons.append("zero_specificity_signals")
+
+    # Test C: Front door vs side door
+    if front_door_hits >= 1 and side_door_hits == 0:
+        if orthodox_hits >= 1:
+            is_orthodox = True
+            reasons.append(f"front_door_only ({front_door_hits} front-door, 0 side-door)")
+
+    # Override: high specificity overrides orthodox patterns
+    if specificity_hits >= 3:
+        is_orthodox = False
+        reasons = [f"specificity_override ({specificity_hits} signals)"]
+
+    return {
+        "text": recommendation[:200],
+        "orthodox_hits": orthodox_hits,
+        "specificity_hits": specificity_hits,
+        "front_door_hits": front_door_hits,
+        "side_door_hits": side_door_hits,
+        "verdict": "ORTHODOX" if is_orthodox else "PASS",
+        "reasons": reasons,
+        "rewrite_needed": is_orthodox,
+    }
+
+
+def extract_recommendations(text: str) -> list[str]:
+    recs = []
+    lines = text.split("\n")
+    current_rec = []
+
+    for line in lines:
+        stripped = line.strip()
+        # Detect recommendation blocks (numbered, bulleted, or action-oriented)
+        if re.match(r"^(\d+[\.\)]\s|[-*]\s|>\s|###?\s)", stripped):
+            if current_rec:
+                recs.append(" ".join(current_rec))
+            current_rec = [stripped]
+        elif stripped and current_rec:
+            current_rec.append(stripped)
+        elif not stripped and current_rec:
+            recs.append(" ".join(current_rec))
+            current_rec = []
+
+    if current_rec:
+        recs.append(" ".join(current_rec))
+
+    # Filter out very short lines (headers, metadata)
+    recs = [r for r in recs if len(r) > 30]
+    return recs
+
+
+def gate_check(text: str) -> dict:
+    recommendations = extract_recommendations(text)
+    results = []
+    orthodox_count = 0
+    pass_count = 0
+
+    for rec in recommendations:
+        score = score_orthodoxy(rec)
+        results.append(score)
+        if score["verdict"] == "ORTHODOX":
+            orthodox_count += 1
+        else:
+            pass_count += 1
+
+    # Exception: if ALL are orthodox, keep top 2 most specific
+    kept_despite_orthodox = 0
+    if orthodox_count > 0 and pass_count == 0 and len(results) > 0:
+        sorted_by_specificity = sorted(results, key=lambda x: x["specificity_hits"], reverse=True)
+        for i, r in enumerate(sorted_by_specificity[:2]):
+            r["verdict"] = "KEPT_DESPITE_ORTHODOX"
+            r["rewrite_needed"] = False
+            r["reasons"].append("all_orthodox_exception: kept as most specific")
+            kept_despite_orthodox += 1
+
+    return {
+        "total_checked": len(results),
+        "orthodox_flagged": orthodox_count - kept_despite_orthodox,
+        "passed": pass_count + kept_despite_orthodox,
+        "kept_despite_orthodox": kept_despite_orthodox,
+        "results": results,
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Anti-Orthodox Quality Gate (Step 7.1)")
+    parser.add_argument("--verdict-text", default=None, help="Direct text to check")
+    parser.add_argument("--verdict-file", default=None, help="Path to verdict markdown")
+    parser.add_argument("--stdin", action="store_true", help="Read from stdin")
+    args = parser.parse_args()
+
+    text = ""
+    if args.verdict_text:
+        text = args.verdict_text
+    elif args.verdict_file:
+        path = Path(args.verdict_file)
+        if not path.exists():
+            print(json.dumps({"error": f"file not found: {args.verdict_file}"}))
+            sys.exit(1)
+        text = path.read_text(encoding="utf-8")
+    elif args.stdin:
+        text = sys.stdin.read()
+    else:
+        parser.print_help()
+        sys.exit(1)
+
+    result = gate_check(text)
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

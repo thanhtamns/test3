@@ -1,0 +1,76 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+
+export interface LiveMetrics {
+  tokens_saved_today: number;
+  events_today: number;
+  active_sessions: number;
+  timestamp: number;
+}
+
+const WS_URL =
+  process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080/v1/ws";
+const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID || "";
+
+export function useLiveMetrics() {
+  const [metrics, setMetrics] = useState<LiveMetrics | null>(null);
+  const [connected, setConnected] = useState(false);
+  const wsRef = useRef<WebSocket | null>(null);
+  const retriesRef = useRef(0);
+  const maxRetries = 10;
+
+  useEffect(() => {
+    function connect() {
+      if (wsRef.current?.readyState === WebSocket.OPEN) return;
+
+      const url = `${WS_URL}?tenant_id=${TENANT_ID}`;
+      const ws = new WebSocket(url);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        setConnected(true);
+        retriesRef.current = 0;
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data) as LiveMetrics;
+          setMetrics((prev) => {
+            if (!prev) return data;
+            return {
+              tokens_saved_today:
+                prev.tokens_saved_today + data.tokens_saved_today,
+              events_today: prev.events_today + data.events_today,
+              active_sessions: data.active_sessions || prev.active_sessions,
+              timestamp: data.timestamp,
+            };
+          });
+        } catch {
+          // ignore malformed messages
+        }
+      };
+
+      ws.onclose = () => {
+        setConnected(false);
+        wsRef.current = null;
+        if (retriesRef.current < maxRetries) {
+          const delay = Math.min(1000 * 2 ** retriesRef.current, 30000);
+          retriesRef.current++;
+          setTimeout(connect, delay);
+        }
+      };
+
+      ws.onerror = () => {
+        ws.close();
+      };
+    }
+
+    connect();
+    return () => {
+      wsRef.current?.close();
+    };
+  }, []);
+
+  return { metrics, connected };
+}

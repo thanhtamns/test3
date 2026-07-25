@@ -1,0 +1,21 @@
+{
+  "id": "5",
+  "subject": "Phase 5: E2E Verification",
+  "description": "Full end-to-end verification: docker compose up → seed → verify API → verify all 7 dashboard pages → CLI sync → WebSocket live metrics. See plans/260605-investor-demo-stack/phase-05-e2e-verification.md",
+  "activeForm": "Running E2E verification",
+  "status": "pending",
+  "blocks": [],
+  "blockedBy": [
+    "1",
+    "2",
+    "3",
+    "4"
+  ],
+  "metadata": {
+    "phase": 5,
+    "planDir": "plans/260605-investor-demo-stack",
+    "phaseFile": "phase-05-e2e-verification.md",
+    "priority": "P1",
+    "effort": "1h"
+  }
+}

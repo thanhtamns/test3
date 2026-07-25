@@ -1,0 +1,246 @@
+"""Tests for Brain 3: Anomaly Cross-Reference Engine."""
+
+import pytest
+from ..anomaly_crossref import AnomalyCrossReferencer
+from ..models import PriceDelta, ForcedFlow, AnomalyCard, FounderProfile
+
+
+def _make_delta(**kwargs) -> PriceDelta:
+    defaults = dict(product="coffee", market_a="Vietnam", market_b="EU",
+                    price_a=2.5, price_b=4.0, currency="USD", unit="kg",
+                    bridge_cost=0.5, sources=["http://example.com"])
+    defaults.update(kwargs)
+    return PriceDelta(**defaults)
+
+
+def _make_flow(**kwargs) -> ForcedFlow:
+    defaults = dict(regulation="EUDR", jurisdiction="EU",
+                    effective_date="2026-12-30", who_must_comply="coffee importers",
+                    entity_count=10000, compliance_cost=5000,
+                    provider_gap="no VN traceability provider",
+                    deadline_urgency=180, sources=["http://eur-lex.example"])
+    defaults.update(kwargs)
+    return ForcedFlow(**defaults)
+
+
+def _make_founder(**kwargs) -> FounderProfile:
+    defaults = dict(industries=["coffee export"], languages=["Vietnamese", "English"],
+                    location="Dak Lak, Vietnam", domain_expertise=["commodity trading"],
+                    capital_range="$5K-$20K")
+    defaults.update(kwargs)
+    return FounderProfile(**defaults)
+
+
+class TestRuleForcedCreatesDelta:
+    def test_matching_market(self):
+        xref = AnomalyCrossReferencer()
+        delta = _make_delta(market_b="EU")
+        flow = _make_flow(jurisdiction="EU")
+        assert xref._rule_forced_creates_delta(delta, flow)
+
+    def test_matching_industry(self):
+        xref = AnomalyCrossReferencer()
+        delta = _make_delta(product="coffee")
+        flow = _make_flow(who_must_comply="coffee importers")
+        assert xref._rule_forced_creates_delta(delta, flow)
+
+    def test_no_match(self):
+        xref = AnomalyCrossReferencer()
+        delta = _make_delta(product="rubber", market_a="Thailand", market_b="Japan")
+        flow = _make_flow(jurisdiction="US", who_must_comply="tech companies",
+                          regulation="US AI Act")
+        assert not xref._rule_forced_creates_delta(delta, flow)
+
+
+class TestRuleFounderAccess:
+    def test_vn_founder_vn_market(self):
+        xref = AnomalyCrossReferencer()
+        delta = _make_delta(market_a="Vietnam")
+        founder = _make_founder(location="Dak Lak, Vietnam", languages=["Vietnamese"])
+        score = xref._rule_delta_founder_access(delta, founder)
+        assert score >= 0.4
+
+    def test_no_match(self):
+        xref = AnomalyCrossReferencer()
+        delta = _make_delta(market_a="Brazil", market_b="Germany")
+        founder = _make_founder(location="Vietnam", languages=["Vietnamese"],
+                                industries=["tech"])
+        score = xref._rule_delta_founder_access(delta, founder)
+        assert score < 0.3
+
+
+class TestRuleFounderExpertise:
+    def test_matching_expertise(self):
+        xref = AnomalyCrossReferencer()
+        flow = _make_flow(regulation="EUDR", who_must_comply="coffee importers",
+                          provider_gap="commodity traceability")
+        founder = _make_founder(domain_expertise=["commodity trading"])
+        score = xref._rule_flow_founder_expertise(flow, founder)
+        assert score >= 0.4
+
+    def test_no_expertise(self):
+        xref = AnomalyCrossReferencer()
+        flow = _make_flow(regulation="Basel IV", who_must_comply="banks")
+        founder = _make_founder(domain_expertise=["coffee"], industries=["agriculture"])
+        score = xref._rule_flow_founder_expertise(flow, founder)
+        assert score < 0.3
+
+
+class TestRuleHistoricalPersistence:
+    def test_same_delta_boosts(self):
+        old_card = AnomalyCard(
+            anomaly_type="PRICE_DELTA",
+            delta=_make_delta(product="coffee", market_a="Vietnam").to_dict(),
+            delta_trend="STABLE",
+        )
+        xref = AnomalyCrossReferencer(historical=[old_card])
+        new_card = AnomalyCard(
+            anomaly_type="PRICE_DELTA",
+            delta=_make_delta(product="coffee", market_a="Vietnam").to_dict(),
+        )
+        boost = xref._rule_historical_persistence(new_card)
+        assert boost > 0
+
+    def test_shrinking_no_boost(self):
+        old_card = AnomalyCard(
+            anomaly_type="PRICE_DELTA",
+            delta=_make_delta(product="coffee", market_a="Vietnam").to_dict(),
+            delta_trend="SHRINKING",
+        )
+        xref = AnomalyCrossReferencer(historical=[old_card])
+        new_card = AnomalyCard(
+            anomaly_type="PRICE_DELTA",
+            delta=_make_delta(product="coffee", market_a="Vietnam").to_dict(),
+        )
+        boost = xref._rule_historical_persistence(new_card)
+        assert boost == 0.0
+
+    def test_no_history(self):
+        xref = AnomalyCrossReferencer(historical=[])
+        card = AnomalyCard(anomaly_type="PRICE_DELTA",
+                           delta=_make_delta().to_dict())
+        assert xref._rule_historical_persistence(card) == 0.0
+
+
+class TestRuleConvergence:
+    def test_three_signals_boost(self):
+        xref = AnomalyCrossReferencer()
+        cards = [
+            AnomalyCard(delta={"product": "coffee"}, flow=None),
+            AnomalyCard(delta={"product": "coffee"}, flow=None),
+            AnomalyCard(delta={"product": "coffee"}, flow=None),
+        ]
+        boosts = xref._rule_convergence(cards)
+        assert "coffee" in boosts
+        assert boosts["coffee"] == pytest.approx(0.2)
+
+    def test_two_signals_no_boost(self):
+        xref = AnomalyCrossReferencer()
+        cards = [
+            AnomalyCard(delta={"product": "coffee"}, flow=None),
+            AnomalyCard(delta={"product": "coffee"}, flow=None),
+        ]
+        boosts = xref._rule_convergence(cards)
+        assert "coffee" not in boosts
+
+
+class TestCrossReference:
+    def test_intersection_card_created(self):
+        xref = AnomalyCrossReferencer()
+        deltas = [_make_delta()]
+        flows = [_make_flow()]
+        founder = _make_founder()
+        cards = xref.cross_reference(deltas, flows, founder)
+        intersection_cards = [c for c in cards if c.anomaly_type == "INTERSECTION"]
+        assert len(intersection_cards) >= 1
+        card = intersection_cards[0]
+        assert card.position_type in ("BROKER", "ARBITRAGE", "INTELLIGENCE", "AGGREGATOR")
+        assert card.delta is not None
+        assert card.flow is not None
+
+    def test_standalone_delta_card(self):
+        xref = AnomalyCrossReferencer()
+        delta = _make_delta(product="rubber", market_a="Thailand", market_b="Japan")
+        founder = _make_founder(languages=["Japanese", "Thai"],
+                                industries=["rubber"], location="Bangkok")
+        cards = xref.cross_reference([delta], [], founder)
+        assert len(cards) >= 1
+        assert cards[0].anomaly_type == "PRICE_DELTA"
+
+    def test_standalone_flow_card(self):
+        xref = AnomalyCrossReferencer()
+        flow = _make_flow(regulation="VN Circular 78", jurisdiction="VN",
+                          who_must_comply="enterprises",
+                          provider_gap="digital tax filing")
+        founder = _make_founder(domain_expertise=["VN tax"], location="Vietnam")
+        cards = xref.cross_reference([], [flow], founder)
+        assert len(cards) >= 1
+        assert cards[0].anomaly_type == "FORCED_FLOW"
+
+    def test_no_cards_without_founder_match(self):
+        xref = AnomalyCrossReferencer()
+        delta = _make_delta(product="rubber", market_a="Brazil", market_b="Germany")
+        flow = _make_flow(regulation="Basel IV", jurisdiction="global",
+                          who_must_comply="banks")
+        founder = _make_founder(industries=["coffee"], languages=["Vietnamese"],
+                                location="Vietnam", domain_expertise=["agriculture"])
+        cards = xref.cross_reference([delta], [flow], founder)
+        # May still get intersection card (geo/industry match), but low scores
+        for card in cards:
+            if card.anomaly_type not in ("INTERSECTION",):
+                assert card.founder_fit < 0.3
+
+
+class TestContactGeneration:
+    def test_five_contacts_generated(self):
+        xref = AnomalyCrossReferencer()
+        cards = xref.cross_reference([_make_delta()], [_make_flow()], _make_founder())
+        assert len(cards) > 0
+        card = cards[0]
+        assert len(card.contacts) == 5
+        assert card.script != ""
+        demand = [c for c in card.contacts if c["side"] == "demand"]
+        supply = [c for c in card.contacts if c["side"] == "supply"]
+        assert len(demand) >= 2
+        assert len(supply) >= 1
+
+
+class TestKillCriteria:
+    def test_intersection_has_kill_criteria(self):
+        xref = AnomalyCrossReferencer()
+        cards = xref.cross_reference([_make_delta()], [_make_flow()], _make_founder())
+        card = cards[0]
+        assert card.kill_criteria != ""
+        assert "Spread" in card.kill_criteria or "response" in card.kill_criteria
+
+    def test_deadline_from_flow(self):
+        xref = AnomalyCrossReferencer()
+        cards = xref.cross_reference([_make_delta()], [_make_flow()], _make_founder())
+        intersection = [c for c in cards if c.anomaly_type == "INTERSECTION"]
+        if intersection:
+            assert intersection[0].deadline == "2026-12-30"
+
+
+class TestScoring:
+    def test_deterministic_scores(self):
+        xref = AnomalyCrossReferencer()
+        founder = _make_founder()
+        cards1 = xref.cross_reference([_make_delta()], [_make_flow()], founder)
+        xref2 = AnomalyCrossReferencer()
+        cards2 = xref2.cross_reference([_make_delta()], [_make_flow()], founder)
+        assert len(cards1) == len(cards2)
+        for c1, c2 in zip(cards1, cards2):
+            assert c1.anomaly_score == pytest.approx(c2.anomaly_score)
+            assert c1.founder_fit == pytest.approx(c2.founder_fit)
+
+    def test_sorted_by_rank(self):
+        xref = AnomalyCrossReferencer()
+        deltas = [
+            _make_delta(product="coffee", spread_pct=60),
+            _make_delta(product="pepper", market_a="Vietnam", market_b="US",
+                        price_a=5, price_b=8, spread_pct=60),
+        ]
+        flows = [_make_flow()]
+        cards = xref.cross_reference(deltas, flows, _make_founder())
+        ranks = [c.final_rank() for c in cards]
+        assert ranks == sorted(ranks, reverse=True)

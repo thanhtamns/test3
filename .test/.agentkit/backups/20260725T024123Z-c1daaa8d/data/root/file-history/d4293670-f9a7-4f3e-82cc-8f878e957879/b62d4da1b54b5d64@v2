@@ -1,0 +1,347 @@
+//! `rtk export` — codeflow data export (Phase 6).
+//!
+//! Usage:
+//!   rtk export                          — HTML dashboard, last 90 days
+//!   rtk export --format json|csv|html   — explicit format
+//!   rtk export --range 30d|90d|1y|all   — date range
+//!   rtk export --project <name>         — filter by project path substring
+//!   rtk export --output <dir>           — output directory (default: ./codeflow-export/)
+//!   rtk export --json                   — when format=json, print to stdout
+
+use anyhow::{Context, Result};
+use colored::Colorize;
+
+use crate::compliance::report_common::range_to_since;
+use crate::core::exporter::{export_csv, export_html, export_json, load_export_data};
+
+// ── Public args struct ────────────────────────────────────────────────────────
+
+pub struct ExportArgs {
+    pub format: String,
+    pub range: String,
+    pub project: Option<String>,
+    pub output: Option<String>,
+    /// When format=json, print to stdout instead of writing a file.
+    pub json_stdout: bool,
+}
+
+impl Default for ExportArgs {
+    fn default() -> Self {
+        Self {
+            format: "html".to_string(),
+            range: "90d".to_string(),
+            project: None,
+            output: None,
+            json_stdout: false,
+        }
+    }
+}
+
+// ── Entry point ───────────────────────────────────────────────────────────────
+
+pub fn run(args: &ExportArgs) -> Result<i32> {
+    let since = range_to_since(&args.range);
+    let since_str = since.as_deref();
+
+    let (records, costs, stats) =
+        load_export_data(since_str, args.project.as_deref())
+            .context("failed to load export data")?;
+
+    let fmt = args.format.to_lowercase();
+
+    // JSON → stdout shortcut
+    if fmt == "json" && args.json_stdout {
+        let content = export_json(&records, &costs, &stats)
+            .context("failed to generate JSON export")?;
+        println!("{}", content);
+        return Ok(0);
+    }
+
+    // Determine output directory
+    let out_dir = std::path::PathBuf::from(
+        args.output.as_deref().unwrap_or("codeflow-export"),
+    );
+    std::fs::create_dir_all(&out_dir)
+        .with_context(|| format!("failed to create output dir: {}", out_dir.display()))?;
+
+    // Build timestamped filename
+    let ts = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
+    let (content, ext) = match fmt.as_str() {
+        "json" => (
+            export_json(&records, &costs, &stats).context("JSON export failed")?,
+            "json",
+        ),
+        "csv" => (
+            export_csv(&records).context("CSV export failed")?,
+            "csv",
+        ),
+        "html" => (
+            export_html(&records, &costs, &stats).context("HTML export failed")?,
+            "html",
+        ),
+        other => {
+            eprintln!(
+                "[rtk export] unknown format '{}', supported: html, json, csv. Defaulting to html.",
+                other
+            );
+            (
+                export_html(&records, &costs, &stats).context("HTML export failed")?,
+                "html",
+            )
+        }
+    };
+
+    let filename = format!("{}-codeflow-{}.{}", ts, fmt, ext);
+    let out_path = out_dir.join(&filename);
+
+    std::fs::write(&out_path, &content)
+        .with_context(|| format!("failed to write export: {}", out_path.display()))?;
+
+    // Human-readable summary
+    println!("{}", "Codeflow Export".bold());
+    println!("{}", "─".repeat(50));
+    println!("  Format:    {}", fmt.cyan().bold());
+    println!("  Range:     {}", args.range);
+    println!("  Records:   {}", stats.total_files.to_string().yellow());
+    println!(
+        "  Cost:      {}",
+        format!("${:.4}", stats.total_cost_usd).yellow()
+    );
+    println!("  AI Code:   {:.1}%", stats.ai_pct);
+    println!();
+    println!("  Output:    {}", out_path.display().to_string().green().bold());
+
+    if ext == "html" {
+        println!();
+        println!(
+            "  {}",
+            "Open in browser: file://".dimmed().to_string()
+                + &out_path
+                    .canonicalize()
+                    .unwrap_or(out_path.clone())
+                    .display()
+                    .to_string()
+        );
+    }
+
+    if stats.total_files == 0 {
+        println!();
+        println!(
+            "  {}",
+            "No records found for this range. Run with RTK_CODEFLOW=1 to start recording."
+                .dimmed()
+        );
+    }
+
+    Ok(0)
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn set_temp_dbs(dir: &std::path::Path) {
+        std::env::set_var(
+            "RTK_PROVENANCE_DB",
+            dir.join("provenance.db").to_str().unwrap(),
+        );
+        std::env::set_var("RTK_COST_DB", dir.join("cost.db").to_str().unwrap());
+    }
+
+    fn clear_temp_dbs() {
+        std::env::remove_var("RTK_PROVENANCE_DB");
+        std::env::remove_var("RTK_COST_DB");
+    }
+
+    // 1. Default args struct has expected values
+    #[test]
+    fn default_args_are_html_90d() {
+        let args = ExportArgs::default();
+        assert_eq!(args.format, "html");
+        assert_eq!(args.range, "90d");
+        assert!(args.project.is_none());
+        assert!(!args.json_stdout);
+    }
+
+    // 2. Export command creates output directory
+    #[test]
+    fn export_creates_output_dir() {
+        let tmp = tempdir().unwrap();
+        let out_dir = tmp.path().join("nested").join("export-out");
+        set_temp_dbs(tmp.path());
+
+        let args = ExportArgs {
+            format: "html".to_string(),
+            range: "90d".to_string(),
+            output: Some(out_dir.to_string_lossy().into_owned()),
+            ..ExportArgs::default()
+        };
+        let result = run(&args);
+        clear_temp_dbs();
+
+        assert!(result.is_ok());
+        assert!(out_dir.exists(), "output directory should be created");
+    }
+
+    // 3. HTML export writes file with correct extension
+    #[test]
+    fn html_export_writes_html_file() {
+        let tmp = tempdir().unwrap();
+        set_temp_dbs(tmp.path());
+
+        let args = ExportArgs {
+            format: "html".to_string(),
+            output: Some(tmp.path().to_string_lossy().into_owned()),
+            ..ExportArgs::default()
+        };
+        run(&args).unwrap();
+        clear_temp_dbs();
+
+        let files: Vec<_> = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".html"))
+            .collect();
+        assert_eq!(files.len(), 1);
+        let name = files[0].file_name().to_string_lossy().into_owned();
+        assert!(name.contains("codeflow-html"));
+    }
+
+    // 4. JSON export writes file with correct extension
+    #[test]
+    fn json_export_writes_json_file() {
+        let tmp = tempdir().unwrap();
+        set_temp_dbs(tmp.path());
+
+        let args = ExportArgs {
+            format: "json".to_string(),
+            output: Some(tmp.path().to_string_lossy().into_owned()),
+            json_stdout: false,
+            ..ExportArgs::default()
+        };
+        run(&args).unwrap();
+        clear_temp_dbs();
+
+        let files: Vec<_> = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".json"))
+            .collect();
+        assert_eq!(files.len(), 1);
+    }
+
+    // 5. CSV export writes file with correct extension
+    #[test]
+    fn csv_export_writes_csv_file() {
+        let tmp = tempdir().unwrap();
+        set_temp_dbs(tmp.path());
+
+        let args = ExportArgs {
+            format: "csv".to_string(),
+            output: Some(tmp.path().to_string_lossy().into_owned()),
+            ..ExportArgs::default()
+        };
+        run(&args).unwrap();
+        clear_temp_dbs();
+
+        let files: Vec<_> = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".csv"))
+            .collect();
+        assert_eq!(files.len(), 1);
+    }
+
+    // 6. Output filename contains timestamp prefix
+    #[test]
+    fn output_filename_has_timestamp_prefix() {
+        let tmp = tempdir().unwrap();
+        set_temp_dbs(tmp.path());
+
+        let args = ExportArgs {
+            format: "json".to_string(),
+            output: Some(tmp.path().to_string_lossy().into_owned()),
+            json_stdout: false,
+            ..ExportArgs::default()
+        };
+        run(&args).unwrap();
+        clear_temp_dbs();
+
+        let files: Vec<_> = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .collect();
+        assert!(!files.is_empty());
+        let name = files[0].file_name().to_string_lossy().into_owned();
+        // Timestamp format: 20YYMMDDTHHMMSSZ
+        assert!(name.starts_with("20"), "filename should start with year");
+    }
+
+    // 7. Range variants are accepted without error
+    #[test]
+    fn range_all_is_accepted() {
+        let tmp = tempdir().unwrap();
+        set_temp_dbs(tmp.path());
+
+        let args = ExportArgs {
+            format: "csv".to_string(),
+            range: "all".to_string(),
+            output: Some(tmp.path().to_string_lossy().into_owned()),
+            ..ExportArgs::default()
+        };
+        let result = run(&args);
+        clear_temp_dbs();
+        assert!(result.is_ok());
+    }
+
+    // 8. Written HTML file contains DOCTYPE
+    #[test]
+    fn written_html_contains_doctype() {
+        let tmp = tempdir().unwrap();
+        set_temp_dbs(tmp.path());
+
+        let args = ExportArgs {
+            format: "html".to_string(),
+            output: Some(tmp.path().to_string_lossy().into_owned()),
+            ..ExportArgs::default()
+        };
+        run(&args).unwrap();
+        clear_temp_dbs();
+
+        let file = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .find(|e| e.file_name().to_string_lossy().ends_with(".html"))
+            .unwrap();
+        let content = std::fs::read_to_string(file.path()).unwrap();
+        assert!(content.contains("<!DOCTYPE html>"));
+    }
+
+    // 9. Written JSON file is valid JSON
+    #[test]
+    fn written_json_file_is_valid_json() {
+        let tmp = tempdir().unwrap();
+        set_temp_dbs(tmp.path());
+
+        let args = ExportArgs {
+            format: "json".to_string(),
+            output: Some(tmp.path().to_string_lossy().into_owned()),
+            json_stdout: false,
+            ..ExportArgs::default()
+        };
+        run(&args).unwrap();
+        clear_temp_dbs();
+
+        let file = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .find(|e| e.file_name().to_string_lossy().ends_with(".json"))
+            .unwrap();
+        let content = std::fs::read_to_string(file.path()).unwrap();
+        let parsed: Result<serde_json::Value, _> = serde_json::from_str(&content);
+        assert!(parsed.is_ok(), "exported JSON should be valid");
+    }
+}

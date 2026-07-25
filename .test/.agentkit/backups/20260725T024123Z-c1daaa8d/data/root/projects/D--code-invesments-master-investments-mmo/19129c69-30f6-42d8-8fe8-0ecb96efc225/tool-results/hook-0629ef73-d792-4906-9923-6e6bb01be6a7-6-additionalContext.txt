@@ -1,0 +1,385 @@
+## 🔬 Non-Google Research Source Ladder — AUTO-EXECUTED
+
+**Topic:** hãy kiểm tra và test lại hệ thống master_investments xem đã thực sự được cải thiện hơn chưa và còn vấn đề nào khác không?  Hiện tại chất lượng khá kém và tư duy không được tiến hóa thực sự tốt, không thông minh, không tìm đủ mọi cách để đạt được mục tiêu, tìm con đường khác biệt 
+**Routes auto-detected:** `western_bootstrap_saas` (6 kw hits: bootstrap, bootstrapped, micro-saas) + `ai_tools_grey` (1 kw hits: midjourney)
+
+### Route: `western_bootstrap_saas`
+**Cache:** MISS (20.51s)
+**Tiers probed:** operator_dashboards, podcast_transcripts, acquisition_marketplaces, github_oss_metrics, reddit_operator_subs, trends_newsletters, hackernews_ask, twitter_operator_lists
+**Total sources:** 32
+**Drill recommended:** 21
+**Skipped (low signal):** 6
+**Errored:** 3
+**Tool refs (skipped clean):** 2
+
+**🎯 Deep-drill these sources NOW** (signal density confirmed):
+- **Bootstrapped Founders (Arvid Kahl)** [50 signals] https://thebootstrappedfounder.com/
+  - Examples: [dollar_amount] $200 | [named_entity] The Bootstrapped Founder | [named_entity] How
+- **Empire Flippers** [50 signals] https://empireflippers.com/marketplace/
+  - Examples: [dollar_amount] $23,000,000 | [dollar_amount] $383,476 | [dollar_amount] $1,466,109
+- **Plausible Analytics blog** [50 signals] https://plausible.io/blog
+  - Examples: [dollar_amount] $1M | [dollar_amount] $1 | [dollar_amount] $500k
+- **Acquire.com** [50 signals] https://acquire.com/buyers/
+  - Examples: [named_entity] View | [named_entity] Online Businesses | [named_entity] Sale
+- **IndieHackers /tech** [50 signals] https://www.indiehackers.com/tech
+  - Examples: [dollar_amount] $20k | [dollar_amount] $3k | [dollar_amount] $1M
+- **GitHub trending** [50 signals] https://github.com/trending
+  - Examples: [named_entity] Trending | [named_entity] GitHub | [named_entity] GitHub Skip
+- **Trends.co (The Hustle)** [50 signals] https://trends.co/
+  - Examples: [dollar_amount] $100m | [dollar_amount] $200k | [named_entity] Trends
+- **MicroAcquire (now Acquire.com)** [50 signals] https://acquire.com/
+  - Examples: [dollar_amount] $500M | [dollar_amount] $2B | [named_entity] Buy
+- **Starter Story interviews** [50 signals] https://www.starterstory.com/ideas/podcast/
+  - Examples: [dollar_amount] $204K | [dollar_amount] $20.5K | [dollar_amount] $400
+- **IndieHackers podcast archive** [50 signals] https://www.indiehackers.com/podcasts
+  - Examples: [dollar_amount] $60 | [dollar_amount] $3 | [dollar_amount] $20k
+- **GitHub code search** [50 signals] https://github.com/search?type=code&q=h%C3%A3y+ki%E1%BB%83m+tra+v%C3%A0+test+l%E1%BA%A1i+h%E1%BB%87+th%E1%BB%91ng+master_investments+xem+%C4%91%C3%A3+th%E1%BB%B1c+s%E1%BB%B1+%C4%91%C6%B0%E1%BB%A3c+c%E1%BA%A3i+thi%E1%BB%87n+h%C6%A1n+ch%C6%B0a+v%C3%A0+c%C3%B2n+v%E1%BA%A5n+%C4%91%E1%BB%81+n%C3%A0o+kh%C3%A1c+kh%C3%B4ng%3F++Hi%E1%BB%87n+t%E1%BA%A1i+ch%E1%BA%A5t+l%C6%B0%E1%BB%A3ng+kh%C3%A1+k%C3%A9m+v%C3%A0+t%C6%B0+duy+kh%C3%B4ng+%C4%91%C6%B0%E1%BB%A3c+ti%E1%BA%BFn+h%C3%B3a+th%E1%BB%B1c+s%E1%BB%B1+t%E1%BB%91t%2C+kh%C3%B4ng+th%C3%B4ng+minh%2C+kh%C3%B4ng+t%C3%ACm+%C4%91%E1%BB%A7+m%E1%BB%8Di+c%C3%A1ch+%C4%91%E1%BB%83+%C4%91%E1%BA%A1t+%C4%91%C6%B0%E1%BB%A3c+m%E1%BB%A5c+ti%C3%AAu%2C+t%C3%ACm+con+%C4%91%C6%B0%E1%BB%9Dng+kh%C3%A1c+bi%E1%BB%87t+
+  - Examples: [named_entity] Code | [named_entity] GitHub Skip | [named_entity] Navigation Menu Toggle
+- **Cal.com public metrics** [50 signals] https://cal.com/about
+  - Examples: [named_entity] Learn More About Cal | [named_entity] Story | [named_entity] Cal
+- **SwipeFiles by Corey Haines** [50 signals] https://swipefiles.com/
+  - Examples: [named_entity] Swipe Files | [named_entity] SaaS Marketing Newsletter | [named_entity] Community Corey Haines
+- **Lobste.rs** [50 signals] https://lobste.rs/
+  - Examples: [named_entity] Lobsters Active Recent Comments | [named_entity] Search Login Login | [named_entity] Just Fucking Use
+- **MicroConf YouTube transcripts** [3 signals] https://www.youtube.com/@microconf
+  - Examples: [named_entity] MicroConf | [named_entity] YouTube | [named_entity] Google LLC
+- **HN Algolia search** [3 signals] https://hn.algolia.com/?query=
+  - Examples: [named_entity] Hacker News Search | [named_entity] Algolia This | [named_entity] JavaScript
+- **Flippa** [50 signals] https://flippa.com/buy
+  - Examples: [dollar_amount] $0 | [dollar_amount] $999 | [dollar_amount] $5,000
+- **Trends.vc** [50 signals] https://trends.vc/
+  - Examples: [dollar_amount] 100 USD | [named_entity] Discover | [named_entity] Trends
+- **BaseCase / Buttondown public metrics** [30 signals] https://buttondown.com/about
+  - Examples: [named_entity] About | [named_entity] Buttondown Buttondown Features Resources | [named_entity] Pricing Log
+- **GitHub Sponsors leaderboards** [50 signals] https://github.com/sponsors/explore
+  - Examples: [named_entity] Explore GitHub Sponsors | [named_entity] GitHub Skip | [named_entity] Navigation Menu Toggle
+- **HN Ask/Show top** [36 signals] https://news.ycombinator.com/ask
+  - Examples: [named_entity] Ask | [named_entity] Hacker News Hacker News | [named_entity] UUID
+
+**⚠ Errored sources** (consider Playwright escalation if signal is critical):
+- nitter.privacydev.net (fallback) (ConnectionError: HTTPSConnectionPool(host='nitter.privacydev.net', port=443): Ma)
+- Sourcegraph (HTTP 404)
+- nitter.net (primary) ()
+
+### Route: `ai_tools_grey`
+**Cache:** MISS (27.37s)
+**Tiers probed:** github_code_search, github_oss_metrics, hackernews_ask, trends_newsletters, reddit_operator_subs, twitter_operator_lists
+**Total sources:** 24
+**Drill recommended:** 12
+**Skipped (low signal):** 6
+**Errored:** 4
+**Tool refs (skipped clean):** 2
+
+**🎯 Deep-drill these sources NOW** (signal density confirmed):
+- **GitHub code search (web UI)** [50 signals] https://github.com/search?type=code&q=h%C3%A3y+ki%E1%BB%83m+tra+v%C3%A0+test+l%E1%BA%A1i+h%E1%BB%87+th%E1%BB%91ng+master_investments+xem+%C4%91%C3%A3+th%E1%BB%B1c+s%E1%BB%B1+%C4%91%C6%B0%E1%BB%A3c+c%E1%BA%A3i+thi%E1%BB%87n+h%C6%A1n+ch%C6%B0a+v%C3%A0+c%C3%B2n+v%E1%BA%A5n+%C4%91%E1%BB%81+n%C3%A0o+kh%C3%A1c+kh%C3%B4ng%3F++Hi%E1%BB%87n+t%E1%BA%A1i+ch%E1%BA%A5t+l%C6%B0%E1%BB%A3ng+kh%C3%A1+k%C3%A9m+v%C3%A0+t%C6%B0+duy+kh%C3%B4ng+%C4%91%C6%B0%E1%BB%A3c+ti%E1%BA%BFn+h%C3%B3a+th%E1%BB%B1c+s%E1%BB%B1+t%E1%BB%91t%2C+kh%C3%B4ng+th%C3%B4ng+minh%2C+kh%C3%B4ng+t%C3%ACm+%C4%91%E1%BB%A7+m%E1%BB%8Di+c%C3%A1ch+%C4%91%E1%BB%83+%C4%91%E1%BA%A1t+%C4%91%C6%B0%E1%BB%A3c+m%E1%BB%A5c+ti%C3%AAu%2C+t%C3%ACm+con+%C4%91%C6%B0%E1%BB%9Dng+kh%C3%A1c+bi%E1%BB%87t+
+  - Examples: [named_entity] Code | [named_entity] GitHub Skip | [named_entity] Navigation Menu Toggle
+- **Trends.co (The Hustle)** [50 signals] https://trends.co/
+  - Examples: [dollar_amount] $100m | [dollar_amount] $200k | [named_entity] Trends
+- **Lobste.rs** [50 signals] https://lobste.rs/
+  - Examples: [named_entity] Lobsters Active Recent Comments | [named_entity] Search Login Login | [named_entity] Just Fucking Use
+- **SwipeFiles by Corey Haines** [50 signals] https://swipefiles.com/
+  - Examples: [named_entity] Swipe Files | [named_entity] SaaS Marketing Newsletter | [named_entity] Community Corey Haines
+- **Sourcegraph cloud search** [5 signals] https://sourcegraph.com/search?q=h%C3%A3y+ki%E1%BB%83m+tra+v%C3%A0+test+l%E1%BA%A1i+h%E1%BB%87+th%E1%BB%91ng+master_investments+xem+%C4%91%C3%A3+th%E1%BB%B1c+s%E1%BB%B1+%C4%91%C6%B0%E1%BB%A3c+c%E1%BA%A3i+thi%E1%BB%87n+h%C6%A1n+ch%C6%B0a+v%C3%A0+c%C3%B2n+v%E1%BA%A5n+%C4%91%E1%BB%81+n%C3%A0o+kh%C3%A1c+kh%C3%B4ng%3F++Hi%E1%BB%87n+t%E1%BA%A1i+ch%E1%BA%A5t+l%C6%B0%E1%BB%A3ng+kh%C3%A1+k%C3%A9m+v%C3%A0+t%C6%B0+duy+kh%C3%B4ng+%C4%91%C6%B0%E1%BB%A3c+ti%E1%BA%BFn+h%C3%B3a+th%E1%BB%B1c+s%E1%BB%B1+t%E1%BB%91t%2C+kh%C3%B4ng+th%C3%B4ng+minh%2C+kh%C3%B4ng+t%C3%ACm+%C4%91%E1%BB%A7+m%E1%BB%8Di+c%C3%A1ch+%C4%91%E1%BB%83+%C4%91%E1%BA%A1t+%C4%91%C6%B0%E1%BB%A3c+m%E1%BB%A5c+ti%C3%AAu%2C+t%C3%ACm+con+%C4%91%C6%B0%E1%BB%9Dng+kh%C3%A1c+bi%E1%BB%87t+
+  - Examples: [named_entity] Sourcegraph Sourcegraph | [named_entity] Search | [named_entity] Find
+- **HN Algolia search** [3 signals] https://hn.algolia.com/?query=
+  - Examples: [named_entity] Hacker News Search | [named_entity] Algolia This | [named_entity] JavaScript
+- **grep.app** [4 signals] https://grep.app/search?q=h%C3%A3y+ki%E1%BB%83m+tra+v%C3%A0+test+l%E1%BA%A1i+h%E1%BB%87+th%E1%BB%91ng+master_investments+xem+%C4%91%C3%A3+th%E1%BB%B1c+s%E1%BB%B1+%C4%91%C6%B0%E1%BB%A3c+c%E1%BA%A3i+thi%E1%BB%87n+h%C6%A1n+ch%C6%B0a+v%C3%A0+c%C3%B2n+v%E1%BA%A5n+%C4%91%E1%BB%81+n%C3%A0o+kh%C3%A1c+kh%C3%B4ng%3F++Hi%E1%BB%87n+t%E1%BA%A1i+ch%E1%BA%A5t+l%C6%B0%E1%BB%A3ng+kh%C3%A1+k%C3%A9m+v%C3%A0+t%C6%B0+duy+kh%C3%B4ng+%C4%91%C6%B0%E1%BB%A3c+ti%E1%BA%BFn+h%C3%B3a+th%E1%BB%B1c+s%E1%BB%B1+t%E1%BB%91t%2C+kh%C3%B4ng+th%C3%B4ng+minh%2C+kh%C3%B4ng+t%C3%ACm+%C4%91%E1%BB%A7+m%E1%BB%8Di+c%C3%A1ch+%C4%91%E1%BB%83+%C4%91%E1%BA%A1t+%C4%91%C6%B0%E1%BB%A3c+m%E1%BB%A5c+ti%C3%AAu%2C+t%C3%ACm+con+%C4%91%C6%B0%E1%BB%9Dng+kh%C3%A1c+bi%E1%BB%87t+
+  - Examples: [named_entity] Code Search | [named_entity] Grep | [named_entity] Vercel
+- **GitHub repository search** [50 signals] https://github.com/search?type=repositories&q=h%C3%A3y+ki%E1%BB%83m+tra+v%C3%A0+test+l%E1%BA%A1i+h%E1%BB%87+th%E1%BB%91ng+master_investments+xem+%C4%91%C3%A3+th%E1%BB%B1c+s%E1%BB%B1+%C4%91%C6%B0%E1%BB%A3c+c%E1%BA%A3i+thi%E1%BB%87n+h%C6%A1n+ch%C6%B0a+v%C3%A0+c%C3%B2n+v%E1%BA%A5n+%C4%91%E1%BB%81+n%C3%A0o+kh%C3%A1c+kh%C3%B4ng%3F++Hi%E1%BB%87n+t%E1%BA%A1i+ch%E1%BA%A5t+l%C6%B0%E1%BB%A3ng+kh%C3%A1+k%C3%A9m+v%C3%A0+t%C6%B0+duy+kh%C3%B4ng+%C4%91%C6%B0%E1%BB%A3c+ti%E1%BA%BFn+h%C3%B3a+th%E1%BB%B1c+s%E1%BB%B1+t%E1%BB%91t%2C+kh%C3%B4ng+th%C3%B4ng+minh%2C+kh%C3%B4ng+t%C3%ACm+%C4%91%E1%BB%A7+m%E1%BB%8Di+c%C3%A1ch+%C4%91%E1%BB%83+%C4%91%E1%BA%A1t+%C4%91%C6%B0%E1%BB%A3c+m%E1%BB%A5c+ti%C3%AAu%2C+t%C3%ACm+con+%C4%91%C6%B0%E1%BB%9Dng+kh%C3%A1c+bi%E1%BB%87t+
+  - Examples: [named_entity] Repository | [named_entity] GitHub Skip | [named_entity] Navigation Menu Toggle
+- **Trends.vc** [50 signals] https://trends.vc/
+  - Examples: [dollar_amount] 100 USD | [named_entity] Discover | [named_entity] Trends
+- **GitHub trending** [50 signals] https://github.com/trending
+  - Examples: [named_entity] Trending | [named_entity] GitHub | [named_entity] GitHub Skip
+- **GitHub code search** [50 signals] https://github.com/search?type=code&q=h%C3%A3y+ki%E1%BB%83m+tra+v%C3%A0+test+l%E1%BA%A1i+h%E1%BB%87+th%E1%BB%91ng+master_investments+xem+%C4%91%C3%A3+th%E1%BB%B1c+s%E1%BB%B1+%C4%91%C6%B0%E1%BB%A3c+c%E1%BA%A3i+thi%E1%BB%87n+h%C6%A1n+ch%C6%B0a+v%C3%A0+c%C3%B2n+v%E1%BA%A5n+%C4%91%E1%BB%81+n%C3%A0o+kh%C3%A1c+kh%C3%B4ng%3F++Hi%E1%BB%87n+t%E1%BA%A1i+ch%E1%BA%A5t+l%C6%B0%E1%BB%A3ng+kh%C3%A1+k%C3%A9m+v%C3%A0+t%C6%B0+duy+kh%C3%B4ng+%C4%91%C6%B0%E1%BB%A3c+ti%E1%BA%BFn+h%C3%B3a+th%E1%BB%B1c+s%E1%BB%B1+t%E1%BB%91t%2C+kh%C3%B4ng+th%C3%B4ng+minh%2C+kh%C3%B4ng+t%C3%ACm+%C4%91%E1%BB%A7+m%E1%BB%8Di+c%C3%A1ch+%C4%91%E1%BB%83+%C4%91%E1%BA%A1t+%C4%91%C6%B0%E1%BB%A3c+m%E1%BB%A5c+ti%C3%AAu%2C+t%C3%ACm+con+%C4%91%C6%B0%E1%BB%9Dng+kh%C3%A1c+bi%E1%BB%87t+
+  - Examples: [named_entity] Code | [named_entity] GitHub Skip | [named_entity] Navigation Menu Toggle
+- **GitHub Sponsors leaderboards** [50 signals] https://github.com/sponsors/explore
+  - Examples: [named_entity] Explore GitHub Sponsors | [named_entity] GitHub Skip | [named_entity] Navigation Menu Toggle
+
+**⚠ Errored sources** (consider Playwright escalation if signal is critical):
+- nitter.privacydev.net (fallback) (ConnectionError: HTTPSConnectionPool(host='nitter.privacydev.net', port=443): Ma)
+- nitter.net (primary) ()
+- Sourcegraph (HTTP 404)
+- HN Ask/Show top (ReadTimeout: HTTPSConnectionPool(host='news.ycombinator.com', port=443): Read ti)
+
+---
+### 🔍 Deep-drill snippets (route `western_bootstrap_saas`)
+
+**Bootstrapped Founders (Arvid Kahl)** — 112 deep signals from https://thebootstrappedfounder.com/
+Top signals:
+  - [dollar_amount] $200
+  - [named_entity] The Bootstrapped Founder
+  - [named_entity] How
+  - [named_entity] Start
+  - [named_entity] Run
+  - [named_entity] Sell
+  - [named_entity] Bootstrapped Business
+  - [named_entity] Arvid Kahl Skip
+  - [named_entity] The Bootstrapped Founder How
+  - [named_entity] Arvid Kahl Menu Posts
+  - [named_entity] Books Newsletter Podcast Consulting
+  - [named_entity] Services Clarity Call Twitter
+Snippet:  The Bootstrapped Founder &#8211; How to Start, Run, and Sell a Bootstrapped Business — by Arvid Kahl Skip to content The Bootstrapped Founder How to Start, Run, and Sell a Bootstrapped Business — by Arvid Kahl Menu Posts Books Newsletter Podcast Consulting &#038; Services Clarity Call Twitter Teardown Shop Arvid About Me Media Kit Tech Stack Search START TYPING AND PRESS ENTER TO SEARCH Posts Boo...
+
+**Empire Flippers** — 200 deep signals from https://empireflippers.com/marketplace/
+Top signals:
+  - [dollar_amount] $23,000,000
+  - [dollar_amount] $383,476
+  - [dollar_amount] $1,466,109
+  - [dollar_amount] $6,900,000
+  - [dollar_amount] $127,207
+  - [dollar_amount] $525,984
+  - [dollar_amount] $1,666,016
+  - [dollar_amount] $52,064
+  - [dollar_amount] $105,222
+  - [dollar_amount] $1,400,000
+  - [dollar_amount] $32,492
+  - [dollar_amount] $171,057
+Snippet:  Online Businesses For Sale - Ecommerce, SaaS, Affiliate, &amp; More Marketplace For Sellers Company About Us Scoreboard Referral Program Testimonials Press Resources Blog Podcasts Videos Newsletter Support Log In Get Started Marketplace For Sellers Company About Us Scoreboard Referral Program Testimonials Press Resources Blog Podcasts Videos Newsletter Support Get Started Log In Online Businesses...
+
+**Plausible Analytics blog** — 200 deep signals from https://plausible.io/blog
+Top signals:
+  - [dollar_amount] $1M
+  - [dollar_amount] $1
+  - [dollar_amount] $500k
+  - [dollar_amount] $400
+  - [dollar_amount] $10,000
+  - [dollar_amount] $2,750
+  - [named_entity] Plausible Analytics
+  - [named_entity] Simple
+  - [named_entity] Google Analytics
+  - [named_entity] Why Plausible Simple
+  - [named_entity] Get
+  - [named_entity] Lightweight
+Snippet:  Plausible Analytics | Simple, privacy-friendly Google Analytics alternative Why Plausible Simple analytics dashboard Get all the important stats on one single page. No training necessary. Lightweight script Our analytics script is tiny and fast. Privacy-friendly analytics Built with visitor privacy in mind. No cookie banner required. Open source Open source and self-hostable. Who it's for Startup...
+
+**Acquire.com** — 108 deep signals from https://acquire.com/buyers/
+Top signals:
+  - [named_entity] View
+  - [named_entity] Online Businesses
+  - [named_entity] Sale
+  - [named_entity] Acquire
+  - [named_entity] JavaScript Required
+  - [named_entity] JavaScript
+  - [named_entity] Please
+  - [named_entity] Thank
+  - [named_entity] Reload Page How
+  - [named_entity] Enable JavaScript
+  - [named_entity] Inc
+  - [named_entity] All
+Snippet:  View 1,000s of Online Businesses for Sale | Acquire.com No script JavaScript Required We’re sorry, but this website needs JavaScript enabled to run correctly. Please, turn it on and come back later. Thank you! Reload Page How to Enable JavaScript © Acquire.com, Inc. 2026 . All rights reserved Sellers Sellers List Your Startup Create and publish your business listing to 500k+ buyers Get Acquire'd ...
+
+**IndieHackers /tech** — 102 deep signals from https://www.indiehackers.com/tech
+Top signals:
+  - [dollar_amount] $20k
+  - [dollar_amount] $3k
+  - [dollar_amount] $1M
+  - [dollar_amount] $15M
+  - [dollar_amount] $7M
+  - [dollar_amount] $37M
+  - [dollar_amount] $500k
+  - [dollar_amount] $30k
+  - [dollar_amount] $400M
+  - [dollar_amount] $500M
+  - [dollar_amount] $18k
+  - [dollar_amount] $120k
+Snippet:  For Tech Founders - Indie Hackers Home Starting Up Case Studies DB Products Ideas DB Vibe Coding Tools Subscribe to IH+ Starting Up Case Studies Ideas DB Products DB Join For Tech Founders A.I. Crypto SaaS Dev Tools &amp; APIs Gaming Building a tech business? You don't have to go it alone as an entrepreneur. This is your definitive resource for accessing expert strategies and keeping up with the ...
+
+**GitHub trending** — 200 deep signals from https://github.com/trending
+Top signals:
+  - [named_entity] Trending
+  - [named_entity] GitHub
+  - [named_entity] GitHub Skip
+  - [named_entity] Navigation Menu Toggle
+  - [named_entity] Sign
+  - [named_entity] Appearance
+  - [named_entity] Platform
+  - [named_entity] CODE CREATION GitHub Copilot
+  - [named_entity] Write
+  - [named_entity] GitHub Spark Build
+  - [named_entity] GitHub Models Manage
+  - [named_entity] MCP Registry New Integrate
+Snippet:  Trending repositories on GitHub today · GitHub Skip to content Navigation Menu Toggle navigation Sign in Appearance settings Platform AI CODE CREATION GitHub Copilot Write better code with AI GitHub Spark Build and deploy intelligent apps GitHub Models Manage and compare prompts MCP Registry New Integrate external tools DEVELOPER WORKFLOWS Actions Automate any workflow Codespaces Instant dev envi...
+
+**Trends.co (The Hustle)** — 200 deep signals from https://trends.co/
+Top signals:
+  - [dollar_amount] $100m
+  - [dollar_amount] $200k
+  - [named_entity] Trends
+  - [named_entity] HubSpot Logo
+  - [named_entity] Full
+  - [named_entity] Color
+  - [named_entity] Skip
+  - [named_entity] English Select
+  - [named_entity] Deutsch English
+  - [named_entity] High Contrast Customer Support
+  - [named_entity] Contact Sales Close Search
+  - [named_entity] Log
+Snippet:  Trends by HubSpot Logo - Full (Color) Skip to content English Select a language 日本語 Deutsch English Español Português Français High Contrast Customer Support Contact Sales Close Search Log in About About About Us Careers Contact Us Investor Relations Management Team Back Menu Close Search Products Products The HubSpot Customer Platform All of HubSpot's marketing, sales, and customer service softw...
+
+**MicroAcquire (now Acquire.com)** — 147 deep signals from https://acquire.com/
+Top signals:
+  - [dollar_amount] $500M
+  - [dollar_amount] $2B
+  - [named_entity] Buy
+  - [named_entity] Sell Profitable Online Businesses
+  - [named_entity] Acquire
+  - [named_entity] JavaScript Required
+  - [named_entity] JavaScript
+  - [named_entity] Please
+  - [named_entity] Thank
+  - [named_entity] Reload Page How
+  - [named_entity] Enable JavaScript
+  - [named_entity] Inc
+Snippet:  Buy & Sell Profitable Online Businesses | Acquire.com No script JavaScript Required We’re sorry, but this website needs JavaScript enabled to run correctly. Please, turn it on and come back later. Thank you! Reload Page How to Enable JavaScript © Acquire.com, Inc. 2026 . All rights reserved Sellers Sellers List Your Startup Create and publish your business listing to 500k+ buyers Get Acquire'd wi...
+
+---
+### 🔍 Deep-drill snippets (route `ai_tools_grey`)
+
+**GitHub code search (web UI)** — 80 deep signals from https://github.com/search?type=code&q=h%C3%A3y+ki%E1%BB%83m+tra+v%C3%A0+test+l%E1%BA%A1i+h%E1%BB%87+th%E1%BB%91ng+master_investments+xem+%C4%91%C3%A3+th%E1%BB%B1c+s%E1%BB%B1+%C4%91%C6%B0%E1%BB%A3c+c%E1%BA%A3i+thi%E1%BB%87n+h%C6%A1n+ch%C6%B0a+v%C3%A0+c%C3%B2n+v%E1%BA%A5n+%C4%91%E1%BB%81+n%C3%A0o+kh%C3%A1c+kh%C3%B4ng%3F++Hi%E1%BB%87n+t%E1%BA%A1i+ch%E1%BA%A5t+l%C6%B0%E1%BB%A3ng+kh%C3%A1+k%C3%A9m+v%C3%A0+t%C6%B0+duy+kh%C3%B4ng+%C4%91%C6%B0%E1%BB%A3c+ti%E1%BA%BFn+h%C3%B3a+th%E1%BB%B1c+s%E1%BB%B1+t%E1%BB%91t%2C+kh%C3%B4ng+th%C3%B4ng+minh%2C+kh%C3%B4ng+t%C3%ACm+%C4%91%E1%BB%A7+m%E1%BB%8Di+c%C3%A1ch+%C4%91%E1%BB%83+%C4%91%E1%BA%A1t+%C4%91%C6%B0%E1%BB%A3c+m%E1%BB%A5c+ti%C3%AAu%2C+t%C3%ACm+con+%C4%91%C6%B0%E1%BB%9Dng+kh%C3%A1c+bi%E1%BB%87t+
+Top signals:
+  - [named_entity] Code
+  - [named_entity] GitHub Skip
+  - [named_entity] Navigation Menu Toggle
+  - [named_entity] Sign
+  - [named_entity] Appearance
+  - [named_entity] Platform
+  - [named_entity] CODE CREATION GitHub Copilot
+  - [named_entity] Write
+  - [named_entity] GitHub Spark Build
+  - [named_entity] GitHub Models Manage
+  - [named_entity] MCP Registry New Integrate
+  - [named_entity] DEVELOPER WORKFLOWS Actions Automate
+Snippet:  Code search results · GitHub Skip to content Navigation Menu Toggle navigation Sign in Appearance settings Platform AI CODE CREATION GitHub Copilot Write better code with AI GitHub Spark Build and deploy intelligent apps GitHub Models Manage and compare prompts MCP Registry New Integrate external tools DEVELOPER WORKFLOWS Actions Automate any workflow Codespaces Instant dev environments Issues Pl...
+
+**Trends.co (The Hustle)** — 200 deep signals from https://trends.co/
+Top signals:
+  - [dollar_amount] $100m
+  - [dollar_amount] $200k
+  - [named_entity] Trends
+  - [named_entity] HubSpot Logo
+  - [named_entity] Full
+  - [named_entity] Color
+  - [named_entity] Skip
+  - [named_entity] English Select
+  - [named_entity] Deutsch English
+  - [named_entity] High Contrast Customer Support
+  - [named_entity] Contact Sales Close Search
+  - [named_entity] Log
+Snippet:  Trends by HubSpot Logo - Full (Color) Skip to content English Select a language 日本語 Deutsch English Español Português Français High Contrast Customer Support Contact Sales Close Search Log in About About About Us Careers Contact Us Investor Relations Management Team Back Menu Close Search Products Products The HubSpot Customer Platform All of HubSpot's marketing, sales, and customer service softw...
+
+**Lobste.rs** — 55 deep signals from https://lobste.rs/
+Top signals:
+  - [named_entity] Lobsters Active Recent Comments
+  - [named_entity] Search Login Login
+  - [named_entity] Just Fucking Use
+  - [named_entity] Archive
+  - [named_entity] Ghostarchive
+  - [named_entity] Steering Zig Fmt
+  - [named_entity] Chrome
+  - [named_entity] GPUs
+  - [named_entity] Stop MITM
+  - [named_entity] SSH
+  - [named_entity] VPS
+  - [named_entity] JoachimSchipper
+Snippet:  Lobsters Active Recent Comments Search Login Login 139 Just Fucking Use Go go blainsmith.com via zarldev 21 hours ago | caches Archive.org Ghostarchive | 189 comments 189 23 Steering Zig Fmt &#x2636; zig matklad.github.io via vi_mi 5 hours ago | caches Archive.org Ghostarchive | 7 comments 7 9 Chrome’s AI features may be hogging 4GB of your computer storage browsers theverge.com via kmaasrud 2 ho...
+
+**SwipeFiles by Corey Haines** — 143 deep signals from https://swipefiles.com/
+Top signals:
+  - [named_entity] Swipe Files
+  - [named_entity] SaaS Marketing Newsletter
+  - [named_entity] Community Corey Haines
+  - [named_entity] Engineering
+  - [named_entity] Your
+  - [named_entity] Mikael
+  - [named_entity] Crew
+  - [named_entity] Done
+  - [named_entity] But
+  - [named_entity] Please
+  - [named_entity] They
+  - [named_entity] Tumblr
+Snippet:  Swipe Files | SaaS Marketing Newsletter &amp; Community Corey Haines | Swipe Files to me Engineering as marketing: Your product is my marketing opportunity Mikael, founder of Crew, explained how Engineering as marketing saved their business: “We had no money. We changed our business model and had 3 months worth of cash left to turn things around. If we didn’t we were toast. Done. We needed to fin...
+
+**GitHub repository search** — 83 deep signals from https://github.com/search?type=repositories&q=h%C3%A3y+ki%E1%BB%83m+tra+v%C3%A0+test+l%E1%BA%A1i+h%E1%BB%87+th%E1%BB%91ng+master_investments+xem+%C4%91%C3%A3+th%E1%BB%B1c+s%E1%BB%B1+%C4%91%C6%B0%E1%BB%A3c+c%E1%BA%A3i+thi%E1%BB%87n+h%C6%A1n+ch%C6%B0a+v%C3%A0+c%C3%B2n+v%E1%BA%A5n+%C4%91%E1%BB%81+n%C3%A0o+kh%C3%A1c+kh%C3%B4ng%3F++Hi%E1%BB%87n+t%E1%BA%A1i+ch%E1%BA%A5t+l%C6%B0%E1%BB%A3ng+kh%C3%A1+k%C3%A9m+v%C3%A0+t%C6%B0+duy+kh%C3%B4ng+%C4%91%C6%B0%E1%BB%A3c+ti%E1%BA%BFn+h%C3%B3a+th%E1%BB%B1c+s%E1%BB%B1+t%E1%BB%91t%2C+kh%C3%B4ng+th%C3%B4ng+minh%2C+kh%C3%B4ng+t%C3%ACm+%C4%91%E1%BB%A7+m%E1%BB%8Di+c%C3%A1ch+%C4%91%E1%BB%83+%C4%91%E1%BA%A1t+%C4%91%C6%B0%E1%BB%A3c+m%E1%BB%A5c+ti%C3%AAu%2C+t%C3%ACm+con+%C4%91%C6%B0%E1%BB%9Dng+kh%C3%A1c+bi%E1%BB%87t+
+Top signals:
+  - [named_entity] Repository
+  - [named_entity] GitHub Skip
+  - [named_entity] Navigation Menu Toggle
+  - [named_entity] Sign
+  - [named_entity] Appearance
+  - [named_entity] Platform
+  - [named_entity] CODE CREATION GitHub Copilot
+  - [named_entity] Write
+  - [named_entity] GitHub Spark Build
+  - [named_entity] GitHub Models Manage
+  - [named_entity] MCP Registry New Integrate
+  - [named_entity] DEVELOPER WORKFLOWS Actions Automate
+Snippet:  Repository search results · GitHub Skip to content Navigation Menu Toggle navigation Sign in Appearance settings Platform AI CODE CREATION GitHub Copilot Write better code with AI GitHub Spark Build and deploy intelligent apps GitHub Models Manage and compare prompts MCP Registry New Integrate external tools DEVELOPER WORKFLOWS Actions Automate any workflow Codespaces Instant dev environments Iss...
+
+**Trends.vc** — 170 deep signals from https://trends.vc/
+Top signals:
+  - [dollar_amount] 100 USD
+  - [named_entity] Discover
+  - [named_entity] Trends
+  - [named_entity] Dive
+  - [named_entity] Save
+  - [named_entity] Crypto
+  - [named_entity] Get Started
+  - [named_entity] Join
+  - [named_entity] Trends Pro You
+  - [named_entity] Please CONFIRM
+  - [named_entity] Welcome
+  - [named_entity] Previous
+Snippet:  Discover new markets and ideas ð Trends.vc Dive into new markets and ideas with 54,782 like-minded founders. Save 2,000+ hours of market research with free 5-minute reports on AI, Crypto and more. Get Started â Join 54,782 founders discovering new markets Trends Pro You&#39;re almost done... Please CONFIRM your email address by clicking the link we just sent you from Trends.vc Welcome to the...
+
+**GitHub trending** — 200 deep signals from https://github.com/trending
+Top signals:
+  - [named_entity] Trending
+  - [named_entity] GitHub
+  - [named_entity] GitHub Skip
+  - [named_entity] Navigation Menu Toggle
+  - [named_entity] Sign
+  - [named_entity] Appearance
+  - [named_entity] Platform
+  - [named_entity] CODE CREATION GitHub Copilot
+  - [named_entity] Write
+  - [named_entity] GitHub Spark Build
+  - [named_entity] GitHub Models Manage
+  - [named_entity] MCP Registry New Integrate
+Snippet:  Trending repositories on GitHub today · GitHub Skip to content Navigation Menu Toggle navigation Sign in Appearance settings Platform AI CODE CREATION GitHub Copilot Write better code with AI GitHub Spark Build and deploy intelligent apps GitHub Models Manage and compare prompts MCP Registry New Integrate external tools DEVELOPER WORKFLOWS Actions Automate any workflow Codespaces Instant dev envi...
+
+**GitHub code search** — 0 deep signals from https://github.com/search?type=code&q=h%C3%A3y+ki%E1%BB%83m+tra+v%C3%A0+test+l%E1%BA%A1i+h%E1%BB%87+th%E1%BB%91ng+master_investments+xem+%C4%91%C3%A3+th%E1%BB%B1c+s%E1%BB%B1+%C4%91%C6%B0%E1%BB%A3c+c%E1%BA%A3i+thi%E1%BB%87n+h%C6%A1n+ch%C6%B0a+v%C3%A0+c%C3%B2n+v%E1%BA%A5n+%C4%91%E1%BB%81+n%C3%A0o+kh%C3%A1c+kh%C3%B4ng%3F++Hi%E1%BB%87n+t%E1%BA%A1i+ch%E1%BA%A5t+l%C6%B0%E1%BB%A3ng+kh%C3%A1+k%C3%A9m+v%C3%A0+t%C6%B0+duy+kh%C3%B4ng+%C4%91%C6%B0%E1%BB%A3c+ti%E1%BA%BFn+h%C3%B3a+th%E1%BB%B1c+s%E1%BB%B1+t%E1%BB%91t%2C+kh%C3%B4ng+th%C3%B4ng+minh%2C+kh%C3%B4ng+t%C3%ACm+%C4%91%E1%BB%A7+m%E1%BB%8Di+c%C3%A1ch+%C4%91%E1%BB%83+%C4%91%E1%BA%A1t+%C4%91%C6%B0%E1%BB%A3c+m%E1%BB%A5c+ti%C3%AAu%2C+t%C3%ACm+con+%C4%91%C6%B0%E1%BB%9Dng+kh%C3%A1c+bi%E1%BB%87t+
+
+---
+## 🤖 MANDATORY auto-spawn block — execute IMMEDIATELY in next response
+
+Per [EXHAUSTIVE-RESEARCH] rule, you MUST spawn 8 parallel Task agents
+in your VERY NEXT message to deep-extract from the drill-recommended sources above.
+Use a single message with multiple Agent tool calls (parallel execution).
+
+Each Task agent prompt template:
+```
+Task: Deep-extract operator-layer signals for topic "<TOPIC>" from <SOURCE_URL>.
+
+Goal: extract ALL specific data points: dollar amounts (with context),
+dated events (with year), named entities (real people/companies), tool/product names
+(with vendor), URLs, ban/platform mentions, failure/scam examples.
+
+For forum sources (mmo4me, voz, vn-z, V2EX, 52pojie): walk top 5-10 threads matching topic.
+For news sources (vnexpress, tuoitre, dantri, congan): walk top 10 articles.
+For dashboard sources (IndieHackers, Plausible, MicroConf): extract dated MRR + revenue numbers.
+
+Use WebFetch for retrieval. If 403/422/429, escalate to method_chain_fetcher.
+Return structured findings with source URL citations. Under 600 words.
+```
+
+Substitute `<TOPIC>` and `<SOURCE_URL>` for each drill-recommended source listed above.
+
+## 📋 Action plan (BLOCKING per [EXHAUSTIVE-RESEARCH]):
+1. **Spawn 8 Task agents in parallel** in your next response (single message, multiple Agent tool calls)
+2. **Wait for results** — each agent returns structured findings with citations
+3. **Synthesize** findings into the verdict, with mandatory `## Research tiers fired` section
+4. **Do NOT use WebSearch as primary** — that violates the rule. WebSearch is only for URL discovery.
+5. **Cite drill snippets** above — they contain raw signal you can quote directly
+
+**Reference:** `D:/code/invesments/master_investments/data/knowledge-sources/research-ladder.json` | `D:/code/invesments/master_investments/data/knowledge-sources/ladder-runner.py` | `.claude/rules/learned-rules.md` → "Exhaustive Research Rules"

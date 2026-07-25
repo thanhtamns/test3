@@ -1,0 +1,362 @@
+#!/usr/bin/env python3
+"""
+MTDE Aggregator — deterministic aggregation of retrieved facts.
+Contradiction detection, pattern extraction, gap analysis, kill signal scan.
+Produces enriched_features dict for Principle Engine Pass 2.
+"""
+
+import json
+from collections import defaultdict
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
+
+ROOT = Path(__file__).resolve().parents[5]
+KILL_SIGNALS_PATH = ROOT / ".claude" / "data" / "knowledge-distillation" / "kill-signals.json"
+
+
+@dataclass
+class Contradiction:
+    field_name: str
+    values: list
+    sources: list
+    resolved_value: any = None
+    resolution_method: str = ""
+
+    def to_dict(self):
+        return {
+            "field": self.field_name,
+            "values": self.values,
+            "sources": self.sources,
+            "resolved": self.resolved_value,
+            "method": self.resolution_method,
+        }
+
+
+@dataclass
+class Pattern:
+    name: str
+    support_count: int
+    dimensions: list
+    signal: str = ""
+    confidence: float = 0.0
+
+    def to_dict(self):
+        return {
+            "pattern": self.name,
+            "support": self.support_count,
+            "dimensions": self.dimensions,
+            "signal": self.signal,
+            "confidence": round(self.confidence, 3),
+        }
+
+
+@dataclass
+class DimensionEvidence:
+    dimension_id: str
+    facts: list = field(default_factory=list)
+    contradictions: list = field(default_factory=list)
+    confidence: float = 0.0
+    gaps: list = field(default_factory=list)
+    fact_count: int = 0
+
+    def to_dict(self):
+        return {
+            "dimension": self.dimension_id,
+            "fact_count": self.fact_count,
+            "confidence": round(self.confidence, 3),
+            "contradictions": [c.to_dict() for c in self.contradictions],
+            "gaps": self.gaps,
+        }
+
+
+@dataclass
+class AggregatedEvidence:
+    dimensions: dict = field(default_factory=dict)
+    cross_patterns: list = field(default_factory=list)
+    kill_signals: list = field(default_factory=list)
+    overall_confidence: float = 0.0
+    enriched_features: dict = field(default_factory=dict)
+    total_facts: int = 0
+    coverage_pct: float = 0.0
+
+    def to_dict(self):
+        return {
+            "overall_confidence": round(self.overall_confidence, 3),
+            "total_facts": self.total_facts,
+            "coverage_pct": round(self.coverage_pct, 2),
+            "dimensions": {k: v.to_dict() for k, v in self.dimensions.items()},
+            "cross_patterns": [p.to_dict() for p in self.cross_patterns],
+            "kill_signals": self.kill_signals,
+            "enriched_features": self.enriched_features,
+        }
+
+
+SOURCE_TIER_WEIGHTS = {"S": 1.0, "A": 0.9, "B": 0.7, "C": 0.5, "D": 0.3, "F": 0.1}
+
+
+class MTDEAggregator:
+    def __init__(self, kill_signals_path: Optional[Path] = None):
+        ks_path = kill_signals_path or KILL_SIGNALS_PATH
+        if ks_path.exists():
+            with open(ks_path, "r", encoding="utf-8") as f:
+                self.kill_signals = json.load(f)
+        else:
+            self.kill_signals = []
+
+    def aggregate(self, facts: list) -> AggregatedEvidence:
+        valid_facts = [f for f in facts if self._get_attr(f, "status", "") == "found"]
+        grouped = self._group_by_dimension(valid_facts)
+
+        result = AggregatedEvidence()
+        result.total_facts = len(valid_facts)
+
+        for dim_id, dim_facts in grouped.items():
+            contradictions = self._find_contradictions(dim_facts)
+            confidence = self._calc_dimension_confidence(dim_facts)
+            gaps = self._find_gaps(dim_id, dim_facts)
+
+            result.dimensions[dim_id] = DimensionEvidence(
+                dimension_id=dim_id,
+                facts=dim_facts,
+                contradictions=contradictions,
+                confidence=confidence,
+                gaps=gaps,
+                fact_count=len(dim_facts),
+            )
+
+        result.cross_patterns = self._extract_patterns(grouped)
+        result.kill_signals = self._scan_kill_signals(valid_facts)
+        result.overall_confidence = self._calc_overall_confidence(result.dimensions)
+        result.enriched_features = self._facts_to_features(valid_facts)
+        result.coverage_pct = self._calc_coverage(result.dimensions)
+
+        return result
+
+    def _get_attr(self, obj, key, default=""):
+        if isinstance(obj, dict):
+            return obj.get(key, default)
+        return getattr(obj, key, default)
+
+    def _group_by_dimension(self, facts: list) -> dict:
+        grouped = defaultdict(list)
+        for f in facts:
+            dim = self._get_attr(f, "dimension", "")
+            grouped[dim or "unknown"].append(f)
+        return dict(grouped)
+
+    def _find_contradictions(self, facts: list) -> list:
+        by_field = defaultdict(list)
+        for f in facts:
+            field_name = self._get_attr(f, "field_name", "")
+            value = self._get_attr(f, "value", None)
+            if field_name and value is not None:
+                source = self._get_attr(f, "source_url", "")
+                tier = self._get_attr(f, "source_tier", "F")
+                by_field[field_name].append({"value": value, "source": source, "tier": tier})
+
+        contradictions = []
+        for field_name, entries in by_field.items():
+            if len(entries) < 2:
+                continue
+
+            values = [e["value"] for e in entries]
+            if self._values_conflict(values):
+                resolved, method = self._resolve_contradiction(entries)
+                contradictions.append(Contradiction(
+                    field_name=field_name,
+                    values=values,
+                    sources=[e["source"] for e in entries],
+                    resolved_value=resolved,
+                    resolution_method=method,
+                ))
+
+        return contradictions
+
+    def _values_conflict(self, values: list) -> bool:
+        numeric = []
+        for v in values:
+            try:
+                numeric.append(float(v))
+            except (ValueError, TypeError):
+                if len(set(str(x) for x in values)) > 1:
+                    return True
+                return False
+
+        if not numeric:
+            return False
+
+        if len(numeric) < 2:
+            return False
+
+        max_v, min_v = max(numeric), min(numeric)
+        if min_v == 0:
+            return max_v > 0
+        return (max_v - min_v) / min_v > 0.5
+
+    def _resolve_contradiction(self, entries: list) -> tuple:
+        tier_order = ["S", "A", "B", "C", "D", "F"]
+        sorted_entries = sorted(entries, key=lambda e: tier_order.index(e.get("tier", "F")))
+
+        if sorted_entries[0]["tier"] in ("S", "A"):
+            return sorted_entries[0]["value"], "highest_tier_source"
+
+        values = [e["value"] for e in entries]
+        try:
+            numeric = [float(v) for v in values]
+            median = sorted(numeric)[len(numeric) // 2]
+            return median, "median_vote"
+        except (ValueError, TypeError):
+            from collections import Counter
+            counts = Counter(str(v) for v in values)
+            most_common = counts.most_common(1)[0][0]
+            return most_common, "majority_vote"
+
+    def _calc_dimension_confidence(self, facts: list) -> float:
+        if not facts:
+            return 0.0
+
+        total_conf = 0.0
+        for f in facts:
+            fact_conf = self._get_attr(f, "confidence", 0.5)
+            tier = self._get_attr(f, "source_tier", "C")
+            tier_weight = SOURCE_TIER_WEIGHTS.get(tier, 0.3)
+            total_conf += fact_conf * tier_weight
+
+        avg = total_conf / len(facts)
+        coverage_bonus = min(len(facts) / 5, 1.0) * 0.2
+        return min(avg + coverage_bonus, 1.0)
+
+    def _find_gaps(self, dim_id: str, facts: list) -> list:
+        required_fields_map = {
+            "DIM-01": ["competition_count", "market_saturation", "barrier_score"],
+            "DIM-02": ["tam_usd", "sam_usd", "growth_rate_pct"],
+            "DIM-03": ["time_to_first_revenue_days", "customer_pays_first", "recurring_pct"],
+            "DIM-04": ["replication_time_months", "switching_cost_dollars", "network_effect_real", "knowledge_compounds"],
+            "DIM-05": ["leverage_type_score", "cents_score", "creates_asset"],
+            "DIM-06": ["upside_downside_ratio", "disruption_benefits", "exit_paths"],
+            "DIM-07": ["info_advantage_score"],
+            "DIM-12": ["failure_rate_pct", "top_failure_reasons"],
+            "DIM-13": ["tutorial_count", "guru_count"],
+        }
+
+        required = required_fields_map.get(dim_id, [])
+        if not required:
+            return []
+
+        found_fields = set()
+        for f in facts:
+            fn = self._get_attr(f, "field_name", "")
+            if fn:
+                found_fields.add(fn)
+
+        return [field for field in required if field not in found_fields]
+
+    def _extract_patterns(self, grouped: dict) -> list:
+        signal_counts = defaultdict(lambda: {"count": 0, "dims": []})
+
+        for dim_id, facts in grouped.items():
+            for f in facts:
+                field_name = self._get_attr(f, "field_name", "")
+                value = self._get_attr(f, "value", None)
+
+                if value is None:
+                    continue
+
+                signal = self._value_to_signal(field_name, value)
+                if signal:
+                    signal_counts[signal]["count"] += 1
+                    if dim_id not in signal_counts[signal]["dims"]:
+                        signal_counts[signal]["dims"].append(dim_id)
+
+        patterns = []
+        for signal, data in signal_counts.items():
+            if data["count"] >= 3:
+                patterns.append(Pattern(
+                    name=signal,
+                    support_count=data["count"],
+                    dimensions=data["dims"],
+                    signal=signal,
+                    confidence=min(data["count"] / 5, 1.0),
+                ))
+
+        return sorted(patterns, key=lambda p: p.support_count, reverse=True)
+
+    def _value_to_signal(self, field_name: str, value) -> str:
+        try:
+            num = float(value)
+        except (ValueError, TypeError):
+            return ""
+
+        thresholds = {
+            "competition_count": [(50, "red_ocean"), (10, "crowded"), (3, "emerging")],
+            "time_to_first_revenue_days": [(90, "slow_cash"), (30, "fast_cash")],
+            "guru_count": [(20, "past_peak"), (5, "early")],
+            "failure_rate_pct": [(70, "high_failure"), (40, "moderate_failure")],
+        }
+
+        if field_name in thresholds:
+            for threshold, signal in thresholds[field_name]:
+                if num >= threshold:
+                    return signal
+
+        return ""
+
+    def _scan_kill_signals(self, facts: list) -> list:
+        triggered = []
+        for ks in self.kill_signals:
+            if not isinstance(ks, dict):
+                continue
+            field_name = ks.get("field", "")
+            threshold = ks.get("threshold")
+            direction = ks.get("direction", ">")
+
+            for f in facts:
+                fn = self._get_attr(f, "field_name", "")
+                val = self._get_attr(f, "value", None)
+
+                if fn == field_name and val is not None:
+                    try:
+                        num_val = float(val)
+                        if direction == ">" and num_val > threshold:
+                            triggered.append({"signal": ks.get("name", field_name), "value": num_val, "threshold": threshold})
+                        elif direction == "<" and num_val < threshold:
+                            triggered.append({"signal": ks.get("name", field_name), "value": num_val, "threshold": threshold})
+                    except (ValueError, TypeError):
+                        pass
+
+        return triggered
+
+    def _calc_overall_confidence(self, dimensions: dict) -> float:
+        if not dimensions:
+            return 0.0
+        confs = [d.confidence for d in dimensions.values()]
+        return sum(confs) / len(confs)
+
+    def _calc_coverage(self, dimensions: dict) -> float:
+        total_possible = 15
+        covered = sum(1 for d in dimensions.values() if d.fact_count > 0)
+        return (covered / total_possible) * 100
+
+    def _facts_to_features(self, facts: list) -> dict:
+        features = {}
+        by_field = defaultdict(list)
+
+        for f in facts:
+            fn = self._get_attr(f, "field_name", "")
+            val = self._get_attr(f, "value", None)
+            conf = self._get_attr(f, "confidence", 0.5)
+            tier = self._get_attr(f, "source_tier", "C")
+
+            if fn and val is not None:
+                by_field[fn].append({"value": val, "confidence": conf, "tier": tier})
+
+        for field_name, entries in by_field.items():
+            if len(entries) == 1:
+                features[field_name] = entries[0]["value"]
+            else:
+                tier_order = ["S", "A", "B", "C", "D", "F"]
+                best = sorted(entries, key=lambda e: tier_order.index(e.get("tier", "F")))[0]
+                features[field_name] = best["value"]
+
+        return features

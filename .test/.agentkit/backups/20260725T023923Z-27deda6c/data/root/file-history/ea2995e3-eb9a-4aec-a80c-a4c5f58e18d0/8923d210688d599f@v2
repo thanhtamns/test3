@@ -1,0 +1,266 @@
+# Deep System Review: Stage0/Hunt/Intelligence vs Co-Scientist
+
+**Date:** 2026-05-29
+**Trigger:** User critique — previous analysis output "quá bình thường, vẫn web search quá nhiều"
+**Video:** @ainius.net TikTok about DeepMind Co-Scientist (91% Stanford validation)
+
+---
+
+## I. VIDEO CONTENT (from metadata + paper analysis)
+
+Video = Vietnamese news summary of Google DeepMind's **AI Co-Scientist** (Nature, May 2025). Core message: AI generated drug hypotheses that Stanford labs validated 91% accuracy. The technique is NOT "better search" — it's a fundamentally different intelligence architecture.
+
+---
+
+## II. CO-SCIENTIST ARCHITECTURE — THE OPERATING PRINCIPLE
+
+### What makes it different from "AI that searches well"
+
+```
+CONVENTIONAL AI RESEARCH (what Stage0 does today):
+  Question → Search → Collect → Organize → Summarize → Output
+  Intelligence = f(quality of search queries)
+
+CO-SCIENTIST:
+  Goal → Generate novel hypotheses → Debate via self-play tournament →
+  Rank with Elo → Evolve winners → Re-debate → Converge → Output
+  Intelligence = f(quality of REASONING CYCLES, not search volume)
+```
+
+### The 6 Agents
+
+| Agent | Function | Compute % | Stage0 Equivalent |
+|-------|----------|-----------|-------------------|
+| **Generation** | Create NOVEL hypotheses from first principles | 10% | ❌ MISSING — Stage0 only searches for existing ideas |
+| **Reflection** | Self-critique each hypothesis (peer review) | 15% | Partial — adversarial_questioner.py exists but runs 1 pass |
+| **Ranking** | Elo tournament via pairwise debate | 20% | ✅ EXISTS — tournament engine (elo_engine.py, 33/33 tests) |
+| **Evolution** | MERGE + MUTATE top hypotheses into stronger forms | 25% | ❌ MISSING — single-pass, no evolution |
+| **Proximity** | Prevent duplicates, enforce diversity | 5% | Partial — diversity check in tournament |
+| **Meta-review** | Final quality synthesis | 5% | ✅ EXISTS — vision quality gate Phase 4A |
+| **Supervisor** | Orchestrate compute allocation | 20% | ✅ EXISTS — SKILL.md pipeline |
+
+**2 of 6 agents MISSING. They're the 2 highest-impact ones.**
+
+### The KEY Insight: Self-Play Scientific Debate
+
+The breakthrough is NOT "better prompts" or "more search." It's:
+
+1. **Hypotheses compete against each other** in pairwise debate (like chess Elo)
+2. **Winners evolve** — top hypotheses get STRENGTHENED and MERGED into new forms
+3. **The system generates MORE hypotheses than it searches for** — generation is cheap, verification is expensive
+4. **Convergence = stable ranking** — keep debating until the top-3 don't change across 2 rounds
+5. **Test-time compute scaling** — throwing MORE compute at reasoning (not search) monotonically improves quality
+
+The 91% validation happened because Co-Scientist DISCOVERED combinations of drug mechanisms that no single paper described — it REASONED them into existence from scattered evidence, then validated.
+
+---
+
+## III. STAGE0 ARCHITECTURE — HONEST AUDIT
+
+### Current Compute Allocation
+
+```
+Phase 0   (Identification): 5%   — classify, sanitize
+Phase 1   (Founder Context): 3%  — load profile, constraints
+Phase 2   (Research):        52%  — 7+ web search agents, evidence vault ← PROBLEM
+Phase 2.5 (Analysis):       15%  — reasoning chain, pattern matcher
+Phase 2.7 (Tournament):     10%  — Elo debate (EXISTS, good)
+Phase 3   (Lenses):          8%  — 12 persona lenses
+Phase 4   (Synthesis):       7%  — final output
+```
+
+**Diagnosis: 52% of compute = web search. 10% = debate. 0% = novel hypothesis generation. 0% = iterative refinement.**
+
+### What Stage0 Actually Does Well (genuine advantages)
+
+1. **Founder context integration** — Co-Scientist has none. Every Stage0 analysis is shaped by personal constraints (capital, skills, location, language). This is a REAL advantage.
+
+2. **Money flow graph** — IntelligenceController builds actual graph with nodes, edges, confidence scores, bottleneck positions. Co-Scientist doesn't have this commercial lens.
+
+3. **Multi-lens analysis** — 12 business persona lenses (Hormozi, Thiel, Munger, etc.) apply diverse frameworks simultaneously. Co-Scientist uses domain-specific models.
+
+4. **Execution translation** — 7-day plans with exact scripts, contacts, kill criteria. Co-Scientist outputs experimental protocols, not execution plans.
+
+5. **Learning loop** — template evolution, prediction engine, compound cache. Co-Scientist is stateless per session.
+
+### What Stage0 Structurally Lacks
+
+#### LACK 1: No Novel Hypothesis Generation
+
+```python
+# hunt_runner.py — line 647-666
+# Brain 1: PriceDeltaEngine → scans for EXISTING price spreads
+# Brain 2: ForcedFlowEngine → scans for EXISTING regulatory mandates
+# Brain 3: AnomalyCrossReferencer → cross-references EXISTING data
+```
+
+All 3 brains search for WHAT EXISTS. None generates "what COULD exist." The system finds patterns in existing data but never IMAGINES new possibilities.
+
+**Co-Scientist equivalent:** Generation agent creates hypotheses BEFORE any search. "What if drug A + drug B together inhibit pathway C?" — this was never in any paper.
+
+#### LACK 2: No Iterative Refinement (EVOLVE cycle)
+
+```python
+# intelligence_controller.py — line 110-218
+# Seed → HypothesisLoop × max 5 cycles → Synthesize
+# BUT: hypotheses are TESTED, not EVOLVED
+# Each cycle generates NEW hypotheses from gaps, never STRENGTHENS existing ones
+```
+
+The IntelligenceController has a loop, but it generates NEW hypotheses each cycle — it never takes the BEST hypothesis and makes it STRONGER. The difference:
+
+```
+Stage0:  H1, H2, H3 → test → H4, H5 → test → H6, H7 → stop
+CoSci:   H1, H2, H3 → debate → H1' (evolved), H2+H3→H4 (merged) → debate → H1'' → converge
+```
+
+Stage0 WIDENS the search. Co-Scientist DEEPENS the best ideas.
+
+#### LACK 3: Debate ≠ Evolution
+
+Stage0's tournament (Phase 2.7) ranks hypotheses via Elo. Good. But:
+- Losers are DISCARDED, not LEARNED FROM
+- Winners are RANKED, not IMPROVED
+- There's no MERGE operation (combine 2 good ideas into 1 better idea)
+- Tournament runs ONCE, not iteratively until convergence
+
+#### LACK 4: Think/Search Ratio Inverted
+
+```
+Co-Scientist: Think 70% / Search 20% / Organize 10%
+Stage0:       Search 52% / Think 25% / Organize 23%
+```
+
+Stage0 treats the LLM as a SEARCH ORCHESTRATOR (generate queries, parse results, organize findings).
+Co-Scientist treats the LLM as a REASONING ENGINE (generate hypotheses, debate them, evolve winners).
+
+---
+
+## IV. THE FUNDAMENTAL PARADIGM DIFFERENCE
+
+### Stage0 = EMPIRICAL approach (collect → conclude)
+- More data → better conclusions
+- Quality = coverage of search space
+- LLM role = search agent + summarizer
+- Failure mode = "we searched 100 things but missed the one that mattered"
+
+### Co-Scientist = RATIONALIST approach (hypothesize → verify)  
+- Better hypotheses → fewer, targeted searches needed
+- Quality = depth of reasoning cycles
+- LLM role = hypothesis engine + debater
+- Failure mode = "our reasoning was wrong despite logical consistency"
+
+### HYBRID (what Stage0 should become):
+- First principles GENERATE hypotheses (rationalist)
+- Targeted search VERIFIES specific claims (empirical)  
+- Tournament DEBATES competing hypotheses (adversarial)
+- Evolution MERGES and STRENGTHENS winners (iterative)
+- Convergence STOPS when ranking stabilizes (deterministic)
+
+---
+
+## V. GAP-BY-GAP EVOLUTION PATH
+
+### Gap 1: First Principles Generator → Phase 2.6 (PLAN EXISTS, status: complete)
+
+**What it does:** Generate 5-8 novel hypotheses WITHOUT any web search.
+**Why it matters:** This is the single biggest unlock. Currently, Stage0 can only find opportunities someone already wrote about. First principles reasoning can discover opportunities NO ONE has published.
+
+**5 generation techniques:**
+1. Structural Analysis (map money flow → find bottleneck → insert self)
+2. Inversion (Munger: "what kills everyone?" → reverse it)
+3. Adjacent Transfer (solved in another industry → apply here)
+4. Constraint Exploitation (founder's unique constraints = unfair advantage)
+5. Temporal Arbitrage (what changes in 6-18 months that creates new positions?)
+
+**Status: Plan complete, implementation pending.**
+
+### Gap 2: Knowledge Graph → Phase 2.5A upgrade (PLAN EXISTS, status: pending)
+
+**What it does:** Replace flat markdown evidence vault with queryable Python graph.
+**Why it matters:** Refinement loop needs to ask "what gaps exist for hypothesis H?" — flat vault can't answer this. Co-Scientist queries structured databases (UniProt, AlphaFold). Stage0 needs structured knowledge to VERIFY against, not just text to READ.
+
+**Status: 8h effort, pending.**
+
+### Gap 3: Refinement Loop → Phase 2.8 (PLAN EXISTS, status: pending)
+
+**What it does:** After tournament, take top-3 → STRENGTHEN + ATTACK + EVOLVE × N rounds.
+**Why it matters:** This is where novel discoveries emerge. Not from initial generation, but from iterative refinement. Co-Scientist's 91% validation came from evolved hypotheses, not initial ones.
+
+**Cycle per round:**
+- STRENGTHEN: fill evidence gaps (3 targeted searches per hypothesis)
+- ATTACK: find counter-evidence (2 inversion searches per hypothesis)
+- EVOLVE: merge compatible hypotheses into stronger forms
+- RE-TOURNAMENT: Elo debate on refined candidates
+- CONVERGE: stop when top-3 stable across 2 rounds (max 3 rounds)
+
+**Search budget: 15 per round × max 3 = 45 targeted searches** (vs current 40+ broad searches). Same budget, 10× more intelligent use.
+
+**Status: 6h effort, pending.**
+
+### Gap 4: Evolution Trace in Output → Phase 4 upgrade (PLAN EXISTS, status: pending)
+
+**What it does:** Show HOW each hypothesis evolved, not just final ranking.
+**Why it matters:** The user sees the REASONING, not just the conclusion. "This idea started weak, got strengthened when market size verified, survived 2 attack rounds, merged with idea X to create a stronger form."
+
+**Status: 3h effort, pending.**
+
+---
+
+## VI. WHAT THE PLAN ALREADY CAPTURES vs WHAT'S STILL MISSING
+
+### Already Captured in HDIE Plan ✅
+
+1. ✅ First Principles Generator (Phase 1) — complete design
+2. ✅ Knowledge Graph (Phase 2) — 8h plan
+3. ✅ Refinement Loop with STRENGTHEN/ATTACK/EVOLVE (Phase 3) — 6h plan
+4. ✅ Convergence detection (top-3 stable across 2 rounds)
+5. ✅ Evolution trace in output (Phase 4)
+6. ✅ Bounded compute (max 3 refinement rounds)
+7. ✅ Integration testing (Phase 5)
+
+### STILL MISSING from HDIE Plan ⚠️
+
+1. **⚠️ Elo score as feedback signal for evolution** — Current plan re-runs tournament but doesn't use Elo DELTA (how much a hypothesis improved/declined) to guide the EVOLVE step. Co-Scientist uses Elo monotonically increasing as convergence signal.
+
+2. **⚠️ Proximity/diversity enforcement across rounds** — Plan has merge check for compatibility but no explicit mechanism to prevent the hypothesis pool from CONVERGING TOO FAST to a single type. Co-Scientist's Proximity agent ensures diverse ideas survive even if one type dominates early rounds.
+
+3. **⚠️ Cross-hypothesis DEBATE (not just Elo)** — Current tournament is pairwise comparison via LLM. Co-Scientist's "self-play scientific debate" is deeper — hypotheses actively ARGUE against each other with evidence. The Evolution agent doesn't just rank — it SYNTHESIZES the winning argument INTO the hypothesis.
+
+4. **⚠️ Test-time compute scaling** — Co-Scientist's key finding: MORE compute on reasoning = monotonically better results. Current plan has fixed 3-round cap. Missing: a mechanism to detect "spending another round would improve quality by X%" vs "we've converged, stop." The cap should be dynamic based on Elo movement rate, not fixed.
+
+5. **⚠️ Reflection agent (self-critique before debate)** — Co-Scientist has each hypothesis SELF-CRITIQUE before entering tournament. Stage0's adversarial_questioner runs after evidence collection, not before tournament. Adding a pre-tournament self-critique step would catch weak hypotheses BEFORE they waste debate compute.
+
+6. **⚠️ IntelligenceController integration** — The existing hypothesis loop in intelligence_controller.py (Seed → HypothesisLoop × 5) and the NEW refinement loop (Generate → Debate → Evolve × 3) are currently SEPARATE systems. They should share the same convergence mechanism and graph infrastructure.
+
+---
+
+## VII. VERDICT: IS THE SYSTEM "XUẤT SẮC HƠN" (MORE EXCELLENT) THAN CO-SCIENTIST'S TECHNIQUE?
+
+### What Stage0 does BETTER than Co-Scientist:
+- **Founder context** — every hypothesis evaluated against REAL personal constraints
+- **Money flow graph** — commercial topology, not just hypothesis quality
+- **Execution translation** — actionable 7-day plans, not just "this hypothesis is good"
+- **Multi-domain lenses** — 12 business frameworks applied simultaneously
+- **Learning across sessions** — compound cache, template evolution, prediction engine
+
+### What Co-Scientist does BETTER than Stage0:
+- **Novel hypothesis generation** — imagines possibilities no one published
+- **Iterative evolution** — hypotheses get STRONGER through rounds, not just ranked
+- **Self-play debate** — deeper than pairwise comparison, includes evidence argumentation
+- **Convergence-driven compute** — keeps going until ranking stabilizes, not fixed passes
+- **70% reasoning / 30% search** — inverted ratio from Stage0's approach
+
+### Current State: Stage0 is a **SEARCH ENGINE** with excellent post-processing.
+### Target State: Stage0 should be a **REASONING ENGINE** with targeted verification.
+
+The HDIE plan already captures ~70% of what's needed. The remaining 30% (items in Section VI) are the difference between "inspired by Co-Scientist" and "actually implementing the core principle."
+
+---
+
+## VIII. UNRESOLVED QUESTIONS
+
+1. Should the Elo delta (improvement rate across rounds) replace the fixed 3-round cap?
+2. Should the Proximity/diversity agent be a separate module or embedded in tournament logic?
+3. Should IntelligenceController's hypothesis loop merge with the refinement loop into a single convergence system?
+4. How to handle the increased compute cost (~45 targeted searches + 3 tournament rounds)?

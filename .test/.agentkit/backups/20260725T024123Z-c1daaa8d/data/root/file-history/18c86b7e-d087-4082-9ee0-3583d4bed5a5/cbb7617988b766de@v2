@@ -1,0 +1,25 @@
+strip_ansi = true
+
+[command]
+name = "git"
+args_contain = ["diff"]
+
+[[strip_lines]]
+pattern = '^index [0-9a-f]'
+
+[[strip_lines]]
+pattern = '^diff --git'
+
+[[strip_lines]]
+pattern = '^\\ No newline'
+
+[truncate_lines]
+max_length = 200
+suffix = "…"
+
+[head_tail]
+head = 100
+tail = 20
+separator = "\n... ({omitted} lines omitted) ...\n"
+
+max_lines = 500

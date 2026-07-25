@@ -1,0 +1,92 @@
+#!/usr/bin/env node
+/**
+ * hunger-post-verdict.cjs — Post-verdict hook
+ * Auto-distills claims from /stage0 verdict into local KB.
+ * Non-blocking: spawns detached process, never delays verdict display.
+ */
+
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const { spawn } = require('child_process');
+
+let isHookEnabled;
+try {
+  ({ isHookEnabled } = require('./lib/ck-config-utils.cjs'));
+} catch {
+  isHookEnabled = () => true;
+}
+
+if (!isHookEnabled('hunger-post-verdict')) {
+  process.exit(0);
+}
+
+const REPO_ROOT = path.resolve(__dirname, '..', '..');
+const PYTHON_EXE = path.join(REPO_ROOT, '.claude', 'skills', '.venv', 'Scripts', 'python.exe');
+const LOG_DIR = path.join(__dirname, '.logs');
+const LOG_FILE = path.join(LOG_DIR, 'hunger-post-verdict.log');
+
+function main() {
+  const caseId = process.env.STAGE0_CASE_ID || '';
+  if (!caseId) {
+    process.exit(0);
+  }
+
+  const casePath = path.join(REPO_ROOT, 'execution', `case-${caseId}.json`);
+  const tmpPath = path.join(require('os').tmpdir(), `case-${caseId}.json`);
+
+  let targetPath = null;
+  if (fs.existsSync(casePath)) {
+    targetPath = casePath;
+  } else if (fs.existsSync(tmpPath)) {
+    targetPath = tmpPath;
+  }
+
+  if (!targetPath) {
+    process.exit(0);
+  }
+
+  try {
+    if (!fs.existsSync(LOG_DIR)) {
+      fs.mkdirSync(LOG_DIR, { recursive: true });
+    }
+
+    const script = `
+import sys, json
+from pathlib import Path
+sys.path.insert(0, str(Path(r'${REPO_ROOT}') / '.claude' / 'lib'))
+from intelligence.hunger.post_verdict_distiller import PostVerdictDistiller
+d = PostVerdictDistiller()
+result = d.distill(Path(r'${targetPath}'))
+print(json.dumps({'extracted': result.claims_extracted, 'stored': result.claims_stored, 'gaps': result.gaps_queued}))
+`;
+
+    const child = spawn(PYTHON_EXE, ['-c', script], {
+      detached: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: REPO_ROOT,
+    });
+
+    let stdout = '';
+    child.stdout.on('data', (d) => { stdout += d.toString(); });
+    child.stderr.on('data', (d) => {
+      fs.appendFileSync(LOG_FILE, `[${new Date().toISOString()}] ERR: ${d}\n`);
+    });
+
+    child.on('close', (code) => {
+      const msg = `[${new Date().toISOString()}] case=${caseId} exit=${code} ${stdout.trim()}\n`;
+      fs.appendFileSync(LOG_FILE, msg);
+    });
+
+    child.unref();
+  } catch (err) {
+    if (process.env.CK_DEBUG) {
+      process.stderr.write(`hunger-post-verdict: ${err.message}\n`);
+    }
+  }
+
+  process.exit(0);
+}
+
+main();

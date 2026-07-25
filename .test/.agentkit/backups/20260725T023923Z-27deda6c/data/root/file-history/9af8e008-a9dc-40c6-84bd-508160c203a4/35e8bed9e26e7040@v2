@@ -1,0 +1,175 @@
+"""Tests for Brain 1: Price Delta Engine."""
+
+import json
+import pytest
+from ..price_delta_engine import (
+    PriceDeltaEngine, BudgetTracker, CURRENCY_TO_USD, UNIT_TO_KG,
+    DEFAULT_SEEDS, DEFAULT_MARKETS,
+)
+from ..models import PriceDelta, FounderProfile
+
+
+def _mock_research(responses: dict):
+    """Returns a research_fn that maps query substrings to responses."""
+    def fn(query: str) -> str:
+        for key, val in responses.items():
+            if key.lower() in query.lower():
+                return val
+        return ""
+    return fn
+
+
+def _mock_llm(mappings: dict):
+    """Returns an llm_fn that returns JSON based on prompt content."""
+    def fn(prompt: str) -> str:
+        for key, val in mappings.items():
+            if key.lower() in prompt.lower():
+                return json.dumps(val)
+        return json.dumps({"product": "unknown", "price": None})
+    return fn
+
+
+class TestBudgetTracker:
+    def test_initial_state(self):
+        b = BudgetTracker(max_calls=5)
+        assert b.can_call()
+        assert b.calls_used == 0
+
+    def test_exhaustion(self):
+        b = BudgetTracker(max_calls=3)
+        assert b.use()
+        assert b.use()
+        assert b.use()
+        assert not b.use()
+        assert not b.can_call()
+        assert b.calls_used == 3
+
+
+class TestSpreadCalculation:
+    def test_basic_spread(self):
+        call_idx = 0
+        def sequenced_research(q):
+            nonlocal call_idx
+            call_idx += 1
+            if "vietnam" in q.lower():
+                return "Robusta coffee Vietnam wholesale $2.50/kg FOB HCM 2026"
+            return "Robusta coffee EU import $4.00/kg CIF Rotterdam 2026"
+
+        def sequenced_llm(prompt):
+            if "$2.50" in prompt or "vietnam" in prompt.lower():
+                return json.dumps({"product": "coffee", "price": 2.5, "currency": "USD", "unit": "kg", "source_url": "http://vn.example"})
+            return json.dumps({"product": "coffee", "price": 4.0, "currency": "USD", "unit": "kg", "source_url": "http://eu.example"})
+
+        engine = PriceDeltaEngine(sequenced_research, sequenced_llm, max_calls=30, spread_threshold=30.0)
+        deltas = engine.scan(seed_products=["coffee"], markets=["Vietnam", "EU"])
+
+        assert len(deltas) >= 1
+        d = deltas[0]
+        assert d.product == "coffee"
+        assert d.spread_pct == pytest.approx(60.0)
+        assert d.price_a == pytest.approx(2.5)
+        assert d.price_b == pytest.approx(4.0)
+
+    def test_below_threshold_filtered(self):
+        def research(q):
+            if "vietnam" in q.lower():
+                return "pepper VN $10/kg"
+            return "pepper EU $12/kg"
+
+        def llm(prompt):
+            if "$10" in prompt:
+                return json.dumps({"product": "pepper", "price": 10.0, "currency": "USD", "unit": "kg"})
+            return json.dumps({"product": "pepper", "price": 12.0, "currency": "USD", "unit": "kg"})
+
+        engine = PriceDeltaEngine(research, llm, max_calls=30, spread_threshold=30.0)
+        deltas = engine.scan(seed_products=["pepper"], markets=["Vietnam", "EU"])
+        assert len(deltas) == 0  # 20% spread < 30% threshold
+
+    def test_custom_threshold(self):
+        def research(q):
+            if "vietnam" in q.lower():
+                return "pepper VN $10/kg"
+            return "pepper EU $12/kg"
+
+        def llm(prompt):
+            if "$10" in prompt:
+                return json.dumps({"product": "pepper", "price": 10.0, "currency": "USD", "unit": "kg"})
+            return json.dumps({"product": "pepper", "price": 12.0, "currency": "USD", "unit": "kg"})
+
+        engine = PriceDeltaEngine(research, llm, max_calls=30, spread_threshold=15.0)
+        deltas = engine.scan(seed_products=["pepper"], markets=["Vietnam", "EU"])
+        assert len(deltas) == 1
+
+
+class TestBudgetEnforcement:
+    def test_stops_at_budget(self):
+        call_count = 0
+        def counting_research(q):
+            nonlocal call_count
+            call_count += 1
+            return f"price data for {q}"
+
+        llm = _mock_llm({
+            "": {"product": "x", "price": 5.0, "currency": "USD", "unit": "kg"}
+        })
+        engine = PriceDeltaEngine(counting_research, llm, max_calls=5)
+        engine.scan(seed_products=["a", "b", "c", "d"], markets=["X", "Y", "Z"])
+        assert engine.budget.calls_used <= 5
+
+
+class TestSeedResolution:
+    def test_explicit_seeds(self):
+        engine = PriceDeltaEngine(lambda q: "", lambda p: "{}", max_calls=30)
+        seeds = engine._resolve_seeds(["coffee", "pepper"], None)
+        assert seeds == ["coffee", "pepper"]
+
+    def test_founder_industries(self):
+        founder = FounderProfile(industries=["coffee export", "agriculture"])
+        engine = PriceDeltaEngine(lambda q: "", lambda p: "{}", max_calls=30)
+        seeds = engine._resolve_seeds(None, founder)
+        assert "coffee export" in seeds
+        assert "agriculture" in seeds
+
+    def test_default_seeds_when_empty(self):
+        engine = PriceDeltaEngine(lambda q: "", lambda p: "{}", max_calls=30)
+        seeds = engine._resolve_seeds(None, None)
+        assert len(seeds) > 0
+        assert seeds == DEFAULT_SEEDS[:5]
+
+    def test_deduplication(self):
+        engine = PriceDeltaEngine(lambda q: "", lambda p: "{}", max_calls=30)
+        seeds = engine._resolve_seeds(["Coffee", "coffee", "COFFEE"], None)
+        assert len(seeds) == 1
+
+
+class TestCurrencyNormalization:
+    def test_vnd_to_usd(self):
+        engine = PriceDeltaEngine(lambda q: "", lambda p: "{}", max_calls=30)
+        result = engine._normalize_price_to_usd_per_kg(58000, "VND", "kg")
+        expected = 58000 * CURRENCY_TO_USD["VND"]
+        assert result == pytest.approx(expected)
+
+    def test_ton_to_kg(self):
+        engine = PriceDeltaEngine(lambda q: "", lambda p: "{}", max_calls=30)
+        result = engine._normalize_price_to_usd_per_kg(4200, "USD", "ton")
+        assert result == pytest.approx(4.2)
+
+
+class TestLLMExtractionPrompt:
+    def test_prompt_contains_text(self):
+        captured_prompts = []
+        def capture_llm(prompt):
+            captured_prompts.append(prompt)
+            return json.dumps({"product": "test", "price": None})
+
+        engine = PriceDeltaEngine(lambda q: "some raw text", capture_llm, max_calls=30)
+        engine.scan(seed_products=["test"], markets=["TestMarket"])
+        assert any("some raw text" in p for p in captured_prompts)
+
+    def test_search_failure_handled(self):
+        def failing_research(q):
+            raise ConnectionError("network down")
+
+        engine = PriceDeltaEngine(failing_research, lambda p: "{}", max_calls=30)
+        deltas = engine.scan(seed_products=["test"], markets=["A", "B"])
+        assert deltas == []

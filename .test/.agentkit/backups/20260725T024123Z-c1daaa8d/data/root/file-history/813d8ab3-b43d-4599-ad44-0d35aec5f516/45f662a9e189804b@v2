@@ -1,0 +1,175 @@
+"""Execution Fitness Tracker — Loop 2 revenue-grounded fitness scoring.
+
+Extends fitness from "was verdict correct?" to "did it lead to ACTION and REVENUE?"
+Blended formula: 30% brier + 25% action + 25% revenue + 10% speed + 10% info_gain
+
+Distinct from execution_fitness.py (deal template scoring) — this tracks
+verdict-level execution states for the AEVO-X Loop 2 calibration.
+"""
+
+from __future__ import annotations
+
+import math
+import sqlite3
+from datetime import datetime, timezone
+from typing import Optional
+
+from .case_archiver import CaseArchiver
+
+WEIGHT_BRIER = 0.30
+WEIGHT_ACTION = 0.25
+WEIGHT_REVENUE = 0.25
+WEIGHT_SPEED = 0.10
+WEIGHT_INFO_GAIN = 0.10
+
+REVENUE_LOG_BASE = 10000.0
+SPEED_MAX_DAYS = 180
+
+
+class ExecutionFitnessTracker:
+    def __init__(self, archiver: CaseArchiver):
+        self.archiver = archiver
+        self._ensure_tables()
+
+    def _conn(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(str(self.archiver.db_path))
+        conn.execute("PRAGMA journal_mode=WAL")
+        return conn
+
+    def _ensure_tables(self):
+        with self._conn() as conn:
+            conn.executescript("""
+                CREATE TABLE IF NOT EXISTS execution_states (
+                    case_id TEXT PRIMARY KEY,
+                    strategy_id TEXT,
+                    verdict_class TEXT,
+                    state TEXT DEFAULT 'not_acted',
+                    registered_at TEXT,
+                    acted_at TEXT,
+                    outcome_at TEXT,
+                    revenue REAL DEFAULT 0,
+                    time_to_outcome_days INTEGER,
+                    notes TEXT
+                );
+
+                CREATE TABLE IF NOT EXISTS query_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    topic TEXT NOT NULL,
+                    queried_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_exec_strategy
+                    ON execution_states(strategy_id);
+                CREATE INDEX IF NOT EXISTS idx_query_topic
+                    ON query_log(topic);
+            """)
+
+    def register_verdict(self, case_id: str, strategy_id: str, verdict_class: str):
+        now = datetime.now(timezone.utc).isoformat()
+        with self._conn() as conn:
+            conn.execute("""
+                INSERT OR IGNORE INTO execution_states
+                    (case_id, strategy_id, verdict_class, state, registered_at, revenue)
+                VALUES (?, ?, ?, 'not_acted', ?, 0.0)
+            """, (case_id, strategy_id, verdict_class, now))
+
+    def record_action(self, case_id: str):
+        now = datetime.now(timezone.utc).isoformat()
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE execution_states SET state='acted', acted_at=? WHERE case_id=? AND state='not_acted'",
+                (now, case_id),
+            )
+
+    def record_outcome(self, case_id: str, revenue: float = 0.0, notes: str = ""):
+        now = datetime.now(timezone.utc).isoformat()
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT acted_at FROM execution_states WHERE case_id=?", (case_id,)
+            ).fetchone()
+            days = None
+            if row and row[0]:
+                acted = datetime.fromisoformat(row[0])
+                days = (datetime.now(timezone.utc) - acted).days
+
+            conn.execute("""
+                UPDATE execution_states
+                SET state='outcome_reported', outcome_at=?, revenue=?, time_to_outcome_days=?, notes=?
+                WHERE case_id=?
+            """, (now, revenue, days, notes, case_id))
+
+    def get_state(self, case_id: str) -> Optional[dict]:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM execution_states WHERE case_id=?", (case_id,)
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            "case_id": row[0], "strategy_id": row[1], "verdict_class": row[2],
+            "state": row[3], "registered_at": row[4], "acted_at": row[5],
+            "outcome_at": row[6], "revenue": row[7],
+            "time_to_outcome_days": row[8], "notes": row[9],
+        }
+
+    def compute_blended_fitness(self, case_id: str, brier_score: float = 0.5) -> float:
+        state = self.get_state(case_id)
+        if state is None:
+            return (1.0 - brier_score) * WEIGHT_BRIER
+
+        brier_component = (1.0 - brier_score) * WEIGHT_BRIER
+        action_component = (1.0 if state["state"] in ("acted", "outcome_reported") else 0.0) * WEIGHT_ACTION
+        revenue_component = self._revenue_score(state["revenue"]) * WEIGHT_REVENUE
+        speed_component = self._speed_score(state["time_to_outcome_days"]) * WEIGHT_SPEED
+        info_gain_component = self._info_gain_score(state) * WEIGHT_INFO_GAIN
+
+        return brier_component + action_component + revenue_component + speed_component + info_gain_component
+
+    def get_strategy_fitness(self, strategy_id: str, default_brier: float = 0.5) -> float:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT case_id FROM execution_states WHERE strategy_id=?", (strategy_id,)
+            ).fetchall()
+        if not rows:
+            return 0.0
+        scores = [self.compute_blended_fitness(r[0], brier_score=default_brier) for r in rows]
+        return sum(scores) / len(scores)
+
+    def log_query(self, topic: str):
+        now = datetime.now(timezone.utc).isoformat()
+        with self._conn() as conn:
+            conn.execute("INSERT INTO query_log (topic, queried_at) VALUES (?, ?)", (topic, now))
+
+    def detect_interest(self, topic: str, threshold: int = 3) -> bool:
+        with self._conn() as conn:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM query_log WHERE topic=?", (topic,)
+            ).fetchone()[0]
+        return count >= threshold
+
+    def _set_time_to_outcome(self, case_id: str, days: int):
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE execution_states SET time_to_outcome_days=? WHERE case_id=?",
+                (days, case_id),
+            )
+
+    def _revenue_score(self, revenue: float) -> float:
+        if revenue <= 0:
+            return 0.0
+        return min(1.0, math.log1p(revenue) / math.log1p(REVENUE_LOG_BASE))
+
+    def _speed_score(self, days: Optional[int]) -> float:
+        if days is None or days <= 0:
+            return 0.0
+        if days >= SPEED_MAX_DAYS:
+            return 0.0
+        return 1.0 - (days / SPEED_MAX_DAYS)
+
+    def _info_gain_score(self, state: dict) -> float:
+        score = 0.3
+        if state["state"] == "acted":
+            score += 0.3
+        if state["state"] == "outcome_reported":
+            score += 0.4
+        return min(score, 1.0)

@@ -1,0 +1,13 @@
+---
+name: Cashflow Positioning Infrastructure
+description: 5-phase positioning framework data layer shipped to master_investments — deal journal, failure journal, Dream 5 tracker, phase gates, templates
+type: project
+originSessionId: 19c6570a-b75b-487c-9c57-c4543be27f9b
+---
+SHIPPED 2026-05-09: Cashflow positioning framework infrastructure in master_investments (commit 9c4a0251).
+
+**Why:** Wires paradigm-shift brainstorm (Giang Trần Minh Thành dissection) into trackable data structures. 5 phases: pattern recognition → info asymmetry → micro-deals → relationship engineering → position consolidation.
+
+**How to apply:** When user logs deals, coffee meetings, or checks phase progress, reference schemas in `data/deals/`, `data/relationships/`, `data/positioning/`. Templates in `execution/templates/` define input format. Phase gates in `data/positioning/phase-gates.json` enforce kill criteria (6/12/18 month).
+
+Key files: deal-journal.json, failure-journal.json, dream5.json, phase-gates.json, monetization-tracker.json. Plan: `plans/260509-1816-cashflow-positioning-mastery/`.

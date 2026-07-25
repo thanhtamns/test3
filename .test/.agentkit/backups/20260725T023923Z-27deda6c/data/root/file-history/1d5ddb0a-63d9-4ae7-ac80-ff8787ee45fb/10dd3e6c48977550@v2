@@ -1,0 +1,104 @@
+---
+phase: 1
+title: "Discovery & Validation"
+status: pending
+priority: P1
+effort: "15h (Week 1)"
+dependencies: []
+---
+
+# Phase 1: Discovery & Validation
+
+## Overview
+
+Validate that "distribution" is truly the #1 friction for indie hackers, collect exact language they use to describe pain, and identify existing solutions' gaps. This phase is BLOCKING — no code until validation passes.
+
+## Requirements
+
+- Functional: Collect 50+ data points confirming friction. Get 3+ DM responses with specific pain descriptions.
+- Non-functional: All data must be from REAL conversations/posts, not assumed. Tag all claims [K] verified or [T] inferred.
+
+## Implementation Steps
+
+### Day 1: Reddit/Forum Mining (3h)
+
+1. Go to r/SideProject — sort by "new", read 50 posts
+   - Record: How many mention distribution/users/traffic as primary problem?
+   - Copy exact phrases they use (this becomes landing page copy)
+   - Note: What solutions have they tried? What failed?
+
+2. Go to r/SaaS, r/indiehackers — same process, 25 posts each
+   - Look for: "how to get first users", "nobody uses my product", "launched but no traction"
+
+3. Save to spreadsheet: `discovery/friction-data.csv`
+   - Columns: source, url, quote, friction_type, solutions_tried, willingness_to_pay
+
+### Day 2: Community Lurking (3h)
+
+4. Join 3 Discord servers:
+   - Indie Hackers Discord
+   - WIP (Work in Progress) community
+   - MicroConf Connect (or similar builder community)
+
+5. Read #launches, #feedback, #struggles channels
+   - Record same data points as Day 1
+   - Note: Are people ASKING for distribution help? Or just complaining?
+
+### Day 3: Direct Conversations (3h)
+
+6. Identify 10 indie hackers who posted about distribution struggles in last 30 days
+7. Send DM template:
+   ```
+   Hey [name], I saw your post about [specific struggle].
+   I'm researching how builders find their first users.
+   Quick question: what's the #1 thing you tried for distribution that didn't work?
+   And what would you pay for if it actually solved this?
+   ```
+8. Track responses in `discovery/dm-responses.csv`
+
+### Day 4: Competitor Gap Analysis (3h)
+
+9. Google: "indie hacker distribution tool", "find users for SaaS", "product launch tool"
+10. For each existing tool found, document:
+    - Name, URL, pricing
+    - What it does vs what it DOESN'T do
+    - User reviews/complaints
+11. Identify the GAP: what does NO tool solve?
+12. Save to `discovery/competitor-analysis.md`
+
+### Day 5: Decision Gate (3h)
+
+13. Compile all data into `discovery/validation-report.md`:
+    - Friction confirmation: Is distribution truly #1? (need 70%+ posts mentioning it)
+    - Language bank: Exact phrases for landing page copy
+    - WTP signals: Would they pay? How much?
+    - Competitor gaps: What's missing?
+    - DM insights: Qualitative depth
+
+14. **GATE DECISION:**
+
+| Signal | GO | PIVOT | KILL |
+|--------|-----|-------|------|
+| Posts mentioning distribution | >70% | 40-70% | <40% |
+| DM response rate | >30% (3/10) | 10-30% | <10% |
+| Existing tool covers gap | <50% coverage | 50-80% | >80% |
+| WTP evidence | >3 people say "yes" | 1-2 people | 0 people |
+
+## Success Criteria
+
+- [ ] 50+ data points collected from Reddit/forums
+- [ ] 3+ Discord communities lurked with notes
+- [ ] 10 DMs sent, 3+ responses received
+- [ ] Competitor gap analysis complete (5+ tools mapped)
+- [ ] Validation report written with GO/PIVOT/KILL decision
+- [ ] Exact user language captured for landing page copy
+- [ ] GO decision achieved (or pivot plan documented)
+
+## Risk Assessment
+
+| Risk | Probability | Mitigation |
+|------|-------------|------------|
+| Distribution NOT the #1 friction | 20% | Pivot to #2 friction from data (probably pricing or churn) |
+| Nobody responds to DMs | 30% | Offer free mini-analysis as incentive; try Twitter instead |
+| Existing tool already solves this | 15% | Differentiate on AI-powered personalization or price |
+| Echo chamber bias (only finding what we expect) | 25% | Actively search for counter-evidence: "distribution is NOT the problem" |

@@ -1,0 +1,265 @@
+#!/usr/bin/env python3
+"""
+stage0-outcomes-db-writer.py — Write stage0 verdicts into outcomes.db.
+
+Bridges the gap between stage0 verdict output and the intelligence timeseries DB.
+Inserts into: signals (raw observation), predictions (verdict + confidence),
+decisions (pursue/skip based on verdict).
+
+Usage:
+  echo '{"assistant_message":"...","user_prompt":"..."}' | python stage0-outcomes-db-writer.py
+  python stage0-outcomes-db-writer.py --backfill   # Backfill from brier-scores.jsonl
+  python stage0-outcomes-db-writer.py --status      # Show DB stats
+"""
+import argparse
+import json
+import re
+import sqlite3
+import sys
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+
+SAIGON_TZ = timezone(timedelta(hours=7))
+ROOT = Path(__file__).resolve().parents[4]
+OUTCOMES_DB = ROOT / "data" / "intelligence" / "outcomes.db"
+BRIER_FILE = ROOT / "data" / "calibration" / "brier-scores.jsonl"
+EXPERIENCE_DIR = ROOT / "data" / "experience-bank"
+
+# Add timeseries module to path
+LIB_DIR = ROOT / ".claude" / "lib" / "intelligence" / "db"
+sys.path.insert(0, str(LIB_DIR))
+
+VERDICT_RE = re.compile(
+    r"(?:verdict|status|decision)\s*[:=]?\s*\**\s*"
+    r"(KILL|CAUTION|GO|MOUNTAIN|SIDE[_\s-]?HUSTLE|PROVISIONAL[_\s-]?MOUNTAIN|"
+    r"UNCLEAR|NO[_\s-]?GO|COMMERCE[_\s-]?ENTRY[_\sA-Z]*|EXPLORATION[_\s-]?COMPLETE)\**",
+    re.IGNORECASE,
+)
+CONFIDENCE_RE = re.compile(
+    r"(?:confidence|p_mountain|P\([^)]*\))\s*[:=\s]\s*([01]?\.\d+|\d{1,3}%)",
+    re.IGNORECASE,
+)
+TOPIC_RE = re.compile(
+    r"(?:topic|niche|opportunity)\s*[:=]\s*[\"']?([^\"'\n]{5,80})",
+    re.IGNORECASE,
+)
+CASE_ID_RE = re.compile(r"(stage0-\d{6}-[\w-]+)")
+
+VERDICT_TO_DECISION = {
+    "KILL": "skip",
+    "NO_GO": "skip",
+    "CAUTION": "monitor",
+    "UNCLEAR": "monitor",
+    "GO": "pursue",
+    "MOUNTAIN": "pursue",
+    "PROVISIONAL_MOUNTAIN": "pursue",
+    "SIDE_HUSTLE": "pursue",
+    "COMMERCE_ENTRY": "pursue",
+    "EXPLORATION_COMPLETE": "monitor",
+}
+
+
+def get_db() -> sqlite3.Connection:
+    OUTCOMES_DB.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        import timeseries
+        return timeseries.init_db(OUTCOMES_DB)
+    except ImportError:
+        conn = sqlite3.connect(str(OUTCOMES_DB))
+        conn.row_factory = sqlite3.Row
+        migrations_dir = LIB_DIR / "migrations"
+        for sql_file in sorted(migrations_dir.glob("*.sql")):
+            conn.executescript(sql_file.read_text(encoding="utf-8"))
+        return conn
+
+
+def extract_verdict_info(text: str) -> dict | None:
+    verdict_match = VERDICT_RE.search(text)
+    if not verdict_match:
+        return None
+
+    verdict = verdict_match.group(1).upper().replace("-", "_").replace(" ", "_")
+    confidence = None
+    conf_match = CONFIDENCE_RE.search(text)
+    if conf_match:
+        val = conf_match.group(1)
+        confidence = float(val.rstrip("%")) / 100 if "%" in val else float(val)
+
+    topic = None
+    topic_match = TOPIC_RE.search(text)
+    if topic_match:
+        topic = topic_match.group(1).strip()
+
+    case_id = None
+    case_match = CASE_ID_RE.search(text)
+    if case_match:
+        case_id = case_match.group(1)
+
+    return {
+        "verdict": verdict,
+        "confidence": confidence,
+        "topic": topic,
+        "case_id": case_id,
+    }
+
+
+def insert_from_verdict(conn: sqlite3.Connection, info: dict) -> dict:
+    now = datetime.now(SAIGON_TZ).strftime("%Y-%m-%d %H:%M:%S")
+
+    signal_meta = json.dumps({
+        "case_id": info.get("case_id"),
+        "topic": info.get("topic"),
+        "verdict": info["verdict"],
+    }, ensure_ascii=False)
+
+    cursor = conn.execute(
+        "INSERT INTO signals (timestamp, source, signal_type, value, metadata) VALUES (?, ?, ?, ?, ?)",
+        (now, "stage0", "verdict", info.get("confidence"), signal_meta),
+    )
+    signal_id = cursor.lastrowid
+
+    pred_json = json.dumps({
+        "label": info["verdict"],
+        "score": info.get("confidence"),
+        "rationale": info.get("topic", ""),
+    }, ensure_ascii=False)
+
+    cursor = conn.execute(
+        "INSERT INTO predictions (model_id, niche, prediction, is_resolved) VALUES (?, ?, ?, ?)",
+        ("stage0-v19", info.get("topic"), pred_json, 0),
+    )
+    pred_id = cursor.lastrowid
+
+    decision_type = VERDICT_TO_DECISION.get(info["verdict"], "monitor")
+    conn.execute(
+        "INSERT INTO decisions (prediction_id, signal_id, decision_type, rationale, actor) VALUES (?, ?, ?, ?, ?)",
+        (pred_id, signal_id, decision_type, info.get("topic"), "stage0"),
+    )
+
+    conn.commit()
+    return {
+        "signal_id": signal_id,
+        "prediction_id": pred_id,
+        "decision_type": decision_type,
+        "verdict": info["verdict"],
+    }
+
+
+def cmd_ingest(text: str) -> dict:
+    info = extract_verdict_info(text)
+    if not info:
+        return {"ingested": False, "reason": "no verdict found in text"}
+
+    conn = get_db()
+    try:
+        result = insert_from_verdict(conn, info)
+        return {"ingested": True, **result}
+    finally:
+        conn.close()
+
+
+def cmd_backfill() -> dict:
+    if not BRIER_FILE.exists():
+        return {"error": "brier-scores.jsonl not found"}
+
+    entries = []
+    for line in BRIER_FILE.read_text(encoding="utf-8").strip().split("\n"):
+        if line.strip():
+            try:
+                entries.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+
+    conn = get_db()
+    inserted = 0
+    skipped = 0
+
+    try:
+        existing = {
+            row[0]
+            for row in conn.execute(
+                "SELECT json_extract(metadata, '$.case_id') FROM signals WHERE source='stage0'"
+            ).fetchall()
+            if row[0]
+        }
+
+        for e in entries:
+            case_id = e.get("case_id", "")
+            if case_id in existing:
+                skipped += 1
+                continue
+
+            info = {
+                "verdict": e.get("verdict", "UNKNOWN"),
+                "confidence": e.get("p_mountain"),
+                "topic": case_id,
+                "case_id": case_id,
+            }
+            insert_from_verdict(conn, info)
+
+            if e.get("observed") is not None:
+                pred_id = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+                outcome_json = json.dumps({
+                    "label": "mountain" if e["observed"] == 1 else "not_mountain",
+                    "verified_by": "brier_backfill",
+                    "brier": e.get("brier"),
+                })
+                conn.execute(
+                    "UPDATE predictions SET outcome=?, is_resolved=1, resolved_at=? WHERE id=?",
+                    (outcome_json, e.get("verified_at", datetime.now(SAIGON_TZ).strftime("%Y-%m-%d %H:%M:%S")), pred_id),
+                )
+
+            inserted += 1
+
+        conn.commit()
+        return {"inserted": inserted, "skipped_existing": skipped}
+    finally:
+        conn.close()
+
+
+def cmd_status() -> dict:
+    if not OUTCOMES_DB.exists():
+        return {"error": "outcomes.db not found"}
+
+    conn = get_db()
+    try:
+        signals = conn.execute("SELECT COUNT(*) FROM signals").fetchone()[0]
+        predictions = conn.execute("SELECT COUNT(*) FROM predictions").fetchone()[0]
+        resolved = conn.execute("SELECT COUNT(*) FROM predictions WHERE is_resolved=1").fetchone()[0]
+        decisions = conn.execute("SELECT COUNT(*) FROM decisions").fetchone()[0]
+        return {
+            "signals": signals,
+            "predictions": predictions,
+            "predictions_resolved": resolved,
+            "predictions_pending": predictions - resolved,
+            "decisions": decisions,
+        }
+    finally:
+        conn.close()
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Write stage0 verdicts to outcomes.db")
+    parser.add_argument("--backfill", action="store_true", help="Backfill from brier-scores.jsonl")
+    parser.add_argument("--status", action="store_true", help="Show DB stats")
+    args = parser.parse_args()
+
+    if args.status:
+        print(json.dumps(cmd_status(), indent=2))
+    elif args.backfill:
+        print(json.dumps(cmd_backfill(), indent=2))
+    else:
+        raw = sys.stdin.read().strip()
+        if not raw:
+            print(json.dumps({"error": "no input"}))
+            sys.exit(1)
+        try:
+            payload = json.loads(raw)
+            text = payload.get("assistant_message", "") + " " + payload.get("user_prompt", "")
+        except json.JSONDecodeError:
+            text = raw
+        print(json.dumps(cmd_ingest(text), indent=2))
+
+
+if __name__ == "__main__":
+    main()

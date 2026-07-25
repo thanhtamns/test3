@@ -1,0 +1,75 @@
+package api
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"net/http"
+	"strings"
+)
+
+type ctxKey string
+
+const tenantCtxKey ctxKey = "tenant_id"
+
+// SECURITY: MVP only — JWT signature is NOT verified. Tenant isolation relies on
+// trusted infrastructure (API gateway / internal network). Phase 5 adds WorkOS JWT
+// verification with proper signing key validation. Do NOT deploy to public internet
+// without adding signature verification first.
+func withTenantAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tenantID := ""
+
+		if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
+			token := strings.TrimPrefix(auth, "Bearer ")
+			if tid := extractTenantFromJWT(token); tid != "" {
+				tenantID = tid
+			}
+		}
+
+		if tenantID == "" {
+			if tid := r.Header.Get("X-Tenant-ID"); tid != "" {
+				tenantID = tid
+			}
+		}
+
+		if tenantID == "" {
+			tenantID = "default"
+		}
+
+		ctx := context.WithValue(r.Context(), tenantCtxKey, tenantID)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func tenantFromCtx(r *http.Request) string {
+	if tid, ok := r.Context().Value(tenantCtxKey).(string); ok && tid != "" {
+		return tid
+	}
+	return "default"
+}
+
+func extractTenantFromJWT(token string) string {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return ""
+	}
+
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return ""
+	}
+
+	var claims struct {
+		TenantID string `json:"tenant_id"`
+		OrgID    string `json:"org_id"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return ""
+	}
+
+	if claims.TenantID != "" {
+		return claims.TenantID
+	}
+	return claims.OrgID
+}

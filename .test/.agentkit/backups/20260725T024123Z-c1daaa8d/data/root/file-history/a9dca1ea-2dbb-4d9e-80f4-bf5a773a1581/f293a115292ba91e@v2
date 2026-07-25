@@ -1,0 +1,108 @@
+---
+phase: 3
+title: "Auto-Outcome Detection"
+status: pending
+priority: P1
+effort: "2d"
+dependencies: []
+---
+
+# Phase 3: Auto-Outcome Detection
+
+## Overview
+
+Outcome recording currently requires manual `/log-outcome`. With 49 cases and ~45 Brier pending, this bottlenecks evolution. This phase auto-detects outcomes from user behavior signals — no manual logging needed for most cases.
+
+**AEVO parallel:** AEVO auto-evaluates each candidate. Our "evaluation" (did the opportunity work?) is manual and delayed. This fixes that.
+
+## Requirements
+
+**Functional:**
+- Detect outcomes from 4 implicit signals
+- High-confidence (≥0.8) auto-commits to Brier pipeline
+- Medium-confidence (0.5-0.8) queues for user confirmation
+- Low-confidence (<0.5) logged but skipped
+
+**Non-functional:**
+- Runs at SessionStart (existing hook slot)
+- False positive rate <10%
+- Zero LLM cost (pure file/DB analysis)
+
+## Related Code Files
+
+**Target repo:** `D:/code/invesments/master_investments`
+
+- Modify: `.claude/skills/business/feedback_loop/auto-outcome-detector.py` — enhance with 4 signals
+- Create: `.claude/lib/intelligence/mechanism/outcome_signals.py` — signal extraction
+- Create: `data/calibration/auto-outcome-queue.jsonl` — pending confirmations
+- Modify: `.claude/hooks/session-start-evolution.cjs` — wire enhanced detector
+
+## Implementation Steps
+
+### Step 1: Define 4 implicit outcome signals
+
+| Signal | Detected When | Outcome | Confidence |
+|--------|--------------|---------|------------|
+| Repeat Topic | User runs /stage0 on same/similar topic | Previous = WRONG (0) | 0.6 |
+| Execute Trigger | User runs /execute <case_id> | Verdict = CORRECT (1) | 0.9 |
+| Deal Journal | New deal entry matches topic | Direction correct (1) | 0.7 |
+| Time Decay | MOUNTAIN >90 days, no action | Implicitly rejected (0) | 0.5 |
+
+### Step 2: Implement outcome_signals.py
+
+```python
+class OutcomeSignalDetector:
+    def __init__(self, kb_dir: Path, deal_journal: Path):
+        self.cases = self._load_cases(kb_dir)
+        self.deals = self._load_deals(deal_journal)
+    
+    def detect_all(self) -> list[OutcomeCandidate]:
+        candidates = []
+        candidates.extend(self._detect_repeat_topics())
+        candidates.extend(self._detect_execute_triggers())
+        candidates.extend(self._detect_deal_journal_matches())
+        candidates.extend(self._detect_time_decay())
+        return self._deduplicate(candidates)
+```
+
+### Step 3: Enhance auto-outcome-detector.py
+
+Integrate `OutcomeSignalDetector`. Route by confidence:
+- ≥0.8 → auto-commit via `brier-update-from-outcome.py`
+- 0.5-0.8 → append to `auto-outcome-queue.jsonl`
+- <0.5 → log only
+
+### Step 4: Confirmation queue at SessionStart
+
+Print pending confirmations:
+```
+⚠ 3 auto-detected outcomes need confirmation:
+  [1] NTH-260401-xyz: repeat_topic → KILL (conf 0.6)
+  [2] NTH-260412-abc: time_decay → REJECTED (conf 0.5)
+  [3] NTH-260420-def: deal_match → CORRECT (conf 0.7)
+Confirm all? [y/n/select]
+```
+
+### Step 5: Tests
+
+- Repeat topic: 70% fuzzy match threshold
+- Execute trigger: direct case_id match
+- Time decay: only after 90 days
+- Deduplication: multiple signals for same case
+- Routing: high auto-commits, medium queues
+
+## Success Criteria
+
+- [ ] 4 signal types implemented and tested
+- [ ] Runs at SessionStart alongside evolution hooks
+- [ ] ≥5 existing cases get auto-detected outcomes from historical data
+- [ ] Confirmation queue workflow functional
+- [ ] Accept/reject ratio trackable for false positive monitoring
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|------|------------|
+| False positives | Auto-commit only ≥0.8; queue everything else |
+| Repeat topic ≠ rejection | Low confidence (0.6), always queued |
+| Time decay aggressive | 90-day threshold + lowest confidence (0.5) |

@@ -1,0 +1,328 @@
+"""
+error_attributor.py — Causal attribution of verdict errors to specific steps/knobs.
+
+When an outcome is logged and the verdict was WRONG, this module:
+1. Loads the trace for that case
+2. Identifies which steps pushed the wrong direction
+3. Links those errors to specific knobs that could be tuned
+4. Persists to data/calibration/mechanism-errors.jsonl for meta-edit controller
+
+Attribution types:
+- DIRECTION_MISMATCH: step signaled GO but outcome was KILL (or vice versa)
+- CONFIDENCE_INFLATION: step inflated confidence beyond evidence
+- MISSING_SIGNAL: critical dimension wasn't scored at all
+- OVERRIDE_ERROR: correct minority signal was overridden in synthesis
+
+Usage:
+    attributor = ErrorAttributor()
+    errors = attributor.attribute("NTH-260516-abc", actual="KILL", predicted="MOUNTAIN_CANDIDATE")
+    attributor.persist(errors)
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from dataclasses import dataclass, field, asdict
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+from .trace_logger import TraceLogger
+
+logger = logging.getLogger(__name__)
+
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+_DEFAULT_ERRORS_PATH = _REPO_ROOT / "data" / "calibration" / "mechanism-errors.jsonl"
+
+VERDICT_DIRECTION = {
+    "MOUNTAIN_CANDIDATE": "GO",
+    "MOUNTAIN_STRONG": "GO",
+    "GO": "GO",
+    "CAUTION": "NEUTRAL",
+    "INSUFFICIENT_DATA": "NEUTRAL",
+    "KILL": "KILL",
+    "NO_GO": "KILL",
+    "REJECT": "KILL",
+}
+
+KNOB_STEP_MAP = {
+    "1.8_local_prescreen": ["local_kill_confidence"],
+    "2.45_premise_challenge": ["premise_challenge_skip_threshold"],
+    "2.6_intent_classification": ["classifier_unknown_confidence"],
+    "2.6.2_capital_path_routing": [],
+    "3_kb_lookup": ["kb_retrieval_timeout_ms"],
+    "3.4b_calc_dispatcher": [],
+    "3.5_wave1": ["wave1_base_agent_count", "agents_fired_minimum"],
+    "3.5_wave2": ["wave2_min_agents"],
+    "5_hypothesis_generation": [],
+    "6_mountain_test": ["mountain_threshold_monthly", "mountain_timeline_months"],
+    "7_verdict_synthesis": ["confidence_gate_minimum"],
+    "7.5_gap_analysis": [],
+}
+
+
+@dataclass
+class MechanismError:
+    """A single attribution of error to a step/knob."""
+    case_id: str
+    step: str
+    step_name: str
+    error_type: str
+    severity: float
+    knobs_implicated: list[str] = field(default_factory=list)
+    detail: str = ""
+    predicted_verdict: str = ""
+    actual_outcome: str = ""
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+class ErrorAttributor:
+    """Identifies which steps/knobs caused a wrong verdict."""
+
+    def __init__(
+        self,
+        traces_dir: Optional[Path] = None,
+        errors_path: Optional[Path] = None,
+    ):
+        self.traces_dir = traces_dir
+        self.errors_path = Path(errors_path or _DEFAULT_ERRORS_PATH)
+
+    def attribute(
+        self,
+        case_id: str,
+        actual_outcome: str,
+        predicted_verdict: str,
+    ) -> list[MechanismError]:
+        """
+        Attribute a wrong verdict to specific steps and knobs.
+
+        Returns empty list if verdict was correct or trace unavailable.
+        """
+        actual_dir = VERDICT_DIRECTION.get(actual_outcome.upper(), "NEUTRAL")
+        predicted_dir = VERDICT_DIRECTION.get(predicted_verdict.upper(), "NEUTRAL")
+
+        if actual_dir == predicted_dir:
+            return []
+
+        trace_data = TraceLogger.load(case_id, traces_dir=self.traces_dir)
+        if trace_data is None:
+            logger.warning("No trace found for case %s — cannot attribute", case_id)
+            return []
+
+        errors: list[MechanismError] = []
+
+        errors.extend(self._check_direction_mismatch(
+            case_id, trace_data, actual_dir, predicted_verdict, actual_outcome
+        ))
+        errors.extend(self._check_confidence_inflation(
+            case_id, trace_data, actual_dir, predicted_verdict, actual_outcome
+        ))
+        errors.extend(self._check_missing_signal(
+            case_id, trace_data, actual_dir, predicted_verdict, actual_outcome
+        ))
+        errors.extend(self._check_override_error(
+            case_id, trace_data, actual_dir, predicted_verdict, actual_outcome
+        ))
+
+        errors.sort(key=lambda e: e.severity, reverse=True)
+        return errors
+
+    def persist(self, errors: list[MechanismError]):
+        """Append mechanism errors to JSONL file."""
+        if not errors:
+            return
+        self.errors_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.errors_path, "a", encoding="utf-8") as f:
+            for err in errors:
+                f.write(json.dumps(err.to_dict(), ensure_ascii=False) + "\n")
+        logger.info("Persisted %d mechanism errors for %s", len(errors), errors[0].case_id)
+
+    def load_errors(
+        self,
+        knob_id: Optional[str] = None,
+        n: int = 50,
+    ) -> list[dict]:
+        """Load recent mechanism errors, optionally filtered by knob."""
+        if not self.errors_path.exists():
+            return []
+
+        records = []
+        for line in self.errors_path.read_text(encoding="utf-8").strip().split("\n"):
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+                if knob_id is None or knob_id in record.get("knobs_implicated", []):
+                    records.append(record)
+            except json.JSONDecodeError:
+                continue
+
+        return records[-n:]
+
+    def count_errors_by_knob(self) -> dict[str, int]:
+        """Count total errors attributed to each knob."""
+        counts: dict[str, int] = {}
+        all_errors = self.load_errors(n=10000)
+        for err in all_errors:
+            for knob in err.get("knobs_implicated", []):
+                counts[knob] = counts.get(knob, 0) + 1
+        return counts
+
+    def _check_direction_mismatch(
+        self, case_id: str, trace: dict, actual_dir: str,
+        predicted_verdict: str, actual_outcome: str,
+    ) -> list[MechanismError]:
+        """Steps that pushed in the wrong direction."""
+        errors = []
+        for step_data in trace.get("steps", []):
+            signal = step_data.get("signal", {})
+            step_dir = signal.get("direction", "").upper()
+
+            if not step_dir or step_dir == "NEUTRAL":
+                continue
+
+            step_dir_normalized = VERDICT_DIRECTION.get(step_dir, step_dir)
+            if step_dir_normalized == actual_dir:
+                continue
+
+            confidence = signal.get("confidence", 0.5)
+            if confidence < 0.3:
+                continue
+
+            step_id = step_data.get("step", "unknown")
+            knobs = step_data.get("knobs_used", []) or KNOB_STEP_MAP.get(step_id, [])
+
+            errors.append(MechanismError(
+                case_id=case_id,
+                step=step_id,
+                step_name=step_data.get("step_name", ""),
+                error_type="direction_mismatch",
+                severity=confidence,
+                knobs_implicated=knobs,
+                detail=f"Step signaled {step_dir} (conf={confidence:.2f}) but actual was {actual_dir}",
+                predicted_verdict=predicted_verdict,
+                actual_outcome=actual_outcome,
+            ))
+
+        return errors
+
+    def _check_confidence_inflation(
+        self, case_id: str, trace: dict, actual_dir: str,
+        predicted_verdict: str, actual_outcome: str,
+    ) -> list[MechanismError]:
+        """Steps with high confidence that turned out wrong."""
+        errors = []
+        verdict_data = trace.get("verdict", {})
+        if not verdict_data:
+            return errors
+
+        final_confidence = verdict_data.get("final_confidence", 0)
+        if final_confidence < 0.75:
+            return errors
+
+        step_weights = verdict_data.get("step_weights", {})
+        for step_id, weight in step_weights.items():
+            if weight < 0.2:
+                continue
+
+            step_data = self._find_step(trace, step_id)
+            if not step_data:
+                continue
+
+            signal = step_data.get("signal", {})
+            step_conf = signal.get("confidence", 0)
+            if step_conf < 0.8:
+                continue
+
+            knobs = step_data.get("knobs_used", []) or KNOB_STEP_MAP.get(step_id, [])
+            knobs = list(set(knobs + ["confidence_gate_minimum"]))
+
+            errors.append(MechanismError(
+                case_id=case_id,
+                step=step_id,
+                step_name=step_data.get("step_name", ""),
+                error_type="confidence_inflation",
+                severity=step_conf * weight,
+                knobs_implicated=knobs,
+                detail=f"Step had conf={step_conf:.2f}, weight={weight:.2f} but verdict was wrong",
+                predicted_verdict=predicted_verdict,
+                actual_outcome=actual_outcome,
+            ))
+
+        return errors
+
+    def _check_missing_signal(
+        self, case_id: str, trace: dict, actual_dir: str,
+        predicted_verdict: str, actual_outcome: str,
+    ) -> list[MechanismError]:
+        """Critical steps that didn't fire or produced no signal."""
+        critical_steps = {"3.5_wave1", "3.5_wave2", "6_mountain_test", "7_verdict_synthesis"}
+        traced_steps = {s.get("step") for s in trace.get("steps", [])}
+        missing = critical_steps - traced_steps
+
+        errors = []
+        for step_id in missing:
+            knobs = KNOB_STEP_MAP.get(step_id, [])
+            errors.append(MechanismError(
+                case_id=case_id,
+                step=step_id,
+                step_name=f"MISSING: {step_id}",
+                error_type="missing_signal",
+                severity=0.6,
+                knobs_implicated=knobs,
+                detail=f"Critical step {step_id} did not fire or produced no trace",
+                predicted_verdict=predicted_verdict,
+                actual_outcome=actual_outcome,
+            ))
+
+        return errors
+
+    def _check_override_error(
+        self, case_id: str, trace: dict, actual_dir: str,
+        predicted_verdict: str, actual_outcome: str,
+    ) -> list[MechanismError]:
+        """A correct minority signal was overridden by synthesis."""
+        errors = []
+        steps = trace.get("steps", [])
+
+        correct_minority = []
+        for step_data in steps:
+            signal = step_data.get("signal", {})
+            step_dir = VERDICT_DIRECTION.get(signal.get("direction", "").upper(), "NEUTRAL")
+            if step_dir == actual_dir:
+                correct_minority.append(step_data)
+
+        if not correct_minority or len(correct_minority) >= len(steps) / 2:
+            return errors
+
+        for step_data in correct_minority:
+            signal = step_data.get("signal", {})
+            confidence = signal.get("confidence", 0.5)
+            if confidence < 0.5:
+                continue
+
+            step_id = step_data.get("step", "unknown")
+            errors.append(MechanismError(
+                case_id=case_id,
+                step=step_id,
+                step_name=step_data.get("step_name", ""),
+                error_type="override_error",
+                severity=confidence * 0.8,
+                knobs_implicated=["confidence_gate_minimum", "agents_fired_minimum"],
+                detail=f"Step correctly signaled {actual_dir} (conf={confidence:.2f}) but was overridden",
+                predicted_verdict=predicted_verdict,
+                actual_outcome=actual_outcome,
+            ))
+
+        return errors
+
+    def _find_step(self, trace: dict, step_id: str) -> Optional[dict]:
+        """Find a step in trace data by step ID."""
+        for s in trace.get("steps", []):
+            if s.get("step") == step_id:
+                return s
+        return None

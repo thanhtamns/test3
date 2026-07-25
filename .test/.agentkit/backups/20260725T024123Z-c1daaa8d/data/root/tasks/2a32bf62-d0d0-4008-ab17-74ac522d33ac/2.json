@@ -1,0 +1,18 @@
+{
+  "id": "2",
+  "subject": "Phase 2: Cost Attribution Engine",
+  "description": "Extend tracking.rs + cc_economics.rs with PR linkage, model pricing lookup, cost-per-PR calculations. Add `codeflow cost` CLI command. Target: 2 weeks.",
+  "status": "pending",
+  "blocks": [
+    "3"
+  ],
+  "blockedBy": [
+    "1"
+  ],
+  "metadata": {
+    "phase": 2,
+    "effort": "2w",
+    "planDir": "plans/260603-codeflow-ai-cost-intelligence-engine",
+    "phaseFile": "phase-02-cost-attribution-engine.md"
+  }
+}

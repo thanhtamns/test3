@@ -1,0 +1,141 @@
+"""Tests for SBEBridge — selective fire of SBE from ThinkRunner."""
+
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from ..sbe_bridge import SBEBridge
+from ..synthesis_engine import SynthesisResult
+
+
+def _make_synthesis_result() -> SynthesisResult:
+    dim_score = MagicMock()
+    dim_score.score = 0.65
+    dim_score.fact_count = 3
+    dim_score.zone_tag = "K"
+    dim_score.to_dict.return_value = {"score": 0.65}
+
+    gap = MagicMock()
+    gap.to_dict.return_value = {}
+    step = MagicMock()
+    step.to_dict.return_value = {}
+
+    return SynthesisResult(
+        query="coffee export",
+        query_type="opportunity_assessment",
+        overall_score=0.55,
+        dimension_scores={"failure_patterns": dim_score},
+        gaps=[gap],
+        path=[step],
+        facts_used=5,
+        facts_by_zone={"K": 3, "T": 1, "?": 1},
+        llm_calls_made=0,
+    )
+
+
+def _make_fact(text="Test fact", confidence=0.8):
+    f = MagicMock()
+    f.fact = text
+    f.confidence = confidence
+    return f
+
+
+class TestFeatureMapping:
+    def test_maps_dim_scores(self):
+        bridge = SBEBridge(research_fn=lambda q: "")
+        result = _make_synthesis_result()
+        facts = [_make_fact("Fact A", 0.9), _make_fact("Fact B", 0.5)]
+        features = bridge._map_to_sbe_features(result, facts)
+
+        assert features["dim_failure_patterns_score"] == 0.65
+        assert features["dim_failure_patterns_facts"] == 3
+        assert features["dim_failure_patterns_zone"] == "K"
+        assert features["overall_score"] == 0.55
+        assert features["total_facts"] == 5
+        assert features["k_facts"] == 3
+        assert features["t_facts"] == 1
+        assert features["query_type"] == "opportunity_assessment"
+
+    def test_maps_top_facts_by_confidence(self):
+        bridge = SBEBridge(research_fn=lambda q: "")
+        result = _make_synthesis_result()
+        facts = [_make_fact(f"Fact {i}", 0.1 * i) for i in range(15)]
+        features = bridge._map_to_sbe_features(result, facts)
+
+        assert "fact_0" in features
+        assert "fact_9" in features
+        assert "fact_10" not in features
+        assert "Fact 14" in features["fact_0"]
+
+
+class TestFireWithMockSBE:
+    @patch("intelligence.decomposition.sbe_bridge.SBEBridge._load_orchestrator")
+    def test_fire_returns_enriched_output(self, mock_load):
+        mock_evidence = MagicMock()
+        mock_evidence.kill_signals = [{"signal": "high_competition"}]
+
+        mock_sbe_result = MagicMock()
+        mock_sbe_result.verdict = "MOUNTAIN_CANDIDATE"
+        mock_sbe_result.confidence = 0.72
+        mock_sbe_result.evidence = mock_evidence
+        mock_sbe_result.enriched_features = {"new_dim": 0.8}
+        mock_sbe_result.short_circuited = False
+
+        mock_orch = MagicMock()
+        mock_orch.run.return_value = mock_sbe_result
+        mock_load.return_value = mock_orch
+
+        bridge = SBEBridge(research_fn=lambda q: "", sbe_budget=50)
+        output = bridge.fire(_make_synthesis_result(), "coffee export", [_make_fact()])
+
+        assert output["sbe_verdict"] == "MOUNTAIN_CANDIDATE"
+        assert output["sbe_confidence"] == 0.72
+        assert len(output["kill_signals"]) == 1
+        assert output["enriched_features"]["new_dim"] == 0.8
+        assert output["short_circuited"] is False
+
+    @patch("intelligence.decomposition.sbe_bridge.SBEBridge._load_orchestrator")
+    def test_budget_passed_to_sbe(self, mock_load):
+        mock_sbe_result = MagicMock()
+        mock_sbe_result.verdict = "NEEDS_DEEPER_ANALYSIS"
+        mock_sbe_result.confidence = 0.4
+        mock_sbe_result.evidence = None
+        mock_sbe_result.enriched_features = {}
+        mock_sbe_result.short_circuited = False
+
+        mock_orch = MagicMock()
+        mock_orch.run.return_value = mock_sbe_result
+        mock_load.return_value = mock_orch
+
+        bridge = SBEBridge(research_fn=lambda q: "", sbe_budget=50)
+        bridge.fire(_make_synthesis_result(), "test", [_make_fact()])
+
+        call_kwargs = mock_orch.run.call_args
+        assert call_kwargs.kwargs.get("budget") == 50 or call_kwargs[1].get("budget") == 50
+
+
+class TestGracefulDegradation:
+    @patch("intelligence.decomposition.sbe_bridge.SBEBridge._load_orchestrator")
+    def test_sbe_exception_propagates(self, mock_load):
+        mock_load.side_effect = ImportError("SBE not found")
+        bridge = SBEBridge(research_fn=lambda q: "")
+        with pytest.raises(ImportError):
+            bridge.fire(_make_synthesis_result(), "test", [])
+
+    @patch("intelligence.decomposition.sbe_bridge.SBEBridge._load_orchestrator")
+    def test_no_evidence_handles_gracefully(self, mock_load):
+        mock_sbe_result = MagicMock()
+        mock_sbe_result.verdict = "SIDE_HUSTLE"
+        mock_sbe_result.confidence = 0.5
+        mock_sbe_result.evidence = None
+        mock_sbe_result.enriched_features = {}
+        mock_sbe_result.short_circuited = False
+
+        mock_orch = MagicMock()
+        mock_orch.run.return_value = mock_sbe_result
+        mock_load.return_value = mock_orch
+
+        bridge = SBEBridge(research_fn=lambda q: "")
+        output = bridge.fire(_make_synthesis_result(), "test", [])
+        assert output["kill_signals"] == []
+        assert output["sbe_verdict"] == "SIDE_HUSTLE"

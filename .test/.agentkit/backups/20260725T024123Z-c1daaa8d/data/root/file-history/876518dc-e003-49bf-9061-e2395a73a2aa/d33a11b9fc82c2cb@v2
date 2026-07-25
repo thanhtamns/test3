@@ -1,0 +1,67 @@
+---
+phase: 1
+title: Rebuild Docker Stack
+status: completed
+priority: P1
+effort: 45min
+dependencies: []
+---
+
+# Phase 1: Rebuild Docker Stack
+
+## Overview
+
+Tear down old containers, fix migrate service Dockerfile, add `CODEFLOW_AUTH_DISABLED` for dev mode, rebuild and verify all services start cleanly with the new auth code.
+
+## Requirements
+
+- Functional: All services start, healthz returns OK, auth rejects unauthenticated requests, dev mode accepts X-Tenant-ID
+- Non-functional: Containers healthy within 60s of `docker-compose up`
+
+## Related Code Files
+
+- Modify: `cloud/docker-compose.yml` (add auth env vars, fix migrate service)
+- Create: `cloud/Dockerfile.migrate` (multi-stage build for migration runner)
+- Modify: `cloud/cmd/seed/main.go` (handle auth-disabled mode with X-Tenant-ID header — already has it)
+
+## Implementation Steps
+
+1. Stop existing stack: `cd cloud && docker-compose down -v`
+2. Fix migrate service — currently uses `go run` which needs full Go env. Two options:
+   - **Option A (recommended):** Create `Dockerfile.migrate` that builds migrate binary
+   - **Option B:** Use golang base image in docker-compose for migrate service only
+3. Add to `ingest` and `writer` environment in docker-compose.yml:
+   ```yaml
+   CODEFLOW_AUTH_DISABLED: "true"
+   ```
+4. Run `go mod tidy` in cloud/ to ensure go.sum is current
+5. Rebuild: `docker-compose build --no-cache`
+6. Start: `docker-compose up -d`
+7. Wait for healthy: `docker-compose ps` — all services healthy/running
+8. Verify auth hardening:
+   ```bash
+   # Should return 200 (dev mode)
+   curl -s -H "X-Tenant-ID: demo-tenant" http://localhost:8080/v1/overview
+   # Should return 200 (healthz on root mux, no auth)
+   curl -s http://localhost:8080/healthz
+   # Stripe webhook on root mux (no auth needed)
+   curl -s -X POST http://localhost:8080/v1/billing/webhook -d "{}" | grep -q "503\|webhook"
+   ```
+9. Verify migration ran: check ClickHouse has `schema_migrations` table with `001` entry
+   ```bash
+   docker exec cloud-clickhouse-1 clickhouse-client --query "SELECT * FROM codeflow.schema_migrations"
+   ```
+
+## Success Criteria
+
+- [ ] All containers healthy (`docker-compose ps`)
+- [ ] `/healthz` returns `{"status":"ok"}`
+- [ ] API with X-Tenant-ID returns 200 (dev mode)
+- [ ] Stripe webhook returns 503 (no secret configured)
+- [ ] `schema_migrations` table exists with version 001
+- [ ] ClickHouse tables created (events, waste_findings, tenant_billing, security_alerts)
+
+## Risk Assessment
+
+- **Migrate service build:** New Dockerfile — may need iteration. Mitigate: test build before compose up.
+- **Volume cleanup:** `down -v` removes ClickHouse data. This is intentional for clean slate.

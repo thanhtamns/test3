@@ -1,0 +1,294 @@
+# System Intelligence Root Cause Diagnosis
+**Date:** 2026-05-16 | **Target:** D:\code\invesments\master_investments stage0 + ThinkRunner pipeline
+
+---
+
+## VERDICT: Hệ thống có KIẾN TRÚC tốt nhưng THỰC THI bị hỏng ở 5 điểm cốt lõi
+
+Hệ thống đã được thiết kế rất công phu (55+ Python files, 35+ dimensions, 15 techniques, 5-step deep reasoning) nhưng khi chạy thực tế, phần lớn các layer cao cấp **silently fail** và pipeline degrade về chế độ "DDG snippet → template fill → heuristic score". Kết quả: output TRÔNG smart nhưng THIẾU chiều sâu thực sự.
+
+---
+
+## 5 ROOT CAUSES (Xếp theo mức độ ảnh hưởng)
+
+### RC-1: DeepReasoner CHẾT HOÀN TOÀN trong production (CRITICAL)
+
+**File:** `decomposition/deep_reasoner.py:361-371`
+
+```python
+def _call_llm(self, prompt: str) -> str:
+    if self._calls_made >= self.max_calls:
+        return "{}"
+    self._calls_made += 1
+    if self._llm_fn:
+        result = self._llm_fn(prompt, max_tokens=2048, temperature=0.4)
+    else:
+        # No external API calls — reasoning happens in Claude Code sessions
+        return "{}"  # ← ĐÂY LÀ VẤN ĐỀ
+```
+
+**Hậu quả:** 5-step deep reasoning chain (causal chains → stress test → cross-synthesis → scenarios → position map) trả về `{}` cho TẤT CẢ 5 steps khi chạy qua `live_think_runner.py`. Hệ thống log "Deep reasoning: 5 LLM calls, 5 steps" nhưng thực tế 0 reasoning.
+
+**Tại sao:** `DeepReasoner` không dùng `complete_with_fallback()` (khác với `StrategicReasoner` line 256 dùng `from ...llm.factory import complete_with_fallback`). Khi `llm_fn=None` (default khi gọi từ CLI), nó trả về empty JSON.
+
+**Tương phản:** `StrategicReasoner._call_llm()` (line 246-260) CÓ fallback tới `complete_with_fallback` → nó HOẠT ĐỘNG. Nhưng StrategicReasoner nhận input từ DeepReasoner (đã chết) nên reasoning context bị rỗng.
+
+**Impact:** ~40% năng lực reasoning của pipeline bị vô hiệu hóa.
+
+---
+
+### RC-2: Web Research chỉ đọc DDG SNIPPET, không đọc NỘI DUNG trang web (CRITICAL)
+
+**File:** `decomposition/web_research_bridge.py:27-61`
+
+```python
+def ddg_research(prompt: str) -> str:
+    # ...
+    with DDGS() as ddgs:
+        results = list(ddgs.text(question, max_results=5))  # ← CHỈ 5 kết quả
+    # ...
+    snippets = []
+    for r in results[:5]:
+        title = r.get("title", "")
+        body = r.get("body", "")  # ← DDG snippet ~150 chars
+        snippets.append(f"{title}: {body}")
+    
+    fact = _extract_fact_from_snippets(combined, question)  # ← Chọn best snippet
+    return fact  # ← 1 fact = 1 snippet 200 chars max
+```
+
+**Hậu quả:**
+- Mỗi micro-query chỉ thu được ~200 chars từ DDG snippet
+- KHÔNG BAO GIỜ fetch full page content (không có WebFetch/requests.get nội dung)
+- 20 micro-queries × 200 chars = ~4,000 chars total input cho TOÀN BỘ analysis
+- So sánh: 1 bài báo tốt = 5,000-10,000 chars. Hệ thống đọc ÍT HƠN 1 bài báo.
+
+**Đây là lý do system "luôn bias về kiến thức cơ bản"**: Nó CHỈ ĐỌC tiêu đề + snippet. Snippet DDG = marketing content, SEO-optimized, shallow. Learned rule `[GOOGLE-SEO-SATURATION]` đã nhận ra vấn đề này nhưng solution (ladder escalation) cũng chỉ thêm vài snippet nữa.
+
+---
+
+### RC-3: Template cứng + Placeholder đơn giản = câu hỏi không thông minh (HIGH)
+
+**File:** `decomposition/dimension_registry.py` (551 lines, 35+ dimensions)
+
+Templates kiểu:
+```python
+"What % of {industry} businesses fail in year 1?"
+"Typical CAC for {industry}?"
+"Top 5 players in {industry} by {metric}?"
+```
+
+Khi query = "tôi muốn đứng trong dòng tiền bền vững" → `{industry}` = "the industry" (default), `{role}` = "professionals" (default), `{metric}` = "revenue" (default).
+
+**Hậu quả:**
+- Hệ thống hỏi "What % of the industry businesses fail in year 1?" — câu hỏi vô nghĩa
+- Không có LLM-driven query generation — queries hoàn toàn rule-based
+- `QueryClassifier` dùng keyword matching → misclassify 30-50% queries (confirmed by degraded mode warnings in reports)
+- Context extraction (`_fill_template`) chỉ dùng regex → bỏ lỡ intent
+
+**Đây là lý do "không có sự điều phối linh hoạt để sử dụng LLM tốt nhất"**: Decomposer KHÔNG BAO GIỜ dùng LLM để generate queries. Nó chỉ fill template.
+
+---
+
+### RC-4: Silent failure cascade — 80% layers fail nhưng không ai biết (HIGH)
+
+**File:** `decomposition/think_runner.py` — mỗi layer wrapped trong try/except:
+
+```python
+# Elite Layer
+try:
+    elite_output = elite.process(elite_signals)
+except Exception as e:
+    log(f"Elite layer skipped: {e}")  # ← Log rồi bỏ qua
+
+# Deep Reasoning  
+try:
+    deep_insight = deep.reason(...)
+except Exception as e:
+    log(f"Deep reasoning skipped: {e}")  # ← Log rồi bỏ qua
+
+# Prediction Engine
+try:
+    prediction = self._prediction_engine.predict(...)
+except Exception:
+    pass  # ← THẬM CHÍ KHÔNG LOG
+```
+
+**Inventory các layer có thể silent-fail:**
+1. ✗ PredictionEngine — `pass` on error
+2. ✗ DeepReasoner — returns `{}` without error
+3. ✗ Elite Layer — catches all exceptions
+4. ✗ Mental Model Loader — catches all exceptions
+5. ✗ SBE Bridge — catches all exceptions
+6. ✗ Execution Bridge — catches all exceptions
+7. ✗ Adversarial Questioner — catches all exceptions
+8. ✗ Iterative Deepener — catches all exceptions
+9. ✗ Ladder Bridge — catches all exceptions
+
+**Kết quả:** Khi chạy `live_think_runner.py`, output JSON chứa `overall_score` và `dimension_scores` từ SynthesisEngine (code-only, luôn chạy được), nhưng `strategic_insight`, `deep_reasoning`, `elite_intelligence` thường là `{"error": "...", "status": "skipped"}`.
+
+Claude Code nhận output này, thấy có score → narrate như thể analysis sâu, nhưng thực tế chỉ narrate heuristic scores.
+
+---
+
+### RC-5: Confidence scoring giả — DDG snippet được gán [K] (MEDIUM)
+
+**File:** `decomposition/web_research_bridge.py:158-174`
+
+```python
+def _score_confidence(text, url, numbers):
+    score = 0.35
+    if numbers: score += 0.15        # Có số → +0.15
+    if len(numbers) >= 3: score += 0.10  # Nhiều số → +0.10
+    if "statista.com" in url: score += 0.10  # Domain tốt → +0.10
+    if "according to" in text: score += 0.05  # Có citation → +0.05
+    return min(0.90, score)
+```
+
+**Vấn đề:** Confidence 0.75+ = [K] zone (verified). Nhưng:
+- 1 snippet có 3 numbers + authority domain = 0.35 + 0.15 + 0.10 + 0.10 = 0.70 → [T]
+- Cộng thêm "according to" = 0.75 → [K] — nhưng snippet CHƯA BAO GIỜ ĐƯỢC VERIFY
+
+Nói cách khác: hệ thống tự gán [K] cho DDG snippets dựa trên heuristic, không phải verification thực sự.
+
+---
+
+## Tại sao OUTPUT vẫn khá tốt (trong reports)?
+
+Paradox: Reports trong `plans/reports/` có chất lượng tốt (8+/10) nhưng ThinkRunner bị hỏng. Lý do:
+
+**Chất lượng KHÔNG đến từ ThinkRunner — nó đến từ Claude Code LLM reasoning khi execute brainstorm skill.**
+
+Flow thực tế:
+1. ThinkRunner chạy → output score 0.45 (degraded)
+2. Claude Code đọc output → thấy degraded → **tự research bằng WebSearch/WebFetch** (đọc FULL pages)
+3. Claude Code apply Gate B1-B6 manually → dùng LLM reasoning (Opus/Sonnet) trực tiếp
+4. Output cuối = Claude Code reasoning, KHÔNG phải ThinkRunner reasoning
+
+**Bằng chứng:** Nhiều reports ghi "⚠ DEGRADED MODE — Gate B0 bypassed. ThinkRunner misrouted."
+
+→ Khi Gate B0 bypass, Claude Code tự làm mọi thứ = output tốt.
+→ Khi Gate B0 chạy thành công, output KHOẺ MẠNH bề ngoài nhưng thiếu chiều sâu vì facts chỉ là snippets.
+
+---
+
+## DIAGNOSIS TÓM TẮT
+
+| Component | Designed State | Actual State | Impact |
+|-----------|---------------|--------------|--------|
+| DeepReasoner (5 steps) | 5 LLM compound reasoning calls | Returns `{}` × 5 (no LLM wired) | 40% reasoning dead |
+| Web Research | Full page fetch + multi-source | DDG snippet 200 chars × 20 queries | Input quá shallow |
+| Query Generation | LLM-adaptive queries | Template fill `{industry}` = "the industry" | Hỏi sai câu hỏi |
+| Error Handling | Degrade + alert | Silent try/except → log → continue | User không biết |
+| Confidence | Evidence-based [K]/[T]/[?] | Heuristic scoring gán [K] cho snippets | False confidence |
+| Evolution Loop | Learn from outcomes | Weight adjustment chỉ ±10%/cycle | Không học mechanism |
+| HCE (Macro Context) | L0→L1→L2 pre-research | Depends on Claude Code agents (rarely run) | Thiếu macro view |
+| Adversarial Pipeline | Analyst→Critic→Synthesizer | Code exists but only runs within brainstorm skill | Không tự chạy |
+
+---
+
+## SOLUTIONS (Xếp theo ROI)
+
+### S-1: Wire DeepReasoner to LLM factory (1-2 hours, CRITICAL)
+
+```python
+# deep_reasoner.py line 361-371, thay:
+def _call_llm(self, prompt: str) -> str:
+    if self._calls_made >= self.max_calls:
+        return "{}"
+    self._calls_made += 1
+    if self._llm_fn:
+        result = self._llm_fn(prompt, max_tokens=2048, temperature=0.4)
+    else:
+        from ...llm.factory import complete_with_fallback  # ← ADD THIS
+        result = complete_with_fallback(prompt, max_tokens=2048, temperature=0.4)
+    if result is None or not hasattr(result, "content"):
+        return "{}"
+    return result.content or "{}"
+```
+
+**Impact:** Unlock 5-step compound reasoning (causal chains, stress test, cross-synthesis, scenarios, position map) — ngay lập tức tăng chiều sâu analysis.
+
+### S-2: WebFetch full page thay vì DDG snippet (2-3 hours, CRITICAL)
+
+Thay đổi `web_research_bridge.py`:
+1. DDG search → lấy top 3 URLs
+2. `requests.get()` full page cho mỗi URL (timeout 10s, max 5000 chars)
+3. Extract text content (strip HTML)
+4. Feed full text vào fact extraction (thay vì 200-char snippet)
+
+**Impact:** Input facts tăng từ ~4,000 chars → ~30,000-50,000 chars. 10x more intelligence.
+
+### S-3: LLM-powered query generation thay template (3-4 hours, HIGH)
+
+Thêm 1 LLM call ở đầu Decomposer:
+```python
+def decompose(self, query):
+    classification = self.classifier.classify(query)
+    # NEW: LLM generates 10-15 specific queries based on actual query intent
+    smart_queries = self._llm_generate_queries(query, classification)
+    # Merge with template queries (template = baseline, LLM = precision)
+    all_queries = smart_queries + template_queries
+```
+
+**Impact:** Thay "What % of the industry businesses fail?" → "What is the failure rate for Vietnamese cross-border sourcing agents in 2024-2025?" — câu hỏi đúng = answer đúng.
+
+### S-4: Health check dashboard thay silent failure (2 hours, HIGH)
+
+Thêm `PipelineHealthReport` class:
+```python
+@dataclass
+class PipelineHealthReport:
+    total_layers: int = 12
+    active_layers: int = 0
+    failed_layers: list[str] = field(default_factory=list)
+    degraded_layers: list[str] = field(default_factory=list)
+    
+    @property
+    def health_score(self) -> float:
+        return self.active_layers / self.total_layers
+```
+
+Print health report ở cuối ThinkRunner output. Claude Code thấy `health_score=0.3` sẽ biết cần fallback.
+
+### S-5: Evidence-based confidence scoring (2-3 hours, MEDIUM)
+
+Thay heuristic scoring bằng:
+1. Cross-reference: cùng fact xuất hiện ở 2+ sources → confidence boost
+2. Recency: fact có date ≤ 1 year → +0.1
+3. Specificity: fact chứa specific name + specific number → +0.15
+4. Contradiction: fact mâu thuẫn với fact khác → cả 2 drop xuống [T]
+
+### S-6: Closed-loop evolution với MECHANISM learning (4-6 hours, MEDIUM)
+
+Hiện tại evolution chỉ adjust dimension weights. Cần:
+1. Store **mechanisms** (causal chains) per domain
+2. Store **failures** (what was predicted vs what happened)
+3. Next run: load relevant mechanisms → skip research on known patterns
+4. Build **domain expertise** over time, not just template weights
+
+---
+
+## IMPLEMENTATION PRIORITY
+
+```
+Week 1: S-1 (wire DeepReasoner) + S-4 (health dashboard)
+         → Unlock 40% dead reasoning + make failures visible
+
+Week 2: S-2 (full page fetch) + S-3 (LLM query gen)  
+         → 10x input quality + ask right questions
+
+Week 3: S-5 (confidence) + S-6 (mechanism learning)
+         → Trust signals + compound intelligence over time
+```
+
+**Expected outcome:** ThinkRunner output quality tăng từ "DDG snippet summary" lên "multi-source mechanism analysis with causal chains" — tương đương với chất lượng mà Claude Code tự làm khi bypass Gate B0.
+
+---
+
+## Unresolved Questions
+
+1. LLM factory API key: Có `ANTHROPIC_API_KEY` set trong environment không? Nếu không, S-1 sẽ fail ngay.
+2. Cost budget: `budget_daily_usd: 10.0` trong llm-config.json — 10 LLM calls × $0.01-0.05/call = $0.1-0.5/run. Đủ budget cho S-1+S-3?
+3. Rate limiting: DDG rate limit `_MIN_DELAY_S = 1.5` → 20 queries = 30s. Thêm full page fetch = 60-90s total. Acceptable?
+4. Founder profile: `founder-profile.json` tồn tại không? Nếu không, StrategicReasoner dùng default `{"capital_usd": 1000, "hours_per_day": 4, "skills": []}` — rất chung chung.

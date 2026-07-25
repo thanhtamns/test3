@@ -1,0 +1,102 @@
+# Intelligence Controller Integration for /hunt
+
+## What This Changes
+
+Before: Hunt scanners searched DDG with broad queries, got snippets, filtered results.
+After: Hunt scanners get a **pre-built money flow graph** with verified entities, amounts, and bottleneck positions.
+
+## How It Works
+
+When `/hunt --asym` runs Step A1 (SCAN), the IntelligenceController runs FIRST:
+
+1. **SEED** — 3 targeted DDG searches about the topic → initial graph (3-5 nodes)
+2. **HYPOTHESIS LOOP** (max 5 cycles):
+   - Generate hypotheses from graph gaps (missing edges, low-confidence nodes)
+   - Test hypotheses with targeted searches (DDG for low-value, WebFetch for high-value)
+   - Update graph with confirmed/killed hypotheses
+   - Judge: continue or stop?
+3. **OUTPUT** — Verified money flow graph with:
+   - Entities (who pays, who provides, who brokers)
+   - Edges (money flows with amounts and confidence scores)
+   - Bottleneck positions (where a broker/aggregator/intelligence position could sit)
+
+## Integration Points
+
+### Step A1.0 — Before all scanners
+```
+Run IntelligenceController on the founder's topic/industry
+→ Get MoneyFlowGraph
+→ Pass graph context to ALL 6 scanners as pre-populated intelligence
+```
+
+### Each scanner receives
+- `graph.nodes` — known entities in the market
+- `graph.edges` — known money flows with verified amounts
+- `graph.bottleneck_positions()` — identified position opportunities
+- `graph.confirmed_hypotheses()` — what we've verified
+- `graph.find_gaps()` — what we still don't know
+
+### Scanner behavior with graph context
+- money-flow-scanner: SKIPS basic discovery (graph already mapped flows) → focuses on bottleneck scoring
+- regulatory-scanner: Uses graph entities to search for specific compliance requirements
+- cross-price-scanner: Uses graph edges to identify price spreads between known actors
+- cross-language-scanner: Uses graph entities to check for partner programs
+- timing-scanner: Uses graph volume data to detect surge patterns
+- founder-network-scanner: Maps founder contacts ONTO graph nodes
+
+## Python Location
+
+```
+.claude/lib/intelligence/controller/
+├── intelligence_controller.py    — Main orchestrator (the brain)
+├── money_flow_graph.py           — Graph data structure
+├── seeder.py                     — 3-search bootstrap
+├── hypothesis_generator.py       — Rule-based hypothesis creation
+├── search_director.py            — Budget allocation + method selection
+├── graph_updater.py              — Parse results → update graph
+├── completion_judge.py           — Stop condition evaluation
+└── think_runner_bridge.py        — Bridge to ThinkRunner pipeline
+```
+
+## How Scanners Should Use Graph Context
+
+When a scanner prompt includes `{intelligence_context}`, inject the formatted graph:
+
+```
+--- INTELLIGENCE CONTROLLER: VERIFIED MONEY FLOW ---
+
+ENTITIES (5):
+  [PAYER] SMEs in EU — $5,000/mo (conf=0.7)
+  [PROVIDER] Deloitte — $400/hr (conf=0.8)
+  [PROVIDER] DataGuard GmbH — $200/mo (conf=0.7)
+  [PLATFORM] OneTrust — (conf=0.5)
+  [MARKET] GDPR compliance — $266,666,667/mo (conf=0.7)
+
+MONEY FLOWS (3):
+  SMEs →PAYS→ Deloitte $50,000/mo (conf=0.7)
+  SMEs →PAYS→ DataGuard GmbH $2,000/mo (conf=0.6)
+  SMEs →REFERS→ (via accountants, informal) (conf=0.4)
+
+VERIFIED FACTS (2):
+  ✓ DataGuard reported 2,500 customers and €25M ARR
+  ✓ 60% of SMEs find consultants via referral, not Google
+
+KILLED HYPOTHESES (1):
+  ✗ SMEs primarily use Google to find compliance providers (KILLED — referral dominates)
+
+BOTTLENECK POSITIONS (2):
+  → MISSING_BROKER: between referral networks and boutique consultants
+  → AGGREGATOR: comparison/marketplace for compliance providers
+--- END INTELLIGENCE CONTROLLER ---
+```
+
+This replaces the scanner's need to discover these facts from scratch.
+
+## Rules
+
+1. IntelligenceController runs ONCE per /hunt invocation, BEFORE scanners
+2. Graph context is SHARED across all 6 scanners — no redundant discovery
+3. Scanners MUST check graph entities before searching for new ones
+4. Scanner output MUST reference graph node IDs for verified claims
+5. If IntelligenceController fails (timeout, error), scanners fall back to current behavior
+6. Budget: 15 web calls for controller + normal scanner budgets

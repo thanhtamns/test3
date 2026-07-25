@@ -1,0 +1,129 @@
+"""Persist a case to KB. Validates against schema, prevents duplicates by case_id.
+
+Used by /stage0 workflow at the end of each query — Claude writes case JSON,
+this script validates + saves.
+"""
+from __future__ import annotations
+
+import argparse
+import io
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+
+HERE = Path(__file__).parent
+KB_DIR = HERE.parent / "kb" / "cases"
+SCHEMA = HERE.parent / "kb" / "schema-case.json"
+
+REQUIRED = [
+    "case_id", "title_vn", "domain", "causal_mechanism",
+    "replication_path", "failure_modes",
+    "real_references", "evidence_sources", "last_verified", "confidence",
+]
+
+
+def validate_mountain_v2(case: dict) -> list[str]:
+    """Enforce mountain_test_v2 rules. Supersedes five_property_test scoring."""
+    errors = []
+    mt = case.get("mountain_test_v2")
+    if not mt:
+        # Back-compat: allow legacy cases without v2 test (they'll be flagged SIDE_HUSTLE implicitly)
+        return errors
+    verdict = mt.get("verdict")
+    if verdict not in {"MOUNTAIN", "PROVISIONAL_MOUNTAIN", "SIDE_HUSTLE", "INSUFFICIENT_SIGNAL", "KILL"}:
+        errors.append(f"mountain_test_v2.verdict invalid: {verdict!r}")
+        return errors
+
+    if verdict == "MOUNTAIN":
+        q1 = mt.get("q1_existing_10k_proof") or {}
+        if q1.get("answer") != "yes":
+            errors.append("MOUNTAIN requires q1_existing_10k_proof.answer == 'yes'")
+        if not q1.get("evidence_url"):
+            errors.append("MOUNTAIN requires q1_existing_10k_proof.evidence_url")
+        if (q1.get("monthly_net_usd") or 0) < 10000:
+            errors.append("MOUNTAIN requires q1_existing_10k_proof.monthly_net_usd >= 10000")
+
+        q2 = mt.get("q2_unfair_advantage") or {}
+        if q2.get("answer") != "yes":
+            errors.append("MOUNTAIN requires q2_unfair_advantage.answer == 'yes'")
+
+        ar = mt.get("asymmetry_ratio") or {}
+        if (ar.get("ratio") or 0) < 10:
+            errors.append("MOUNTAIN requires asymmetry_ratio.ratio >= 10")
+
+        comp = mt.get("compounding_component") or {}
+        if comp.get("type") in (None, "none", ""):
+            errors.append("MOUNTAIN requires compounding_component.type != 'none'")
+
+        replies = case.get("pulse_replies") or []
+        good = [r for r in replies if r.get("buyer_intent") in {"buying_now", "researching"}]
+        if not good:
+            errors.append("MOUNTAIN requires >=1 pulse_replies with buyer_intent in {buying_now, researching}")
+
+    elif verdict == "KILL":
+        if not case.get("failure_modes"):
+            errors.append("KILL requires failure_modes >=1 entry")
+
+    # PROVISIONAL_MOUNTAIN / SIDE_HUSTLE / INSUFFICIENT_SIGNAL: accept without pulse_replies
+    return errors
+
+
+def validate(case: dict) -> list[str]:
+    errors = []
+    for k in REQUIRED:
+        if k not in case or case[k] in (None, "", [], {}):
+            errors.append(f"missing required: {k}")
+    refs = case.get("real_references") or []
+    if not refs:
+        errors.append("real_references is empty — case MUST cite real founders/companies")
+    for i, r in enumerate(refs):
+        if not r.get("url"):
+            errors.append(f"real_references[{i}] missing url")
+    if not case.get("evidence_sources"):
+        errors.append("evidence_sources empty — every claim needs provenance")
+    errors.extend(validate_mountain_v2(case))
+    return errors
+
+
+def add(case_path: Path, force: bool = False) -> int:
+    case = json.loads(case_path.read_text(encoding="utf-8"))
+    errors = validate(case)
+    if errors and not force:
+        print("VALIDATION FAILED:")
+        for e in errors:
+            print(f"  - {e}")
+        return 1
+
+    cid = case["case_id"]
+    target = KB_DIR / f"{cid}.json"
+    if target.exists() and not force:
+        existing = json.loads(target.read_text(encoding="utf-8"))
+        existing_count = existing.get("verification_count", 1)
+        case["verification_count"] = existing_count + 1
+        case["last_verified"] = datetime.now(timezone.utc).date().isoformat()
+        print(f"  UPDATING existing case {cid} (verification #{case['verification_count']})")
+    else:
+        case.setdefault("verification_count", 1)
+        case.setdefault("last_verified", datetime.now(timezone.utc).date().isoformat())
+        print(f"  ADDING new case {cid}")
+
+    KB_DIR.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(case, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"  -> {target}")
+    return 0
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("case_path", help="JSON file containing case to add")
+    ap.add_argument("--force", action="store_true")
+    args = ap.parse_args()
+    sys.exit(add(Path(args.case_path), args.force))
+
+
+if __name__ == "__main__":
+    main()

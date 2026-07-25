@@ -1,0 +1,99 @@
+---
+title: "Local Reasoning Engine — Technique Engine + Strategic Synthesizer"
+description: "Convert deep-reasoner's 15 LLM techniques to LOCAL Python + build strategic synthesizer. LLM → fallback only. Two parallel modules."
+status: pending
+priority: P1
+branch: "master"
+tags: [intelligence, local-first, reasoning, technique-engine, strategic-synthesizer]
+blockedBy: []
+blocks: []
+created: "2026-05-10T14:40:00.000Z"
+createdBy: "ck:plan"
+source: skill
+target_repo: D:/code/invesments/master_investments
+estimated_effort: "5-6 days"
+---
+
+# Local Reasoning Engine — Technique Engine + Strategic Synthesizer
+
+## Problem
+
+Stage0 pipeline is ~90% LLM at the orchestration layer. `deep-reasoner` agent runs 15 techniques ALL via opus-level LLM prompts — zero local Python reasoning. End-to-end system is ~60-65% LLM dependency when it should be ≤25%.
+
+## Solution
+
+Two parallel modules:
+
+**Module A: Technique Engine** — Convert all 15 deep-reasoner techniques to LOCAL Python functions. Each technique: structured input → score + reasoning chain output. Zero LLM. When local returns insufficient data (`NEEDS_DATA`), fallback to LLM micro-queries via existing `micro_query_runner.py`.
+
+**Module B: Strategic Synthesizer** — Build LOCAL strategic reasoning from dimension scores → actionable strategy with leverage ranking, step sequencing, milestone generation, temporal planning, and compound tracking.
+
+## Architecture
+
+```
+Big Question
+  → decomposer.py (existing, LOCAL)
+    → micro_query_runner.py (existing, LLM for facts only)
+    → fact_assembler.py (existing, LOCAL)
+  → technique_orchestrator.py (NEW, LOCAL) ← runs 15 techniques on facts
+    → T0-T14 Python functions ← each scores + reasons locally
+    → fallback_router.py (NEW) ← routes NEEDS_DATA to LLM micro-queries
+  → strategic_synthesizer.py (NEW, LOCAL) ← converts scores → strategy
+    → leverage_ranker → sequence_optimizer → milestone_generator
+    → temporal_planner → compound_tracker
+  → template_evolver.py (existing, LOCAL) ← evolves weights
+```
+
+## Target Directories
+
+- Module A: `D:/code/invesments/master_investments/.claude/lib/intelligence/reasoning/techniques/`
+- Module B: `D:/code/invesments/master_investments/.claude/lib/intelligence/strategy/`
+
+## Reuse Map
+
+| Existing Module | Reused By | How |
+|----------------|-----------|-----|
+| `layers/contrarian/moat_tester.py` | T5 (moat_tester) | Wrap: call `test_moat()` + score |
+| `layers/contrarian/survivorship_filter.py` | T8 (survivor_filter) | Wrap: call `apply_survivorship_correction()` |
+| `layers/contrarian/assumption_challenger.py` | T3 (adversarial) | Wrap: load challenges as BEAR arguments |
+| `layers/contrarian/hidden_costs.py` | T10 (risk_surface) | Wrap: hidden cost multipliers |
+| `layers/elite/cycle_intelligence.py` | T7 (timing_window) + T13 (market_cycle) | Wrap: `detect_timing_signal()` + `assess_cycle_phase()` |
+| `layers/elite/momentum_scorer.py` | T13 (market_cycle) | Wrap: momentum signals |
+| `layers/scale_aware/compound_paths.py` | T4 (compound_mechanism) | Wrap: compound path lookup |
+| `layers/scale_aware/stage_detector.py` | T9 (execution_distance) | Wrap: stage detection |
+| `layers/scale_aware/strategy_matcher.py` | Strategic Synthesizer | Wrap: strategy matching |
+| `reasoning/atomic_resolver.py` | All techniques | Pre-resolve from local KB |
+| `reasoning/verdict_generator.py` | Technique orchestrator | Verdict thresholds |
+| `decomposition/synthesis_engine.py` | Strategic Synthesizer | Dimension scores input |
+
+## Phases
+
+| # | Phase | Effort | Status | Deps | Parallel |
+|---|-------|--------|--------|------|----------|
+| P1 | [Technique Base + Orchestrator](./phase-01-technique-base-orchestrator.md) | 0.5d | pending | None | — |
+| P2 | [Structural Techniques T0-T4](./phase-02-structural-techniques-t0-t4.md) | 1d | pending | P1 | A |
+| P3 | [Analytical Techniques T5-T9](./phase-03-analytical-techniques-t5-t9.md) | 1d | pending | P1 | A |
+| P4 | [Execution Techniques T10-T14](./phase-04-execution-techniques-t10-t14.md) | 1d | pending | P1 | A |
+| P5 | [Strategic Synthesizer Core](./phase-05-strategic-synthesizer-core.md) | 1d | pending | P1 | B |
+| P6 | [Integration + Fallback Wiring](./phase-06-integration-fallback-wiring.md) | 0.5-1d | pending | P2+P3+P4+P5 | — |
+| P7 | [Calibration + Testing](./phase-07-calibration-testing.md) | 0.5-1d | pending | P6 | — |
+
+- P2, P3, P4 run in parallel (Module A: independent technique groups)
+- P5 runs in parallel with P2-P4 (Module B: independent)
+- P6 requires all of P2-P5
+- P7 requires P6
+
+## Success Criteria
+
+- All 15 techniques run as LOCAL Python (zero LLM calls)
+- NEEDS_DATA fallback fires LLM micro-queries (≤5 per technique)
+- Strategic Synthesizer produces actionable path with timing + milestones
+- End-to-end LLM dependency drops from ~60-65% to ≤25%
+- Integration tests pass with Giang Trần Minh Thành test case
+- Each technique produces typed `TechniqueResult` with score + reasoning chain
+
+## Kill Criteria
+
+- Local technique accuracy <70% compared to LLM-only output → local reasoning not viable
+- Strategic Synthesizer produces generic paths indistinguishable from templates → design failed
+- Integration overhead >10s per full run → too slow for interactive use

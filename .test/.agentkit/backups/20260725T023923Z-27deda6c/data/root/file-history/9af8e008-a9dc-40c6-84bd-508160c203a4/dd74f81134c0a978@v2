@@ -1,0 +1,84 @@
+---
+phase: 1
+title: "Foundation Models + Store"
+status: pending
+priority: P1
+effort: "2-3d"
+dependencies: []
+---
+
+# Phase 1: Foundation Models + Store
+
+## Overview
+
+Create all shared data structures (PriceDelta, ForcedFlow, AnomalyCard, FounderProfile) and the DuckDB anomaly persistence layer. This phase produces the types and storage that ALL subsequent phases depend on.
+
+## Requirements
+
+- Functional: dataclasses for all 3 brain outputs, DuckDB CRUD for anomaly cards, schema migrations
+- Non-functional: all models serializable to JSON, DuckDB ops must handle concurrent reads, <100ms per CRUD op
+
+## Architecture
+
+```
+brains/
+  __init__.py
+  models.py          # PriceDelta, ForcedFlow, AnomalyCard, FounderProfile
+store/
+  __init__.py
+  anomaly_store.py   # DuckDB CRUD: save, load, update, query
+  schema.sql         # CREATE TABLE statements
+```
+
+DuckDB file location: `data/anomalies.duckdb` (relative to master_investments root).
+
+## Related Code Files
+
+- Create: `.claude/lib/intelligence/brains/__init__.py`
+- Create: `.claude/lib/intelligence/brains/models.py`
+- Create: `.claude/lib/intelligence/store/__init__.py`
+- Create: `.claude/lib/intelligence/store/anomaly_store.py`
+- Create: `.claude/lib/intelligence/store/schema.sql`
+- Create: `.claude/lib/intelligence/brains/tests/__init__.py`
+- Create: `.claude/lib/intelligence/brains/tests/test_models.py`
+- Create: `.claude/lib/intelligence/store/tests/__init__.py`
+- Create: `.claude/lib/intelligence/store/tests/test_anomaly_store.py`
+
+## Implementation Steps
+
+1. Create `brains/models.py` with these dataclasses:
+   - `PriceDelta`: product, market_a, market_b, price_a, price_b, currency, unit, spread_pct, bridge_cost, net_margin, net_margin_pct, volume_estimate, monthly_income, confidence, sources, timestamp
+   - `ForcedFlow`: regulation, jurisdiction, effective_date, who_must_comply, entity_count, compliance_cost, total_forced_spend, penalty, current_providers, provider_gap, position_opportunity, monthly_income_estimate, deadline_urgency, confidence, sources
+   - `AnomalyCard`: id (ANOM-YYMMDD-NNN), anomaly_type (PRICE_DELTA|FORCED_FLOW|INTERSECTION|HISTORICAL), title, delta/flow refs, intersection_rule, position_type (BROKER|ARBITRAGE|INTELLIGENCE|AGGREGATOR), action, supply_side, demand_side, channel, price/cost/margin per unit, units_per_month, monthly_income, anomaly_score, founder_fit, urgency, confidence, contacts, script, deadline, kill_criteria, first_seen, last_verified, delta_trend (GROWING|STABLE|SHRINKING)
+   - `FounderProfile`: industries, languages, location, networks, domain_expertise, capital_range
+   - All classes: `to_dict()` and `from_dict()` methods for JSON serialization
+2. Create `store/schema.sql` with tables: `anomaly_cards`, `anomaly_signals`, `anomaly_history`
+3. Create `store/anomaly_store.py`:
+   - `AnomalyStore.__init__(db_path)` — connect to DuckDB, run schema.sql if tables don't exist
+   - `save_card(card: AnomalyCard)` — upsert anomaly card
+   - `save_signal(anomaly_id, signal_type, data)` — save underlying signal
+   - `load_active_cards() -> list[AnomalyCard]` — status=ACTIVE
+   - `load_card(card_id) -> AnomalyCard`
+   - `update_status(card_id, status)` — ACTIVE/PURSUED/DEAD/CONVERTED
+   - `record_history(card_id, score, income, delta_pct, notes)` — track changes over time
+   - `get_history(card_id) -> list[dict]`
+   - `compute_delta_trend(card_id) -> str` — GROWING/STABLE/SHRINKING from history
+   - `close()` — close connection
+4. Write tests for models (serialization round-trip, validation) — `test_models.py`
+5. Write tests for store (CRUD, history tracking, delta_trend computation) — `test_anomaly_store.py`
+6. Archive hunt v4: move `hunt.md` → `archive/hunt-v4.md`, `hunt-checklist.md` → `archive/hunt-v4-checklist.md`
+
+## Success Criteria
+
+- [ ] All 4 dataclasses defined with to_dict/from_dict round-trip passing
+- [ ] AnomalyCard.id auto-generates as ANOM-YYMMDD-NNN
+- [ ] DuckDB store creates tables on first init
+- [ ] CRUD operations: save, load, update, query all pass
+- [ ] delta_trend computed correctly: 3+ history entries with rising score = GROWING, falling = SHRINKING, else STABLE
+- [ ] hunt v4 files archived
+- [ ] >=90% test coverage for models + store
+
+## Risk Assessment
+
+- **DuckDB pip availability:** Must be installed in venv. Mitigation: add to install script, fallback to SQLite if DuckDB fails.
+- **Schema migration:** Future schema changes need migration path. Mitigation: version table, schema.sql includes version check.

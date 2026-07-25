@@ -1,0 +1,115 @@
+---
+phase: 6
+title: "CLI Export + Lightweight Dashboard"
+status: pending
+priority: P2
+effort: "1.5w"
+dependencies: [5]
+---
+
+# Phase 6: CLI Export + Lightweight Dashboard
+
+## Overview
+
+**Red-team finding #3 applied:** Original plan was a greenfield SaaS (Go + ClickHouse + NATS + PostgreSQL + Next.js) estimated at 2 weeks — wildly unrealistic for a solo founder. Replaced with lightweight CLI-based export and self-contained HTML dashboard that reads from tracking.db.
+
+Full cloud backend deferred to a separate future plan after CLI product validates with users.
+
+**What this phase delivers:**
+1. `codeflow export` — JSON/CSV/HTML export from local tracking.db
+2. Self-contained HTML dashboard (single file, opens in browser, reads exported data)
+3. `codeflow serve` — optional local HTTP server for real-time dashboard
+
+## Requirements
+
+- Functional: export provenance, cost, quality data as JSON/CSV/HTML; self-contained HTML dashboard with charts; optional local server mode; team data sharing via file export/import
+- Non-functional: HTML dashboard loads in <1s; export <10s for 90-day window; zero external dependencies for dashboard viewing
+
+## Architecture
+
+```
+tracking.db (provenance + cost + quality data)
+    ↓
+codeflow export --format json|csv|html --range 90d
+    ↓
+Output: ./codeflow-export/{timestamp}.{json|csv|html}
+    ↓
+HTML dashboard: self-contained single file with embedded Chart.js
+    ↓
+Optional: codeflow serve --port 8080 → local HTTP serving tracking.db live
+```
+
+## Related Code Files
+
+- Modify: `src/main.rs` — add `export` and `serve` subcommands
+- Create: `src/cmds/export_cmd.rs` — `codeflow export` command
+- Create: `src/cmds/serve_cmd.rs` — `codeflow serve` local dashboard server
+- Create: `src/core/exporter.rs` — data export logic (JSON/CSV/HTML)
+- Create: `src/core/dashboard_template.rs` — embedded HTML template with Chart.js
+- Create: `templates/dashboard.html` — HTML template source (compiled into binary)
+
+## Implementation Steps
+
+1. **Create `src/core/exporter.rs`**
+   - `fn export_json(db: &Connection, range: DateRange) -> Result<String>` — structured JSON
+   - `fn export_csv(db: &Connection, range: DateRange) -> Result<String>` — flat CSV
+   - `fn export_html(db: &Connection, range: DateRange) -> Result<String>` — self-contained HTML with embedded data + Chart.js CDN
+   - Query all tables: provenance_records, cost_records, quality_findings, governance_events
+   - Summary stats: total AI %, cost breakdown, quality gate pass rate
+
+2. **Create `templates/dashboard.html`**
+   - Self-contained HTML with Chart.js (CDN or embedded)
+   - Charts: cost-per-day trend, AI code % by file, quality findings by severity, model usage breakdown
+   - Tables: recent provenance records, top-cost PRs, quality gate results
+   - Filters: date range, project, developer
+   - Compile into binary via `include_str!()` in dashboard_template.rs
+
+3. **Create `src/cmds/export_cmd.rs`**
+   - `codeflow export` — default HTML dashboard
+   - `codeflow export --format json|csv|html`
+   - `codeflow export --range 30d|90d|1y|all`
+   - `codeflow export --output <dir>`
+   - Auto-opens HTML in browser after export
+
+4. **Create `src/cmds/serve_cmd.rs`**
+   - `codeflow serve` — start local HTTP server on port 8080
+   - `codeflow serve --port <port>`
+   - Serves live data from tracking.db (auto-refreshes)
+   - Uses `tiny_http` or similar minimal HTTP server (add to Cargo.toml)
+   - API endpoints: `/api/cost`, `/api/provenance`, `/api/quality`, `/api/summary`
+
+5. **Wire into main.rs** — add `Export` and `Serve` variants
+
+6. **Tests**
+   - Unit: exporter outputs valid JSON/CSV, HTML contains expected chart data
+   - Integration: export from fixture tracking.db → validate output structure
+   - 8+ new tests
+
+## Success Criteria
+
+- [ ] `codeflow export` generates self-contained HTML dashboard that opens in browser
+- [ ] `codeflow export --format json` produces valid structured JSON
+- [ ] `codeflow export --format csv` produces importable CSV
+- [ ] `codeflow serve` starts local server showing live dashboard
+- [ ] HTML dashboard shows cost trend, AI %, quality findings charts
+- [ ] Export completes in <10s for 90-day window
+- [ ] 8+ new tests
+
+## Risk Assessment
+
+| Risk | Severity | Mitigation |
+|------|----------|------------|
+| Chart.js CDN dependency in HTML | LOW | Embed Chart.js source in template (self-contained mode) |
+| tracking.db too large for full export | LOW | Date range filter; summary-only mode for large DBs |
+| Users want cloud dashboard | MEDIUM | Phase 6 proves value with local dashboard; cloud = separate plan after validation |
+
+## Future: Cloud Backend (Separate Plan)
+
+When CLI product validates with users, a separate plan will cover:
+- Go backend with event ingest
+- ClickHouse for time-series analytics
+- Team management + RBAC
+- Real-time cloud dashboard
+- API key auth + billing
+
+This is 6-10 weeks of work, not 2 weeks, and should only start after CLI traction is proven.

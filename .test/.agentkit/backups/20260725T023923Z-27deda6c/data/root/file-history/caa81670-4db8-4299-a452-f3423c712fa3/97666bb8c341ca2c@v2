@@ -1,0 +1,39 @@
+{
+  "providers": {
+    "claude": {
+      "enabled": true,
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "default_model": "claude-sonnet-4-6",
+      "max_tokens": 4096,
+      "timeout_seconds": 120
+    },
+    "openai": {
+      "enabled": false,
+      "api_key_env": "OPENAI_API_KEY",
+      "default_model": "gpt-4o",
+      "max_tokens": 4096,
+      "timeout_seconds": 120
+    },
+    "gemini": {
+      "enabled": true,
+      "api_key_env": "GEMINI_API_KEY",
+      "default_model": "gemini-2.0-flash",
+      "max_tokens": 4096,
+      "timeout_seconds": 120
+    },
+    "ollama": {
+      "enabled": false,
+      "base_url": "http://localhost:11434",
+      "default_model": "llama3.2",
+      "max_tokens": 4096,
+      "timeout_seconds": 120
+    }
+  },
+  "default_provider": "claude",
+  "fallback_chain": ["claude", "gemini", "openai", "ollama"],
+  "cost_tracking": {
+    "enabled": true,
+    "budget_daily_usd": 10.0,
+    "alert_threshold_pct": 80
+  }
+}

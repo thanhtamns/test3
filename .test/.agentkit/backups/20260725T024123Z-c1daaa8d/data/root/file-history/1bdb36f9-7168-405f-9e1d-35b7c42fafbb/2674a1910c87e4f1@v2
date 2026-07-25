@@ -1,0 +1,33 @@
+{
+  "coverage": {
+    "high_threshold": 0.8,
+    "medium_threshold": 0.4,
+    "staleness_days": 90,
+    "freshness_penalty_pct": 10
+  },
+  "reasoning": {
+    "confidence_threshold": 0.6,
+    "aggregate_method": "geometric_mean",
+    "min_coverage_ratio": 0.5,
+    "pass_score_threshold": 0.6,
+    "weak_pass_threshold": 0.3
+  },
+  "anti_hallucination": {
+    "min_confidence_per_claim": 4,
+    "cross_query_diff_threshold": 0.5
+  },
+  "evolution": {
+    "session_max_llm_calls": 3,
+    "daily_budget_usd": 1.0,
+    "min_distill_confidence": 0.7,
+    "continuous_stale_refresh_limit": 5,
+    "continuous_weak_domain_limit": 3
+  },
+  "autonomy": {
+    "full_auto_accuracy": 0.85,
+    "semi_auto_accuracy": 0.70,
+    "min_verdicts_for_promotion": 30,
+    "demotion_drop_threshold": 0.10,
+    "demotion_window": 10
+  }
+}

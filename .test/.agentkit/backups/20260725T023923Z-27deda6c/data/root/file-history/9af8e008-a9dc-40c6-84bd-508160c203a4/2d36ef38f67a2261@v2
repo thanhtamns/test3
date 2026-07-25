@@ -1,0 +1,101 @@
+---
+phase: 3
+title: "Brain 2 Forced Flow Engine"
+status: pending
+priority: P1
+effort: "2-3d"
+dependencies: [1]
+---
+
+# Phase 3: Brain 2 — Forced Flow Engine
+
+## Overview
+
+Build the Forced Flow Engine that scans regulatory feeds for mandates that FORCE new spending. Not "compliance market growing" — but "EU AI Act Article 6 takes effect Aug 1 2026 → every company deploying high-risk AI MUST complete conformity assessment → 15,000 EU companies × $50K = $750M forced spending → WHO captures this?"
+
+## Requirements
+
+- Functional: search regulatory sources by geography, extract mandate details via LLM, quantify impact (entity count × cost), identify provider gaps, score urgency
+- Non-functional: deterministic search templates, max 30 web calls, regulatory sources per jurisdiction
+
+## Architecture
+
+```
+ForcedFlowEngine
+  ├── scan(geographies, industries) → list[ForcedFlow]
+  │   ├── For each geography:
+  │   │   ├── search_regulations(geo, industry) → raw regulatory text
+  │   │   ├── llm_extract_mandate(raw) → {what, who, deadline, penalty}
+  │   │   ├── quantify_impact(mandate) → entity_count × cost
+  │   │   ├── search_providers(mandate) → current providers
+  │   │   └── identify_gap(providers, demand) → provider_gap
+  │   └── Output: ForcedFlow with urgency score
+  └── Priority: urgency(0.4) + size(0.3) + gap(0.3)
+```
+
+## Related Code Files
+
+- Create: `.claude/lib/intelligence/brains/forced_flow_engine.py`
+- Create: `.claude/lib/intelligence/brains/tests/test_forced_flow.py`
+- Create: `.claude/lib/intelligence/brains/tests/fixtures/regulatory_results.json`
+- Read: `.claude/lib/intelligence/brains/models.py` (from Phase 1)
+
+## Implementation Steps
+
+1. Define regulatory source constants per jurisdiction:
+   ```python
+   REGULATORY_SOURCES = {
+       "US": "site:federalregister.gov final rule 2026",
+       "EU": "site:eur-lex.europa.eu regulation 2026",
+       "VN": "site:thuvienphapluat.vn nghị định 2026",
+       "global": "new regulation compliance deadline 2026 2027",
+   }
+   ```
+2. Define search templates:
+   ```python
+   REGULATORY_TEMPLATES = [
+       'new {industry} regulation {geography} 2026 effective date',
+       '{industry} compliance requirement deadline {geography}',
+       '{regulation} how many companies affected',
+       '{regulation} compliance cost estimate',
+       '{regulation} compliance provider service',
+       '{regulation} "how to comply" guide consultant',
+   ]
+   ```
+3. Implement `ForcedFlowEngine.__init__(research_fn, llm_fn)` — callable dependencies
+4. Implement `ForcedFlowEngine.scan(geographies, industries)`:
+   - For each geography: run regulatory source query
+   - LLM extraction prompt: "Extract from regulatory text: regulation name/number, jurisdiction, effective date, who must comply, estimated entity count, compliance cost per entity, penalty for noncompliance. Return JSON."
+   - Calculate total_forced_spend = entity_count × compliance_cost
+   - Search for existing providers: "{regulation} compliance provider"
+   - LLM identifies provider gap
+   - Calculate urgency: deadline_urgency = max(0, 365 - days_until_effective) / 365
+   - Score: urgency(0.4) + log10(total_forced_spend)/10 × 0.3 + gap_score(0.3)
+   - Budget: 6 web calls per regulation candidate, max 30 total
+5. Implement position recommendation logic:
+   - Large gap + high urgency → BROKER (connect suppliers to demand)
+   - Technical gap → INTELLIGENCE (curate compliance knowledge)
+   - Fragmented supply → AGGREGATOR (bundle providers)
+6. Create test fixtures: sample regulatory text (EU AI Act, VN Circular 78, US EPA rule)
+7. Write tests:
+   - `test_urgency_calculation`: known dates → correct urgency scores
+   - `test_total_spend_calculation`: entity_count × cost = correct total
+   - `test_priority_scoring`: urgency + size + gap weights
+   - `test_budget_enforcement`: stops at 30 calls
+   - `test_position_recommendation`: gap type → correct position
+   - `test_llm_extraction_prompt`: prompt format
+
+## Success Criteria
+
+- [ ] Produces ForcedFlow objects with real regulation names (not placeholder)
+- [ ] Urgency score correctly reflects days until effective date
+- [ ] Total forced spend = entity_count × compliance_cost
+- [ ] Position recommendation based on gap type
+- [ ] Budget enforced at 30 web calls max
+- [ ] At least 1 ForcedFlow per hunt run (from any jurisdiction)
+- [ ] >=80% coverage
+
+## Risk Assessment
+
+- **Regulatory text complexity:** Legal language is dense, LLM may misparse. Mitigation: extraction prompt is narrow (name, date, who, how much), validated post-extraction.
+- **Entity count estimation:** Hard to verify. Mitigation: tag confidence [T] for estimates, require 2+ sources for [K].

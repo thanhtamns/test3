@@ -1,0 +1,412 @@
+"""
+DeepReasoner — 5-step LLM reasoning chain that THINKS, not searches.
+
+Each step builds on previous outputs, creating compound reasoning:
+  Step 1: Causal Chain Builder — extract mechanism from facts
+  Step 2: Chain Stress Tester — find weakest links + what breaks
+  Step 3: Cross-Dimensional Synthesizer — connect insights across dimensions
+  Step 4: Scenario Simulator — play out 3 futures with trigger events
+  Step 5: Strategic Position Mapper — where founder stands in value chain
+
+Slots between SynthesisEngine (code-scoring) and StrategicReasoner (5-call LLM)
+in ThinkRunner. Output feeds directly into StrategicReasoner as enriched context.
+"""
+
+import json
+import time
+from dataclasses import dataclass, field
+from typing import Callable, Optional
+
+
+@dataclass
+class DeepInsight:
+    causal_chains: list[dict] = field(default_factory=list)
+    vulnerabilities: list[dict] = field(default_factory=list)
+    emergent_insights: list[str] = field(default_factory=list)
+    scenarios: list[dict] = field(default_factory=list)
+    position_map: dict = field(default_factory=dict)
+    llm_calls_made: int = 0
+    total_latency_ms: int = 0
+    steps_completed: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "causal_chains": self.causal_chains,
+            "vulnerabilities": self.vulnerabilities,
+            "emergent_insights": self.emergent_insights,
+            "scenarios": self.scenarios,
+            "position_map": self.position_map,
+            "llm_calls_made": self.llm_calls_made,
+            "total_latency_ms": self.total_latency_ms,
+            "steps_completed": self.steps_completed,
+        }
+
+    def to_context_string(self) -> str:
+        """Compress into rich context string for StrategicReasoner."""
+        parts = []
+        if self.causal_chains:
+            chains_str = "; ".join(
+                c.get("chain", "") for c in self.causal_chains[:3]
+            )
+            parts.append(f"CAUSAL MECHANISMS: {chains_str}")
+
+        if self.vulnerabilities:
+            vulns = "; ".join(
+                f"{v.get('link', '?')}: {v.get('failure_mode', '?')}"
+                for v in self.vulnerabilities[:5]
+            )
+            parts.append(f"VULNERABILITIES: {vulns}")
+
+        if self.emergent_insights:
+            parts.append(
+                f"EMERGENT INSIGHTS: {'; '.join(self.emergent_insights[:3])}"
+            )
+
+        if self.scenarios:
+            for s in self.scenarios[:3]:
+                name = s.get("name", "?")
+                trigger = s.get("trigger", "?")
+                outcome = s.get("outcome", "?")
+                parts.append(f"SCENARIO [{name}]: trigger={trigger} → {outcome}")
+
+        if self.position_map:
+            best = self.position_map.get("best_position", "unknown")
+            why = self.position_map.get("why", "")
+            parts.append(f"POSITION: {best} — {why}")
+
+        return "\n".join(parts) if parts else "(no deep reasoning)"
+
+
+class DeepReasoner:
+    """5-step compound LLM reasoning chain."""
+
+    def __init__(self, max_calls: int = 5, llm_fn: Optional[Callable] = None):
+        self.max_calls = max_calls
+        self._llm_fn = llm_fn
+        self._calls_made = 0
+
+    def reason(
+        self,
+        facts: list,
+        dim_scores: dict,
+        query: str,
+        query_context: dict,
+        technique_summary: str = "",
+        founder_context: dict = None,
+    ) -> DeepInsight:
+        if not facts:
+            return DeepInsight(steps_completed=["skipped:no_facts"])
+
+        self._calls_made = 0
+        start = time.time()
+        founder_context = founder_context or {}
+        fact_block = self._format_facts_by_dimension(facts, dim_scores)
+        insight = DeepInsight()
+
+        # --- Step 1: Causal Chain Builder ---
+        step1 = self._step1_causal_chains(fact_block, query, technique_summary)
+        insight.causal_chains = step1
+        insight.steps_completed.append("causal_chains")
+
+        # --- Step 2: Chain Stress Tester ---
+        step2 = self._step2_stress_test(step1, fact_block, query)
+        insight.vulnerabilities = step2
+        insight.steps_completed.append("stress_test")
+
+        # --- Step 3: Cross-Dimensional Synthesizer ---
+        step3 = self._step3_cross_synthesis(
+            step1, step2, dim_scores, query
+        )
+        insight.emergent_insights = step3
+        insight.steps_completed.append("cross_synthesis")
+
+        # --- Step 4: Scenario Simulator ---
+        step4 = self._step4_scenarios(
+            step1, step2, step3, query, query_context
+        )
+        insight.scenarios = step4
+        insight.steps_completed.append("scenarios")
+
+        # --- Step 5: Strategic Position Mapper ---
+        step5 = self._step5_position_map(
+            step1, step3, step4, query, founder_context
+        )
+        insight.position_map = step5
+        insight.steps_completed.append("position_map")
+
+        insight.llm_calls_made = self._calls_made
+        insight.total_latency_ms = int((time.time() - start) * 1000)
+        return insight
+
+    # ------------------------------------------------------------------
+    # Step implementations
+    # ------------------------------------------------------------------
+
+    def _step1_causal_chains(
+        self, fact_block: str, query: str, technique_summary: str
+    ) -> list[dict]:
+        prompt = f"""You are a systems thinker who sees MECHANISMS, not descriptions. Given research facts about "{query}", extract the causal chains — not summaries, but A→B→C relationships where each link has a REASON.
+
+FACTS BY DIMENSION:
+{fact_block}
+
+{f"TECHNIQUE SIGNALS: {technique_summary}" if technique_summary else ""}
+
+Extract 2-4 causal chains. For EACH chain:
+1. The chain itself: A causes B because C, which enables D
+2. The bottleneck node: where does value concentrate?
+3. The leverage point: what single change would shift the entire chain?
+4. Confidence: how many facts support this chain vs how many are inferred?
+
+Think like a commodity trader tracing money flow, not an analyst writing a report.
+
+Respond ONLY in JSON:
+{{"chains": [{{"chain": "A→B because X→C because Y", "bottleneck": "...", "leverage_point": "...", "supporting_facts": 3, "inferred_links": 1, "confidence": "high|medium|low"}}]}}"""
+
+        raw = self._call_llm(prompt)
+        data = self._parse_json(raw, {"chains": []})
+        return data.get("chains", [])
+
+    def _step2_stress_test(
+        self, chains: list[dict], fact_block: str, query: str
+    ) -> list[dict]:
+        if not chains:
+            return []
+
+        chains_str = json.dumps(chains[:3], indent=2)
+        prompt = f"""You are a deal killer — your job is to find where reasoning breaks. You've seen smart analysis built on ONE assumption that turned out false, collapsing the entire thesis.
+
+QUERY: "{query}"
+
+CAUSAL CHAINS (from Step 1):
+{chains_str}
+
+SUPPORTING FACTS:
+{fact_block[:2000]}
+
+For EACH chain link, ask:
+1. What SPECIFIC assumption makes this link work?
+2. What EVIDENCE exists that this assumption holds? (cite facts, not hope)
+3. What SINGLE EVENT would break this link?
+4. If this link breaks, does the ENTIRE chain collapse or just degrade?
+
+Also find:
+- CIRCULAR REASONING: where does the chain assume its own conclusion?
+- MISSING MIDDLE: where is there a logical jump without evidence?
+- SURVIVORSHIP BIAS: are we only seeing winners?
+
+Respond ONLY in JSON:
+{{"vulnerabilities": [{{"link": "A→B", "assumption": "...", "evidence_strength": "strong|weak|none", "failure_mode": "...", "cascade_risk": "total_collapse|degradation|isolated", "type": "assumption|circular|missing_middle|survivorship"}}]}}"""
+
+        raw = self._call_llm(prompt)
+        data = self._parse_json(raw, {"vulnerabilities": []})
+        return data.get("vulnerabilities", [])
+
+    def _step3_cross_synthesis(
+        self,
+        chains: list[dict],
+        vulnerabilities: list[dict],
+        dim_scores: dict,
+        query: str,
+    ) -> list[str]:
+        dims_with_data = {
+            dim: info for dim, info in dim_scores.items()
+            if isinstance(info, dict) and info.get("fact_count", 0) > 0
+            or (hasattr(info, "score") and info.score > 0)
+        }
+        dim_summary = []
+        for dim, info in dims_with_data.items():
+            if isinstance(info, dict):
+                score = info.get("score", 0)
+                count = info.get("fact_count", 0)
+            else:
+                score = getattr(info, "score", 0)
+                count = getattr(info, "fact_count", 0)
+            dim_summary.append(f"  {dim}: score={score:.2f}, facts={count}")
+        dim_block = "\n".join(dim_summary) if dim_summary else "(no scores)"
+
+        chains_brief = "; ".join(c.get("chain", "")[:100] for c in chains[:3])
+        vuln_brief = "; ".join(
+            v.get("failure_mode", "")[:80] for v in vulnerabilities[:5]
+        )
+
+        prompt = f"""You are a pattern connector. Individual dimensions tell partial stories — your job is to find what the COMBINATION reveals that NO single dimension shows alone.
+
+QUERY: "{query}"
+CAUSAL CHAINS: {chains_brief}
+VULNERABILITIES: {vuln_brief}
+
+DIMENSION SCORES:
+{dim_block}
+
+Find EMERGENT INSIGHTS — things only visible when you cross-reference dimensions:
+
+1. Does the unit_economics story CONTRADICT the competitive_landscape story? (e.g., margins look good but competitors will compress them)
+2. Does the moat claim SURVIVE the failure_patterns evidence? (e.g., "data moat" but data is a commodity)
+3. Does the timing_advantage CONFLICT with the capital_requirement? (e.g., window is 6 months but founder needs 12 months to build)
+4. What does the ABSENCE of data in certain dimensions tell us? (gaps are signals, not just missing info)
+5. What COMPOUND EFFECT emerges from combining 2+ positive signals? (e.g., low competition + regulatory tailwind + founder skill match = rare window)
+
+List 3-5 emergent insights. Each must reference 2+ dimensions and explain what the COMBINATION reveals.
+
+Respond ONLY in JSON:
+{{"insights": ["Combining X dimension (score Y) with Z dimension reveals...", "..."]}}"""
+
+        raw = self._call_llm(prompt)
+        data = self._parse_json(raw, {"insights": []})
+        return data.get("insights", [])
+
+    def _step4_scenarios(
+        self,
+        chains: list[dict],
+        vulnerabilities: list[dict],
+        emergent_insights: list[str],
+        query: str,
+        query_context: dict,
+    ) -> list[dict]:
+        chains_brief = "; ".join(c.get("chain", "")[:80] for c in chains[:3])
+        vuln_brief = "; ".join(
+            f"{v.get('link', '?')}({v.get('cascade_risk', '?')})"
+            for v in vulnerabilities[:5]
+        )
+        insights_brief = "; ".join(i[:100] for i in emergent_insights[:3])
+        industry = query_context.get("industry", "general")
+
+        prompt = f"""You've operated in {industry} for 20 years. You don't predict the future — you map the TRIGGER EVENTS that determine which future happens.
+
+QUERY: "{query}"
+CAUSAL CHAINS: {chains_brief}
+KEY VULNERABILITIES: {vuln_brief}
+EMERGENT INSIGHTS: {insights_brief}
+
+Build 3 scenarios. NOT "optimistic/base/pessimistic" vagueness — each must have:
+
+1. A SPECIFIC TRIGGER EVENT that would cause this scenario (named policy, named competitor action, named technology shift)
+2. A TIMELINE: when would this trigger plausibly happen? (cite evidence)
+3. A CHAIN OF CONSEQUENCES: trigger → first effect → second effect → impact on founder
+4. A PROBABILITY ESTIMATE with reasoning (not just a number)
+5. FOUNDER ACTION: what should founder do NOW if this scenario materializes?
+
+Scenarios must cover:
+- The "obvious path" scenario (what most people assume will happen)
+- The "disruption" scenario (what changes the game rules)
+- The "founder's edge" scenario (what uniquely benefits THIS approach)
+
+Respond ONLY in JSON:
+{{"scenarios": [{{"name": "...", "trigger": "...", "timeline": "...", "chain": "trigger→A→B→C", "probability": "...", "probability_reasoning": "...", "founder_action": "...", "outcome": "..."}}]}}"""
+
+        raw = self._call_llm(prompt)
+        data = self._parse_json(raw, {"scenarios": []})
+        return data.get("scenarios", [])
+
+    def _step5_position_map(
+        self,
+        chains: list[dict],
+        emergent_insights: list[str],
+        scenarios: list[dict],
+        query: str,
+        founder_context: dict,
+    ) -> dict:
+        chains_brief = "; ".join(c.get("chain", "")[:80] for c in chains[:3])
+        bottlenecks = [c.get("bottleneck", "") for c in chains[:3] if c.get("bottleneck")]
+        insights_brief = "; ".join(i[:80] for i in emergent_insights[:3])
+        scenarios_brief = "; ".join(
+            f"{s.get('name', '?')}: {s.get('outcome', '?')[:60]}"
+            for s in scenarios[:3]
+        )
+        capital = founder_context.get("capital_usd", "unknown")
+        skills = founder_context.get("skills", [])
+        location = founder_context.get("location", "unknown")
+        languages = founder_context.get("languages", [])
+
+        prompt = f"""You think like Soros mapping capital flows, Kuok identifying commodity bottlenecks, Dalio reading macro cycles. You don't ask "what product to build" — you ask "where to STAND in the value chain so money flows through you."
+
+QUERY: "{query}"
+CAUSAL CHAINS: {chains_brief}
+BOTTLENECK NODES: {bottlenecks}
+EMERGENT INSIGHTS: {insights_brief}
+SCENARIOS: {scenarios_brief}
+
+FOUNDER: capital=${capital}, skills={skills}, location={location}, languages={languages}
+
+Map the complete value chain for this opportunity. At each node:
+1. WHO controls it? (role, not name — we'll find names later)
+2. HOW MUCH capital flows through it?
+3. WHAT % can be captured by someone at this node?
+4. WHAT BARRIER exists to entry at this node?
+
+Then determine:
+- BEST POSITION: which node maximizes (capture % × accessibility for THIS founder)?
+- WHY: what makes this node accessible that others aren't?
+- COMPOUND MECHANISM: what grows at this node over time? (if nothing → it's a job)
+- TIMING: when to enter THIS node given the scenarios above?
+- SECOND POSITION: if best node fails, where's the fallback?
+
+Respond ONLY in JSON:
+{{"value_chain_nodes": [{{"node": "...", "controller": "...", "flow_size": "...", "capture_rate": "...", "barrier": "..."}}], "best_position": "...", "why": "...", "compound_mechanism": "...", "timing": "...", "fallback_position": "...", "is_job_not_position": false}}"""
+
+        raw = self._call_llm(prompt)
+        data = self._parse_json(raw, {
+            "best_position": "unknown",
+            "why": "",
+            "compound_mechanism": "",
+            "is_job_not_position": True,
+        })
+        return data
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _call_llm(self, prompt: str) -> str:
+        if self._calls_made >= self.max_calls:
+            return "{}"
+
+        self._calls_made += 1
+
+        if self._llm_fn:
+            result = self._llm_fn(prompt, max_tokens=2048, temperature=0.4)
+        else:
+            try:
+                from ...llm.factory import complete_with_fallback
+            except (ImportError, ValueError):
+                from llm.factory import complete_with_fallback
+            result = complete_with_fallback(prompt, max_tokens=2048, temperature=0.4)
+
+        if result is None or not hasattr(result, "content"):
+            return "{}"
+        return result.content or "{}"
+
+    def _parse_json(self, text: str, defaults: dict) -> dict:
+        text = text.strip()
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start >= 0 and end > start:
+            try:
+                return json.loads(text[start:end])
+            except json.JSONDecodeError:
+                pass
+        return {**defaults, "_raw": text[:500]}
+
+    def _format_facts_by_dimension(self, facts: list, dim_scores: dict) -> str:
+        by_dim: dict[str, list[str]] = {}
+        for f in facts:
+            dim = getattr(f, "dimension", "unknown")
+            fact_text = getattr(f, "fact", str(f))
+            zone = getattr(f, "zone_tag", "?")
+            conf = getattr(f, "confidence", 0.5)
+            by_dim.setdefault(dim, []).append(f"[{zone}|{conf:.2f}] {fact_text[:200]}")
+
+        lines = []
+        for dim, dim_facts in by_dim.items():
+            score_obj = dim_scores.get(dim)
+            if isinstance(score_obj, dict):
+                score_val = score_obj.get("score", 0)
+            elif hasattr(score_obj, "score"):
+                score_val = score_obj.score
+            else:
+                score_val = 0
+            lines.append(f"\n## {dim} (score: {score_val:.2f})")
+            for ff in dim_facts[:8]:
+                lines.append(f"  - {ff}")
+        return "\n".join(lines)

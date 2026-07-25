@@ -1,0 +1,58 @@
+---
+title: "Investor Demo Stack — Auth Bypass, Docker Seed, Root Compose"
+description: "Single docker compose up for full CODEFLOW stack locally — auth bypass, seed data, CLI→Cloud→Dashboard live flow"
+status: pending
+priority: P1
+effort: "4h"
+branch: "master"
+tags: [docker, demo, auth, nextjs, go, investor]
+blockedBy: []
+blocks: []
+created: "2026-06-05T01:59:00.467Z"
+createdBy: "ck:plan"
+source: skill
+---
+
+# Investor Demo Stack — Auth Bypass, Docker Seed, Root Compose
+
+## Overview
+
+Make CODEFLOW demo-ready for investor presentations. Single `docker compose up` from repo root starts full stack (ClickHouse + NATS + Go API + seed data + Next.js dashboard). Dashboard bypasses WorkOS auth in dev mode. CLI syncs live events to local cloud.
+
+**Problem:** Dashboard middleware throws 500 without WorkOS credentials. Seed script can't run on Windows. No unified launch command.
+
+**Brainstorm report:** [brainstorm-260605-investor-demo-readiness.md](../reports/brainstorm-260605-investor-demo-readiness.md)
+
+## Phases
+
+| Phase | Name | Status | Effort |
+|-------|------|--------|--------|
+| 1 | [Dashboard Auth Bypass](./phase-01-dashboard-auth-bypass.md) | Pending | 1h |
+| 2 | [Seed Script Docker](./phase-02-seed-script-docker.md) | Pending | 30min |
+| 3 | [Root Docker Compose](./phase-03-root-docker-compose.md) | Pending | 1h |
+| 4 | [Env Config and Docs](./phase-04-env-config-and-docs.md) | Pending | 30min |
+| 5 | [E2E Verification](./phase-05-e2e-verification.md) | Pending | 1h |
+
+## Execution Order
+
+```
+Phase 1 (auth bypass) → Phase 2 (seed docker) → Phase 3 (root compose) → Phase 4 (env/docs) → Phase 5 (e2e verify)
+```
+
+Phase 1-2 are independent of each other but both needed before Phase 3. Phase 5 validates everything.
+
+## Dependencies
+
+- **Supersedes:** `260604-e2e-local-test` (pending plan with same goal but missing auth bypass and Docker seed fixes)
+- **Depends on:** `260604-full-system-review` (complete) — code quality pass already done
+- **No conflicts** with `260603-codeflow-ai-cost-intelligence-engine` (in-progress)
+
+## Demo Flow (target)
+
+```
+docker compose up          # starts everything
+open http://localhost:3000  # dashboard with seed data
+codeflow init              # install hooks
+codeflow sync --once       # sync local events to cloud API
+# → dashboard updates with live data
+```

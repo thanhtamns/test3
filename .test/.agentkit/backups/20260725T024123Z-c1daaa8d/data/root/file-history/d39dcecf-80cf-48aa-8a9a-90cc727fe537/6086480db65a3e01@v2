@@ -1,0 +1,349 @@
+# CODEFLOW — AI Cost Intelligence Engine
+
+**Brainstorm Report | 2026-06-03**
+**Status:** Design approved, pending plan
+**Origin:** TikTok video analysis of RTK (Rust Token Killer) → competitive gap identification → product design
+
+---
+
+## 1. Problem Statement
+
+Enterprise AI coding tool spend is $9.8-11B/year (annualized April 2026) and growing 75%/year. Per-developer costs: $200-600/month all-in (seats + tokens + governance).
+
+**Critical pain:** 68% of enterprise leaders say AI delivers value, but only 33% can attribute spend to outcomes. Microsoft cancelled 12,000 Claude Code licenses. Uber burned entire 2026 AI budget in 4 months. No ROI framework exists at most companies.
+
+**The unsolved problem:** No tool simultaneously REDUCES AI coding costs AND PROVES that developer productivity maintained or improved. Existing tools do one or the other, never both.
+
+| Tool | Saves Cost? | Proves Productivity? |
+|------|------------|---------------------|
+| RTK | 20-30% (CLI only) | No |
+| Helicone | No (monitors only) | No |
+| Langfuse | No | No |
+| Datadog LLM | No | Partial |
+| LiteLLM | Routing savings | No |
+
+---
+
+## 2. RTK Deep Analysis (Source Code Verified)
+
+**Repo:** [github.com/rtk-ai/rtk](https://github.com/rtk-ai/rtk) — 43.2K stars, MIT license, Rust
+**Cloned to:** `D:/code/invesments/tools_decisions/rtk-analysis/`
+**Stats:** 105 Rust files, ~70K LOC, v0.40.0
+
+### Architecture
+
+```
+RTK (105 files, ~70K LOC)
+├── main.rs (3,276 lines) — CLI routing, 40+ subcommands via clap
+├── cmds/ — Per-command filters (10 ecosystem folders)
+│   ├── git/ — diff, status, log, gh, glab, gt
+│   ├── js/ — tsc, eslint, vitest, prisma, playwright, pnpm, next
+│   ├── python/ — pytest, ruff, mypy, pip
+│   ├── rust/ — cargo build/test/clippy
+│   ├── go/ — go test, vet, golangci-lint
+│   ├── ruby/ — rspec, rubocop, rake
+│   ├── dotnet/ — build, test, format
+│   ├── jvm/ — gradlew
+│   ├── cloud/ — aws, docker, kubectl, curl, psql, wget
+│   └── system/ — ls, grep, find, read, json, env, tree, log, wc
+├── core/
+│   ├── filter.rs — 3-level (None/Minimal/Aggressive) regex + AST-lite
+│   ├── toml_filter.rs — 8-stage declarative pipeline (configurable via TOML)
+│   ├── tracking.rs — SQLite token savings analytics (~/.local/share/rtk/)
+│   ├── tee.rs — Raw output backup on command failure
+│   ├── stream.rs — Streaming output processor
+│   └── truncate.rs — Smart line truncation
+├── hooks/ — Agent integration (Claude, Cursor, Gemini, Copilot, etc.)
+├── discover/ — Missed savings analyzer (scans Claude Code history)
+├── parser/ — Output format detection
+├── learn/ — CLI correction learning from error history
+└── analytics/ — Token economics dashboards (gain, cc-economics)
+```
+
+### RTK Compression Engine (core/filter.rs verified)
+
+3 filter levels:
+- **None:** Passthrough
+- **Minimal:** Strip comments, normalize blank lines, keep doc comments
+- **Aggressive:** Keep only imports + function signatures + type definitions, collapse bodies
+
+8-stage TOML pipeline (core/toml_filter.rs):
+1. strip_ansi → remove ANSI escape codes
+2. replace → regex substitutions, line-by-line
+3. match_output → short-circuit patterns (e.g., "all tests passed" → "ok 262 passed")
+4. strip/keep_lines → filter lines by regex
+5. truncate_lines_at → per-line char limit
+6. head/tail_lines → keep first/last N lines
+7. max_lines → absolute cap
+8. on_empty → message if result empty
+
+### RTK Strengths (verified)
+
+- Single Rust binary, zero external dependencies
+- Sub-10ms overhead per command
+- 40+ command-specific compressors (not generic)
+- TOML filter extensibility (community-contributed filters)
+- Failure-safe tee (raw output saved when command fails)
+- SQLite tracking with 90-day retention, per-project scoping
+
+### RTK Gaps (verified)
+
+1. **CLI-only coverage** — Only intercepts Bash tool calls. Claude Code Read/Grep/Glob bypass hooks entirely
+2. **No semantic understanding** — Regex/heuristic compression, not context-aware
+3. **No context deduplication** — AI re-reads same file 5-8x/session due to context compaction → RTK doesn't detect/cache
+4. **No team visibility** — Local SQLite only. No centralized dashboard
+5. **No policy engine** — Cannot enforce rules like "always keep security warnings"
+6. **No productivity measurement** — Shows tokens saved, cannot prove developer output maintained
+7. **No security scanning** — No PII/credential detection before LLM ingestion
+8. **No model routing** — Doesn't optimize which model processes which query
+9. **Windows limitations** — Auto-rewrite hook requires Unix shell; Windows needs WSL
+
+---
+
+## 3. Competitive Landscape
+
+### API-Layer Tools (monitor LLM API calls)
+
+| Tool | Type | Pricing | Key Feature | Gap |
+|------|------|---------|-------------|-----|
+| Helicone | Proxy | Free→$200/mo | Cost tracking, caching (95% on repeats) | Can't see tool-layer activity |
+| Langfuse | Open-source | Free (self-host), $29/mo cloud | Trace spans, prompt versioning | Acquired by ClickHouse Jan 2026 |
+| Braintrust | Platform | Usage-based | Live dashboards, evaluation | No tool-layer coverage |
+| Datadog LLM | APM module | Enterprise pricing | Full-stack integration | Expensive, no CLI proxy |
+| Bifrost/Maxim | Gateway (Go) | Enterprise | 11μs overhead, budget mgmt | Gateway-only, no compression |
+| TrueFoundry | Platform | Enterprise | In-VPC deployment, budget enforcement | Infrastructure-heavy |
+
+### Tool-Layer (intercept CLI/IDE commands)
+
+| Tool | Saves? | Monitors? | Enterprise? |
+|------|--------|-----------|-------------|
+| RTK | 20-30% | Local only | RTK Cloud (waitlist, not shipped) |
+| CODEFLOW | 65-90% | Cloud dashboard | Full enterprise stack |
+
+**CODEFLOW unique position:** Only product covering tool-layer interception + observability + optimization + enterprise dashboard.
+
+### Market Data
+
+- Market size: $9.8-11B/year (enterprise AI coding agents, April 2026)
+- Per-dev spend: $200-600/month all-in
+- 79% of organizations adopted AI agents (PwC 2025)
+- 98% of FinOps practitioners now manage AI spend (FinOps Foundation 2026)
+- 37% enterprises spend >$250K/year on LLM APIs (Kong 2025)
+
+---
+
+## 4. Solution Design: CODEFLOW
+
+### Core Thesis
+
+> **Reduce enterprise AI coding costs 70% while proving with data that developer productivity maintained or improved.**
+
+### 4-Layer Savings Engine
+
+#### Layer 1: Smart Compression (20-25% savings)
+- Fork RTK compression core (MIT license)
+- Extend coverage beyond Bash: add IDE tool interception (Read/Grep/Glob)
+- TOML filter pipeline preserved and extended
+- Per-command filters for 40+ commands (inherited from RTK)
+
+#### Layer 2: Context Deduplication (15-20% savings)
+- Cache file contents during session
+- On re-read: return diff/delta only, not full file
+- "auth.ts read 10s ago, no changes since. Returning cached summary."
+- Eliminates 60-80% of re-read waste caused by context compaction
+- **UNIQUE — no existing tool does this**
+
+#### Layer 3: Intelligent Model Routing (20-30% savings)
+- For API-key users (Aider/Cline): route simple queries → cheaper models
+- For subscription users (Claude Code/Cursor): budget stretching via compression
+- Pattern: "git status" doesn't need Opus → Haiku sufficient
+- Requires API-level integration (Phase 3)
+
+#### Layer 4: Waste Elimination (10-15% savings)
+- Pattern detection: "npm install ran 3x this session → 2x redundant"
+- Team-level waste comparison: "Project X has 40% higher waste than Project Y"
+- Actionable recommendations: "Split 500-line file → AI only needs 1 function"
+
+**Combined: 65-90% total savings (conservative estimate: 70%)**
+
+### Productivity Measurement Engine
+
+Passively collect from git + CI (no dev action required):
+- PRs merged/week (per dev, per team)
+- Cycle time (PR open → merge)
+- Code acceptance rate (AI-generated code kept vs reverted)
+- Build success rate (before vs after optimization)
+- Bug rate (bugs introduced per PR)
+- Session efficiency (useful output per token spent)
+
+Dashboard output: ROI report with save vs productivity correlation, exportable PDF for CFO/board.
+
+### Security Layer
+
+- Scan tool output for PII, credentials, API keys BEFORE reaching LLM
+- Audit log: what data each dev sent to AI
+- Policy engine: "block secrets", "always keep error traces", "never compress production logs"
+- SOC2/GDPR compliance reporting
+
+---
+
+## 5. Architecture
+
+```
+Developer Machine                        CODEFLOW Cloud
+┌─────────────────────┐                  ┌──────────────────────┐
+│                     │                  │                      │
+│  CODEFLOW CLI       │                  │  Ingest API (Go)     │
+│  (Rust binary)      │                  │       │              │
+│  ┌───────────────┐  │                  │  ClickHouse          │
+│  │ L1: Compress  │  │   events batch   │  (time-series)       │
+│  │ L2: Dedup     │──│─────────────────>│       │              │
+│  │ L3: Route     │  │   (5min batch)   │  Analytics Engine    │
+│  │ L4: Waste Det │  │                  │       │              │
+│  │ L5: Security  │  │                  │  Dashboard (React)   │
+│  │ L6: Metrics   │  │                  │  ├ Cost attribution  │
+│  └───────────────┘  │                  │  ├ Productivity KPIs │
+│                     │                  │  ├ Waste reports     │
+│  IDE Plugin (TS)    │                  │  ├ Security alerts   │
+│  ├ VS Code          │                  │  ├ ROI calculator    │
+│  ├ Cursor           │                  │  └ CFO export (PDF)  │
+│  └ JetBrains        │                  │                      │
+│                     │                  │  Policy Engine        │
+│  Local SQLite       │                  │  SSO/RBAC (WorkOS)    │
+│  (offline capable)  │                  │  Alerting (Slack/PD)  │
+└─────────────────────┘                  └──────────────────────┘
+```
+
+### Tech Stack
+
+| Layer | Technology | Rationale |
+|-------|-----------|-----------|
+| CLI engine | Rust | Sub-ms overhead, single binary, cross-platform. Fork RTK core |
+| IDE plugins | TypeScript | Native for VS Code/Cursor. JetBrains via LSP bridge |
+| Core event lib | Rust (shared lib) | Called by CLI + linked by IDE plugins via FFI/WASM |
+| Cloud ingest | Go | High-throughput, low-latency. Proven for observability (Datadog, Prometheus) |
+| Analytics DB | ClickHouse | Column-oriented, 100x faster than Postgres for time-series aggregation |
+| Dashboard | React + Next.js | Enterprise standard, SSR, fast dev cycle |
+| Auth | WorkOS | OIDC/SAML/SSO as service. Skip building auth |
+
+---
+
+## 6. Revenue Model
+
+| Tier | Price | Features | Target |
+|------|-------|----------|--------|
+| Free | $0 | CLI + local analytics (RTK-equivalent) | Individual devs |
+| Pro | $12/dev/mo | + cloud dashboard + productivity metrics | Small teams |
+| Business | $25/dev/mo | + SSO + policy engine + model routing | Mid-market |
+| Enterprise | $45/dev/mo | + SOC2 + data residency + SLA + support | Large orgs |
+
+### Unit Economics
+
+- ClickHouse hosting: ~$0.50/dev/month at scale
+- Compute (Go API): ~$0.30/dev/month
+- WorkOS auth: ~$0.20/dev/month
+- **Gross margin: 85-90% (SaaS-typical)**
+
+### ROI Justification for Customer
+
+- Saves $140-420/dev/month (70% of $200-600 AI spend)
+- Costs $12-45/dev/month
+- Customer ROI: 3-35x return
+- 100-dev team: saves $14K-42K/month, pays $1.2K-4.5K/month
+
+---
+
+## 7. Phased Delivery
+
+| Phase | Deliverable | Duration | Revenue Trigger |
+|-------|------------|----------|-----------------|
+| 1 | Rust CLI: L1 compress + L2 dedup + L6 local metrics | 6 weeks | Free tier (acquisition) |
+| 2 | Cloud ingest + dashboard (cost + productivity) | 6 weeks | Pro $12/dev |
+| 3 | L3 model routing + L4 waste detection | 4 weeks | Revenue multiplier |
+| 4 | IDE plugins (VS Code, Cursor) | 4 weeks | Coverage expansion |
+| 5 | L5 security scanner + policy engine + SSO | 6 weeks | Business/Enterprise |
+| 6 | SOC2, CFO export, data residency, enterprise features | 4 weeks | Enterprise $45/dev |
+
+**Total: ~30 weeks to full product. Phase 1 shipable in 6 weeks.**
+
+---
+
+## 8. Competitive Moat Analysis
+
+### Data Flywheel (primary moat)
+
+More users → more data on what AI agents actually use vs ignore → better compression/routing → less waste + better AI performance → more productive devs → more users.
+
+Competitors cannot replicate because:
+- **Datadog:** Sees API calls, not tool outputs. No CLI binary. No compression.
+- **RTK:** Static regex compression. No learning. No cloud. No productivity metrics.
+- **Helicone/Langfuse:** API layer only. Don't intercept tool calls. No waste detection.
+
+### Why enterprises choose CODEFLOW over alternatives
+
+1. **Only product that SAVES + PROVES simultaneously.** CTO tells CFO: "We saved $252K/year AND shipped 8% more PRs."
+2. **Context deduplication is unique.** No other tool caches/deduplicates re-reads within AI sessions.
+3. **Full-tool coverage.** RTK covers 30-50% of tokens (Bash only). CODEFLOW covers 100% (Bash + IDE built-in).
+4. **Security as enterprise gate.** "What data are devs sending to AI?" Only CODEFLOW answers this at tool layer.
+5. **Bottom-up PLG.** Free CLI → dev loves it → team adoption → enterprise deal. Same as Datadog/Slack/GitHub Copilot.
+
+---
+
+## 9. Risk Assessment
+
+| Risk | Severity | Probability | Mitigation |
+|------|----------|-------------|------------|
+| RTK ships Cloud features | HIGH | 60% (12-18mo) | Ship faster. RTK Cloud is waitlist-only. 6-month head start. |
+| Datadog adds tool-layer | MEDIUM | 30% (18-24mo) | Datadog is API-centric. Tool-layer requires fundamentally different architecture. |
+| IDE vendors build native | MEDIUM | 40% (12mo) | Multi-IDE/multi-agent is moat. Vendor-native = siloed. |
+| Enterprise sales cycle | HIGH | 80% | PLG bottoms-up. Free → team → enterprise. |
+| Context dedup causes bugs | MEDIUM | 20% | Conservative cache (invalidate on any file change). Full output always available. |
+| Model routing latency | LOW | 15% | Local classification (no API call for routing decision). |
+
+---
+
+## 10. Success Metrics
+
+### Phase 1 (Week 6)
+- CLI binary shipping on macOS/Linux/Windows
+- 100+ GitHub stars (RTK fork visibility)
+- 50+ active CLI users (daily usage)
+- Compression ratio >= 65% on standard dev workflows
+
+### Phase 2 (Week 12)
+- Cloud dashboard live
+- 10+ teams using Pro tier
+- $1K+ MRR
+- NPS >= 40
+
+### Phase 3-6 (Week 30)
+- 100+ paying teams
+- $50K+ MRR
+- 3+ enterprise pilots ($45/dev tier)
+- SOC2 Type 1 initiated
+
+---
+
+## 11. Open Questions
+
+1. **RTK license compatibility:** RTK recently changed from MIT to Apache 2.0. Fork rights confirmed — Apache 2.0 allows commercial derivative works with attribution.
+2. **ClickHouse hosting:** Self-hosted vs ClickHouse Cloud? Decision deferred to Phase 2 planning.
+3. **Context dedup invalidation:** How aggressive? File-hash based? Inotify/fswatch? Needs prototype validation in Phase 1.
+4. **Model routing scope:** Phase 3 only covers API-key users. Subscription users (Claude Code/Cursor) have limited routing options. Need provider API analysis.
+
+---
+
+## Sources
+
+- [RTK GitHub Repository](https://github.com/rtk-ai/rtk)
+- [RTK Official Website](https://www.rtk-ai.app/)
+- [Hacker News RTK Discussion](https://news.ycombinator.com/item?id=46974740)
+- [Enterprise AI Coding Agents Market Guide — Gartner](https://www.gartner.com/en/articles/enterprise-ai-coding-agent-market)
+- [AI Developer Tool Spending Analysis — Hitechies](https://www.hitechies.com/ai-developer-tools-cost-roi-budget-2026/)
+- [AI Cost Observability — Vantage](https://www.vantage.sh/blog/finops-for-ai-token-costs)
+- [AI Agent Observability Tools — Augment Code](https://www.augmentcode.com/tools/best-ai-agent-observability-tools)
+- [FinOps for AI — FinOps Foundation](https://www.finops.org/wg/finops-for-ai-tools-services-considerations/)
+- [Real Cost of AI Coding Tools — Palma AI](https://palma.ai/blog/real-cost-of-ai-coding-tools)
+- [Claude Code Pricing 2026 — Finout](https://www.finout.io/blog/claude-code-pricing-2026)
+- [RTK Token Savings Review — DEV Community](https://dev.to/arshtechpro/how-rtk-reduces-llm-token-usage-for-ai-coding-agents-2kfd)
+- [RTK Deep Dive — Mervin Praison](https://mer.vin/2026/05/cut-ai-coding-token-costs-80-with-rtk-cli-proxy-how-rust-token-killer-works/)

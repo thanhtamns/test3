@@ -1,0 +1,180 @@
+use anyhow::Result;
+use serde::Serialize;
+use std::collections::HashMap;
+use std::path::Path;
+
+use crate::cost::CostStore;
+use crate::provenance::ProvenanceStore;
+
+#[derive(Debug, Serialize)]
+pub struct ExportData {
+    pub provenance: ProvenanceSummary,
+    pub cost: CostSummary,
+    pub metadata: ExportMetadata,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ProvenanceSummary {
+    pub total_records: usize,
+    pub unique_files: usize,
+    pub unique_models: Vec<String>,
+    pub unique_developers: Vec<String>,
+    pub ai_percentage: f64,
+    pub records_by_model: HashMap<String, usize>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CostSummary {
+    pub total_cost_usd: f64,
+    pub total_input_tokens: u64,
+    pub total_output_tokens: u64,
+    pub cost_by_model: HashMap<String, f64>,
+    pub record_count: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExportMetadata {
+    pub range_days: u32,
+    pub generated_at: String,
+    pub cli_version: String,
+}
+
+pub fn collect(db_path: &Path, range_days: u32) -> Result<ExportData> {
+    let prov_store = ProvenanceStore::open(db_path)?;
+    let cost_store = CostStore::open(db_path)?;
+
+    let prov_records = prov_store.query_by_date_range(range_days)?;
+    let cost_records = cost_store.query_by_date_range(range_days)?;
+
+    let mut unique_files = std::collections::HashSet::new();
+    let mut unique_models = std::collections::HashSet::new();
+    let mut unique_devs = std::collections::HashSet::new();
+    let mut records_by_model: HashMap<String, usize> = HashMap::new();
+    let mut ai_count = 0usize;
+
+    for r in &prov_records {
+        unique_files.insert(r.file_path.clone());
+        unique_models.insert(r.model_id.clone());
+        unique_devs.insert(r.developer_id.clone());
+        *records_by_model.entry(r.model_id.clone()).or_default() += 1;
+        if r.contributor_type == crate::provenance::ContributorType::Ai {
+            ai_count += 1;
+        }
+    }
+
+    let total = prov_records.len();
+    let ai_pct = if total > 0 {
+        (ai_count as f64 / total as f64) * 100.0
+    } else {
+        0.0
+    };
+
+    let mut models: Vec<String> = unique_models.into_iter().collect();
+    models.sort();
+    let mut devs: Vec<String> = unique_devs.into_iter().collect();
+    devs.sort();
+
+    let mut cost_by_model: HashMap<String, f64> = HashMap::new();
+    let mut total_cost = 0.0f64;
+    let mut total_in = 0u64;
+    let mut total_out = 0u64;
+
+    for c in &cost_records {
+        *cost_by_model.entry(c.model_id.clone()).or_default() += c.cost_usd;
+        total_cost += c.cost_usd;
+        total_in += c.input_tokens;
+        total_out += c.output_tokens;
+    }
+
+    Ok(ExportData {
+        provenance: ProvenanceSummary {
+            total_records: total,
+            unique_files: unique_files.len(),
+            unique_models: models,
+            unique_developers: devs,
+            ai_percentage: ai_pct,
+            records_by_model,
+        },
+        cost: CostSummary {
+            total_cost_usd: total_cost,
+            total_input_tokens: total_in,
+            total_output_tokens: total_out,
+            cost_by_model,
+            record_count: cost_records.len(),
+        },
+        metadata: ExportMetadata {
+            range_days,
+            generated_at: chrono::Utc::now().to_rfc3339(),
+            cli_version: env!("CARGO_PKG_VERSION").to_string(),
+        },
+    })
+}
+
+pub fn to_json(data: &ExportData) -> Result<String> {
+    Ok(serde_json::to_string_pretty(data)?)
+}
+
+pub fn to_csv(data: &ExportData) -> String {
+    let mut out = String::new();
+    out.push_str("metric,value\n");
+    out.push_str(&format!("provenance_records,{}\n", data.provenance.total_records));
+    out.push_str(&format!("unique_files,{}\n", data.provenance.unique_files));
+    out.push_str(&format!("ai_percentage,{:.1}\n", data.provenance.ai_percentage));
+    out.push_str(&format!("total_cost_usd,{:.4}\n", data.cost.total_cost_usd));
+    out.push_str(&format!("total_input_tokens,{}\n", data.cost.total_input_tokens));
+    out.push_str(&format!("total_output_tokens,{}\n", data.cost.total_output_tokens));
+    out.push_str(&format!("cost_records,{}\n", data.cost.record_count));
+    for model in &data.provenance.unique_models {
+        let count = data.provenance.records_by_model.get(model).unwrap_or(&0);
+        out.push_str(&format!("model_records:{},{}\n", model, count));
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_export_json_structure() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("test.db");
+        let data = collect(&db_path, 90).unwrap();
+        let json_str = to_json(&data).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        assert!(parsed["provenance"].is_object());
+        assert!(parsed["cost"].is_object());
+        assert!(parsed["metadata"].is_object());
+    }
+
+    #[test]
+    fn test_export_csv_headers() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("test.db");
+        let data = collect(&db_path, 90).unwrap();
+        let csv = to_csv(&data);
+        assert!(csv.starts_with("metric,value\n"));
+        assert!(csv.contains("provenance_records,"));
+        assert!(csv.contains("total_cost_usd,"));
+    }
+
+    #[test]
+    fn test_export_empty_db() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("test.db");
+        let data = collect(&db_path, 90).unwrap();
+        assert_eq!(data.provenance.total_records, 0);
+        assert_eq!(data.cost.total_cost_usd, 0.0);
+        assert_eq!(data.provenance.ai_percentage, 0.0);
+    }
+
+    #[test]
+    fn test_export_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("test.db");
+        let data = collect(&db_path, 30).unwrap();
+        assert_eq!(data.metadata.range_days, 30);
+        assert!(!data.metadata.generated_at.is_empty());
+        assert!(!data.metadata.cli_version.is_empty());
+    }
+}

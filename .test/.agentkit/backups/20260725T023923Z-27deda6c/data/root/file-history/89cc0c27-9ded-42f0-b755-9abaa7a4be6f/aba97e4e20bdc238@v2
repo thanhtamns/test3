@@ -1,0 +1,260 @@
+package clickhouse
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+)
+
+func (c *Client) InsertProvenanceEvents(ctx context.Context, rows []ProvenanceRow) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	batch, err := c.conn.PrepareBatch(ctx, `INSERT INTO codeflow.provenance_events (
+		tenant_id, timestamp, session_id, project_dir, machine_id,
+		file_path, code_hash, model_id, model_version, contributor_type,
+		start_line, end_line, attestation_sig, developer_id, prompt_hash, cli_version
+	)`)
+	if err != nil {
+		return fmt.Errorf("prepare provenance batch: %w", err)
+	}
+	for _, r := range rows {
+		if err := batch.Append(
+			r.TenantID, r.Timestamp, r.SessionID, r.ProjectDir, r.MachineID,
+			r.FilePath, r.CodeHash, r.ModelID, r.ModelVersion, r.ContributorType,
+			r.StartLine, r.EndLine, r.AttestationSig, r.DeveloperID, r.PromptHash, r.CLIVersion,
+		); err != nil {
+			return fmt.Errorf("append provenance row: %w", err)
+		}
+	}
+	return batch.Send()
+}
+
+func (c *Client) InsertCostEvents(ctx context.Context, rows []CostRow) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	batch, err := c.conn.PrepareBatch(ctx, `INSERT INTO codeflow.cost_events (
+		tenant_id, timestamp, session_id, project_dir, machine_id,
+		model_id, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+		cost_usd, pr_ref, feature_tag, developer_id, cli_version
+	)`)
+	if err != nil {
+		return fmt.Errorf("prepare cost batch: %w", err)
+	}
+	for _, r := range rows {
+		if err := batch.Append(
+			r.TenantID, r.Timestamp, r.SessionID, r.ProjectDir, r.MachineID,
+			r.ModelID, r.InputTokens, r.OutputTokens, r.CacheReadTokens, r.CacheWriteTokens,
+			r.CostUSD, r.PRRef, r.FeatureTag, r.DeveloperID, r.CLIVersion,
+		); err != nil {
+			return fmt.Errorf("append cost row: %w", err)
+		}
+	}
+	return batch.Send()
+}
+
+func (c *Client) InsertGovernanceEvents(ctx context.Context, rows []GovernanceRow) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	batch, err := c.conn.PrepareBatch(ctx, `INSERT INTO codeflow.governance_events (
+		tenant_id, timestamp, session_id, project_dir,
+		policy_id, scope, action, budget_limit, budget_spent, developer_id, cli_version
+	)`)
+	if err != nil {
+		return fmt.Errorf("prepare governance batch: %w", err)
+	}
+	for _, r := range rows {
+		if err := batch.Append(
+			r.TenantID, r.Timestamp, r.SessionID, r.ProjectDir,
+			r.PolicyID, r.Scope, r.Action, r.BudgetLimit, r.BudgetSpent, r.DeveloperID, r.CLIVersion,
+		); err != nil {
+			return fmt.Errorf("append governance row: %w", err)
+		}
+	}
+	return batch.Send()
+}
+
+func (c *Client) InsertQualityEvents(ctx context.Context, rows []QualityRow) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	batch, err := c.conn.PrepareBatch(ctx, `INSERT INTO codeflow.quality_events (
+		tenant_id, timestamp, session_id, project_dir,
+		check_type, severity, finding, file_path, line_number, blocked, cli_version
+	)`)
+	if err != nil {
+		return fmt.Errorf("prepare quality batch: %w", err)
+	}
+	for _, r := range rows {
+		blockedVal := uint8(0)
+		if r.Blocked {
+			blockedVal = 1
+		}
+		if err := batch.Append(
+			r.TenantID, r.Timestamp, r.SessionID, r.ProjectDir,
+			r.CheckType, r.Severity, r.Finding, r.FilePath, r.LineNumber, blockedVal, r.CLIVersion,
+		); err != nil {
+			return fmt.Errorf("append quality row: %w", err)
+		}
+	}
+	return batch.Send()
+}
+
+func (c *Client) QueryProvenance(ctx context.Context, tenantID, project string, days int) ([]ProvenanceRow, error) {
+	days = clampDays(days, 90)
+	query := fmt.Sprintf(`
+		SELECT timestamp, session_id, project_dir, machine_id,
+			file_path, code_hash, model_id, model_version, contributor_type,
+			start_line, end_line, attestation_sig, developer_id, prompt_hash
+		FROM codeflow.provenance_events
+		WHERE tenant_id = $1 AND timestamp >= now() - INTERVAL %d DAY
+	`, days)
+	args := []any{tenantID}
+	if project != "" {
+		query += " AND project_dir = $2"
+		args = append(args, project)
+	}
+	query += " ORDER BY timestamp DESC LIMIT 1000"
+
+	rows, err := c.conn.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("provenance query: %w", err)
+	}
+	defer rows.Close()
+
+	var result []ProvenanceRow
+	for rows.Next() {
+		var r ProvenanceRow
+		r.TenantID = tenantID
+		if err := rows.Scan(
+			&r.Timestamp, &r.SessionID, &r.ProjectDir, &r.MachineID,
+			&r.FilePath, &r.CodeHash, &r.ModelID, &r.ModelVersion, &r.ContributorType,
+			&r.StartLine, &r.EndLine, &r.AttestationSig, &r.DeveloperID, &r.PromptHash,
+		); err != nil {
+			slog.Warn("scan provenance row", "error", err)
+			continue
+		}
+		result = append(result, r)
+	}
+	return result, nil
+}
+
+func (c *Client) QueryCostByPR(ctx context.Context, tenantID, project string, days int) ([]CostByPR, error) {
+	days = clampDays(days, 90)
+	query := fmt.Sprintf(`
+		SELECT pr_ref, sum(cost_usd), sum(input_tokens), sum(output_tokens), count()
+		FROM codeflow.cost_events
+		WHERE tenant_id = $1 AND timestamp >= now() - INTERVAL %d DAY
+	`, days)
+	args := []any{tenantID}
+	if project != "" {
+		query += " AND project_dir = $2"
+		args = append(args, project)
+	}
+	query += " GROUP BY pr_ref ORDER BY sum(cost_usd) DESC LIMIT 100"
+
+	rows, err := c.conn.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("cost by pr query: %w", err)
+	}
+	defer rows.Close()
+
+	var result []CostByPR
+	for rows.Next() {
+		var r CostByPR
+		if err := rows.Scan(&r.PRRef, &r.TotalCost, &r.InputTokens, &r.OutputTokens, &r.RecordCount); err != nil {
+			slog.Warn("scan cost by pr row", "error", err)
+			continue
+		}
+		result = append(result, r)
+	}
+	return result, nil
+}
+
+func (c *Client) QueryBudgetStatus(ctx context.Context, tenantID, project string) (*BudgetSummary, error) {
+	query := `
+		SELECT sum(budget_spent), max(budget_limit), argMax(action, timestamp), count()
+		FROM codeflow.governance_events
+		WHERE tenant_id = $1
+	`
+	args := []any{tenantID}
+	if project != "" {
+		query += " AND project_dir = $2"
+		args = append(args, project)
+	}
+
+	var s BudgetSummary
+	row := c.conn.QueryRow(ctx, query, args...)
+	if err := row.Scan(&s.TotalSpent, &s.BudgetLimit, &s.Action, &s.PolicyCount); err != nil {
+		return &BudgetSummary{}, nil
+	}
+	return &s, nil
+}
+
+func (c *Client) QueryQualitySummary(ctx context.Context, tenantID, project string, days int) (*QualitySummary, error) {
+	days = clampDays(days, 90)
+
+	query := fmt.Sprintf(`
+		SELECT count(), countIf(blocked = 1)
+		FROM codeflow.quality_events
+		WHERE tenant_id = $1 AND timestamp >= now() - INTERVAL %d DAY
+	`, days)
+	args := []any{tenantID}
+	if project != "" {
+		query += " AND project_dir = $2"
+		args = append(args, project)
+	}
+
+	var s QualitySummary
+	s.BySeverity = make(map[string]uint64)
+	s.ByCheckType = make(map[string]uint64)
+
+	row := c.conn.QueryRow(ctx, query, args...)
+	if err := row.Scan(&s.TotalFindings, &s.BlockedCount); err != nil {
+		return &QualitySummary{BySeverity: map[string]uint64{}, ByCheckType: map[string]uint64{}}, nil
+	}
+
+	if s.TotalFindings > 0 {
+		s.PassRate = float64(s.TotalFindings-s.BlockedCount) / float64(s.TotalFindings) * 100
+	}
+
+	sevQuery := fmt.Sprintf(`
+		SELECT severity, count()
+		FROM codeflow.quality_events
+		WHERE tenant_id = $1 AND timestamp >= now() - INTERVAL %d DAY
+		GROUP BY severity
+	`, days)
+	sevRows, err := c.conn.Query(ctx, sevQuery, tenantID)
+	if err == nil {
+		defer sevRows.Close()
+		for sevRows.Next() {
+			var sev string
+			var cnt uint64
+			if sevRows.Scan(&sev, &cnt) == nil {
+				s.BySeverity[sev] = cnt
+			}
+		}
+	}
+
+	typeQuery := fmt.Sprintf(`
+		SELECT check_type, count()
+		FROM codeflow.quality_events
+		WHERE tenant_id = $1 AND timestamp >= now() - INTERVAL %d DAY
+		GROUP BY check_type
+	`, days)
+	typeRows, err := c.conn.Query(ctx, typeQuery, tenantID)
+	if err == nil {
+		defer typeRows.Close()
+		for typeRows.Next() {
+			var ct string
+			var cnt uint64
+			if typeRows.Scan(&ct, &cnt) == nil {
+				s.ByCheckType[ct] = cnt
+			}
+		}
+	}
+
+	return &s, nil
+}

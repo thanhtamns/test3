@@ -1,0 +1,137 @@
+---
+phase: 5
+title: "Stage0 Spec Asset Scanner Pipeline"
+status: pending
+priority: P1
+effort: "4h"
+dependencies: [3]
+---
+
+# Phase 5: Stage0 Spec Asset Scanner Pipeline
+
+## Overview
+
+Update `stage0.md` spec to inject capital-deployment thinking into Wave 1 agent prompts, search queries, and verdict output format. This is where the paradigm shift becomes VISIBLE — agents stop searching "zero capital business" and start searching "micro-asset $100-500 passive income".
+
+## Requirements
+
+- Functional: Wave 1 agent prompt injection includes `DEPLOYMENT_CONTEXT` block when TIER_0/1
+- Functional: New search query templates for asset-finding (not job-finding)
+- Functional: Verdict output format includes Deployment Portfolio section for TIER_0/1
+- Functional: Step 5 hypothesis generation produces ROI-first hypotheses
+- Functional: Step 7 verdict includes Leverage Summary (existing) + Deployment Portfolio (new)
+- Non-functional: Changes scoped to TIER_0/1 context only. TIER_2/3 sections untouched
+
+## Architecture
+
+### Wave 1 Prompt Injection (TIER_0/1 only)
+
+Add to Step 3.5 Wave 1 dispatch, prepended when `routing_context.tier in ["TIER_0", "TIER_1"]`:
+
+```markdown
+## DEPLOYMENT CONTEXT (v25.5 — Capital Thinking)
+
+PARADIGM: You are searching for ASSETS TO DEPLOY CAPITAL INTO, not JOBS FOR THE FOUNDER.
+
+Founder has ${{deployment_budget}} to deploy across {{asset_slots}} micro-asset slots.
+Each slot budget: ${{per_slot_budget}}.
+Kill criterion: 30 days, no revenue → kill asset, reallocate capital to survivors.
+Sleep test REQUIRED: asset must generate revenue WITHOUT founder after setup phase.
+
+SEARCH FOR:
+- "bought [domain/template/tool] for $X, now earns $Y/mo passive"
+- "micro SaaS sold acquire.com under $1000"
+- "passive income $500 invested results"
+- "digital asset portfolio small budget"
+- "expired domain redirect income"
+- "template marketplace passive earnings"
+- "newsletter monetization from zero"
+
+DO NOT SEARCH FOR:
+- "zero capital business" (returns freelance job lists)
+- "make money online" (returns SEO spam)
+- "side hustle ideas" (returns labor models)
+- "freelance for beginners" (labor, not capital)
+
+OUTPUT PER MODEL:
+- deploy_cost: $X (actual $ to deploy)
+- setup_hours: N hours (one-time setup, then hands-off)
+- expected_monthly_passive: $Y/mo (P10/P50/P90)
+- roi_pct: (expected_monthly_passive / deploy_cost) * 100
+- payback_days: deploy_cost / (expected_monthly_passive / 30)
+- founder_hours_post_setup: N hours/week (must be <2h for TIER_0)
+- kill_trigger: what signal means "kill this asset at day 30"
+- compound_mechanism: how does this asset feed other assets
+```
+
+### Step 5 Hypothesis Format (TIER_0/1)
+
+```markdown
+### Hypothesis N: [Asset Name]
+- Deploy: $X
+- Setup: Nh one-time
+- Expected: $Y/mo passive (P10=$A P50=$B P90=$C)
+- ROI: Z%/mo
+- Payback: D days
+- Sleep: YES/PARTIAL
+- Kill@30d: [specific trigger]
+- Compound: [how profit feeds next asset]
+```
+
+### Step 7 Verdict Output — Deployment Portfolio Section
+
+Add after existing Leverage Summary table:
+
+```markdown
+## Deployment Portfolio (TIER_0/1 only)
+
+| # | Asset | Deploy | Setup | P50/mo | ROI% | Payback | Sleep | Kill@30d |
+|---|-------|--------|-------|--------|------|---------|-------|----------|
+| 1 | ... | $X | Nh | $Y | Z% | Dd | YES | trigger |
+
+**Portfolio Strategy:**
+- Total deployed: $X across N assets
+- Expected portfolio P50: $Y/mo
+- Expected survivors at 30d: N/M (based on base rates)
+- Reallocation plan: dead asset capital → top survivor
+
+**30-Day Review Protocol:**
+- Day 30: kill assets with $0 revenue
+- Day 60: double down on survivors
+- Day 90: evaluate portfolio ROI vs opportunity cost
+```
+
+## Related Code Files
+
+- Modify: `.claude/commands/stage0.md` — 4 sections:
+  1. Step 2.6.2 (capital-path routing) — update injection template
+  2. Step 3.5 (Wave 1 dispatch) — add DEPLOYMENT_CONTEXT block
+  3. Step 5 (hypothesis generation) — add ROI hypothesis format
+  4. Step 7 (verdict output) — add Deployment Portfolio section
+  5. Leverage Summary section (~line 2448) — add portfolio fields
+
+## Implementation Steps
+
+1. In Step 2.6.2, update routing context injection to include `deployment_budget`, `asset_slots`, `per_slot_budget` from classifier output
+2. In Step 3.5 Wave 1, add conditional DEPLOYMENT_CONTEXT block (only when TIER_0/1)
+3. In Step 3.5 Wave 1, add new search query templates (replace "zero capital business" patterns)
+4. In Step 5 hypothesis generation, add ROI hypothesis format template for TIER_0/1
+5. In Step 7 verdict output, add Deployment Portfolio section template
+6. In Leverage Summary table, add `deploy_cost`, `roi_pct`, `payback_days` columns
+7. Update case JSON output format spec to include new portfolio fields
+8. Verify: TIER_2/3 sections completely untouched
+
+## Success Criteria
+
+- [ ] DEPLOYMENT_CONTEXT block present in Step 3.5 with correct variable placeholders
+- [ ] Search query templates: 0 labor queries ("make money", "freelance"), 7+ asset queries
+- [ ] Step 5 hypothesis format includes deploy_cost, roi_pct, payback_days, kill@30d
+- [ ] Step 7 Deployment Portfolio table template present
+- [ ] TIER_2/3 paths have NO deployment portfolio references
+- [ ] Version header updated: v25 → v25.5
+
+## Risk Assessment
+
+- **Stage0.md is 3200+ lines:** Changes scoped to 4 specific sections. Use line-number references to avoid touching unrelated sections
+- **Wave 1 agents may not follow new prompts:** The prompt injection is strong (DO NOT SEARCH FOR section). If agents still return labor models, that's an LLM compliance issue, not a spec issue
+- **Portfolio section adds ~20 lines to verdict:** Acceptable. Only fires for TIER_0/1

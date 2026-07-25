@@ -1,0 +1,87 @@
+---
+title: "Distribution Intelligence Tool — MVP to Data Moat"
+description: "Build distribution intelligence tool for indie hackers: paste URL → ranked channels + outreach scripts. Infrastructure×code (67% base rate) → data_intelligence×data compound."
+status: pending
+priority: P1
+branch: "master"
+tags: [business, infrastructure-x-code, indie-hackers, data-compound]
+blockedBy: []
+blocks: []
+created: "2026-05-09T13:53:50.766Z"
+createdBy: "ck:plan"
+source: skill
+---
+
+# Distribution Intelligence Tool — MVP to Data Moat
+
+## Overview
+
+**Product:** Paste product URL → get ranked distribution channels + copy-paste outreach scripts.
+**Target:** Indie hackers / micro-SaaS builders struggling with "product built, nobody cares" problem.
+**Strategy:** infrastructure×code (67% success, n=18) → data_intelligence×data (100% success, n=5) transition.
+
+**Founder constraints:** 15yr dev, $1K capital, 3h/day, VN-based, $1K/mo stable income.
+
+**Kill criteria:** 0 paid users after 45 days from launch → pivot friction or kill product.
+
+## Decision Rationale (from pattern library, 93 cases)
+
+| Factor | Value | Source |
+|--------|-------|--------|
+| Base rate (infra×code) | 67% success | PAT-CROSS-INFRASTRUCTURE-X-CODE (n=18, confidence 0.76) |
+| Founder-crowd alignment | YES (founder IS indie hacker) | Case studies: Plausible, ConvertKit, Bannerbear |
+| Platform dependency | ZERO | No API reliance |
+| Data compound potential | HIGH | Every analysis → pattern → intelligence |
+| Monthly cost | $5-54/mo | Within $1K capital |
+| Build time | 30h (~2 weeks at 3h/day) | HTMX + Workers, no SPA overhead |
+
+## Tech Stack
+
+| Component | Choice | Cost/mo |
+|-----------|--------|---------|
+| Backend | Cloudflare Workers (Hono) | $0-5 |
+| Frontend | HTMX + server-rendered HTML | $0 |
+| Database | SQLite → Turso | $0-9 |
+| AI | OpenAI GPT-4o-mini | $5-20 |
+| Scraping | Cheerio + fetch | $0 |
+| Payment | Stripe | 2.9% |
+| Email | Resend | $0-20 |
+
+## Timeline
+
+```
+Week 1:     Discovery & Validation
+Week 2-3:   Build MVP (30h)
+Week 4-5:   Launch & First Sales
+Week 6-8:   Iterate (if alive)
+Month 3-4:  Data compound begins
+Month 5-8:  Option B data products emerge
+```
+
+## Phases
+
+| Phase | Name | Status | Timeline |
+|-------|------|--------|----------|
+| 1 | [Discovery & Validation](./phase-01-discovery-validation.md) | Pending | Week 1 (15h) |
+| 2 | [Build MVP Core](./phase-02-build-mvp-core.md) | Pending | Week 2 (15h) |
+| 3 | [Build AI & Matching Engine](./phase-03-build-ai-matching-engine.md) | Pending | Week 3 (15h) |
+| 4 | [Launch & First Sales](./phase-04-launch-first-sales.md) | Pending | Week 4-5 (15h) |
+| 5 | [Iterate & Data Compound](./phase-05-iterate-data-compound.md) | Pending | Week 6-8 (15h) |
+| 6 | [Option B Data Products](./phase-06-option-b-data-products.md) | Pending | Month 3+ |
+
+## Kill Criteria (MANDATORY)
+
+| Gate | Condition | Action |
+|------|-----------|--------|
+| Day 7 | <3/10 DM responses from indie hackers | Pivot friction hypothesis |
+| Day 21 | MVP not shippable | Reduce scope, not timeline |
+| Day 35 | <50 signups | Interview WHY, adjust positioning |
+| **Day 45** | **0 paid users** | **KILL product. Keep channel DB + data as asset** |
+| Day 60 | <$500 MRR | Evaluate pivot vs double-down |
+
+## Source
+
+- Brainstorm: `plans/reports/brainstorm-260509-2040-option-a-b-execution-playbook.md`
+- Tinh hoa framework: `plans/reports/brainstorm-260509-1945-tinh-hoa-dong-tien-thuc-su.md`
+- Pattern data: `master_investments/experience_layer/data/ground_truth/extracted_patterns.json`
+- Case studies: `plans/reports/researcher-260509-1107-infrastructure-for-crowds-case-studies.md`

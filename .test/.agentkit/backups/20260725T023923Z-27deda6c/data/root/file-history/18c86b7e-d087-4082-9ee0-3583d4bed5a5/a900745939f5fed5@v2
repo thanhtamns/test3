@@ -1,0 +1,22 @@
+strip_ansi = true
+on_empty = "(no lint errors)"
+
+[command]
+name = "eslint"
+
+[[strip_lines]]
+pattern = '^\s*$'
+
+[[strip_lines]]
+pattern = '^\s+\d+ problems?'
+
+[truncate_lines]
+max_length = 150
+suffix = "…"
+
+[head_tail]
+head = 30
+tail = 10
+separator = "\n... ({omitted} lines omitted) ...\n"
+
+max_lines = 80

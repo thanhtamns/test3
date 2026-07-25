@@ -1,0 +1,56 @@
+# CODEFLOW Phase 7: OSS Polish + Launch Prep — Shipped
+
+**Date:** 2026-06-07
+**Repo:** `D:/code/invesments/tools_decisions/rtk-analysis/`
+**Commit:** `490662b`
+
+## What shipped
+
+Full rebrand RTK → CodeFlow + launch content.
+
+| Deliverable | Status |
+|-------------|--------|
+| Binary rename (codeflow + rtk alias) | Done — dual `[[bin]]` in Cargo.toml |
+| 28 env vars RTK_* → CODEFLOW_* | Done — 268 occurrences across 105 files |
+| Hook files renamed | Done — rtk-rewrite.sh → codeflow-rewrite.sh etc. |
+| User-facing strings | Done — [codeflow budget/quality/cost] prefixes |
+| CI/CD release workflow | Done — artifact names, Homebrew formula, Discord |
+| install.sh | Done — rebranded, OS/arch detection preserved |
+| README.md | Done — new tagline, codeflow commands |
+| Landing page | Done — website/index.html (self-contained, dark theme) |
+| Product Hunt + HN drafts | Done — website/LAUNCH.md |
+| Documentation | Done — docs/guides/getting-started.md + cli-reference.md |
+| Backward compat | Done — `rtk` binary alias via [[bin]] |
+
+**Tests: 2164×2 pass (both binary names), 0 failures.**
+
+## Key decisions
+
+1. **Dual binary via [[bin]]** — `cargo install codeflow` installs both `codeflow` and `rtk` binaries. Zero breakage for existing users.
+2. **CODEFLOW_* env vars (breaking)** — full rename, no fallback to RTK_*. Documented as breaking change.
+3. **Static landing page** — self-contained HTML with inline CSS, no JS framework. Professional dark theme.
+4. **Name availability** — `codeflow` available on crates.io + Homebrew + domain (.dev). npm taken → use scoped or `codeflow-ai`.
+
+## Code review findings (all fixed)
+
+- [C] 20+ `[rtk budget/quality/cost]` eprintln prefixes → renamed to `[codeflow ...]`
+- [C] Homebrew formula class `Rtk` → `Codeflow`, description updated
+- [C] No backward compat symlink → added dual [[bin]] (better than symlink)
+- [H] README artifact filenames still said rtk-*.tar.gz → fixed
+- [H] Discord notification text → fixed
+- [M] Doc comments referencing `~/.config/rtk/` paths → updated
+
+## CODEFLOW plan: COMPLETE
+
+| Phase | Status |
+|-------|--------|
+| 1 — Provenance Core | Complete |
+| 2 — Cost Attribution | Complete |
+| 3 — Budget Governance | Complete |
+| 4 — Quality Gate | Complete |
+| 5 — Compliance Export | Complete |
+| 6 — CLI Export + Dashboard | Complete |
+| 7 — OSS Polish + Launch | Complete |
+| **All 7 phases** | **DONE** |
+
+**Total: 2164 tests, 7 phases, ~69K LOC Rust codebase transformed.**

@@ -1,0 +1,408 @@
+# Design: Cunning Intelligence Layer — Biến Stage0 Từ MBA Analyst Thành Street-Smart Operator
+
+**Date:** 2026-05-10 | **Trigger:** Semiconductor analysis exposed "academic thinking" gap
+**Scope:** master_investments system architecture upgrade
+
+---
+
+## CHẨN ĐOÁN: TẠI SAO HỆ THỐNG NGHĨ NHƯ MBA
+
+### 3 lỗi kiến trúc cốt lõi
+
+**1. KILL = Dead End (không có đường vòng)**
+
+Stage0 pipeline hiện tại:
+```
+Topic → Research → Mountain Test → Verdict
+                                    ├── MOUNTAIN → Execute
+                                    ├── CONDITIONAL → Test → Execute/Kill
+                                    └── KILL → STOP ← VẤN ĐỀ Ở ĐÂY
+```
+
+Khi verdict = KILL, hệ thống chỉ generate `alternatives[]` (Step 6.8) — danh sách cơ hội khác. Nó KHÔNG BAO GIỜ hỏi: "Đường thẳng bị chặn, đường vòng nào để vẫn vào được?"
+
+Có `constraint-inversion-debate.py` (Step 3.4c) nhưng nó chỉ fire TRƯỚC analysis, và chỉ invert constraints (vốn, kỹ năng) — KHÔNG invert strategy (trực tiếp → gián tiếp).
+
+**2. 18 Street-Smart Agents Bị Cô Lập**
+
+```
+┌─────────────────────────┐     ┌─────────────────────────────────┐
+│   STAGE0 PIPELINE       │     │   POWER NETWORK (Isolated)      │
+│   (Active, Academic)    │     │   (Exists, Never Called)        │
+│                         │     │                                 │
+│ ├── 8 analyst personas  │  ✗  │ ├── deal-manipulation-architect │
+│ ├── 4 synthesis agents  │ ──→ │ ├── ego-leverage-specialist     │
+│ ├── Mountain Test       │     │ ├── gate-broker                 │
+│ ├── Verdict → KILL/GO   │     │ ├── proximity-engineer          │
+│ └── No indirect path    │     │ ├── patron-acquisition-strat    │
+│                         │     │ ├── chameleon-communicator      │
+└─────────────────────────┘     │ ├── power-network-orchestrator  │
+                                │ ├── social-intelligence-engine  │
+                                │ ├── street-smart-operator       │
+                                │ ├── inner-circle-politician     │
+                                │ └── 8 more...                   │
+                                └─────────────────────────────────┘
+```
+
+Các agent thông minh nhất hệ thống (Sun Tzu deception, ego exploitation, manufactured coincidences, patron infiltration) chỉ chạy qua `/relationship` command — KHÔNG BAO GIỜ được stage0 gọi.
+
+**3. Không có Indirect Pattern Library**
+
+7 archetypes hiện tại: `acquisition-operator, content-factory, holding-company, information-broker, labor-arbitrage-operator, saas-content-funnel, trade-intermediary`.
+
+Tất cả mô tả WHAT (mô hình kinh doanh) — không ai mô tả HOW TO GET IN (chiến thuật xâm nhập). Không có archetype nào capture:
+- Kuok: Control pathway, not product (đường mía, không phải đường mía)
+- Rich: Bridge isolated parties for information rent
+- Alibaba: Serve the underserved who serve the giants
+- Soros: Find structural mispricing, bet massively, move market
+
+---
+
+## THIẾT KẾ: 4 LỚP SỬA
+
+### Layer 1: INDIRECT PATH FINDER (New Step 6.8.5 — After KILL, Before Alternatives)
+
+**Vấn đề:** Khi verdict = KILL/SIDE_HUSTLE, hệ thống nhảy thẳng sang "alternatives" (cơ hội khác). Không ai hỏi: "Có cách gián tiếp nào để vẫn vào được dòng tiền này không?"
+
+**Giải pháp:** Thêm Step 6.8.5 — Indirect Path Exploration
+
+```
+Khi verdict ≠ MOUNTAIN:
+
+Step 6.8.5 — INDIRECT PATH FINDER (2-3 agents parallel, Opus)
+
+Input: 
+  - Topic bị KILL/SIDE_HUSTLE
+  - Kill reasons (cụ thể: capital barrier? network barrier? scale ceiling?)
+  - Founder constraints
+  - Industry map (who controls what)
+
+Output: indirect_paths[] — mỗi path có:
+  - indirect_strategy: tên chiến thuật (bridge, pathway_control, serve_the_underserved, 
+    manufactured_proximity, information_rent, time_arbitrage, skill_insertion)
+  - mechanism: cách hoạt động cụ thể
+  - entry_cost: so với direct path
+  - time_to_position: bao lâu
+  - historical_precedent: ai đã làm tương tự
+  - kill_criteria: khi nào dừng
+  - feasibility_vs_direct: % chance so với đường thẳng
+```
+
+**7 Indirect Strategies (pre-computed library):**
+
+| # | Strategy | Mechanism | Precedent |
+|---|----------|-----------|-----------|
+| 1 | **Bridge Builder** | Kết nối 2 bên không thể nói chuyện trực tiếp. Thu phí cầu nối. | Marc Rich (sanctions bridge), VN factory broker |
+| 2 | **Pathway Controller** | Không sở hữu sản phẩm, kiểm soát CON ĐƯỜNG sản phẩm đi qua. | Kuok (sugar trading, not sugar farming) |
+| 3 | **Serve the Underserved** | Phục vụ đối tượng quá nhỏ cho ông lớn, trở thành đường dẫn lên. | Alibaba (SME → enterprise), Stripe (developer-first) |
+| 4 | **Manufactured Proximity** | Tạo proximity giả (free value, content, events) để vào inner circle. | McKinsey associates, fund operators (free DD) |
+| 5 | **Information Rent** | Thu thập thông tin phân tán, đóng gói bán cho người cần ra quyết định. | Panjiva ($550M exit), Bloomberg Terminal |
+| 6 | **Time Arbitrage** | Làm miễn phí/lỗ giai đoạn 1 để lock-in vị trí không thể thay thế giai đoạn 2. | Amazon (7 năm lỗ → monopoly), Loss leader → lock-in |
+| 7 | **Skill Insertion** | Cấy kỹ năng vào tổ chức lớn qua training/tool, trở thành dependency. | Oracle (DB→ERP→cloud lock-in), Salesforce ecosystem |
+
+**Implementation:** New Python script `indirect-path-finder.py` + archetype extension
+
+### Layer 2: STREET-SMART WAVE 1.5 (Rewire Existing Agents)
+
+**Vấn đề:** Wave 1 có 8 analysts, tất cả nghĩ TRỰC TIẾP. Marc Rich persona có kiến thức về bridge trading nhưng chỉ được hỏi "phân tích thị trường" — không được hỏi "thiết kế scheme."
+
+**Giải pháp:** Thêm Wave 1.5 — 3 street-smart agents chạy PARALLEL với Wave 1
+
+```
+Wave 1 (8 analysts — unchanged):
+  marc-rich, nassim-taleb, naval, chris-voss, andrew-grove, 
+  gary-vee, alex-hormozi, peter-drucker
+
+Wave 1.5 (3 scheme designers — NEW, parallel):
+  
+  Agent 1: INDIRECT_SCHEME_DESIGNER
+    Source: deal-manipulation-architect (EXISTS, currently archived)
+    Prompt injection: "Đường thẳng vào [topic] bị chặn bởi [barriers].
+    Thiết kế 2-3 multi-step schemes để vào GIÁN TIẾP.
+    Mỗi scheme: A→B→C→TARGET, với fallback tại mỗi bước.
+    Sử dụng: bridge, pathway control, serve-underserved, manufactured proximity."
+    
+  Agent 2: POWER_STRUCTURE_READER  
+    Source: ego-leverage-specialist + power-cartographer (EXISTS, currently archived)
+    Prompt injection: "Ai KIỂM SOÁT dòng tiền [topic]? Họ CẦN gì?
+    Weak points nào có thể exploit? Ai là gatekeeper?
+    Map: decision_maker → pain_point → value_you_can_provide_free"
+    
+  Agent 3: STREET_OPERATOR_LENS
+    Source: street-smart-operator (EXISTS, partially connected)
+    Prompt injection: "Bỏ qua academic analysis. 
+    Nếu bạn là trader đường phố với $0, bạn sẽ bắt đầu HOW?
+    Cụ thể: ngày 1 làm gì, tuần 1 gặp ai, tháng 1 kiếm tiền từ đâu?"
+```
+
+**Key:** Không tạo agent mới — rewire 3 agent ĐÃ CÓ vào pipeline.
+
+### Layer 3: INDIRECT ARCHETYPE LIBRARY (Pre-Computed, Zero LLM)
+
+**Vấn đề:** 7 archetypes hiện tại mô tả business models, không mô tả entry strategies. LLM phải "sáng tạo" indirect path mỗi lần — tốn token, chất lượng không ổn định.
+
+**Giải pháp:** Thêm 7 indirect-entry archetypes vào `kb/archetypes/`
+
+```
+kb/archetypes/
+├── acquisition-operator.json          (existing)
+├── content-factory.json               (existing)
+├── ...
+├── indirect-bridge-builder.json       (NEW)
+├── indirect-pathway-controller.json   (NEW)
+├── indirect-serve-underserved.json    (NEW)
+├── indirect-manufactured-proximity.json (NEW)
+├── indirect-information-rent.json     (NEW)
+├── indirect-time-arbitrage.json       (NEW)
+└── indirect-skill-insertion.json      (NEW)
+```
+
+**Mỗi archetype chứa:**
+```json
+{
+  "archetype_id": "indirect-bridge-builder",
+  "strategy_type": "indirect_entry",
+  "mechanism": "Connect Party A (has X, needs Y) with Party B (has Y, needs X). Extract fee/commission/position from bridge role.",
+  "entry_cost_usd": [0, 2000],
+  "time_to_position_months": [3, 12],
+  "historical_precedents": [
+    {"name": "Marc Rich", "industry": "oil", "mechanism": "sanctions bridge Iran↔West"},
+    {"name": "Alibaba 1688", "industry": "ecommerce", "mechanism": "CN factory↔global buyer bridge"},
+    {"name": "VN FDI broker", "industry": "manufacturing", "mechanism": "Foreign buyer↔VN factory bridge"}
+  ],
+  "trigger_conditions": [
+    "Two parties exist that should transact but DON'T (language, trust, knowledge gap)",
+    "Information asymmetry between buyer and supplier",
+    "Regulatory/cultural barrier preventing direct contact"
+  ],
+  "anti_patterns": [
+    "Both parties can find each other easily (Google → no bridge needed)",
+    "Existing marketplace dominates (Alibaba already bridges this gap)",
+    "Bridge value = one-time (no recurring need → no position)"
+  ],
+  "founder_fit": ["Market Master", "Relationship Master"],
+  "compound_engine": "network_trust",
+  "base_rate_10k_mrr": 0.18
+}
+```
+
+**Cách sử dụng:** `kb-query.py` match topic với trigger_conditions → inject matched archetypes vào Wave 1.5 agents. Zero LLM cost cho pattern matching.
+
+### Layer 4: GIẢM PHỤ THUỘC LLM — Pre-Compute Intelligence
+
+**Vấn đề:** 70% pipeline = LLM reasoning (Wave 1-2). Mỗi stage0 run tốn ~50K tokens. Nhiều analysis lặp lại (cùng industry → cùng power structure).
+
+**Giải pháp 4A: Industry Power Map Cache**
+
+```
+data/power-maps/
+├── semiconductor.json
+├── coffee-export.json  
+├── ecommerce-vn.json
+├── saas-global.json
+└── ...
+```
+
+Mỗi map chứa:
+```json
+{
+  "industry": "semiconductor",
+  "total_revenue_usd": 793e9,
+  "power_structure": {
+    "level_1_inaccessible": {
+      "players": ["TSMC", "Samsung", "Intel", "ASML"],
+      "capital_required": ">$1B",
+      "entry": "IMPOSSIBLE for founder"
+    },
+    "level_2_hard": {
+      "players": ["Fabless design houses", "OSAT companies"],
+      "capital_required": "$500K-5M"
+    },
+    "level_3_accessible": {
+      "players": ["Equipment maintenance", "Staffing", "Compliance"],
+      "capital_required": "$50K-200K"
+    },
+    "level_4_indirect": {
+      "gap_description": "Software serving level 1-3 players",
+      "bridge_opportunities": [
+        "Foreign buyer ↔ VN factory connection",
+        "Compliance tracking (RoHS, REACH) automation",
+        "Engineer talent marketplace"
+      ],
+      "capital_required": "$0-10K"
+    }
+  },
+  "gatekeepers": [
+    {"name": "Samsung VN procurement", "controls": "supplier qualification"},
+    {"name": "MOIT semiconductor dept", "controls": "policy, incentives"}
+  ],
+  "indirect_entry_points": [
+    "Serve tier-2 suppliers who serve Samsung (they NEED compliance help)",
+    "Build training content → become known → hired as consultant",
+    "Trade data aggregation (factory capabilities + buyer needs)"
+  ],
+  "updated_at": "2026-05-10"
+}
+```
+
+**Build strategy:** First run for an industry = LLM generates map. Subsequent runs = cached map + delta update only. Saves ~30K tokens per repeat query.
+
+**Giải pháp 4B: Scheme Template Library (Zero LLM)**
+
+```
+data/scheme-templates/
+├── bridge-scheme.json
+├── pathway-control-scheme.json
+├── serve-underserved-scheme.json
+├── proximity-manufacture-scheme.json
+└── ...
+```
+
+Mỗi template:
+```json
+{
+  "scheme_id": "bridge-scheme",
+  "steps": [
+    {"step": 1, "action": "Identify Party A and Party B", "duration_days": 7},
+    {"step": 2, "action": "Approach Party B (weaker side) with free value", "duration_days": 14},
+    {"step": 3, "action": "Collect intelligence on Party B's needs", "duration_days": 7},
+    {"step": 4, "action": "Approach Party A with 'I know someone who...'", "duration_days": 14},
+    {"step": 5, "action": "Facilitate first transaction, take commission or position", "duration_days": 30}
+  ],
+  "total_days": 72,
+  "cost": 0,
+  "fallback_at_each_step": "If no response in 7 days → pivot to next Party B candidate",
+  "kill_criteria": "3 Party B candidates rejected → scheme invalid for this industry"
+}
+```
+
+LLM chỉ cần CUSTOMIZE template cho specific industry — không cần GENERATE from scratch. Saves ~10K tokens.
+
+---
+
+## PIPELINE SAU KHI SỬA
+
+```
+Step 1-2: Profile + Intent (unchanged)
+Step 3.4c: Constraint Inversion (unchanged)
+
+Step 3.5 Wave 1: 8 analyst personas (unchanged)
+Step 3.5 Wave 1.5: 3 street-smart agents (NEW — parallel with Wave 1)
+  ├── indirect-scheme-designer (from deal-manipulation-architect)
+  ├── power-structure-reader (from ego-leverage + power-cartographer)
+  └── street-operator-lens (from street-smart-operator)
+
+Step 3.5 Wave 2: 4 synthesis (unchanged)
+Step 3.5 Wave 2.5: Street-Smart Synthesis (NEW)
+  └── Merge Wave 1.5 output with Wave 2 → "indirect path recommendations"
+
+Step 4-5: Hypothesis + Money Flow (unchanged)
+
+Step 6: Mountain Test (unchanged — still deterministic)
+
+Step 6.8: Alternatives (when verdict ≠ MOUNTAIN — unchanged)
+
+Step 6.8.5: INDIRECT PATH EXPLORATION (NEW — AFTER kill, BEFORE giving up)
+  ├── Load matched indirect archetypes from kb/archetypes/indirect-*
+  ├── Load industry power map from data/power-maps/ (cached or generate)
+  ├── Load scheme templates from data/scheme-templates/
+  ├── Generate 2-3 customized indirect paths
+  └── Score each: feasibility × time × cost × founder_fit
+
+Step 7: Verdict synthesis (MODIFIED)
+  ├── Direct verdict: KILL/SIDE_HUSTLE/MOUNTAIN (unchanged)
+  └── Indirect verdict: INDIRECT_PATHS section (NEW)
+      "Direct path: KILL (reason). Indirect paths available:
+       Path 1: Bridge Builder → feasibility 7/10, time 3mo, cost $0
+       Path 2: Serve Underserved → feasibility 6/10, time 6mo, cost $2K"
+
+Step 8-12: Persist + Execute (unchanged, but now includes indirect paths)
+```
+
+---
+
+## GIẢM LLM DEPENDENCY — TỔNG KẾT
+
+| Component | Current | After Fix | Token Savings |
+|-----------|---------|-----------|---------------|
+| Industry analysis | Fresh LLM every time | Cached power map + delta | ~30K tokens/repeat |
+| Indirect path gen | Pure LLM reasoning | Template + customize | ~10K tokens |
+| Pattern matching | LLM in Wave 1 | Pre-computed archetype match | ~5K tokens |
+| Scheme design | Not exist (LLM ad-hoc) | Template library + LLM customize | ~8K tokens |
+| **Total per run** | **~50K tokens** | **~35K tokens (first) / ~20K (repeat)** | **30-60%** |
+
+---
+
+## IMPLEMENTATION PRIORITY
+
+```
+Priority 1 (HIGH IMPACT, LOW EFFORT):
+├── A. Create 7 indirect archetype JSONs in kb/archetypes/
+├── B. Wire deal-manipulation-architect into Wave 1.5 (prompt injection only)
+├── C. Wire street-smart-operator into Wave 1.5 (prompt injection only)
+└── D. Add Step 6.8.5 logic in stage0.md
+
+Priority 2 (HIGH IMPACT, MEDIUM EFFORT):
+├── E. Build indirect-path-finder.py script
+├── F. Build scheme-templates/ directory with 7 templates
+└── G. Build industry power map cache system
+
+Priority 3 (MEDIUM IMPACT, HIGH EFFORT):
+├── H. Wave 2.5 synthesis agent
+├── I. Power map auto-update from WebSearch
+└── J. Outcome tracking for indirect paths (learning loop)
+```
+
+---
+
+## VÍ DỤ: SEMICONDUCTOR VỚI CUNNING LAYER
+
+**Current output (academic):**
+> "Semiconductor services = KILL. Labor leverage, $2M ceiling, high capital barrier.
+> Alternatives: Build SaaS serving semiconductor."
+
+**New output (street-smart):**
+> "Direct path: KILL. $793B industry, $600K accessible TAM, labor leverage.
+> 
+> INDIRECT PATHS:
+> 
+> **Path 1: Bridge Builder (feasibility 7/10)**
+> Samsung VN có 127 tier-2 suppliers. Suppliers cần comply standards nhưng 
+> KHÔNG BIẾT cách. Samsung cung cấp ERP nhưng KHÔNG cung cấp compliance consulting.
+> → Bạn = bridge giữa "compliance knowledge" và "factory needs."
+> → Step 1: Gặp 5 factories, hỏi "compliance khó nhất là gì?" (7 ngày, $0)
+> → Step 2: Compile thành "VN Semiconductor Compliance Guide" (14 ngày, $0)  
+> → Step 3: Gửi guide miễn phí cho 20 factories + Samsung procurement (7 ngày, $0)
+> → Step 4: Factories gọi lại → charge $500/factory/project (30 ngày)
+> → Step 5: Samsung notices → formal partnership (6-12 tháng)
+> Kill: <3/20 respond → pivot
+> 
+> **Path 2: Serve the Underserved (feasibility 6/10)**  
+> 6,000 semiconductor engineers VN. Không ai build community cho họ.
+> → Step 1: Tạo Zalo group "Semiconductor Engineers VN" (1 ngày, $0)
+> → Step 2: Share useful content daily từ SEMI, IC Insights (30 ngày, $0)
+> → Step 3: Grow to 500 members → companies PAY to post jobs ($200/post)
+> → Step 4: Training course affiliate → $50/referral
+> → Step 5: 500 members × $10/mo = $5K/mo (12 tháng)
+> Kill: <50 members after 30 days → pivot
+>
+> **Path 3: Information Rent (feasibility 5/10)**
+> FDI factories VN = public data (masothue.com) nhưng PHÂN TÁN.
+> → Aggregation layer: "Which VN factories have semiconductor capabilities?"
+> → Buyers (foreign companies looking for VN suppliers) PAY for curated list
+> → Step 1: Scrape masothue + MOIT data (7 ngày, $0)
+> → Step 2: Cold email 10 foreign sourcing managers (14 ngày, $0)
+> → Step 3: If 2+ interested → charge $500/report
+> Kill: 0 interest after 10 emails → industry doesn't need this"
+
+**Sự khác biệt:** Không thay đổi verdict (vẫn KILL cho direct path). Nhưng THÊM 2-3 đường vòng gián tiếp, mỗi đường có steps cụ thể, cost $0, kill criteria rõ ràng. Founder có HÀNH ĐỘNG thay vì "opportunity killed, try something else."
+
+---
+
+## Unresolved Questions
+
+1. Wave 1.5 agents nên chạy Opus hay Sonnet? (Opus = chất lượng cao hơn, Sonnet = rẻ hơn)
+2. Indirect paths nên có verdict class riêng (INDIRECT_CONDITIONAL) hay gộp vào CONDITIONAL?
+3. Industry power maps nên cache bao lâu? (30 days? 90 days?)
+4. Scheme templates nên có bao nhiêu? (7 core + extensible?)
+5. Learning loop cho indirect paths: cần outcome tracking riêng hay gộp vào brier-scores.jsonl?

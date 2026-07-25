@@ -1,0 +1,478 @@
+# Barbell Cashflow Architecture — Thiết Kế Dòng Tiền Đòn Tạ
+
+**Date:** 2026-05-29
+**Founder profile source:** `kb/profiles/phamt-260507.json` + memory `user_role.md`
+**Framework:** Nassim Taleb Barbell Strategy × Hunt/Stage0 Intelligence
+**Trigger:** Tony Le (@tonyle.hcm) TikTok post on Barbell Autodidact
+**Research:** Verified operator examples (Rob Walling, Pieter Levels, Sahil Lavingia, Paul Jarvis) + Annie Duke kill framework
+
+---
+
+## 1. CORE PRINCIPLE — Taleb Barbell Applied to Cashflow
+
+> "Hãy tạo 1 dòng tiền đều an toàn ở 1 đầu – để thoát ly hoàn toàn chế độ sinh tồn.
+> Còn đầu kia hãy xây kênh để đặt 1 chân vào sự vô hạn từ internet."
+> — Tony Le, interpreting Taleb
+
+### Barbell = 2 extremes, ZERO middle ground
+
+| | ĐẦU AN TOÀN (Safe Barbell) | ĐẦU HỖN LOẠN (Chaos Barbell) |
+|---|---|---|
+| **Mục tiêu** | Survival income — đủ sống, giải phóng tâm trí | Convex upside — small bets, massive potential |
+| **Đặc tính** | Linear payoff, predictable, boring | Non-linear payoff, unpredictable, exciting |
+| **Risk** | Near-zero downside | Limited downside, unlimited upside |
+| **Time allocation** | 70% (giảm dần khi chaos side có traction) | 20% bets + 10% learning |
+| **Capital allocation** | 70-80% of available capital | 20-30% (nhiều bets nhỏ) |
+| **Cut-loss** | Không cắt — đây là nền tảng | Cắt nhanh: 30 ngày không signal → kill |
+
+### Research-Backed Allocation by Stage (verified operators)
+
+| Founder Stage | Safe % | Bets % | Learning % | Precedent |
+|---|---|---|---|---|
+| First-time, bootstrapped ($0-1K) — **BẠN Ở ĐÂY** | 70% | 20% | 10% | Rob Walling: 11yr stair-step |
+| $100K+ savings | 50% | 40% | 10% | Paul Jarvis: $1M+/yr, 0 employees |
+| Post-exit / high capital | 30% | 60% | 10% | Pieter Levels: $3M+/yr portfolio |
+
+Rob Walling's validated path: freelance → multiple low-cost products ($150K/yr within 3 years) → standalone SaaS. Shifted allocation at $150K safe income threshold [K].
+
+Sahil Lavingia (Gumroad): $22M revenue, 1 employee, $2.56M net profit (2023). Removed VC pressure → extreme constraint = paradoxical profitability [K].
+
+### VÙNG CẤM — The Fragile Middle (TRÁNH)
+- Freelance $500-1500/mo mà ăn hết thời gian → không còn bandwidth cho chaos side
+- SaaS "trung bình" — revenue $2K/mo nhưng cần 60h/tuần maintain
+- Job tốt nhưng ăn 10h/ngày → zero optionality
+- Bất cứ gì LINEAR mà TIÊU HẾT THỜI GIAN
+
+**Research-verified anti-examples (Fragile Middle in practice):**
+- **Consulting agency:** $1M revenue cần ~$5.5M cost (100 people). Grow 2x → hire 2x → margin stays negative. No leverage, commoditized, fragile [K from research].
+- **AI automation agency:** Claims "$10K/month builds AI agents." Cost = 1-2 people + API calls (~$7-10K). Margin: near zero. Churn: high (clients discover GPT + Zapier for $50/mo) [T].
+- **Why middle fails:** Neither safe (risky) NOR high-upside (capped by labor). Vulnerable to commoditization + burnout.
+
+---
+
+## 2. FOUNDER PROFILE (from system data)
+
+| Field | Value | Source |
+|---|---|---|
+| Skills | Software/AI 15yr, Mandarin, CN trade contacts, relationship building | `kb/profiles/phamt-260507.json` |
+| Capital | $1,000 starting (TIER_0) | profile |
+| Time | 30h/week (interleaves with $1K/mo job) | `user_role.md` |
+| Location | Vietnam — FULL NATIONWIDE MOBILITY | memory correction 2026-04-10 |
+| Current income | $1,000/mo stable (9-5 job) | `user_role.md` |
+| Vision | Unlimited — staircase from $1K → scale | memory |
+| Constraints | no_product_dev, no_paid_ads, cash_first | profile |
+| Masters mechanisms | Marc Rich (L/C, trade without capital), Robert Kuok (relationship credit, info arbitrage), Pham Nhat Vuong (high-rate bootstrap, free sampling) | profile |
+
+### Barbell Implication of Current Position
+
+**Hiện tại bạn ĐÃ CÓ đầu safe barbell** — job $1K/mo. Đây là survival income.
+
+Nhưng job này chỉ "vừa đủ" — chưa đủ để "thoát ly hoàn toàn chế độ sinh tồn" (Taleb yêu cầu safe side phải HOÀN TOÀN bảo vệ downside). $1K/mo ở VN = ~25M VND = tight survival, không phải comfortable survival.
+
+**Kết luận:** Cần NÂNG safe side lên $1.5-2K/mo TRƯỚC KHI all-in chaos side. Hoặc chấp nhận higher stress tolerance (Pham Nhat Vuong mechanism: "high-rate bootstrap acceptable if business works").
+
+---
+
+## 3. ĐẦU AN TOÀN — Safe Barbell Design
+
+### Tiêu chí chọn Safe Side:
+1. Revenue trong 30 ngày đầu
+2. Predictable — biết trước income/month
+3. ≤15h/week (50% of 30h budget)
+4. Scalable đến $2K/mo nhưng KHÔNG cần scale beyond đó
+5. Leverage kỹ năng có sẵn (software/AI + Mandarin)
+6. Delegatable — có thể thuê người thay khi chaos side cất cánh
+
+### Top 2 candidates (from archetype analysis):
+
+#### SAFE-A: Solo AI-Augmented Freelancing (RECOMMENDED — updated by stage0 verdict)
+
+> **Stage0 verdict: SIDE_HUSTLE_WITH_STAIRCASE** | Confidence: 0.78
+> Case: `260529-labor-arbitrage-ai-dev` | Files persisted to KB
+
+| Metric | Value |
+|---|---|
+| Archetype | labor-arbitrage-operator (H2: solo+AI, NOT H1: hire team) |
+| Base rate $10K | 30% (highest viable at $1K capital) |
+| Time to revenue | 1-2 months |
+| Capital needed | $0-20/mo (AI tools only) |
+| Mechanism | YOUR 15yr expertise + AI tools (Claude/Cursor) = deliver directly, solo, high margin |
+| Founder fit | Skills Master + Operations Master ✓ |
+
+**⚠ STAGE0 CRITICAL CORRECTION:** Original design was "hire 2-3 VN devs." Stage0 killed this as WORST hypothesis:
+- Team management = 10-15h/week overhead → violates "boring, linear" safe side requirement
+- Labor arbitrage spread SHRINKING: AI coding agents compress from both sides [K]
+- Wipro/Infosys margins dropped 25-30% → 15-20% over decade [K]
+- "AI automation agency" model oversaturated — thousands on YouTube/Upwork [K]
+
+**Redesigned for profile:**
+- **Sell:** AI automation specialist (NOT "offshore dev team") to Western SMBs
+- **Team:** NONE initially — YOU + AI tools ARE the team
+- **Rate:** $100-150/hr effective (NOT $15/hr competing with Upwork devs)
+- **Margin:** near-99% (Chris Lee case: $6K/mo, $20/mo tools, 3 clients [K])
+- **Revenue floor (month 2):** 1 client × $1500 = $1.5K net [T]
+- **Revenue base (month 4):** 2-3 clients × $1500-2500 = $3-7.5K net [T]
+
+**Staircase (stage0-validated):**
+```
+Month 1-3: Solo AI freelance → $1-3K/mo (H2, zero capital)
+Month 3-6: Productize 1 workflow → $2-5K/mo (H3, retainer model)
+Month 6-9: First dev hire ONLY with excess demand → $3-8K/mo
+Month 9-18: Extract micro-SaaS → $5-15K/mo (H4 = MOUNTAIN path opens)
+```
+
+**Day 1 actions (from stage0):**
+1. LinkedIn profile emphasizing 15yr software + AI expertise
+2. Post 1 case study showing AI workflow savings
+3. Send 10 cold DMs to SMB owners in ONE vertical (real estate/ecom/legal)
+
+**AVOID LIST (stage0-validated):**
+- DO NOT hire devs until 2+ paying clients from 2+ sources
+- DO NOT build website — LinkedIn + Loom demos = your website
+- DO NOT compete on Upwork at $15/hr — position as $100+/hr specialist
+- DO NOT take projects under $500 (Chris Lee floor: $1500/client/mo)
+- DO NOT promise autonomous AI agents — 80% fail in production [K]
+
+**Cut-loss:** 60 days, 0 closed deals → pivot to SAFE-B
+
+**Convexity check:** LINEAR — correct for safe side. But staircase opens MOUNTAIN path at month 9+.
+
+#### SAFE-B: Trade Intermediary — CN-VN Sourcing (Backup)
+
+| Metric | Value |
+|---|---|
+| Archetype | trade-intermediary |
+| Base rate $10K | 25% |
+| Time to revenue | 1-2 months |
+| Capital needed | $2K (stretch, nhưng Marc Rich mechanism: trade without capital using L/C) |
+| Mechanism | Sourcing từ 1688/CN factories, bán cho VN/SEA buyers |
+| Founder fit | Market Master + Relationship Master ✓ (Mandarin + CN contacts) |
+
+**Cụ thể:**
+- **Leverage:** Mandarin + trade contacts CN = structural advantage [K from profile]
+- **Risk:** Capital-intensive per transaction — mỗi đơn hàng cần vốn xoay
+- **Marc Rich mechanism:** Dùng buyer prepay as collateral, không cần vốn riêng
+- **Revenue floor:** $500-1K/mo (3-5 deals × $100-200 margin) [T]
+
+**Tại sao là backup không phải primary:** Cần vốn xoay cao hơn, phụ thuộc vào trade contacts chưa validated (`_needs_validation: ["trade_contacts_CN"]` in profile).
+
+---
+
+## 4. ĐẦU HỖN LOẠN — Chaos Barbell Design (High Optionality)
+
+### Tiêu chí Chaos Side (Taleb Convexity):
+1. **Asymmetric payoff:** Downside capped (mất thời gian), upside uncapped
+2. **Non-linear:** Không tỷ lệ thuận input→output — có thể "bùng nổ"
+3. **Compound engine:** Mỗi action tạo ra asset tích lũy (data, audience, network)
+4. **Multiple small bets:** Không all-in 1 thứ — thử 3-5 thứ, cắt lỗ nhanh
+5. **Internet-native:** "Đặt 1 chân vào sự vô hạn từ internet" (Tony Le)
+6. **Cut-loss mechanism:** 30 ngày không signal → kill. Move to next bet.
+
+### Chaos Portfolio — 3-5 Parallel Bets
+
+Mỗi bet: ≤$200 capital, ≤3h/week, 30-day kill criteria.
+
+#### CHAOS-1: Information Broker — CN-VN Trade Intelligence (PRIMARY BET)
+
+> **Hunt verdict: GO** | Hunt ID: HUNT-260529-cn-vn-trade-intelligence
+> 7 anomaly cards found | Top card score: 0.75 | Founder fit: 0.85
+> Files: `data/hunts/HUNT-260529-cn-vn-trade-intelligence/anomalies.json`
+
+| Metric | Value |
+|---|---|
+| Archetype | information-broker |
+| Compound engine | DATA — grows with each collection cycle |
+| Capital | $200 ($98 at kill gate) |
+| Time | 5h/week |
+| Convexity | HIGH — information asymmetry × WTP = non-linear |
+| Kill criteria | 30 days: 0 paying subscribers → kill |
+
+**THE ANOMALY (hunt-verified):**
+- $186B CN→VN imports in 2025 (+28.9% YoY) [K]
+- 76,200+ businesses on Vietnam National Single Window [K]
+- 5 new regulations hitting VN importers in 2026 (Circular 121, Decree 46, Chemical Law 69, EUDR, CBAM) [K]
+- **ZERO Vietnamese-language affordable (<$50/mo) trade intelligence service exists** [T]
+- Existing: ImportGenius $149-399/mo (English) [K], Panjiva $1000+/mo (English) [K]
+- Production cost: $69/mo (Oxylabs $49 + hosting $20). Break-even: 3 subscribers at $29/mo [calculated]
+
+**Proven demand signal:** Decree 46 caused 300,000 tons food stuck at borders, 1,300 vehicles stranded [K]. VN importers had ZERO advance warning [K].
+
+**Hunt-designed launch sequence:**
+```
+Week 1 ($0):  Free Zalo group "Tin tức thương mại Trung-Việt", manual curation 5 posts/day
+              SIGNAL GATE: <20 members → no demand pull → PIVOT
+Week 2 ($0):  Telegram mirror, track engagement, WTP survey (Google Form)
+              SIGNAL GATE: <5 people say "yes" to $29/mo → insufficient WTP → PIVOT
+Week 3 ($49): Build 1688 scraper (top 10 products) + regulatory alert bot
+              SIGNAL GATE: automation engagement drops vs manual → PIVOT
+Week 4 ($49): Launch $29/mo paid tier, 30-day free trial
+              KILL GATE: 0 conversions free→paid → KILL
+TOTAL AT KILL GATE: $98 + 20 hours
+```
+
+**⚠ WARNINGS (hunt-verified):**
+- NO data moat — all sources public. Defense = curation + language + speed [confirmed]
+- Mandarin NEEDS_VALIDATION — blocking for 1688 data quality. TEST: read 10 listings, <80% accuracy → hire VA or drop 1688 angle
+- Copyable in 3-6 months by any bilingual VN-CN developer
+- Panjiva ($550M) had PROPRIETARY data — this venture uses PUBLIC APIs
+
+**Convexity intact:** $98 downside, $1,450/mo base target, $5K+ if community compounds. Asymmetric.
+
+#### CHAOS-2: SaaS-Content Funnel — AI Tool + Content (SECONDARY BET)
+
+| Metric | Value |
+|---|---|
+| Archetype | saas-content-funnel |
+| Compound engine | audience + product |
+| Capital | $100 (hosting + domain) |
+| Time | 5h/week |
+| Convexity | VERY HIGH — content = zero marginal cost distribution |
+| Kill criteria | 60 days: <100 users on free tier → kill |
+
+**Mechanism:**
+- Build micro AI tool solving specific pain point (hunt sẽ tìm anomaly cụ thể)
+- Content trên TikTok/YouTube = acquisition channel (free)
+- SaaS subscription = revenue ($9-29/mo)
+- **Constraint:** Profile says `no_product_dev` — NHƯNG profile cũng nói "constraints are starting, not ceiling"
+- **Alternative if no-build:** White-label hoặc no-code tool (Bubble/Softr)
+
+**Convexity:** 1 video viral = 100K views = 1000 signups = $9K MRR. Non-linear.
+
+#### CHAOS-3: Content Factory — CN-VN Knowledge Bridge (TERTIARY BET)
+
+| Metric | Value |
+|---|---|
+| Archetype | content-factory |
+| Compound engine | audience |
+| Capital | $50 (tools) |
+| Time | 3h/week |
+| Convexity | MEDIUM-HIGH — audience compounds but slow |
+| Kill criteria | 90 days: <500 followers across platforms → kill |
+
+**Mechanism:**
+- Translate/interpret CN business intelligence cho VN audience
+- Mandarin = structural moat (95%+ VN creators CAN'T read CN source)
+- Platforms: TikTok VN, YouTube, Facebook groups
+- Monetize: sponsorships, paid community, consulting
+- **Robert Kuok mechanism:** Information arbitrage — know things others can't access
+
+**Convexity:** Audience = asset that compounds. Each piece of content is a lottery ticket.
+
+#### CHAOS-4: Hunt Anomaly Bets — Rotating (EXPLORATORY)
+
+| Metric | Value |
+|---|---|
+| Source | /hunt system output |
+| Capital | $0-100 per bet |
+| Time | 2h/week |
+| Mechanism | Run /hunt monthly → get deal cards → execute highest-scored position |
+| Kill criteria | Per deal card kill criteria |
+
+**Mechanism:**
+- /hunt scans for price deltas, regulatory flows, cross-references
+- Each anomaly is a SMALL BET — broker, arbitrage, or aggregate position
+- Cắt lỗ nhanh theo hunt's asymmetry-filter output
+- **This is PURE Taleb:** Scanning for Black Swan opportunities with capped downside
+
+---
+
+## 5. BARBELL CASHFLOW TIMELINE — 6 Months
+
+```
+Month  | Safe Side (≤15h/wk)           | Chaos Side (≤15h/wk)              | Target Income
+-------|-------------------------------|------------------------------------|--------------
+  1    | Build team, find 1st client   | Launch CHAOS-1,2,3 parallel        | $1,000 (job)
+  2    | Close 1st client, deliver     | Content + tool building             | $1,000 (job)
+  3    | 1 client = +$1.2K net         | Evaluate: kill losers, double winners| $2,200
+  4    | 2 clients = +$2K net          | Survivors get more time allocation  | $3,000
+  5    | 2-3 clients = +$2.5K          | Winner emerging? Shift hours        | $3,500
+  6    | Stable $2-3K/mo safe income   | 1-2 chaos bets showing traction     | $4,000+
+```
+
+### Decision Points (Annie Duke Pre-Commitment + Taleb Cut-Loss)
+
+**Rule (Annie Duke framework, research-verified):** BEFORE launching each bet, write down:
+> "If by [DATE], I haven't achieved [METRIC], I quit."
+> Review monthly with outside advisor. Use LEADING indicators, not lagging.
+
+**Kill signals (research-backed SaaS/product thresholds):**
+- CAC payback > 18 months → kill
+- NRR < 100% → kill
+- Monthly growth < 5% after month 3 → kill
+- Churn > 7% B2B → kill
+- "Decision-maker absent from own meetings" = kill signal before 6 months sunk
+
+| Day | Gate | Action if FAIL |
+|-----|------|----------------|
+| 30 | CHAOS-1: 0 subscribers | KILL → reallocate to CHAOS-4 |
+| 30 | SAFE-A: 0 leads in pipeline | Pivot to SAFE-B (trade intermediary) |
+| 60 | CHAOS-2: <100 users | KILL → reallocate hours to winner |
+| 60 | SAFE-A: 0 closed deals | Evaluate: is it skill gap or market gap? |
+| 90 | CHAOS-3: <500 followers | KILL or reduce to 1h/week maintenance |
+| 90 | SAFE-A: <$1K net from service | Hard decision: keep job + optimize, or all-in safe-B |
+| 180 | Overall: safe side < $2K/mo | Strategy review — Barbell not working, need fundamental rethink |
+
+---
+
+## 6. CONVEXITY MAP — Where the Explosions Can Happen
+
+```
+                    UPSIDE
+                      ↑
+                      │           ★ CHAOS-1 hits: Trade intel monopoly
+                      │              $10K-50K/mo (Panjiva path)
+                      │
+                      │        ★ CHAOS-2 goes viral: SaaS + content flywheel
+                      │           $5K-20K/mo
+                      │
+                      │     ★ CHAOS-3 audience compounds:
+                      │        $2K-10K/mo from multiple monetization
+                      │
+                      │  ◆ SAFE-A scales: 5+ clients
+                      │     $5-8K/mo (linear but solid)
+                      │
+            ─────────────────────── $2K/mo survival line ───
+                      │
+                      │  ● Current: Job $1K/mo
+                      │
+                      ↓
+                   DOWNSIDE (CAPPED)
+                   Max loss = $550 capital + 6 months time
+```
+
+### Convexity Score per Bet
+
+| Bet | Downside (max loss) | Upside (12mo ceiling) | Ratio | Convexity |
+|-----|--------------------|-----------------------|-------|-----------|
+| SAFE-A | $1K + 180h | $3K/mo steady | 3:1 | LINEAR ✓ (correct for safe) |
+| CHAOS-1 | $200 + 120h | $50K/mo (Panjiva-type) | 250:1 | CONVEX ✓✓✓ |
+| CHAOS-2 | $100 + 120h | $20K/mo (viral SaaS) | 200:1 | CONVEX ✓✓✓ |
+| CHAOS-3 | $50 + 72h | $10K/mo (audience) | 200:1 | CONVEX ✓✓ |
+| CHAOS-4 | $100/bet | varies per hunt card | varies | CONVEX ✓ |
+
+---
+
+## 7. ANTI-FRAGILE MECHANICS (Beyond Barbell)
+
+### 7.1 — Tinkering Protocol (from Taleb's Antifragile)
+- Mỗi tuần: 2h "tinkering time" — thử random tools, đọc random CN forums, scrape random data
+- Không plan, không mục tiêu. Đây là OPTIONALITY GENERATION
+- Nếu tinkering phát hiện anomaly → feed vào /hunt → potential new chaos bet
+
+### 7.2 — Via Negativa (Loại bỏ, không thêm)
+- Mỗi tháng: review và KILL 1 thứ đang tiêu thời gian mà không tạo value
+- Taleb: "The best thing you can do is remove harmful things"
+- Áp dụng: unsubscribe newsletters, quit groups, stop "networking" không dẫn đến deals
+
+### 7.3 — Skin in the Game
+- Mọi chaos bet phải có FOUNDER'S MONEY at risk (dù $50)
+- Không dùng "free trials" để tự lừa mình rằng đang làm business
+- Skin in the game = forced decision quality
+
+### 7.4 — Compound Knowledge (Robert Kuok mechanism)
+- Mỗi deal (thành công hay thất bại) → ghi vào system knowledge
+- /hunt DuckDB accumulates anomalies across runs
+- Stage0 persists verdicts → compound learning loop
+- Thất bại tháng 1 = intelligence cho tháng 2. This IS antifragility.
+
+---
+
+## 8. INTEGRATION WITH HUNT/STAGE0 SYSTEM
+
+### How to USE the system for Barbell execution:
+
+| Command | Purpose | When |
+|---------|---------|------|
+| `/stage0 "labor arbitrage AI services" --teach` | Deep analysis of Safe Side opportunity | Before committing to SAFE-A |
+| `/stage0 "trade intelligence subscription CN-VN" --teach` | Deep analysis of CHAOS-1 | Week 1 |
+| `/hunt "CN-VN trade intelligence"` | Find specific anomalies for CHAOS-1 content | Monthly |
+| `/hunt "AI automation services Western SMB"` | Find pricing gaps for SAFE-A | Before pricing |
+| `/stage0 --breadth "internet business from Vietnam"` | Scan broadly for new chaos bets | Every 60 days |
+| `/hunt continue <hunt_id>` | Follow up on promising anomaly | When data arrives |
+
+### Monthly Barbell Review Protocol:
+1. Run `/hunt` on 1 new topic → feed chaos portfolio
+2. Run `stage0-quality-score.py` on active chaos bets → verify signals
+3. Review kill criteria → execute kills WITHOUT EMOTION
+4. Reallocate freed hours to surviving/new bets
+5. Check safe side income trend → is survival protected?
+
+---
+
+## 9. EXECUTION PLAN — Week 1-4 (Immediate Actions)
+
+### Week 1: Foundation
+- [ ] Run `/stage0 "labor arbitrage AI dev services for Western SMBs" --teach` → validate SAFE-A
+- [ ] Set up Upwork/LinkedIn profile for AI/dev services
+- [ ] Create 1-page service offer (use offer-designer framework)
+- [ ] Start CHAOS-1: Create Telegram channel for CN trade intel
+
+### Week 2: First Signals
+- [ ] Send 20 cold outreach messages for SAFE-A (use script-writer from hunt-lib)
+- [ ] Publish 3 pieces CN trade intel content (CHAOS-3)
+- [ ] Run `/hunt "1688 price gaps for VN ecommerce"` → seed CHAOS-1 data
+- [ ] Set up basic scraper for 1688 price monitoring (CHAOS-1 tool)
+
+### Week 3: Iterate
+- [ ] Follow up on SAFE-A outreach → book calls
+- [ ] Analyze /hunt results → write 1st premium intelligence report
+- [ ] CHAOS-2: Identify AI tool gap from /hunt anomalies
+- [ ] Publish 5 more content pieces (CHAOS-3)
+
+### Week 4: First Review
+- [ ] SAFE-A: pipeline status? Leads → calls → proposals?
+- [ ] CHAOS-1: subscriber count? Engagement?
+- [ ] CHAOS-3: follower count? Which platform performing?
+- [ ] KILL GATE: any bet at 0 signal after 30 days → KILL
+- [ ] Run `/hunt` on new topic → replenish chaos portfolio
+
+---
+
+## 10. RISK FACTORS & WARNINGS
+
+1. **[FOUNDER-REALITY-GATE]** Profile says `_needs_validation: ["skills", "trade_contacts_CN"]`. Mandarin + CN contacts are UNVERIFIED. If these don't exist → CHAOS-1 and SAFE-B are structurally blocked. Validate IMMEDIATELY.
+
+2. **[GMV-INCOME-DIVISION]** Labor arbitrage base rate 30% sounds good — but that's 30% of people who attempt it reach $10K. 70% don't. Expected median outcome is closer to $1-3K/mo [T].
+
+3. **[POWER-LAW-MEDIAN-WARNING]** Information broker base rate is 15%. Most info products earn $0. The Panjiva example ($550M) is extreme outlier. Mode outcome for CHAOS-1 = $0-200/mo [T].
+
+4. **Safe side MUST come first.** Taleb's Barbell REQUIRES the safe side to be SECURE before taking chaos bets. Running chaos bets with $1K/mo survival income = higher stress = worse decision quality.
+
+5. **Profile constraint: `no_product_dev`** conflicts with CHAOS-2 (SaaS). Either relax constraint or go no-code.
+
+---
+
+## 11. SUMMARY — The Barbell in One Picture
+
+```
+╔══════════════════════════════════════════════════════════════════╗
+║                    BARBELL CASHFLOW DESIGN                      ║
+╠══════════════════════╦═══════════════════════════════════════════╣
+║   ĐẦU AN TOÀN       ║   ĐẦU HỖN LOẠN (3-5 bets parallel)     ║
+║   (Linear, Boring)   ║   (Convex, Exciting)                     ║
+║                      ║                                           ║
+║   SAFE-A:            ║   CHAOS-1: Trade Intelligence ($200)     ║
+║   AI/Dev Service     ║   CHAOS-2: AI SaaS + Content ($100)     ║
+║   Team: 2-3 VN devs  ║   CHAOS-3: CN-VN Content Bridge ($50)   ║
+║   Revenue: $2-3K/mo  ║   CHAOS-4: /hunt rotating bets ($100)   ║
+║   Time: 15h/wk       ║   Time: 15h/wk total across bets        ║
+║                      ║                                           ║
+║   PURPOSE:           ║   PURPOSE:                                ║
+║   Kill survival mode ║   Find the Mountain ($10K+/mo)           ║
+║   Free the mind      ║   Compound knowledge + optionality       ║
+║                      ║                                           ║
+║   NEVER ABANDON      ║   CUT FAST: 30-day kill criteria         ║
+║   until chaos wins   ║   Replace dead bets immediately          ║
+╚══════════════════════╩═══════════════════════════════════════════╝
+
+                    ⛔ VÙNG CẤM (Fragile Middle) ⛔
+         Freelance ăn hết time | SaaS trung bình | Job 10h/ngày
+                   → Linear + tiêu hết bandwidth = CHẾT
+```
+
+---
+
+**Next steps:**
+1. Run `/stage0 --teach` on SAFE-A to validate before committing
+2. Validate Mandarin + CN contacts (BLOCKING for CHAOS-1 and SAFE-B)
+3. Run `/hunt` on first chaos topic to generate deal cards

@@ -1,0 +1,165 @@
+use std::fmt;
+use std::path::Path;
+
+use anyhow::Result;
+
+use crate::cost::CostStore;
+use crate::provenance::ProvenanceStore;
+use crate::quality_gate;
+use crate::{cyclonedx_export, slsa_export, soc2_export};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExportFormat {
+    Slsa,
+    CycloneDx,
+    Soc2,
+}
+
+impl fmt::Display for ExportFormat {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Slsa => write!(f, "slsa"),
+            Self::CycloneDx => write!(f, "cyclonedx"),
+            Self::Soc2 => write!(f, "soc2"),
+        }
+    }
+}
+
+impl ExportFormat {
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "slsa" => Some(Self::Slsa),
+            "cyclonedx" | "cdx" => Some(Self::CycloneDx),
+            "soc2" => Some(Self::Soc2),
+            _ => None,
+        }
+    }
+
+    pub fn file_extension(&self) -> &'static str {
+        match self {
+            Self::Slsa => "json",
+            Self::CycloneDx => "json",
+            Self::Soc2 => "md",
+        }
+    }
+}
+
+pub struct ComplianceEngine {
+    provenance: ProvenanceStore,
+    cost: CostStore,
+}
+
+pub struct ExportResult {
+    pub format: ExportFormat,
+    pub content: String,
+    pub record_count: usize,
+}
+
+impl ComplianceEngine {
+    pub fn open(db_path: &Path) -> Result<Self> {
+        Ok(Self {
+            provenance: ProvenanceStore::open(db_path)?,
+            cost: CostStore::open(db_path)?,
+        })
+    }
+
+    pub fn generate(&self, format: ExportFormat, range_days: u32) -> Result<ExportResult> {
+        let records = self.provenance.query_by_date_range(range_days)?;
+        let record_count = records.len();
+
+        let content = match format {
+            ExportFormat::Slsa => {
+                let costs = self.cost.query_by_date_range(range_days)?;
+                let json = slsa_export::generate(&records, &costs);
+                serde_json::to_string_pretty(&json)?
+            }
+            ExportFormat::CycloneDx => {
+                let json = cyclonedx_export::generate(&records);
+                serde_json::to_string_pretty(&json)?
+            }
+            ExportFormat::Soc2 => {
+                let gate_results = vec![quality_gate::GateResult {
+                    findings: vec![],
+                    blocked: false,
+                    exit_code: 0,
+                    files_scanned: 0,
+                }];
+                soc2_export::generate(&records, &gate_results)
+            }
+        };
+
+        Ok(ExportResult {
+            format,
+            content,
+            record_count,
+        })
+    }
+
+    pub fn purge(&self, retention_days: i64) -> Result<(u64, u64)> {
+        let prov = self.provenance.cleanup(retention_days)?;
+        let cost = self.cost.cleanup(retention_days)?;
+        Ok((prov, cost))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_export_format_from_str() {
+        assert_eq!(ExportFormat::parse("slsa"), Some(ExportFormat::Slsa));
+        assert_eq!(ExportFormat::parse("SLSA"), Some(ExportFormat::Slsa));
+        assert_eq!(
+            ExportFormat::parse("cyclonedx"),
+            Some(ExportFormat::CycloneDx)
+        );
+        assert_eq!(ExportFormat::parse("cdx"), Some(ExportFormat::CycloneDx));
+        assert_eq!(ExportFormat::parse("soc2"), Some(ExportFormat::Soc2));
+        assert_eq!(ExportFormat::parse("invalid"), None);
+    }
+
+    #[test]
+    fn test_export_format_display() {
+        assert_eq!(ExportFormat::Slsa.to_string(), "slsa");
+        assert_eq!(ExportFormat::CycloneDx.to_string(), "cyclonedx");
+        assert_eq!(ExportFormat::Soc2.to_string(), "soc2");
+    }
+
+    #[test]
+    fn test_export_format_extension() {
+        assert_eq!(ExportFormat::Slsa.file_extension(), "json");
+        assert_eq!(ExportFormat::CycloneDx.file_extension(), "json");
+        assert_eq!(ExportFormat::Soc2.file_extension(), "md");
+    }
+
+    #[test]
+    fn test_compliance_engine_open_and_generate() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("test.db");
+        let engine = ComplianceEngine::open(&db_path).unwrap();
+        let result = engine.generate(ExportFormat::Slsa, 90).unwrap();
+        assert_eq!(result.format, ExportFormat::Slsa);
+        assert_eq!(result.record_count, 0);
+        assert!(result.content.contains("in-toto.io"));
+    }
+
+    #[test]
+    fn test_compliance_engine_cyclonedx() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("test.db");
+        let engine = ComplianceEngine::open(&db_path).unwrap();
+        let result = engine.generate(ExportFormat::CycloneDx, 90).unwrap();
+        assert!(result.content.contains("CycloneDX"));
+    }
+
+    #[test]
+    fn test_compliance_engine_soc2() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("test.db");
+        let engine = ComplianceEngine::open(&db_path).unwrap();
+        let result = engine.generate(ExportFormat::Soc2, 90).unwrap();
+        assert!(result.content.contains("CC6.1"));
+        assert!(result.content.contains("CC8.1"));
+    }
+}

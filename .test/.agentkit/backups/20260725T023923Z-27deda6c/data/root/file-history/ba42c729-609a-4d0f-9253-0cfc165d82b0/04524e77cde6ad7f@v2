@@ -1,0 +1,18 @@
+pub mod agent_trace;
+pub mod attestation;
+pub mod content_hash;
+pub mod dedup;
+pub mod events;
+pub mod filter;
+pub mod provenance;
+pub mod read_dedup;
+pub mod router;
+pub mod security;
+pub mod session;
+pub mod tracking;
+pub mod util;
+pub mod waste;
+
+pub mod proto {
+    include!(concat!(env!("OUT_DIR"), "/codeflow.events.v1.rs"));
+}

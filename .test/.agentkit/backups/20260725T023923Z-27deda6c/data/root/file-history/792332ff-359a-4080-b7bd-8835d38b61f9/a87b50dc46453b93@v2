@@ -1,0 +1,43 @@
+# Thinking Evolution: Adversarial Loop + Causal Rules + Brainstorm Two-Phase
+
+**Date:** 2026-05-13  
+**Commit:** `ac212183` on `master_investments`  
+**Plan:** `plans/260513-1645-thinking-evolution-diagnosis/`
+
+## Problem
+
+KVision live test exposed ThinkRunner producing `overall_score=0.41`, **0 [K] facts**, all 15 techniques NEEDS_DATA. Meanwhile LLM free-thinking found "credibility arbitrage" insight in 2 minutes. 6,089 LOC pipeline creates infrastructure but not insight.
+
+5 root causes traced to: template micro-queries generating nonsense, synthesis = weighted average with no causal reasoning, LLM banned from mid-pipeline, brainstorm spending 70% tokens on process compliance.
+
+## Changes
+
+**Adversarial Questioner** (`adversarial_questioner.py`, 113 LOC)
+- 1 LLM call mid-pipeline after initial facts assembled
+- Reads facts → generates 5-10 situation-specific counter-questions
+- Questions fed back through MicroQueryRunner as `dimension="adversarial"`
+- Graceful degradation if no LLM available
+
+**Causal Rule Engine** (`causal_rules.py`, 148 LOC)
+- 20 deterministic rules: cross-dimension interactions, pattern detection, score overrides
+- Key rules: title≠income detection (R05), base_rate override for indirect entry (R01), zero-[K]-facts cap at 0.3 (R12)
+- Runs inside SynthesisEngine between scoring and overall calc — zero LLM calls
+- `SynthesisResult.causal_insights` field added
+
+**Brainstorm Two-Phase** (`SKILL.md` restructure)
+- Phase 1: Free thinking — no gates, no tools, pure reasoning (≥40% effort)
+- Phase 2: Verification — gates B0-B5 verify Phase 1 insights
+- Key shift: gates VERIFY, they don't GENERATE
+
+## Decisions
+
+- Used `_wrap_research_fn()` for adversarial LLM fn — returns dicts not strings, required type coercion in questioner
+- Fixed pre-existing `test_synthesis_engine` bug: `_make_fact` dimension `failure_rates` didn't map to any market_entry tree dimension → overall was always 0.0
+- Kept causal rules as code, not LLM — deterministic, auditable, zero latency
+
+## Results
+
+- 15 new integration tests, all passing
+- 514/518 regression tests pass (4 pre-existing failures in decomposer/persona_debate)
+- `llm_calls_made == 0` assertion in SynthesisEngine still holds
+- Total pipeline LLM budget: 6 (1 adversarial + 5 strategic reasoner)

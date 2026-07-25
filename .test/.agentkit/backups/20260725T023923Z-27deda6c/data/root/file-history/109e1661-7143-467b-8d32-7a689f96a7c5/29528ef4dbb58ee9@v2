@@ -1,0 +1,519 @@
+# Intelligence Evolution Strategy — Full System Review
+
+**Date:** 2026-05-10
+**Focus:** How the system evolves its thinking. LLM = research tool + fallback, NOT the brain.
+**Core thesis:** Hệ thống phải liên tục yêu cầu thông tin mới, chất lượng từ LLM để tiến hóa liên tục. LLM gây ảo giác → local intelligence phải là nơi ra quyết định.
+
+---
+
+## 1. CURRENT STATE: WHERE INTELLIGENCE ACTUALLY LIVES
+
+### The Honest Map
+
+```
+STAGE0 PIPELINE (25+ steps)
+├── Steps 0-2.55  ── LOCAL ✅  (profile, classification, routing)
+├── Steps 2.6-2.8 ── LLM 🔴   (disambiguation, questions, URL analysis)
+├── Step 3.0      ── LOCAL ✅  (KB lookup, prior verdicts)
+├── Steps 3.1-3.2 ── LLM 🔴   (industry discovery/validation — EXPLORATION only)
+├── Step 3.4      ── LOCAL ✅  (data scripts, calc-dispatcher, operator mastery)
+├── Step 3.5      ── LLM 🔴   (Wave 1: 8-11 agents — ALL run on Claude)
+├── Step 3.8      ── LLM 🔴   (Wave 2: 6 agents — ALL run on Claude)
+├── Step 3.9      ── LOCAL ✅  (framework advisor — transforms persona output)
+├── Steps 4-5     ── LLM 🔴   (synthesis, hypothesis generation)
+├── Step 6        ── LOCAL ✅  (Mountain Test — deterministic binary checks)
+├── Step 6.4      ── LLM 🔴   (constraint-inversion debate — 3 persona agents)
+├── Step 6.8      ── LLM 🔴   (alternative generation, side-door paths)
+├── Step 7        ── LLM 🔴   (verdict synthesis — THE BRAIN)
+├── Step 7.1-7.5  ── LLM 🔴   (anti-orthodox gate, red-team)
+├── Steps 8-9.7   ── LOCAL ✅  (persist, verify, calibrate)
+└── Steps 11-12   ── LLM 🔴   (execution layer, blueprint)
+```
+
+### Dependency Score
+
+| Layer | Local | LLM | LLM% |
+|-------|-------|-----|-------|
+| Pre-analysis (Steps 0-2.55) | 8 steps | 0 | 0% |
+| Research (Steps 2.6-3.8) | 3 steps | 9 steps | **75%** |
+| Synthesis (Steps 4-7.5) | 1 step | 7 steps | **87%** |
+| Persistence (Steps 8-9.7) | 6 steps | 0 | 0% |
+| Post-verdict (Steps 11-12) | 0 | 2 steps | **100%** |
+
+**Overall: ~60% of steps require LLM.** The CRITICAL steps (research + synthesis + verdict) are ~80% LLM-dependent.
+
+### What's Real vs Phantom
+
+| Component | Code Exists? | Actually Runs? | Has Data? |
+|-----------|-------------|----------------|-----------|
+| Reasoning engine (lib/intelligence/reasoning/) | ✅ 6 files | ⚠️ Step 1.8 only | ❌ 0 decisions in DB |
+| Evidence KB (contrarian/institutional/network/) | ✅ 15+ files | ✅ Loaded as JSON | ⚠️ Sparse — ~50 entries total |
+| Pattern learner (DTW, correlation) | ✅ 3 files | ❌ No training data | ❌ 0 patterns learned |
+| Prediction engine (Bayesian similarity) | ✅ 2 files | ❌ No outcomes fed | ❌ 0 predictions tracked |
+| Outcome tracker | ✅ 4 files | ⚠️ Manual /log-outcome only | ❌ outcomes.db = 0 rows |
+| Calibration system | ✅ 6 files | ⚠️ Runs but no data to calibrate | ❌ priors.json = defaults |
+| Auto-evolution (continuous_trigger) | ✅ 1 file | ❌ No cron, no trigger wired | ❌ Never ran |
+| Distillation bridge | ✅ 1 file | ❌ Never called | ❌ decision-vectors.db = 0 |
+| Self-evolution orchestrator (7-step loop) | ✅ 1 file | ❌ Never executed | ❌ No cycle data |
+| Competence matrix | ✅ 2 files | ✅ Runs per query | ⚠️ Default weights only |
+| Knowledge graph | ✅ 2 files | ✅ Appends per verdict | ⚠️ Sparse entries |
+
+**VERDICT: ~70% of "local intelligence" infrastructure is phantom.** Code exists but has never run because there's no data feeding it.
+
+---
+
+## 2. THE CORE PROBLEM: EMPTY FEEDBACK LOOP
+
+```
+Current reality:
+
+LLM researches → LLM synthesizes → LLM verdicts → User reads → (nothing)
+                                                                    ↑
+                                                        No outcome logged
+                                                        No learning happens
+                                                        No local KB enriched
+                                                        Next query = same LLM dependency
+```
+
+The system has a SOPHISTICATED evolution architecture (7-step loop, Bayesian updaters, pattern extractors, distillation bridges) — but **zero fuel**. It's a Ferrari with an empty tank.
+
+### Why It's Empty
+
+1. **No automatic outcome capture**: /log-outcome is manual. User never runs it.
+2. **No distillation pipeline running**: LLM insights die in the verdict markdown, never converted to local rules.
+3. **No continuous trigger**: continuous_trigger.py exists but no cron/hook fires it.
+4. **Cold start deadlock**: Pattern learner needs 20+ samples. System has 0. Will never bootstrap.
+5. **Verdict = text blob**: Step 7 outputs prose, not structured decisions. Local engine can't learn from prose.
+
+---
+
+## 3. EVOLUTION STRATEGY: HOW THE SYSTEM SHOULD DEMAND INFO FROM LLM
+
+### Principle: LLM = Mining Rig, Local = Refinery
+
+```
+LLM's role (RESEARCH):              Local's role (INTELLIGENCE):
+├── WebSearch for facts              ├── Store verified facts
+├── Read & extract from URLs         ├── Match patterns across facts
+├── Synthesize multiple sources      ├── Score confidence per domain
+├── Identify contradictions          ├── Route queries to best knowledge
+├── Generate hypotheses              ├── Detect drift & staleness
+└── Verify claims against data       └── Make verdicts from accumulated knowledge
+
+LLM outputs STRUCTURED DATA → Local ACCUMULATES & REASONS
+```
+
+### The 5-Layer Evolution Engine
+
+#### Layer 1: EXTRACT (LLM → Structured Facts)
+
+Every LLM call must output structured JSON, not prose.
+
+```
+Current: LLM → "The SaaS market is $200B and growing at 15%..."
+Target:  LLM → {
+  "claims": [
+    {"fact": "SaaS TAM = $200B", "source": "gartner.com/2025", "confidence": 0.85, "type": "market_size"},
+    {"fact": "SaaS CAGR = 15%", "source": "gartner.com/2025", "confidence": 0.80, "type": "growth_rate"}
+  ],
+  "mechanisms": [
+    {"cause": "cloud_migration", "effect": "saas_adoption", "strength": 0.7}
+  ],
+  "contradictions": [],
+  "gaps": ["no data on micro-SaaS segment specifically"]
+}
+```
+
+**Implementation**: Every Wave 1/Wave 2 agent MUST return structured JSON schema. No prose allowed in agent responses. Prose only in Step 7 (user-facing verdict).
+
+#### Layer 2: VERIFY (Local Cross-Check)
+
+Before storing, local engine cross-checks:
+
+```python
+def verify_claim(claim, existing_kb):
+    # 1. Duplicate check — already have this fact?
+    if kb.has_similar(claim, threshold=0.85):
+        return UPDATE_CONFIDENCE  # average with existing
+    
+    # 2. Contradiction check — conflicts with stored facts?
+    contradictions = kb.find_contradictions(claim)
+    if contradictions:
+        return NEEDS_RESOLUTION  # flag for next LLM research cycle
+    
+    # 3. Source quality check
+    if claim.source_tier < 'C':
+        return STORE_AS_TENTATIVE  # [T] tag
+    
+    # 4. Freshness check
+    if claim.date < 180_days_ago:
+        return STORE_WITH_STALENESS_FLAG
+    
+    return STORE_AS_VERIFIED  # [K] tag
+```
+
+#### Layer 3: ACCUMULATE (SQLite Decision Vectors)
+
+Every verified claim becomes a decision vector:
+
+```sql
+CREATE TABLE decision_vectors (
+    id INTEGER PRIMARY KEY,
+    domain TEXT,           -- 'saas', 'ecommerce', 'content', etc.
+    decision_type TEXT,    -- 'market_size', 'failure_rate', 'moat_type', etc.
+    fact TEXT,
+    mechanism TEXT,        -- WHY this is true (causal chain)
+    confidence REAL,       -- 0.0-1.0
+    source TEXT,
+    source_date TEXT,
+    created_at TEXT,
+    last_verified TEXT,
+    times_corroborated INTEGER DEFAULT 1,
+    contradicted_by TEXT   -- NULL or conflicting claim IDs
+);
+```
+
+**Target: 500+ decisions by month 1, 2000+ by month 3.**
+
+#### Layer 4: REASON (Local Verdict Engine)
+
+```python
+def local_verdict(topic, founder_profile):
+    # 1. Decompose topic into sub-questions
+    questions = problem_decomposer.decompose(topic)  # rule-based
+    
+    # 2. For each question, search local KB
+    answers = []
+    gaps = []
+    for q in questions:
+        local_answer = kb.search(q, domain=topic.domain, min_confidence=0.6)
+        if local_answer and local_answer.confidence >= 0.7:
+            answers.append(local_answer)
+        else:
+            gaps.append(q)  # → sent to LLM for research
+    
+    # 3. If enough local answers (>70% coverage)
+    if len(answers) / len(questions) >= 0.7:
+        verdict = verdict_generator.generate(answers, founder_profile)
+        verdict.source = "LOCAL"
+        verdict.llm_questions = gaps  # LLM only researches gaps
+        return verdict
+    
+    # 4. If not enough → full LLM pipeline (current behavior)
+    return NEEDS_LLM_FULL_PIPELINE
+```
+
+#### Layer 5: EVOLVE (Continuous Improvement)
+
+Three triggers, all automatic:
+
+```
+TRIGGER 1: POST-VERDICT (every /stage0 run)
+├── Extract all structured claims from agent outputs
+├── Verify against existing KB
+├── Store new facts
+├── Update confidence of corroborated facts
+├── Flag contradictions for next research cycle
+└── Log verdict prediction for future outcome check
+
+TRIGGER 2: OUTCOME (when real result known)
+├── Compare predicted verdict vs actual outcome
+├── Calculate error per dimension (market_size, competition, moat, etc.)
+├── Update domain-specific confidence weights
+├── Retrain pattern matcher if 20+ outcomes accumulated
+└── Surface systematic biases (overconfidence in SaaS? underestimate competition?)
+
+TRIGGER 3: CONTINUOUS (daily, 5 LLM calls max)
+├── Check KB staleness (facts >180 days without recheck)
+├── Identify weakest domain (lowest coverage/confidence)
+├── Generate targeted research questions for weak domains
+├── Run LLM research on 2-3 questions
+├── Distill results into KB
+└── Report: "Today I learned X, now I know Y with Z% confidence"
+```
+
+---
+
+## 4. HALLUCINATION KILL ARCHITECTURE
+
+### Where LLM Hallucinates Today
+
+| Hallucination Type | Example | Current Defense | Gap |
+|-------------------|---------|-----------------|-----|
+| **Fabricated metrics** | "Market is $50B" with no source | [CONFABULATION-BAN] rule | Rule is prompt-only, not enforced programmatically |
+| **False confidence** | Verdict MOUNTAIN with 0 ground truth | Step 6.45 confidence formula | Formula counts agents_fired, not evidence quality |
+| **Invented personas** | Do Duc Quang (fabricated person) | [FABRICATION] learned rule | Only catches after the fact, no pre-check |
+| **Consensus hallucination** | 5 personas all agree on wrong answer | Red-team gate (Step 7.5) | Red-team is ALSO LLM — hallucinator checking hallucinator |
+| **Stale facts presented as current** | "Commission rates are 9%" (was 2020) | No defense | Nothing checks fact freshness |
+| **Mechanism-free claims** | "This has a moat" without explaining how | [MOAT-CHECK] rule | Prompt-only, not structural |
+
+### Defense Architecture
+
+```
+Level 1: STRUCTURAL (before LLM runs)
+├── Local KB provides FLOOR — LLM can ADD but can't contradict verified facts
+├── Every claim must be JSON with source+date — prose rejected
+├── Pre-loaded base rates per domain — LLM can't claim "90% success" when base rate is 20%
+└── Founder constraints loaded — LLM can't recommend impossible paths
+
+Level 2: REAL-TIME (during LLM run)
+├── Agent outputs parsed for [?] tags — uncited claims quarantined
+├── Cross-agent contradiction detector — flags disagreements immediately
+├── Magnitude checks — claim exceeds 3σ from KB mean? → FLAG
+└── Source verification — URL mentioned? → WebFetch to confirm
+
+Level 3: POST-HOC (after LLM run, before user sees)
+├── Mountain Test (Step 6) — deterministic, no LLM
+├── Confidence gate (Step 6.45) — hard formula, no LLM
+├── Quality score (stage0-quality-score.py) — deterministic checks
+├── KB delta check — "did LLM add any fact that contradicts our KB?" → FLAG
+└── Anti-orthodox gate — "is this generic advice any MBA could give?" → REWRITE
+
+Level 4: EVOLUTIONARY (over time)
+├── Outcome tracking — "LLM said MOUNTAIN, reality was KILL" → retrain
+├── Per-persona accuracy — "Naval consistently overrates moats" → weight down
+├── Domain accuracy — "System is 90% right on SaaS, 40% on crypto" → flag weak domains
+└── Brier score tracking — calibration over 50+ predictions
+```
+
+---
+
+## 5. THE MISSING PIECE: ACTIVE KNOWLEDGE DEMAND
+
+The system currently WAITS for the user to ask questions. It should ACTIVELY DEMAND information to fill gaps.
+
+### Knowledge Gap Detector
+
+```python
+def detect_gaps():
+    """Run daily. Identifies what the system DOESN'T know."""
+    
+    # 1. Domain coverage analysis
+    for domain in ALL_DOMAINS:
+        coverage = kb.coverage_score(domain)  # % of required facts present
+        if coverage < 0.5:
+            yield ResearchRequest(
+                domain=domain,
+                priority="HIGH",
+                questions=generate_gap_questions(domain),
+                budget=2  # max 2 LLM calls
+            )
+    
+    # 2. Staleness analysis
+    stale_facts = kb.get_stale(days=180)
+    for fact in stale_facts[:5]:  # top 5 most impactful
+        yield ResearchRequest(
+            type="REFRESH",
+            fact=fact,
+            question=f"Is '{fact.text}' still true as of 2026?",
+            budget=1
+        )
+    
+    # 3. Contradiction resolution
+    unresolved = kb.get_contradictions(status="UNRESOLVED")
+    for contradiction in unresolved[:3]:
+        yield ResearchRequest(
+            type="RESOLVE",
+            claims=[contradiction.claim_a, contradiction.claim_b],
+            question=f"Which is correct: {contradiction.claim_a} or {contradiction.claim_b}?",
+            budget=1
+        )
+    
+    # 4. Prediction gaps
+    domains_without_outcomes = prediction_tracker.get_unverified_domains()
+    for domain in domains_without_outcomes:
+        yield ResearchRequest(
+            type="OUTCOME_CHECK",
+            question=f"What happened to {domain} predictions from 90+ days ago?",
+            budget=1
+        )
+```
+
+### Demand Protocol
+
+```
+DAILY (5 LLM calls budget):
+├── 2 calls: Gap-fill (weakest domain questions)
+├── 1 call: Staleness refresh (oldest high-impact fact)
+├── 1 call: Contradiction resolution
+└── 1 call: Outcome verification
+
+WEEKLY (10 LLM calls budget):
+├── 5 calls: Deep-dive on weakest domain
+├── 3 calls: Cross-domain pattern search
+└── 2 calls: New domain discovery (scan for emerging niches)
+
+PER-VERDICT (embedded in /stage0):
+├── Extract ALL structured claims from agent outputs
+├── Store verified claims
+├── Flag gaps discovered during research
+├── Queue unresolved contradictions
+└── Log prediction for future outcome check
+```
+
+---
+
+## 6. CONCRETE ARCHITECTURE RECOMMENDATIONS
+
+### Priority 1: Wire the Distillation Bridge (Week 1-2)
+
+The Knowledge Distillation Engine plan is APPROVED but not started. This is the #1 blocker.
+
+```
+Action: Execute plans/260510-0914-knowledge-distillation-engine/
+Target: 500+ decision vectors in SQLite from:
+├── 162 existing persona decisions (PATP files)
+├── 100 book-extracted decisions (Munger, DeMarco, Naval)
+├── 100+ failure cases (Failory, Indie Hackers)
+└── Existing case-studies/ directory (100+ JSON cases)
+```
+
+**Without this, everything else is theory.**
+
+### Priority 2: Structured Agent Output Schema (Week 2-3)
+
+Every Wave 1/Wave 2 agent must return JSON, not prose.
+
+```json
+{
+  "agent": "failure-archaeologist",
+  "claims": [...],
+  "mechanisms": [...],
+  "contradictions": [...],
+  "gaps": [...],
+  "confidence": 0.72,
+  "sources_checked": 8,
+  "sources_with_data": 5
+}
+```
+
+**This is the fuel line from LLM → local KB.**
+
+### Priority 3: Auto-Distill Post-Verdict (Week 3-4)
+
+Wire Step 9 (persist verdict) to also extract and store all agent claims.
+
+```
+Current Step 9: Save verdict markdown + memory.jsonl
+New Step 9:     Save verdict + extract claims + verify + store in decision_vectors.db
+```
+
+Every /stage0 run enriches the local KB. After 20 runs, local engine has 200+ new facts.
+
+### Priority 4: Local Pre-Screen with Teeth (Week 4-5)
+
+Step 1.8 exists but has no data. Once KB has 500+ decisions:
+
+```
+Step 1.8 enhancement:
+├── If local KB covers >70% of topic questions with confidence >0.7:
+│   → LOCAL verdict (skip Wave 1+2, save 14 LLM agent calls)
+│   → LLM only called for GAPS (2-3 specific questions)
+├── If coverage 40-70%:
+│   → HYBRID: local provides base, LLM fills gaps
+│   → Wave 1 reduced to 3-4 agents (gap-specific)
+└── If coverage <40%:
+│   → FULL LLM pipeline (current behavior)
+└── Always: local KB provides PRIORS that LLM can't contradict
+```
+
+### Priority 5: Daily Knowledge Demand Cron (Week 5-6)
+
+```bash
+# .claude/hooks/daily-knowledge-demand.cjs
+# Runs on SessionStart, max 1x per 24h
+# Budget: 5 LLM calls
+
+Steps:
+1. gap_detector.py → identify weakest domain
+2. staleness_monitor.py → find oldest critical facts
+3. contradiction_resolver.py → pick top unresolved conflict
+4. Generate 5 targeted research questions
+5. Fire LLM with questions (structured JSON output)
+6. verify_and_store.py → local KB enriched
+7. Log: "Today I learned: [summary]"
+```
+
+---
+
+## 7. EVOLUTION MATURITY ROADMAP
+
+```
+PHASE 0 (Current): EMPTY TANK
+├── 1,649 Python scripts, 0 real data
+├── 9 SQLite DBs, all empty or default
+├── Evolution code exists but never runs
+└── LLM = 80% of intelligence
+
+PHASE 1 (Month 1): COLD START
+├── 500+ decision vectors from books/failures
+├── Auto-distill wired (every /stage0 enriches KB)
+├── Agent outputs structured JSON
+├── Local pre-screen active (Step 1.8 with data)
+└── LLM = 60% of intelligence
+
+PHASE 2 (Month 2-3): LEARNING
+├── 2000+ decision vectors (distilled + accumulated)
+├── 20+ outcomes logged → calibration begins
+├── Pattern learner has enough data (>20 samples)
+├── Per-domain confidence scores meaningful
+├── Daily knowledge demand running
+└── LLM = 40% of intelligence
+
+PHASE 3 (Month 4-6): GRADUATED AUTONOMY
+├── 5000+ decision vectors
+├── Local verdict possible for 30-40% of queries
+├── Weak domains identified and actively researched
+├── Brier score tracking shows calibration trend
+├── Persona weights based on real outcomes, not defaults
+└── LLM = 20% of intelligence
+
+PHASE 4 (Month 6+): LOCAL-FIRST
+├── 10,000+ decision vectors
+├── Local verdict for 60-70% of queries
+├── LLM called only for: new domains, gap-fill, verification
+├── System ASKS for info it needs, not waiting for user
+├── Continuous evolution is self-sustaining
+└── LLM = <10% of intelligence (research + edge cases only)
+```
+
+---
+
+## 8. CRITICAL GAPS IN CURRENT PLANS
+
+### Gap 1: No Structured Output Schema for Agents
+
+The LFI plan assumes LLM outputs can be distilled, but current agents return PROSE. Need a mandatory JSON schema for every agent BEFORE distillation can work.
+
+### Gap 2: No Outcome Capture Automation
+
+/log-outcome is manual. User has never run it. Need automatic outcome detection:
+- Monitor if user acts on verdict (searches, buys domain, starts project)
+- 90-day follow-up prompt: "You researched X on date Y. What happened?"
+- Integrate with deal journal / cashflow tracking
+
+### Gap 3: Cold Start Bootstrap Underestimated
+
+Knowledge Distillation Engine plan estimates 6.5 days. This assumes clean extraction from books. Reality: book text → decision vectors requires significant judgment. Budget 2x.
+
+### Gap 4: No Cross-Domain Pattern Mining
+
+Current architecture treats each domain independently. Missing: "SaaS moat patterns also apply to marketplace moats." Cross-domain transfer learning needs explicit wiring.
+
+### Gap 5: Contradiction Resolution is Manual
+
+System can DETECT contradictions but can't RESOLVE them without LLM. Need a resolution protocol:
+1. Check which claim has more corroboration
+2. Check which claim is more recent
+3. If still unresolved → queue for next LLM research cycle
+4. Never present contradicted claim as [K]
+
+---
+
+## 9. UNRESOLVED QUESTIONS
+
+1. **Phase 0 execution**: Start Knowledge Distillation Engine immediately, or restructure agent output schemas first? (Recommended: agent schemas first — they're the fuel line)
+2. **Outcome capture**: How to detect outcomes without user input? (Browser extension? Manual 90-day prompt? Deal journal integration?)
+3. **LLM budget**: Is 5 calls/day for continuous evolution enough? Should it scale with KB size?
+4. **Verification**: When local verdict disagrees with what LLM would say, which wins? (Recommended: local wins if confidence >0.8 AND >30 corroborating decisions)
+5. **Cross-repo**: Evolution infrastructure lives in master_investments. Plans live in master_investments_mmo. How does the daily cron bridge this?

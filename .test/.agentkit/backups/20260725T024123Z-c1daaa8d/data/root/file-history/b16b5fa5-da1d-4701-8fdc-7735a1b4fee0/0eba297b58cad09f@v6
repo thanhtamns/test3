@@ -1,0 +1,879 @@
+# /hunt — Customer-First Revenue Engine (v3)
+
+## PURPOSE
+
+Three modes of finding money:
+1. **Pain mode (default):** Find SPECIFIC people with VERIFIED pain → design offer → sales scripts
+2. **Flow mode (`--flow`):** Trace REAL money flows → find position gaps → calculate margins → match to founder → action plan
+3. **Asymmetry mode (`--asym`):** Scan for INFORMATION ASYMMETRIES — regulatory windows, price gaps, language gaps, timing windows, founder-network edges → filter by competition density → output SPECIFIC opportunities with exact numbers
+
+**This is NOT stage0.** Stage0 = model classifier. Hunt = revenue finder (pain-first OR money-flow-first OR asymmetry-first).
+
+**Philosophy:**
+- No Google "business model" searches. Only: real complaints OR real transaction chains OR cross-referenced anomalies.
+- Pain mode ends at sales scripts. Flow mode ends at position + action plan. Asymmetry mode ends at verified opportunities + action plan.
+- Pain = "who hurts and will pay?" Flow = "where does money flow and where can I sit?" Asymmetry = "what do I know/see that others don't?"
+- **Core insight:** LLM trained on public data → any opportunity LLM finds from Google, millions find too. Only CROSS-REFERENCING uncommon data + regulatory windows + founder-specific network creates real asymmetry.
+
+## INPUTS
+
+```
+/hunt <prey description>          # Pain mode: "/hunt kế toán thuế cá nhân tại VN"
+/hunt                             # Pain mode interactive: asks 3 questions
+/hunt --flow <industry/topic>     # Flow mode: "/hunt --flow dev outsourcing VN→US"
+/hunt --flow                      # Flow mode interactive: asks about observable money
+/hunt --asym                      # Asymmetry mode: run all 5 scanners + filter
+/hunt --asym <focus>              # Asymmetry mode with focus: "/hunt --asym compliance VN"
+/hunt --asym --flow               # Asymmetry → auto-feed best hit into Flow mode
+/hunt --asym --pain               # Asymmetry → auto-feed best hit into Pain mode
+/hunt continue <hunt_id>          # Resume any mode after human action step
+```
+
+## EXECUTION CONTRACT
+
+Follow `hunt-checklist.md` step by step. This file provides detailed instructions per step.
+
+---
+
+## STEP 1: PREY — Who is the target?
+
+**Agent:** Load `hunt-lib/prey-profiler.md` instructions.
+
+### 1.1 Interactive Mode (no args)
+
+Ask 3 questions via AskUser. These are NOT generic market research questions — they force the founder to identify SPECIFIC groups they already have access to.
+
+**Q1: "Who can you reach WITHOUT advertising?"**
+Purpose: Identify existing relationships, communities, professional networks. If answer = "nobody" → probe: industry colleagues? university alumni? online communities you participate in? clients from previous jobs?
+
+**Q2: "What problem do you understand that NORMAL PEOPLE don't?"**
+Purpose: Identify domain knowledge advantage. NOT "I'm good at coding" — that's a skill, not domain knowledge. Domain = "I know how VN tax accountants file quarterly reports and where they waste 3 hours per filing."
+
+**Q3: "Where is money flowing that YOU CAN OBSERVE?"**
+Purpose: Identify proximity to cash flow. NOT theoretical TAM — actual transactions the founder can see. "My previous employer pays $2K/mo for X" or "Farmers in my district sell 500kg coffee/week at Y price."
+
+### 1.2 Direct Mode (args provided)
+
+Extract prey description from args. Still validate: is this a SPECIFIC group (role + industry + geography) or a vague category?
+
+**Vague → REJECT:** "small businesses", "startups", "freelancers"
+**Specific → ACCEPT:** "kế toán thuế cá nhân hành nghề tại VN", "Shopify store owners selling handmade jewelry in US", "coffee farmers in Dak Lak province"
+
+### 1.3 Build prey_profile
+
+Output JSON to `data/hunts/HUNT-<id>/prey_profile.json`:
+
+```json
+{
+  "who": "specific role + industry + geography",
+  "count_estimate": 15000,
+  "count_source": "Vietnam Ministry of Finance registered tax practitioners 2025",
+  "count_confidence": "[K]",
+  "where_they_gather": [
+    "https://www.facebook.com/groups/ketoanthue",
+    "https://webketoan.com/forum",
+    "https://community.misa.vn"
+  ],
+  "how_founder_reaches_them": "Direct DM on Facebook groups — zero cost, Vietnamese native",
+  "money_flow_they_sit_in": "Individual taxpayers → Tax accountant (fee 500K-2M VND/filing) → Tax authority",
+  "founder_advantage": "Former accounting student, knows filing pain firsthand, speaks Vietnamese natively"
+}
+```
+
+### 1.4 Gates
+
+| Condition | Action |
+|-----------|--------|
+| count_estimate < 1,000 | WARN: "Niche may be too small for scalable revenue. Continue?" |
+| how_founder_reaches_them contains "advertising" or "paid ads" | WARN: "Reaching prey requires capital. Can you find a free channel?" |
+| founder_advantage is empty or generic | BLOCK: "What specific advantage do YOU have with this group? Re-answer Q1-Q3." |
+| where_they_gather has < 3 entries | WARN: "Need more gathering places for pain mining. Search harder." |
+
+---
+
+## STEP 2: PAIN — What specifically hurts?
+
+**Agent:** Load `hunt-lib/pain-miner.md` instructions.
+
+### 2.1 Forum Mining
+
+Search ONLY in `where_they_gather` URLs. Do NOT search Google generically.
+
+**Search strategy per platform type:**
+- **Facebook groups:** Search group posts for complaint keywords
+- **Forums (webketoan, voz, etc.):** Search threads with keyword filters
+- **Reddit:** Search subreddit with complaint keywords
+- **Discord/Slack:** Note as gathering place but cannot mine directly — flag for manual check
+
+**Keyword templates by language:**
+
+| Language | Complaint keywords |
+|----------|-------------------|
+| EN | "waste of time", "so frustrated", "anyone know how", "looking for tool", "hate doing", "takes forever" |
+| VN | "chán quá", "mất thời gian", "ai biết cách", "có tool nào", "quá mệt", "lâu quá", "khổ quá" |
+| CN | "太麻烦", "浪费时间", "有没有工具", "求推荐", "头疼" |
+
+**Target:** 5+ distinct complaints with frequency counts (same complaint from 3+ different people = signal).
+
+### 2.2 Money Quantification
+
+For EACH pain found:
+- `time_cost_per_occurrence` = hours spent × estimated hourly rate
+- `money_cost_per_occurrence` = direct cost (tool subscription, outsourcing fee, penalty)
+- If neither quantifiable → tag as "emotional pain only" (lower priority)
+
+### 2.3 Solution Landscape
+
+For EACH pain:
+- `current_solution`: What do they use NOW? (manual process, Excel, existing tool, outsource)
+- `existing_paid_tools`: Name, price, user count if findable
+- `gap`: What's missing from current solutions?
+
+### 2.4 Gates
+
+| Condition | Action |
+|-----------|--------|
+| 0 forum mentions for ALL pains | KILL this prey group. Return to Step 1 with different prey. |
+| money_cost < $10/occurrence for top pain | WARN: "Pain exists but may not be painful enough to pay for. Continue with caution." |
+| All pains already solved by free tool | WARN: "Competitive landscape is dense. Need strong differentiator." |
+
+### 2.5 Pain Ranking
+
+Rank by: `money_cost × frequency × forum_mentions`
+
+Pick top 1-2 pains. Save to `data/hunts/HUNT-<id>/pain_map.json`:
+
+```json
+{
+  "pains": [
+    {
+      "pain": "Manually re-entering invoice data from paper receipts into MISA software",
+      "frequency": "50-100 times per month per accountant",
+      "time_cost_per_occurrence": "15 minutes × 50K VND/hr = 12,500 VND",
+      "money_cost_per_occurrence": "$0.50 USD",
+      "monthly_cost_per_person": "$25-50 USD",
+      "forum_mentions": 12,
+      "forum_sources": ["url1", "url2", "url3"],
+      "current_solution": "Manual data entry or hire assistant",
+      "existing_paid_tools": [
+        {"name": "MISA meInvoice", "price": "1.2M VND/year", "gap": "Only works with e-invoices, not paper"}
+      ],
+      "gap": "No OCR tool handles Vietnamese paper receipts accurately"
+    }
+  ],
+  "top_pain_by_money": 0,
+  "top_pain_by_frequency": 0
+}
+```
+
+---
+
+## STEP 3: PROOF — Is the pain REAL? (BLOCKING)
+
+**Agent:** Load `hunt-lib/proof-tracker.md` instructions.
+
+**THIS STEP CANNOT BE SKIPPED.** No amount of forum mining replaces talking to actual humans.
+
+### 3.1 Generate Outreach Scripts
+
+3 variants, each UNDER 50 WORDS. Tone: curious peer, NOT salesperson.
+
+**DM script template:**
+> [Name], tôi thấy bạn chia sẻ về [context from their post]. Tôi đang tìm hiểu về vấn đề [pain]. Bạn có gặp tình trạng này không? Mất bao nhiêu thời gian mỗi lần?
+
+**Email script template:**
+> Subject: Hỏi thăm về [pain]
+> [Name], tôi đang nghiên cứu về [pain] trong ngành [industry]. Bạn có kinh nghiệm với vấn đề này? Tôi muốn nghe ý kiến thực tế, không bán gì cả.
+
+**Forum comment template:**
+> Tôi cũng gặp vấn đề này. Mọi người ở đây giải quyết bằng cách nào? Có ai tìm được tool nào hiệu quả chưa?
+
+### 3.2 Target List
+
+Identify 20 SPECIFIC people from where_they_gather:
+- Names/handles from forum posts about the pain
+- Group members who commented on related complaints
+- People who asked questions about current solutions
+
+Output as table: Name/Handle | Platform | Their complaint/context | Outreach variant to use
+
+### 3.3 PAUSE — Human Action Required
+
+**CREATE ACTION FILE:** `data/actions/ACTION-HUNT-<id>-proof.json`
+
+```json
+{
+  "action_id": "ACTION-HUNT-<id>-proof",
+  "type": "HUNT_PROOF",
+  "hunt_id": "HUNT-<id>",
+  "status": "PENDING",
+  "created": "<timestamp>",
+  "due": "<7 days from now>",
+  "description": "Send 20 outreach messages to validate pain",
+  "target_count": 20,
+  "scripts_location": "data/hunts/HUNT-<id>/proof.json"
+}
+```
+
+**Display to user:**
+```
+═══════════════════════════════════════════
+  HUNT PAUSED — HUMAN ACTION REQUIRED
+═══════════════════════════════════════════
+  Send these 20 messages within 7 days.
+  Track: sent / replied / confirmed pain / asked for solution
+  
+  When done, run: /hunt continue <hunt_id>
+═══════════════════════════════════════════
+```
+
+**UPDATE hunt-meta.json:** status = PROOF_PENDING, current_step = 3
+
+**STOP HERE.** Do not proceed to Step 4.
+
+### 3.4 On `/hunt continue <id>`
+
+1. Load `data/hunts/HUNT-<id>/hunt-meta.json`
+2. Verify status = PROOF_PENDING
+3. AskUser for results:
+   - "How many messages did you send?"
+   - "How many replies did you get?"
+   - "How many confirmed the pain is real?"
+   - "How many asked 'do you have a solution?'"
+   - "Any price quotes? What would they pay?"
+
+4. Evaluate proof_status:
+
+| Condition | Status | Action |
+|-----------|--------|--------|
+| >= 5 replies AND >= 3 confirmed pain | PASSED | Continue to Step 4 |
+| >= 5 replies AND < 3 confirmed | WEAK | Warn: "Pain confirmed by < 60%. Consider: different pain angle? Or continue with risk." |
+| < 5 replies | FAILED | "Not enough data. Options: (1) Send more messages, (2) Try different pain from Step 2, (3) Try different prey group from Step 1" |
+
+5. Save to `data/hunts/HUNT-<id>/proof.json`
+
+### 3.5 WTP Collection
+
+For people who confirmed pain AND asked for solution:
+> "If a tool solved [pain] in 30 seconds instead of [current time], what would you pay per month?"
+
+Collect price anchors. These drive Step 4 pricing — NOT "industry benchmarks."
+
+---
+
+## STEP 4: OFFER — What exactly to sell?
+
+**Agent:** Load `hunt-lib/offer-designer.md` instructions.
+
+Only runs if proof_status = PASSED (or WEAK with user confirmation).
+
+### 4.1 Minimum Viable Offer
+
+- Solves EXACTLY the verified pain — no scope creep
+- Buildable in ≤ 2 weeks by the founder
+- Format matches founder's skills (code → web app, no-code → template, service → done-for-you)
+
+### 4.2 Pricing
+
+- Start from WTP data collected in Step 3.5
+- Price = median WTP × 0.7 (leave room for perceived value)
+- Calculate: `TAM × 1% conversion × price = MRR floor`
+- If MRR floor < $500/mo → WARN: pricing or TAM too low
+
+### 4.3 Money Flow Position
+
+Where in the existing money flow does this offer sit?
+- Intercepts existing spend (replaces something they already pay for)?
+- Creates new spend (solves something they currently do manually)?
+- Percentage captured of total flow?
+
+### 4.4 Delegation Test
+
+"Who runs this when the founder stops working on it?"
+- If answer = "nobody, it requires my expertise" → it's a JOB, not a business. Flag it.
+- If answer = "a VA at $500/mo" or "automated" → passes delegation test.
+
+### 4.5 Kill Criteria
+
+Specific, measurable, time-bound:
+- "< 5 paying customers after 30 days → pivot pain"
+- "< 20 sign-ups for waitlist after 14 days → pivot prey group"
+- "Churn > 30% month 2 → product-market fit failure"
+
+Save to `data/hunts/HUNT-<id>/offer.json`
+
+---
+
+## STEP 5: SCRIPT — Sales materials (copy-paste ready)
+
+**Agent:** Load `hunt-lib/script-writer.md` instructions.
+
+### 5.1 Cold Outreach (3 variants)
+- DM: UNDER 50 words. Lead with THEIR pain, not your product.
+- Email: UNDER 100 words. Subject line from their exact complaint words.
+- Forum comment: UNDER 30 words. Helpful, not promotional.
+
+### 5.2 Landing Page Copy
+- UNDER 200 words total
+- Structure: Pain statement (their words) → Cost of pain (their numbers) → Solution (what it does) → Price → CTA
+- Use VERBATIM quotes from proof interviews where available
+
+### 5.3 Follow-up Sequence
+- Day 2: Value add (share a tip related to their pain — no selling)
+- Day 5: Social proof or case (if available) or "X people also confirmed this pain"
+- Day 10: Direct ask with time limit
+
+### 5.4 Objection Handling
+Top 5 objections:
+1. "Too expensive" → price anchored to their current cost (from Step 2)
+2. "I don't trust you" → proof from interviews, transparent about being new
+3. "I already have a solution" → gap analysis from Step 2.3
+4. "I don't need this" → cost quantification from Step 2.2
+5. "I'm too busy to try" → "takes 30 seconds vs your current X hours"
+
+### 5.5 Week 1 Action Plan
+- Day 1: Send 10 cold outreach messages using scripts
+- Day 2: Send follow-up #1 to any non-replies from proof batch
+- Day 3: Send 10 more cold outreach to new targets
+- Day 5: Send follow-up #2
+- Day 7: Evaluate: replies, interest, objections. Adjust scripts based on actual responses.
+
+Save all scripts to `data/hunts/HUNT-<id>/scripts/`
+
+---
+
+## PERSISTENCE
+
+### Directory Structure
+
+**Pain mode:**
+```
+data/hunts/HUNT-<date>-<prey_slug>/
+├── hunt-meta.json           # Case metadata (mode: "pain")
+├── prey_profile.json        # Step 1 output
+├── pain_map.json            # Step 2 output
+├── proof.json               # Step 3 output (updated after human action)
+├── offer.json               # Step 4 output
+└── scripts/                 # Step 5 output
+    ├── cold-outreach-dm.md
+    ├── cold-outreach-email.md
+    ├── landing-page-copy.md
+    ├── follow-up-sequence.md
+    ├── objection-handling.md
+    └── week-1-action-plan.md
+```
+
+**Flow mode:**
+```
+data/hunts/HUNT-<date>-<topic_slug>/
+├── hunt-meta.json           # Case metadata (mode: "flow")
+├── flow_map.json            # Step F1 output
+├── gaps.json                # Step F2 output
+├── margins.json             # Step F3 output
+├── role.json                # Step F4 output
+└── scripts/                 # Step F5 output
+    ├── supply-side-scripts.md
+    ├── demand-side-scripts.md
+    └── 30-day-action-plan.md
+```
+
+**Asymmetry mode:**
+```
+data/hunts/HUNT-<date>-asym-<focus_slug>/
+├── hunt-meta.json           # Case metadata (mode: "asymmetry")
+├── raw_signals.json         # Step A1 output
+├── filtered_signals.json    # Step A2 output
+├── opportunities.json       # Step A3 output
+├── verification.json        # Step A4 output
+└── scripts/                 # Step A5 output
+    ├── outreach-scripts.md
+    └── 14-day-action-plan.md
+```
+
+### hunt-meta.json
+
+```json
+{
+  "hunt_id": "HUNT-260522-ke-toan-thue-vn",
+  "mode": "pain",
+  "created": "2026-05-22T21:00:00Z",
+  "updated": "2026-05-22T21:00:00Z",
+  "status": "PREY_IDENTIFIED",
+  "founder_profile": "phamt-260507",
+  "prey_slug": "ke-toan-thue-vn",
+  "current_step": 1,
+  "proof_action_id": null,
+  "stage0_case_id": null,
+  "notes": []
+}
+```
+
+**Status transitions (valid only):**
+```
+PREY_IDENTIFIED → PAIN_MAPPED → PROOF_PENDING → PROOF_PASSED → OFFER_DESIGNED → SCRIPTS_READY
+                                              → PROOF_FAILED → (back to PREY_IDENTIFIED or PAIN_MAPPED)
+                                              → PROOF_WEAK → OFFER_DESIGNED (with warning)
+Any status → KILLED
+```
+
+### Create directory on first run
+
+```bash
+mkdir -p "data/hunts/HUNT-$(date +%y%m%d)-${prey_slug}"
+```
+
+---
+
+## BRIDGES
+
+### Stage0 → Hunt (optional)
+
+When stage0 verdict = MOUNTAIN or SIDE_HUSTLE_WITH_STAIRCASE:
+- Verdict can suggest: "Run `/hunt <prey from analysis>` to find specific customers"
+- hunt-meta.json records: `stage0_case_id` for traceability
+
+Hunt does NOT require stage0. It runs independently.
+
+### Hunt → Blueprint
+
+After status = SCRIPTS_READY:
+- Suggest: "Run `/blueprint` to create execution plan for building [offer_name]"
+- Pass offer.json as input context
+
+### Hunt → Exec
+
+After scripts ready:
+- First ACTION auto-created: "Send 10 cold outreach messages using scripts/cold-outreach-dm.md"
+- /exec tracks daily execution progress
+
+---
+
+## FLOW MODE — `/hunt --flow`
+
+**When to use:** You can already SEE money moving (transactions, invoices, commissions, fees) and want to find WHERE TO SIT in that flow — not what to build.
+
+**Key difference from pain mode:** Pain mode finds what hurts → builds a fix. Flow mode finds where money moves → finds a position. Position ≠ product. Position = broker, referral, arbitrage, aggregator, intelligence.
+
+### STEP F1: TRACE — Map the money chain
+
+**Agent:** Load `hunt-lib/flow-tracer.md` instructions.
+
+#### F1.1 Interactive Mode (no topic)
+
+AskUser 2 questions:
+
+**Q1: "What TRANSACTION can you observe right now?"**
+Not theoretical market size. Actual money changing hands that you can see, touch, or participate in.
+Examples: "My company pays $5K/mo to recruiters for VN devs", "Farmers sell to traders at 95K VND/kg", "Clients pay agencies $150/hr for work done at $30/hr"
+
+**Q2: "How many people are involved in this transaction chain?"**
+Trace the chain: who pays → who → who → who gets the final service/product?
+
+#### F1.2 Direct Mode (topic provided)
+
+Extract industry/topic from args. Research the money flow chain using:
+- WebSearch for industry fee structures, commission rates, published pricing
+- Forum mining for practitioner-reported actual earnings at each node
+- Government/industry data for registered entity counts
+
+#### F1.3 Build flow_map
+
+Trace minimum 5 nodes. For each node: entity, $ per transaction, volume, take rate, monthly income.
+
+Output to `data/hunts/HUNT-<id>/flow_map.json`
+
+#### F1.4 Gates
+
+| Condition | Action |
+|-----------|--------|
+| Total chain volume < $10K/mo | WARN: "Small chain. Margins may be too thin." |
+| All nodes tagged [?] | BLOCK: "No verified data. Find at least 2 [K] or [T] data points." |
+| < 3 nodes mapped | BLOCK: "Chain too short. Trace further upstream/downstream." |
+
+---
+
+### STEP F2: GAP — Find position opportunities
+
+**Agent:** Load `hunt-lib/gap-finder.md` instructions.
+
+#### F2.1 Analyze Each Node
+
+For each chain node from F1:
+- Who currently occupies this position?
+- How strong are they? (STRONG / WEAK / EMPTY)
+- What's their weakness? (overpriced, slow, no trust, fragmented, gatekept)
+
+#### F2.2 Classify Gaps
+
+Each gap gets ONE position type:
+- **BROKER:** Connect supply to demand, take commission
+- **REFERRAL:** Send qualified leads, earn fixed bounty
+- **ARBITRAGE:** Buy low here, sell high there (geographic, skill, information)
+- **AGGREGATOR:** Bundle small units into packages bigger players want
+- **INTELLIGENCE:** Know something others don't, sell the knowing
+- **BUILDER:** Build product (LAST RESORT — this is labor disguised as leverage)
+
+#### F2.3 AI Resistance Test
+
+For each gap: "Can an LLM/automation replace this within 24 months?"
+- HIGH resistance: requires trust, physical presence, licensed activity, relationship depth
+- MEDIUM: core automatable but human layer adds value
+- LOW: pure information work, no relationship moat → SKIP this gap
+
+#### F2.4 Gates
+
+| Condition | Action |
+|-----------|--------|
+| All gaps = BUILDER type | WARN: "No position opportunities found. This chain rewards building, not positioning. Consider pain mode instead." |
+| All gaps = LOW AI resistance | WARN: "All positions automatable within 2 years. Find a chain with more human-trust nodes." |
+| No gap with capital_required = $0 | WARN: "All positions require capital. Can you find a zero-capital entry point?" |
+
+Output to `data/hunts/HUNT-<id>/gaps.json`
+
+---
+
+### STEP F3: MARGIN — Calculate real income
+
+**Agent:** Load `hunt-lib/margin-calculator.md` instructions.
+
+#### F3.1 Three Scenarios
+
+For each viable gap (WEAK or EMPTY, AI resistance >= MEDIUM):
+- FLOOR: minimum realistic volume × minimum take rate - all costs
+- BASE: moderate assumptions
+- CEILING: optimistic but not fantasy
+
+#### F3.2 Include ALL Costs
+
+- Founder time: hours/week × opportunity cost per hour
+- Tools: any subscriptions, platforms, software needed
+- Transaction costs: payment processing, platform fees
+- Communication: phone, travel, entertainment (nhau)
+
+#### F3.3 Compound Test
+
+Does this position COMPOUND (network grows, reputation builds, volume increases automatically)?
+Or is it FLAT (same effort = same income forever, linear relationship)?
+
+- EXPONENTIAL: each transaction brings more transactions (network effect)
+- LINEAR: more effort = more income, but effort scales 1:1
+- FLAT: capped by time, no growth without proportional effort increase
+
+#### F3.4 Kill Criteria
+
+If FLOOR scenario < $200/mo after 90 days → position NOT VIABLE. Remove from consideration.
+
+#### F3.5 Gates
+
+| Condition | Action |
+|-----------|--------|
+| All positions NOT_VIABLE | KILL this flow. Return to F1 with different transaction chain. |
+| Best position FLOOR < founder's current $/hr | WARN: "Position pays less than your current work. Worth it only if compound_potential = EXPONENTIAL." |
+
+Output to `data/hunts/HUNT-<id>/margins.json`
+
+---
+
+### STEP F4: ROLE — Match to founder + design entry
+
+**Agent:** Load `hunt-lib/offer-designer.md` (ROLE MODE).
+
+#### F4.1 Founder-Position Fit
+
+For top 2-3 viable positions:
+- Does founder have ACCESS to supply side? (knows the providers)
+- Does founder have ACCESS to demand side? (knows the buyers)
+- Does founder have TRUST in this industry? (reputation, credentials, relationships)
+- Does founder have LANGUAGE match? (can communicate with both sides natively)
+
+#### F4.2 Entry Design
+
+For the best-fit position:
+- Day 1 action: what's the FIRST thing to do? (not "research more" — an action)
+- First transaction: how does the FIRST deal happen?
+- Scaling mechanism: how does deal #2 come from deal #1?
+- Protection: what stops someone from cutting you out after deal #1?
+
+#### F4.3 Disintermediation Defense
+
+For BROKER/REFERRAL/AGGREGATOR positions:
+- After you connect A to B, what prevents A from going directly to B next time?
+- Design at least ONE lock-in mechanism: multi-source blending, quality guarantee, payment flexibility, volume discount only through you, ongoing service layer
+
+Save to `data/hunts/HUNT-<id>/role.json`
+
+---
+
+### STEP F5: ACTION — Day 1-30 execution plan
+
+**Agent:** Load `hunt-lib/script-writer.md` (FLOW MODE).
+
+#### F5.1 Scripts Per Role Type
+
+| Position | Script Type | Purpose |
+|----------|-------------|---------|
+| BROKER | Introduction script | Connect supply to demand, state your value |
+| REFERRAL | Pitch script | Convince referral program owner you bring volume |
+| ARBITRAGE | Buy script + Sell script | Different message per side |
+| AGGREGATOR | Recruitment script + Sales script | Recruit supply, pitch bundle to buyers |
+| INTELLIGENCE | Value demo + Subscribe pitch | Show sample insight, sell ongoing access |
+
+#### F5.2 30-Day Action Plan
+
+Week 1: Establish supply access (reach out to 10 providers/sources)
+Week 2: Establish demand access (reach out to 10 buyers/clients)
+Week 3: Execute first 3 transactions manually. Track margins.
+Week 4: Evaluate: actual margin vs projected? Volume achievable? Adjust or kill.
+
+#### F5.3 Kill Criteria
+
+- Week 2: < 3 supply sources confirmed → kill, try different chain
+- Week 3: 0 completed transactions → kill, position not accessible
+- Week 4: actual margin < 50% of FLOOR projection → kill, margins not real
+
+Save to `data/hunts/HUNT-<id>/scripts/` (same directory as pain mode scripts)
+
+---
+
+### FLOW MODE PERSISTENCE
+
+hunt-meta.json for flow mode:
+
+```json
+{
+  "hunt_id": "HUNT-260522-dev-broker-vn-us",
+  "mode": "flow",
+  "created": "2026-05-22T22:00:00Z",
+  "status": "FLOW_TRACED",
+  "current_step": "F1",
+  "flow_topic": "dev outsourcing VN→US",
+  "position_type": null,
+  "stage0_case_id": null
+}
+```
+
+**Status transitions (flow mode):**
+```
+FLOW_TRACED → GAPS_FOUND → MARGINS_CALCULATED → ROLE_MATCHED → ACTION_READY
+Any status → KILLED
+```
+
+---
+
+## ASYMMETRY MODE — `/hunt --asym`
+
+**When to use:** You want to find opportunities that OTHERS CANNOT SEE — not bigger markets, not better products, but information gaps, regulatory windows, and cross-reference anomalies that create temporary or structural advantages.
+
+**Key difference from pain/flow:** Pain mode finds what hurts. Flow mode finds where money moves. Asymmetry mode finds what YOU KNOW/SEE that others don't. The output is not "consider being a broker" — it's "Sell [X] to [Y] via [Z] at [price], margin [amount], competition [count], window [months]."
+
+### STEP A1: SCAN — Run 5 asymmetry scanners
+
+**Agents:** Load all 5 scanners from `hunt-lib/scanners/` in parallel.
+
+#### A1.1 Founder Network Scan (FIRST — BLOCKING)
+
+Load `hunt-lib/scanners/founder-network-scanner.md`. This scanner is INTERACTIVE — it must run FIRST because its output feeds the other 4 scanners with founder-specific context.
+
+Run the 5-question interview protocol. Output: network nodes, local observations, language bridges, insider knowledge.
+
+#### A1.2 Parallel Scanners (run all 4 simultaneously)
+
+After founder-network-scanner completes, run these 4 in parallel:
+
+1. **Regulatory Scanner** — Load `hunt-lib/scanners/regulatory-scanner.md`
+   - Input: founder's geography + languages from A1.1
+   - Scan government gazettes for new regulations with compliance deadlines
+   
+2. **Cross-Price Scanner** — Load `hunt-lib/scanners/cross-price-scanner.md`
+   - Input: founder's industry knowledge + language bridges from A1.1
+   - Compare pricing across platforms/geographies for same service
+   
+3. **Cross-Language Scanner** — Load `hunt-lib/scanners/cross-language-scanner.md`
+   - Input: founder's language pairs from A1.1
+   - Find tools/services popular in one language but missing in another
+   
+4. **Timing Scanner** — Load `hunt-lib/scanners/timing-scanner.md`
+   - Input: founder's industry + geography from A1.1
+   - Find events/changes creating demand windows in next 90 days
+
+#### A1.3 Signal Collection
+
+Collect all signals from 5 scanners into unified signal list. Tag each with source scanner.
+
+**Gate:** If total signals < 3 across all scanners → "Insufficient asymmetry signals. Consider pain mode (you can find opportunities through customer conversations) or flow mode (trace money you can already see)."
+
+Save to `data/hunts/HUNT-<id>/raw_signals.json`
+
+---
+
+### STEP A2: FILTER — Apply 5 asymmetry filters
+
+**Agent:** Load `hunt-lib/asymmetry-filter.md`.
+
+Run ALL signals through 5 sequential filters:
+
+1. **Competition Density** — COUNT actual competitors by name. > 20 = KILL.
+2. **Protection Window** — MONTHS before copyable. < 2 = KILL.
+3. **AI Resistance** — Can LLM do 80% of this? Score 1-10. < 2 = KILL.
+4. **Founder Access** — Can start with $0-500? No access = KILL.
+5. **Margin After Competition** — Net monthly ÷ (1 + competitor_count). < $200 = KILL.
+
+Calculate weighted ASYMMETRY SCORE per surviving signal.
+
+**Gate:** If 0 signals survive all 5 filters → "No viable asymmetries found. Options: (1) Run founder-network scan again with deeper probing, (2) Try flow mode on an industry you observe, (3) Try pain mode on a group you have access to."
+
+Save to `data/hunts/HUNT-<id>/filtered_signals.json`
+
+---
+
+### STEP A3: SPECIFICS — Generate exact opportunity specs
+
+For TOP 3 surviving signals, generate a SPECIFIC opportunity description. NOT "consider doing X" — EXACTLY:
+
+```
+OPPORTUNITY: [name]
+SELL: [exact product/service/action]
+TO: [exact customer description — role, industry, geography, count]
+VIA: [exact channel — platform, DM, email, referral, cold call]
+AT: [exact price with currency]
+MARGIN: [exact net margin per unit after ALL costs]
+MONTHLY TARGET: [realistic units × margin = monthly income]
+COMPETITION: [exact count + names of competitors]
+PROTECTION: [months before copyable + why]
+AI RISK: [score + explanation]
+FOUNDER FIT: [why THIS founder specifically]
+DEADLINE: [if timing-dependent, exact date]
+```
+
+Save to `data/hunts/HUNT-<id>/opportunities.json`
+
+---
+
+### STEP A4: VERIFY — Cross-check with real data
+
+For each opportunity in A3:
+
+1. **Customer existence check:** Can we find ACTUAL people in the target group? Search forums, LinkedIn, directories. List 10 specific names/handles.
+2. **Price verification:** Is the stated price realistic? Search for comparable pricing.
+3. **Competitor recount:** Search ONE MORE TIME for competitors. Different search terms.
+4. **Forum complaint check:** Do target customers ACTUALLY complain about the problem? Find 3+ complaints with URLs.
+
+**Gate:** If verification FAILS (can't find customers, price unrealistic, missed competitors) → downgrade or KILL the opportunity. Update filtered_signals.json.
+
+Save to `data/hunts/HUNT-<id>/verification.json`
+
+---
+
+### STEP A5: ACTION — Outreach scripts + 14-day plan
+
+For the #1 verified opportunity:
+
+#### A5.1 Outreach Scripts
+
+3 variants, each UNDER 50 WORDS. Tone depends on opportunity type:
+- Regulatory → urgent/helpful: "Deadline [date] is coming. Most [role] don't know about [requirement]. I help prepare compliance [deliverable] for [price]."
+- Price gap → value-forward: "I source [service] at [lower price] — same quality as [higher-priced alternative]. Want a trial?"
+- Language gap → trust-building: "I noticed [tool] doesn't have a Vietnamese version. I built a localized version at [price]. Try free for 7 days."
+- Timing → urgency: "[Event] is in [X days]. Last year [what happened]. I can prepare you for [price]."
+- Network → warm intro: "[Mutual contact] suggested I reach out. I help [role] with [specific problem]."
+
+#### A5.2 14-Day Action Plan
+
+```
+Day 1-2:   Contact first 10 targets using script variant A
+Day 3-4:   Follow up on no-replies. Contact 10 more with variant B.
+Day 5-7:   Evaluate: replies, interest, objections. Refine scripts.
+Day 8-10:  Execute first 3 transactions/deliveries. Track actual margins.
+Day 11-12: Collect feedback. Adjust pricing/scope if needed.
+Day 13-14: Decision: SCALE (margins real, demand confirmed) or PIVOT (try opportunity #2 from A3)
+```
+
+#### A5.3 Kill Criteria
+
+- Day 7: < 3 positive replies from 20 contacts → opportunity may not be real. Try opportunity #2.
+- Day 14: 0 completed transactions → KILL. Run `/hunt --asym` again with different focus.
+- Day 14: actual margin < 50% of projected → margins not real. Re-evaluate costs.
+
+Save to `data/hunts/HUNT-<id>/scripts/`
+
+---
+
+### ASYMMETRY → FLOW BRIDGE (`--asym --flow`)
+
+When `--asym --flow` is used:
+1. Run A1-A4 as normal
+2. For the #1 verified opportunity, AUTO-FEED into flow mode:
+   - Extract the MONEY FLOW that the opportunity sits in
+   - Start F1 (flow tracer) with this as the entry transaction
+   - Continue F2-F5 normally
+3. This produces: asymmetry signal + position in money flow + margin calculation + action plan
+
+### ASYMMETRY → PAIN BRIDGE (`--asym --pain`)
+
+When `--asym --pain` is used:
+1. Run A1-A4 as normal
+2. For the #1 verified opportunity, AUTO-FEED into pain mode:
+   - Extract the TARGET CUSTOMER GROUP as prey
+   - Start Step 1 (prey profiler) pre-filled with asymmetry data
+   - Continue Steps 2-5 normally (including BLOCKING proof gate)
+3. This produces: asymmetry signal + verified customer pain + offer + sales scripts
+
+---
+
+### ASYMMETRY MODE PERSISTENCE
+
+hunt-meta.json for asymmetry mode:
+
+```json
+{
+  "hunt_id": "HUNT-260522-asym-eudr-compliance",
+  "mode": "asymmetry",
+  "created": "2026-05-22T22:00:00Z",
+  "status": "SCANNING",
+  "current_step": "A1",
+  "focus_topic": "compliance VN",
+  "scanners_completed": [],
+  "signals_total": 0,
+  "signals_survived": 0,
+  "chain_mode": null,
+  "stage0_case_id": null
+}
+```
+
+**Status transitions (asymmetry mode):**
+```
+SCANNING → FILTERING → SPECIFYING → VERIFYING → ACTION_READY
+SCANNING → FILTERING → NO_VIABLE_SIGNALS → (suggest pain/flow)
+ACTION_READY → CHAINED_TO_FLOW (if --asym --flow)
+ACTION_READY → CHAINED_TO_PAIN (if --asym --pain)
+Any status → KILLED
+```
+
+**Directory structure (asymmetry mode):**
+```
+data/hunts/HUNT-<date>-asym-<focus_slug>/
+├── hunt-meta.json
+├── raw_signals.json         # A1 output — all scanner signals
+├── filtered_signals.json    # A2 output — after 5 filters
+├── opportunities.json       # A3 output — top 3 specific opportunities
+├── verification.json        # A4 output — cross-check results
+└── scripts/                 # A5 output
+    ├── outreach-scripts.md
+    └── 14-day-action-plan.md
+```
+
+---
+
+## ANTI-PATTERNS (things /hunt must NEVER do)
+
+1. **No Google "business model" searches.** Hunt searches for COMPLAINTS or MONEY FLOWS or ANOMALIES, not models.
+2. **No "top 10 ideas" lists.** Hunt produces ONE offer/position/opportunity for ONE pain/flow/asymmetry.
+3. **No skipping proof (pain mode).** Step 3 is BLOCKING. No human validation = no continuation.
+4. **No "industry benchmark" pricing.** Price/margin comes from WTP data, observed take rates, or verified price gaps only.
+5. **No scope creep in offer.** MVP solves exactly ONE pain. Position fills exactly ONE gap. Opportunity exploits exactly ONE asymmetry.
+6. **No generic outreach.** Every script uses specific context from the prey's own words, actual flow data, or verified asymmetry signal.
+7. **No chaining to other commands.** Hunt outputs, displays, and STOPS. (Exception: --asym --flow and --asym --pain chain modes.)
+8. **No defaulting to BUILDER in flow mode.** If all gaps = BUILDER, warn user and suggest pain mode instead.
+9. **No untagged numbers.** Every $ amount must have [K]/[T]/[?] confidence tag (flow + asymmetry modes).
+10. **No hand-waved competition in asymmetry mode.** Competition MUST be COUNTED by name, not estimated as "low/medium/high."
+11. **No generic opportunity descriptions.** Asymmetry mode output must include exact: product, customer, channel, price, margin, competitor count, protection window.

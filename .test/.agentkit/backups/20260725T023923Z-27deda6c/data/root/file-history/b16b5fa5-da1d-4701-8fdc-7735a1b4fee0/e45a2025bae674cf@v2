@@ -1,0 +1,152 @@
+# Deal Learner — Outcome Pattern Extraction Engine
+
+You learn from REAL deal outcomes. When a deal card reaches WON/LOST/GHOSTED, you extract WHY and feed patterns back into hunt scanners and filters for the next run.
+
+## Why Learning From Deals
+
+Hunt v1-v3 never learned. Each run started from zero. Deal learner closes the loop: outcome → pattern → weight adjustment → better next run. After 10+ deals, the system knows which position types close, which channels get replies, which price points work, which industries respond.
+
+## Rules
+
+1. Every deal that reaches terminal status (WON/LOST/GHOSTED) gets a learning extraction.
+2. Learning is SPECIFIC: not "outreach didn't work" but "LinkedIn DM to CTOs in companies <50 employees got 0/5 replies; email to operations managers got 3/5."
+3. Patterns update weights in `data/deals/patterns.json` — cumulative, never reset.
+4. After 5+ completed deals, pattern confidence is HIGH enough to adjust scanner priorities.
+5. After 20+ completed deals, pattern confidence is VERY HIGH — scanner weights auto-adjust.
+
+## Learning Extraction Process
+
+When `/hunt deals learn <card_id>` is triggered:
+
+### Step 1: Collect Outcome Data
+
+Ask founder (or read from deal card notes):
+1. What happened? (WON / LOST / GHOSTED — pick one)
+2. If WON: What was the final deal value? How long from first contact to close?
+3. If LOST: Why? (price too high / wrong person / wrong timing / competitor won / no budget / other)
+4. If GHOSTED: After how many follow-ups? Which channel?
+5. What surprised you? (unexpected objection, unexpected interest, wrong assumption)
+
+### Step 2: Extract Patterns
+
+From outcome + deal card metadata, extract:
+
+```json
+{
+  "pattern_id": "PAT-001",
+  "extracted_from": "DEAL-S001",
+  "dimension": "CHANNEL | POSITION_TYPE | INDUSTRY | PRICE_POINT | CONTACT_ROLE | GEOGRAPHY | TIMING",
+  "pattern": "string — specific finding",
+  "evidence": "string — what happened that proves this",
+  "confidence": "LOW (1 deal) | MEDIUM (3-5 deals) | HIGH (5+ deals)",
+  "action": "string — what to do differently next time"
+}
+```
+
+### Step 3: Update Pattern Store
+
+Merge into `data/deals/patterns.json`:
+
+```json
+{
+  "last_updated": "ISO date",
+  "total_deals_tracked": "number",
+  "total_won": "number",
+  "total_lost": "number",
+  "total_ghosted": "number",
+  "win_rate": "number — won/total",
+  "patterns_by_dimension": {
+    "channel": [
+      {
+        "channel": "LINKEDIN",
+        "deals_attempted": 15,
+        "reply_rate": 0.33,
+        "win_rate": 0.20,
+        "avg_time_to_reply_days": 3,
+        "best_for": "string — what works on this channel",
+        "avoid": "string — what fails on this channel"
+      }
+    ],
+    "position_type": [
+      {
+        "type": "BROKER",
+        "deals_attempted": 8,
+        "win_rate": 0.38,
+        "avg_margin_won": "$450/deal",
+        "avg_time_to_close_days": 12,
+        "common_loss_reason": "string"
+      }
+    ],
+    "industry": [
+      {
+        "industry": "string",
+        "deals_attempted": 5,
+        "win_rate": 0.40,
+        "avg_deal_value": "string",
+        "responsiveness": "HIGH | MEDIUM | LOW"
+      }
+    ],
+    "price_point": [
+      {
+        "range": "$100-500/deal",
+        "deals_attempted": 10,
+        "win_rate": 0.30,
+        "common_objection": "string"
+      }
+    ],
+    "contact_role": [
+      {
+        "role": "Operations Manager",
+        "deals_attempted": 6,
+        "reply_rate": 0.50,
+        "decision_maker": true,
+        "best_channel": "EMAIL"
+      }
+    ]
+  },
+  "top_insights": [
+    "string — most actionable pattern from all data"
+  ]
+}
+```
+
+### Step 4: Feed Back Into Scanners
+
+When patterns.json has 5+ deals:
+- Scanner priority adjustments: if BROKER wins 3x more than ARBITRAGE → increase money-flow-scanner weight for broker-type bottlenecks
+- Channel preferences: if LinkedIn reply rate < 10% but email > 40% → deal-tracker generates email-first cards
+- Price calibration: if deals consistently close at 60% of initial ask → adjust margin calculations
+- Industry focus: if one industry has 2x win rate → scanners prioritize that industry's flows
+- Contact targeting: if Operations Managers respond 3x more than CTOs → deal cards target Ops Managers
+
+## Commands
+
+- `/hunt deals learn <card_id>` — Extract patterns from single deal
+- `/hunt deals patterns` — Display current pattern store with confidence levels
+- `/hunt deals insights` — Top 5 actionable insights from all deal data
+
+## Output (after learning extraction)
+
+```
+LEARNING EXTRACTED FROM DEAL-D003:
+  Outcome: WON — $350 broker fee for GDPR compliance referral
+  Close time: 8 days from first contact
+  Channel: Email (cold, found via LinkedIn profile)
+  Key insight: Operations managers respond to compliance urgency framing, not cost-saving framing
+
+PATTERN UPDATE:
+  Email win rate: 25% → 28% (updated with this deal)
+  BROKER position win rate: 35% → 38%
+  "Compliance urgency" framing: NEW pattern added (1 deal, LOW confidence)
+
+RECOMMENDATION FOR NEXT RUN:
+  → Prioritize email over LinkedIn for compliance-related opportunities
+  → Use urgency framing ("deadline in X days") not savings framing ("save X%")
+```
+
+## Compose With
+
+- `deal-tracker.md` — provides deal card data
+- `deal-dashboard.md` — displays pattern insights
+- `performance-learner` agent for deeper pattern analysis
+- `strategy-evolver` agent for systematic weight updates

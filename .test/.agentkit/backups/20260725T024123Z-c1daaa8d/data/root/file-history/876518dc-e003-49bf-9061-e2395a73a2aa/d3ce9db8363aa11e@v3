@@ -1,0 +1,219 @@
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	ch "github.com/ClickHouse/clickhouse-go/v2"
+)
+
+func main() {
+	dryRun := flag.Bool("dry-run", false, "Show pending SQL without applying")
+	migrationsDir := flag.String("dir", "internal/clickhouse/migrations", "Migrations directory")
+	dsn := flag.String("dsn", "", "ClickHouse DSN (or CLICKHOUSE_DSN env)")
+	flag.Parse()
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
+	clickDSN := *dsn
+	if clickDSN == "" {
+		clickDSN = os.Getenv("CLICKHOUSE_DSN")
+	}
+	if clickDSN == "" {
+		logger.Error("no DSN provided — use -dsn or CLICKHOUSE_DSN env")
+		os.Exit(1)
+	}
+
+	opts, err := ch.ParseDSN(clickDSN)
+	if err != nil {
+		logger.Error("parse DSN", "error", err)
+		os.Exit(1)
+	}
+
+	conn, err := ch.Open(opts)
+	if err != nil {
+		logger.Error("open connection", "error", err)
+		os.Exit(1)
+	}
+	defer conn.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	if err := conn.Ping(ctx); err != nil {
+		logger.Error("ping failed", "error", err)
+		os.Exit(1)
+	}
+
+	if err := ensureMigrationsTable(ctx, conn); err != nil {
+		logger.Error("create migrations table", "error", err)
+		os.Exit(1)
+	}
+
+	applied, err := getAppliedVersions(ctx, conn)
+	if err != nil {
+		logger.Error("read applied migrations", "error", err)
+		os.Exit(1)
+	}
+
+	files, err := listMigrationFiles(*migrationsDir)
+	if err != nil {
+		logger.Error("list migration files", "error", err, "dir", *migrationsDir)
+		os.Exit(1)
+	}
+
+	pending := 0
+	for _, f := range files {
+		version := migrationVersion(f)
+		if applied[version] {
+			logger.Info("skip (applied)", "version", version, "file", f)
+			continue
+		}
+
+		sql, err := os.ReadFile(filepath.Join(*migrationsDir, f))
+		if err != nil {
+			logger.Error("read migration", "error", err, "file", f)
+			os.Exit(1)
+		}
+
+		if *dryRun {
+			fmt.Printf("-- PENDING: %s\n%s\n\n", f, string(sql))
+			pending++
+			continue
+		}
+
+		logger.Info("applying", "version", version, "file", f)
+		if err := execMigration(ctx, conn, string(sql)); err != nil {
+			logger.Error("migration failed", "error", err, "file", f)
+			os.Exit(1)
+		}
+
+		if err := recordMigration(ctx, conn, version, f); err != nil {
+			logger.Error("record migration", "error", err, "version", version)
+			os.Exit(1)
+		}
+
+		logger.Info("applied", "version", version)
+		pending++
+	}
+
+	if *dryRun {
+		fmt.Printf("-- %d pending migration(s)\n", pending)
+	} else if pending == 0 {
+		logger.Info("all migrations applied — nothing to do")
+	} else {
+		logger.Info("migrations complete", "applied", pending)
+	}
+}
+
+func ensureMigrationsTable(ctx context.Context, conn ch.Conn) error {
+	if err := conn.Exec(ctx, "CREATE DATABASE IF NOT EXISTS codeflow"); err != nil {
+		return fmt.Errorf("create database: %w", err)
+	}
+	return conn.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS codeflow.schema_migrations (
+			version String,
+			filename String,
+			applied_at DateTime64(3) DEFAULT now64(3)
+		) ENGINE = MergeTree()
+		ORDER BY version
+	`)
+}
+
+func getAppliedVersions(ctx context.Context, conn ch.Conn) (map[string]bool, error) {
+	rows, err := conn.Query(ctx, "SELECT version FROM codeflow.schema_migrations")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	applied := make(map[string]bool)
+	for rows.Next() {
+		var v string
+		if err := rows.Scan(&v); err != nil {
+			return nil, err
+		}
+		applied[v] = true
+	}
+	return applied, nil
+}
+
+func listMigrationFiles(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	var files []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
+			files = append(files, e.Name())
+		}
+	}
+	sort.Strings(files)
+	return files, nil
+}
+
+func migrationVersion(filename string) string {
+	parts := strings.SplitN(filename, "_", 2)
+	if len(parts) > 0 {
+		return parts[0]
+	}
+	return filename
+}
+
+func execMigration(ctx context.Context, conn ch.Conn, sql string) error {
+	stmts := splitStatements(sql)
+	for _, stmt := range stmts {
+		stmt = strings.TrimSpace(stmt)
+		if stmt == "" || strings.HasPrefix(stmt, "--") {
+			continue
+		}
+		if err := conn.Exec(ctx, stmt); err != nil {
+			return fmt.Errorf("exec statement: %w\nSQL: %s", err, truncate(stmt, 200))
+		}
+	}
+	return nil
+}
+
+func recordMigration(ctx context.Context, conn ch.Conn, version, filename string) error {
+	return conn.Exec(ctx, "INSERT INTO codeflow.schema_migrations (version, filename) VALUES ($1, $2)", version, filename)
+}
+
+func splitStatements(sql string) []string {
+	var stmts []string
+	var current strings.Builder
+	for _, line := range strings.Split(sql, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "--") {
+			if current.Len() > 0 {
+				current.WriteString("\n")
+			}
+			continue
+		}
+		current.WriteString(line)
+		current.WriteString("\n")
+		if strings.HasSuffix(trimmed, ";") {
+			stmts = append(stmts, current.String())
+			current.Reset()
+		}
+	}
+	if s := strings.TrimSpace(current.String()); s != "" {
+		stmts = append(stmts, s)
+	}
+	return stmts
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
+}

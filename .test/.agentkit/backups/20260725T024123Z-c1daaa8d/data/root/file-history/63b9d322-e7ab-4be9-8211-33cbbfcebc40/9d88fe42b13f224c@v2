@@ -1,0 +1,420 @@
+# CODEFLOW — Brutal Honest Assessment & Market Reality Check
+
+**Date:** 2026-06-06
+**Type:** Deep review of brainstorm-report.md + codebase audit + market analysis
+**Verdict:** The PAIN is REAL. The execution is FAST but SHALLOW. Token compression is a FEATURE not a BUSINESS. The ONLY monetizable angle is PROVES (productivity proof).
+
+---
+
+## PART 1: WHAT EXISTS TODAY (Code Audit)
+
+### Codebase Stats (verified)
+
+| Component | LOC | Tests | Status |
+|-----------|-----|-------|--------|
+| Rust CLI (core + cli) | 5,754 | 87 pass, 0 fail | Compiles, runs |
+| Go Cloud (ingest + API) | 4,634 | API tests pass, waste blocked by AppControl | Runs in Docker |
+| Next.js Dashboard | 2,621 | None | Renders with seed data |
+| VS Code Extension | 333 | None | Basic status bar |
+| TOML Filters | 15 files | N/A | git, cargo, npm, pytest, etc. |
+| **Total** | **~13,342** | **87 passing** | **MVP-functional** |
+
+### Timeline Reality
+
+- **Day 0 (June 3):** Init commit with brainstorm report
+- **Day 1 (June 4):** 10 commits — ALL features from Phase 1-5 in ONE DAY
+- **Day 2-3 (June 5-6):** Plans for investor demo, productivity engine
+
+**This entire codebase was built by Claude Code in ~2 days.** [K]
+
+### What's REAL vs CLAIMED
+
+| Feature | Claimed | Reality |
+|---------|---------|---------|
+| L1: Smart Compression | 20-25% savings | ✅ Real — 15 TOML filters, 8-stage pipeline, unit tests |
+| L2: Bash Dedup | Part of L1 | ✅ Real — blake3 hashing, SQLite cache, session-scoped |
+| L2.5: Read/Grep/Glob Dedup | 30-50% savings | ✅ Real — mtime verification, additionalContext injection |
+| L3: Model Routing | 20-30% savings | ⚠️ Classifier exists (293 LOC) but CANNOT ROUTE for Claude Code subscription users — only works with API-key tools (Aider/Cline) |
+| L4: Waste Detection | 10-15% savings | ✅ Real — 5 pattern types, 480 LOC, cloud API endpoint |
+| L5: Security Scanner | Enterprise gate | ✅ Real — regex-based (AWS keys, GitHub tokens, PII, private keys, high-entropy) |
+| L6: Metrics/Tracking | Local + cloud | ✅ Real — SQLite local, Protobuf sync to ClickHouse |
+| Cloud Dashboard | Cost + waste + security | ✅ Real — 8 pages, seed data, charts |
+| Productivity Metrics | PRs/cycle-time/acceptance | ❌ NOT BUILT — plan exists, pending |
+| SSO/WorkOS | Enterprise auth | ⚠️ Code exists but untested — dashboard throws 500 without WorkOS keys |
+| Stripe Billing | Checkout + webhooks | ⚠️ Code exists but not connected to actual Stripe account |
+
+### Code Quality Assessment
+
+**Strengths:**
+- Clean Rust architecture — separate core/cli crates, proper error handling
+- Fail-open design genuinely implemented (not just claimed)
+- Protobuf for event serialization (efficient, typed)
+- NATS JetStream for async event processing (production-grade choice)
+- ClickHouse for analytics (correct DB for time-series aggregation)
+- Docker Compose with health checks, migration service, seed data
+
+**Weaknesses:**
+- Zero dashboard tests
+- Zero VS Code extension tests
+- Go waste tests blocked by Windows AppControl policy
+- Single developer (Claude Code) — no human code review
+- No CI/CD pipeline running (`.github/workflows/` exists but untested)
+- No real user has ever used this
+- `cloud;C` directory exists (looks like a typo/artifact)
+
+---
+
+## PART 2: MARKET REALITY (Research-Verified)
+
+### The Market IS Real [K]
+
+- Enterprise AI coding spend: $9.5-12.8B/year (2026) [K]
+- Microsoft cancelled 12,000+ Claude Code licenses — per-dev costs $500-2,000/mo [K]
+- Uber burned entire 2026 AI budget in 4 months [K]
+- JPMorgan published note: "AI Token Costs are Eating Internet Profits Alive" [K]
+- 68% enterprise leaders say AI delivers value, only 33% can attribute spend [K]
+- Average enterprise cost: $150-250/dev/month, power users $1,200+/month [K]
+
+**The pain is VERIFIED and GROWING.** This is not a solution looking for a problem.
+
+### Competitive Landscape (UPDATED — brainstorm report was INCOMPLETE)
+
+The brainstorm report listed 6 competitors. The REAL landscape has 8+:
+
+| Competitor | Type | Stars/Users | Funding | Threat to CODEFLOW |
+|------------|------|-------------|---------|-------------------|
+| **RTK** | CLI proxy (Rust) | 39.5K stars, v0.40 | Unknown, RTK Cloud ~$15/dev | **CRITICAL** — same layer, 6mo head start, massive community |
+| **Headroom** | Proxy + library + MCP (Python) | ~2K stars, v0.23 | Netflix engineer (unfunded?) | **HIGH** — AST-aware compression, cross-agent memory, MCP server |
+| **Morph** | Router + Compact API | Unknown | $500K pre-seed (YC) | **MEDIUM** — API-layer, not CLI-layer. Complementary not competing |
+| **Helicone** | API proxy | Established | Funded | **LOW** — monitors, doesn't save. Different layer |
+| **Langfuse** | Observability | Acquired by ClickHouse | Acquired | **LOW** — pivoting to ClickHouse ecosystem play |
+| **Datadog LLM** | APM module | Enterprise | Public company | **MEDIUM** — could add tool-layer but architecturally distant |
+| **CloudZero** | FinOps | Established | Funded | **LOW** — cloud cost, not AI-tool-specific |
+| **Anthropic native** | Built-in to Claude Code | N/A | $15B+ | **EXISTENTIAL** — see below |
+
+### THE HEADROOM PROBLEM (missed in original brainstorm) [K]
+
+Headroom is a DIRECT competitor that didn't exist in the brainstorm report:
+- **AST-aware compression** — not just regex. Parses Python, JS, Go, Rust, Java, C++ syntax trees
+- **MCP server mode** — works with ANY MCP-compatible agent, not just Claude Code hooks
+- **Cross-agent memory** — shares compressed context between Claude Code + Codex + Cursor
+- **HuggingFace model** — Kompress-base trained on agentic traces (ML compression vs regex)
+- **Claims $700K saved** for users, 200B tokens freed [T]
+- Netflix engineer credibility (enterprise trust signal)
+- Python = easier community contribution than Rust
+
+**CODEFLOW brainstorm claimed "no competitor does context deduplication." Headroom's cross-agent memory IS context deduplication.** The brainstorm's unique-value-proposition is already challenged.
+
+### THE ANTHROPIC EXISTENTIAL RISK [K]
+
+Anthropic is ALREADY building native cost optimization into Claude Code:
+- **Context caching** — 90% cost reduction on cached input (5-min or 1-hr TTL)
+- **Tool Search** — reduces tool schema overhead from 51K to 8.5K tokens per turn
+- **`/cost` command** — real-time per-model cost breakdown + cache hit rates
+- **`/clear` optimization** — native session reset for cost management
+- **CLAUDE.md compression guidance** — official docs recommend keeping it under 200 lines
+
+**Key insight:** Every "optimization" CODEFLOW provides as a PRODUCT, Anthropic can provide as a FEATURE. The question is: will they?
+
+**Evidence says YES:**
+- Claude Code v2.1.92 rebuilt `/cost` command with detailed breakdown
+- Cache TTL controversy shows Anthropic actively tuning cost behavior
+- Jarred Sumner (Bun creator, now at Anthropic) personally handles cache optimization
+- Anthropic's docs page "Manage costs effectively" is a growing knowledge base
+
+**Timeline estimate:** Anthropic ships 80% of CODEFLOW's compression value natively within 12-18 months [T]
+
+---
+
+## PART 3: BRUTAL HONEST SCORING
+
+### Anti-Confirmation Queries (Mandatory Protocol)
+
+| Query | Result | Flag? |
+|-------|--------|-------|
+| 1. Failure rate | 40% AI startups fail in 24mo, 80% by 2026 [K] | ⚠️ YES |
+| 2. Free alternatives | RTK is FREE and open-source with 39.5K stars [K] | 🚨 CRITICAL |
+| 3. Big Tech native | Anthropic building cost tools INTO Claude Code [K] | 🚨 CRITICAL |
+| 4. Competitor depth | RTK: 39.5K stars, 141 releases, 100+ commands [K] | 🚨 CRITICAL |
+| 5. Moat validity | Compression = regex/heuristics, easily replicated [K] | ⚠️ YES |
+| 6. Channel economics | PLG requires 50K+ free users → conversion → enterprise | ⚠️ YES |
+| 7. Why it fails | "Thin wrapper" problem — 60-70% generate zero revenue [K] | ⚠️ YES |
+
+### Moat Analysis (Verified)
+
+| Claimed Moat | Reality | Durability |
+|-------------|---------|------------|
+| Data flywheel | No users = no data. Flywheel hasn't started spinning | ❌ Theoretical |
+| Context dedup (unique) | Headroom has cross-agent memory. RTK has command dedup. | ❌ Not unique |
+| Full tool coverage | Real advantage (Read/Grep/Glob + Bash vs Bash-only) | ✅ 6-month window |
+| Productivity + savings | Not built yet. Differentiator only if shipped FIRST | ⚠️ Time-dependent |
+| Security scanning | Regex-based. gitleaks/trufflehog are more mature | ❌ Commodity |
+| Enterprise dashboard | Real need, but Helicone/Datadog already serve this | ⚠️ Crowded |
+
+---
+
+## PART 4: WHAT CODEFLOW ACTUALLY HAS GOING FOR IT
+
+Despite the brutal analysis above, there ARE genuine advantages:
+
+### 1. The Timing is PERFECT [K]
+Microsoft just cancelled 12K Claude Code licenses. Uber blew their budget. Every CTO is panicking RIGHT NOW about AI coding costs. The pain is acute and growing — $9.5-12.8B/year market with 75% growth.
+
+### 2. The "PROVES" Angle is GENUINELY UNIQUE [T]
+No existing tool (RTK, Headroom, Helicone, Morph) answers the CFO question: "We saved $X, but did developer productivity drop?" The productivity measurement engine — IF BUILT — is the only real differentiator.
+
+### 3. Full-Stack Tool Coverage is an Architectural Advantage [K]
+RTK: Bash only (30-50% of tokens). Headroom: API proxy (different layer). CODEFLOW: Bash + Read + Grep + Glob via hooks = 80-95% token coverage. This is a real technical advantage that takes competitors months to replicate.
+
+### 4. The Rust + Go + ClickHouse Stack is Enterprise-Correct [K]
+Sub-ms CLI overhead (Rust), high-throughput ingest (Go), columnar analytics (ClickHouse). Same tech stack as Datadog, Grafana, VictoriaMetrics. CTO-credible.
+
+### 5. Solo Founder Speed [K]
+13,342 LOC in 2 days with AI assistance. The speed advantage is real — CODEFLOW can iterate faster than any funded team's bureaucracy.
+
+---
+
+## PART 5: THE MONEY QUESTION — CAN CODEFLOW MAKE MONEY?
+
+### Revenue Model Reality Check
+
+| Tier | Price | Buyer | Probability of $1K MRR | Timeline |
+|------|-------|-------|----------------------|----------|
+| Free CLI | $0 | Devs | N/A — acquisition only | Immediate |
+| Pro $12/dev | Small teams | LOW — why pay when RTK is free? | 3-6 months |
+| Business $25/dev | Mid-market | MEDIUM — if PROVES is built | 6-12 months |
+| Enterprise $45/dev | Large orgs | HIGH — if SOC2 + sales team | 12-18 months |
+
+### The $1K MRR Path (minimum viable revenue)
+
+$1K MRR at $25/dev = 40 paying developers across ~4-8 teams.
+
+Requirements:
+1. ✅ Working CLI with measurable savings (DONE)
+2. ✅ Cloud dashboard showing team-wide data (DONE)
+3. ❌ PROVES — productivity measurement (NOT DONE — the key differentiator)
+4. ❌ Real users providing testimonials
+5. ❌ Content marketing / HN launch
+6. ❌ SOC2 even started
+
+### Kill Criteria (from master_investments framework)
+
+| Signal | Threshold | Current |
+|--------|-----------|---------|
+| GitHub stars after HN launch | <200 in 7 days = reassess | NOT LAUNCHED |
+| Free CLI daily users (30 days post-launch) | <50 = pivot | 0 users |
+| First paying customer | >90 days post-launch = kill | No launch |
+| RTK ships Cloud dashboard | = window closing | RTK Cloud still waitlist |
+| Anthropic ships native compression | = existential threat | Partial (caching) |
+
+---
+
+## PART 6: STRATEGIC RECOMMENDATION
+
+### The REAL Opportunity (reframed)
+
+The brainstorm report positions CODEFLOW as "reduce costs 70% AND prove productivity." That's correct but the FRAMING is wrong.
+
+**The actual money flow:**
+
+```
+CTO pain: "AI costs $500K/year, CFO asking ROI, can't justify"
+     ↓
+CTO needs: Tool that generates PDF showing "saved $X, productivity unchanged"
+     ↓
+CTO pays: $25-45/dev/month for that PDF (3-35x ROI)
+     ↓
+CODEFLOW value: The PDF. Not the compression. The PROOF.
+```
+
+**The compression is table stakes.** RTK does it free. Headroom does it free. Even Anthropic's native caching does some of it free.
+
+**The ONLY thing worth paying for is the PROOF.** The ROI report that a CTO can show a CFO.
+
+### What to Build NEXT (priority order)
+
+1. **PROVES engine (Week 1-2)** — git metrics + session efficiency + ROI PDF. This is the ONLY differentiator. Everything else is commoditized.
+
+2. **HN Launch (Week 2)** — Ship free CLI + cloud dashboard. Measure stars/signups. Kill if <200 stars.
+
+3. **Content + SEO (Week 3-4)** — "How Microsoft Lost $500K/mo on Claude Code" case study. Target "AI coding cost optimization" keywords.
+
+4. **First 5 design partners (Week 4-6)** — Free Business tier for 5 teams. Collect ROI data. Build case studies from THEIR savings.
+
+5. **SKIP: SOC2, Stripe, SSO until $5K MRR.** Premature enterprise features before product-market fit is capital destruction.
+
+### What to STOP Doing
+
+- ❌ Stop building SSO/Stripe/billing — zero customers to bill
+- ❌ Stop security scanner — gitleaks is better and free
+- ❌ Stop VS Code extension — hooks work without it
+- ❌ Stop model routing — only works for API-key users (minority)
+- ❌ Stop polishing dashboard — seed data demo is sufficient
+
+### The 90-Day Survival Test
+
+| Day | Milestone | Kill if... |
+|-----|-----------|-----------|
+| 14 | PROVES engine shipped, HN launched | — |
+| 30 | 200+ stars, 50+ CLI installs | <100 stars |
+| 60 | 5 design partners, 3 ROI reports generated | 0 partners |
+| 90 | $1K MRR or 3 enterprise pilot commitments | <$500 MRR AND 0 pilots |
+
+---
+
+## PART 7: ALIGNMENT WITH STRATEGIC 3-PHASE PLAN
+
+Per memory `project_strategic_3phase_plan.md`:
+- **Phase 1:** Sell AI services ($2-5K/mo)
+- **Phase 2:** Build toll position
+- **Phase 3:** Scale
+
+CODEFLOW fits Phase 2 — it's a toll booth on the AI coding cost river. But it needs Phase 1 income to survive while building. The 3-phase plan says: sell services first, build products second.
+
+**Recommendation:** Use CODEFLOW as a LEAD MAGNET for AI consulting services (Phase 1). "We saved Company X 70% on AI coding costs" → consulting contract for AI cost governance. The tool is the proof, the consulting is the revenue.
+
+---
+
+## UNRESOLVED QUESTIONS
+
+1. Has ANY human besides the founder actually used CODEFLOW CLI? If not, all "savings" claims are theoretical.
+2. RTK Cloud pricing is ~$15/dev — identical to CODEFLOW Pro. Price competition or differentiation?
+3. Headroom's ML-based compression (Kompress model) vs CODEFLOW's regex — which compresses better on real workloads?
+4. Can PROVES engine collect git data without triggering developer privacy concerns (tracking PRs/cycle time)?
+5. Anthropic's hook API stability — will hook interface change and break CODEFLOW?
+
+---
+
+---
+
+## PART 8: DEEP RESEARCH AGENT — ADDITIONAL KILL SIGNALS
+
+The parallel research agent found 8 additional disconfirming signals that STRENGTHEN the brutal assessment:
+
+### 8.1 Five FREE Alternatives Already Exist [K]
+
+| Tool | Cost | Savings |
+|------|------|---------|
+| Token Reducer | Free | 90%+ |
+| Token Optimizer MCP | Free | 95%+ |
+| claude-token-efficient | Free | Terse output via CLAUDE.md |
+| Claude Token Optimizer (cto) | Free | 90%+ |
+| RTK | Free | 60-90% |
+
+**Any developer can solve this problem for $0 today.**
+
+### 8.2 Anthropic Native Features Already Ship 97% Savings [K]
+
+Combined prompt caching (90% reduction) + batch API (50% cheaper) = **97% below headline pricing**. Sonnet 4.6 effective cost: $0.15/MTok cached.
+
+**CODEFLOW's compression layer competes against FREE NATIVE FEATURES.**
+
+### 8.3 Cheaper Models Solve 70% of the Problem (Free) [K]
+
+Switch Opus → Haiku = 20x cheaper. Switch Opus → Sonnet = 60% cheaper. No tool needed.
+This is the advice every HN thread gives: "just use a cheaper model."
+
+### 8.4 RTK Has 51K Stars But ZERO Funding [K]
+
+If the market justified a business, RTK would have raised capital. 51K stars + zero VC = "beloved utility, not viable business." RTK proves demand for token optimization but also proves nobody can monetize it.
+
+### 8.5 Developer WTP Is Unmeasured and Likely LOW [?]
+
+No public survey exists on willingness to pay for standalone token optimization. Zero. If demand were proven, someone would have surveyed it. Proxy signals: 5+ free alternatives, native features, cheaper models all exist.
+
+### 8.6 JetBrains Central + GitHub Billing Replace the Enterprise Play [K]
+
+- **JetBrains Central (EAP Q2 2026):** Cost governance + compliance + team budgets + approval workflows
+- **GitHub Token Billing (live June 1, 2026):** Per-model consumption dashboard, optimization in UI
+- IDE vendors are building GOVERNANCE (not compression). Governance = enterprise play. Compression = commodity.
+
+### 8.7 Anthropic Is Disincentivized to Let You Win [K]
+
+Anthropic inference margins: 70% (up from 38%). Revenue ~$44B ARR doubling every 6 weeks. Every token you compress = revenue Anthropic loses. They will ship native compression ONLY when forced by OpenAI/Google competition (defensive, not offensive).
+
+**Historical precedent:** CodeWhisper had 15K users → OpenAI shipped native feature → CodeWhisper shutdown in 4 months.
+
+### 8.8 Langfuse Acquisition = Consolidation Signal [K]
+
+ClickHouse acquired Langfuse for $400M. Observability + governance consolidating into platforms. Standalone tools being absorbed. If CODEFLOW stays standalone → acquired or outcompeted.
+
+### RESEARCH AGENT VERDICT
+
+> "Token optimization is a FEATURE, not a BUSINESS. All 8 disconfirming signals point the same direction."
+
+---
+
+## PART 9: FINAL SYNTHESIS — THE TRUTH
+
+### What the Brainstorm Report Got RIGHT
+
+1. ✅ The pain is real and growing ($9.5-12.8B market, Microsoft/Uber crises)
+2. ✅ The tech stack choice is correct (Rust + Go + ClickHouse)
+3. ✅ Read/Grep/Glob dedup is a genuine architectural advantage over RTK
+4. ✅ The ROI pitch ("save $X AND prove productivity") is compelling
+5. ✅ The code quality is good for 2-day AI build (87 tests, fail-open design)
+
+### What the Brainstorm Report Got WRONG
+
+1. ❌ **"65-90% total savings"** — Overstated. Anthropic native caching already does 90% for free. Real incremental savings from CODEFLOW: ~20-35% on top of native caching [T]
+2. ❌ **"No existing tool does context deduplication"** — Headroom has cross-agent memory. Token Optimizer MCP has context optimization. This is NOT unique [K]
+3. ❌ **"Data flywheel is primary moat"** — Zero users = zero data = no flywheel. And compression patterns are STATIC (regex/heuristic), not learned from data [K]
+4. ❌ **"CODEFLOW unique position: Only product covering tool-layer"** — Headroom covers tool-layer via MCP server mode + proxy mode [K]
+5. ❌ **"Customer ROI: 3-35x return"** — Denominator wrong. If customer can get 70% savings via free alternatives (model switching + native caching), CODEFLOW's incremental ROI is 1.5-3x, not 3-35x [T]
+6. ❌ **Competitive landscape missing 5+ competitors** — Headroom, Morph, Token Reducer, Token Optimizer MCP, claude-token-efficient all omitted [K]
+7. ❌ **$50K MRR by Week 30** — Base rate: 40% AI startups fail in 24 months. $50K MRR with zero users at Week 0 requires >2x monthly growth sustained for 7 months. Probability: <10% [T]
+
+### THE ONLY VIABLE PATH
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                                                             │
+│   COMPRESSION = COMMODITY (free, native, 5+ alternatives)   │
+│                                                             │
+│   GOVERNANCE = CROWDED (JetBrains, GitHub, Helicone)        │
+│                                                             │
+│   PROVES = UNOCCUPIED (nobody does this yet)                │
+│                                                             │
+│   ★ The ONLY thing worth paying for is the PROOF.           │
+│   ★ CFO report: "Saved $X, productivity unchanged/up"       │
+│   ★ This is a $25-45/dev/mo product.                        │
+│   ★ Compression is the free BAIT, PROVES is the HOOK.       │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### REVISED RECOMMENDATION
+
+| Priority | Action | Timeline |
+|----------|--------|----------|
+| **P0** | Build PROVES engine (git metrics + ROI PDF) | Week 1-2 |
+| **P1** | Launch free CLI on HN/Reddit — measure stars | Week 2 |
+| **P2** | Kill if <200 stars at Day 7 | Week 3 |
+| **P3** | Find 5 design partners (free Business tier) | Week 3-6 |
+| **P4** | Generate ROI reports from real partner data | Week 6-8 |
+| **P5** | First paid customer at $25/dev | Week 8-12 |
+| **KILL** | No paying customer by Day 90 | Day 90 |
+| **STOP** | SSO, Stripe, security scanner, VS Code ext | NOW |
+
+### Alignment with 3-Phase Strategic Plan
+
+CODEFLOW is a **Phase 2 toll position** but needs Phase 1 income to survive.
+
+**Hybrid play:** Use CODEFLOW as LEAD MAGNET for AI cost governance consulting (Phase 1). "We saved Company X 70% on AI costs" → consulting contract → recurring revenue while product matures.
+
+---
+
+## Sources
+
+- [RTK GitHub](https://github.com/rtk-ai/rtk) — 51K stars, MIT, v0.40
+- [Headroom GitHub](https://github.com/chopratejas/headroom) — Netflix engineer, AST-aware, MCP server
+- [Morph LLM](https://www.morphllm.com/) — Router + Compact, YC $500K pre-seed
+- [Microsoft drops Claude Code](https://dapta.ai/blog-posts/ai-news-microsoft-claude-code/) — 12K licenses cancelled
+- [Uber budget crisis](https://aiweekly.co/alerts/microsoft-drops-claude-code-as-enterprise-ai-roi-fails)
+- [AI startup failure rates](https://ideaproof.io/failures/ai-startups) — 40% fail in 24 months
+- [Enterprise AI spend](https://www.cloudzero.com/blog/claude-code-pricing/) — $150-250/dev/mo average
+- [Claude Code cost management](https://code.claude.com/docs/en/costs) — Anthropic native optimization
+- [AI consolidation 2026](https://tooldirectory.ai/blog/bought-or-buried-2026-ai-consolidation) — thin wrappers dying
+- [The Great AI Cost Panic](https://www.derekthompson.org/p/the-great-ai-cost-panic-of-2026) — JPMorgan note
+- [Headroom savings claim](https://letsdatascience.com/news/netflix-engineer-open-sources-headroom-to-cut-ai-token-costs-8f10c68d) — $700K saved
+- [Morph funding](https://www.extruct.ai/hub/morphllm-com/) — $500K pre-seed, YC

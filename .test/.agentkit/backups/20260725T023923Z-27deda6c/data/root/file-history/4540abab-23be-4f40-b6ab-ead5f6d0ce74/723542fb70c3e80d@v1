@@ -1,0 +1,209 @@
+"""Tests for Phase 2: Micro-Query Runner + Fact Assembler."""
+
+import json
+import sqlite3
+import gc
+import tempfile
+from pathlib import Path
+from unittest.mock import MagicMock
+
+import pytest
+
+from ..micro_query_generator import MicroQuery
+from ..micro_query_runner import MicroQueryRunner, MicroQueryResult, RunnerStats
+from ..fact_assembler import FactAssembler, AssemblyResult
+
+
+def _make_query(text="What % of SaaS fail?", dimension="base_rates", expected_type="number"):
+    return MicroQuery(text=text, dimension=dimension, expected_type=expected_type, verification_hint="Check source")
+
+
+def _json_response(fact="60% fail in year 1", value=60, confidence=0.8, source="SBA"):
+    return json.dumps({
+        "fact": fact, "value": value, "confidence": confidence,
+        "source": source, "date": "2025-01-15",
+    })
+
+
+# ── MicroQueryRunner ─────────────────────────────────────────────────────────
+
+
+class TestMicroQueryRunner:
+    def test_run_single_json_response(self):
+        runner = MicroQueryRunner(research_fn=lambda p: _json_response(), batch_delay=0)
+        results, stats = runner.run_batch([_make_query()])
+        assert len(results) == 1
+        assert results[0].parse_success is True
+        assert results[0].parsed_fact["fact"] == "60% fail in year 1"
+        assert stats.parse_successes == 1
+
+    def test_run_batch_multiple(self):
+        runner = MicroQueryRunner(research_fn=lambda p: _json_response(), batch_delay=0)
+        queries = [_make_query(f"Q{i}") for i in range(7)]
+        results, stats = runner.run_batch(queries)
+        assert len(results) == 7
+        assert stats.queries_fired == 7
+        assert stats.responses_received == 7
+
+    def test_parse_json_with_surrounding_text(self):
+        def research(p):
+            return 'Here is the answer: {"fact": "test fact", "confidence": 0.9} hope that helps!'
+        runner = MicroQueryRunner(research_fn=research, batch_delay=0)
+        results, _ = runner.run_batch([_make_query()])
+        assert results[0].parse_success is True
+        assert results[0].parsed_fact["fact"] == "test fact"
+
+    def test_parse_prose_fallback(self):
+        runner = MicroQueryRunner(research_fn=lambda p: "About 60% of SaaS startups fail within 2 years according to various studies.", batch_delay=0)
+        results, stats = runner.run_batch([_make_query()])
+        assert results[0].parse_success is True
+        assert results[0].parsed_fact["confidence"] == 0.4
+
+    def test_empty_response(self):
+        runner = MicroQueryRunner(research_fn=lambda p: "", batch_delay=0)
+        results, stats = runner.run_batch([_make_query()])
+        assert results[0].parse_success is False
+        assert stats.parse_failures == 1
+
+    def test_research_fn_exception(self):
+        def explode(p):
+            raise ConnectionError("API down")
+        runner = MicroQueryRunner(research_fn=explode, batch_delay=0)
+        results, stats = runner.run_batch([_make_query()])
+        assert results[0].parse_success is False
+        assert results[0].raw_response == ""
+
+    def test_null_fact_response(self):
+        runner = MicroQueryRunner(
+            research_fn=lambda p: json.dumps({"fact": None, "confidence": 0.0}),
+            batch_delay=0,
+        )
+        results, _ = runner.run_batch([_make_query()])
+        # null fact from JSON → falls to prose fallback of the JSON string itself
+        assert results[0].parsed_fact is not None
+
+    def test_stats_accuracy(self):
+        call_count = 0
+        def mixed_fn(p):
+            nonlocal call_count
+            call_count += 1
+            if call_count % 2 == 0:
+                return _json_response()
+            return ""
+        runner = MicroQueryRunner(research_fn=mixed_fn, batch_delay=0)
+        queries = [_make_query(f"Q{i}") for i in range(4)]
+        _, stats = runner.run_batch(queries)
+        assert stats.queries_fired == 4
+        assert stats.parse_successes == 2
+        assert stats.parse_failures == 2
+
+    def test_batch_size_respected(self):
+        call_times = []
+        def timed_fn(p):
+            import time
+            call_times.append(time.time())
+            return _json_response()
+        runner = MicroQueryRunner(research_fn=timed_fn, batch_size=2, batch_delay=0.1)
+        queries = [_make_query(f"Q{i}") for i in range(4)]
+        runner.run_batch(queries)
+        assert len(call_times) == 4
+        # There should be a delay between batch 1 (Q0,Q1) and batch 2 (Q2,Q3)
+        gap = call_times[2] - call_times[1]
+        assert gap >= 0.05
+
+    def test_result_to_dict(self):
+        runner = MicroQueryRunner(research_fn=lambda p: _json_response(), batch_delay=0)
+        results, _ = runner.run_batch([_make_query()])
+        d = results[0].to_dict()
+        assert "query" in d
+        assert "parsed_fact" in d
+        assert "parse_success" in d
+
+    def test_stats_to_dict(self):
+        stats = RunnerStats(queries_fired=10, responses_received=8, parse_successes=6, parse_failures=4)
+        d = stats.to_dict()
+        assert d["parse_success_rate"] == 0.75
+
+
+# ── FactAssembler ────────────────────────────────────────────────────────────
+
+
+class TestFactAssembler:
+    def _make_result(self, fact="Test fact", confidence=0.8, parse_success=True):
+        parsed = {"fact": fact, "value": None, "confidence": confidence, "source": "test", "date": "2025-06-01"} if parse_success else None
+        return MicroQueryResult(
+            query=_make_query(),
+            raw_response=json.dumps(parsed) if parsed else "",
+            parsed_fact=parsed,
+            parse_success=parse_success,
+        )
+
+    def test_assemble_stores_facts(self, tmp_path):
+        db_path = tmp_path / "test.db"
+        assembler = FactAssembler(vectors_db=db_path)
+        results = [self._make_result(f"Fact {i}", 0.8) for i in range(3)]
+        assembly = assembler.assemble(results, domain="saas")
+        assert assembly.facts_added >= 1
+        assert assembly.total_processed == 3
+
+    def test_assemble_tracks_gaps(self, tmp_path):
+        db_path = tmp_path / "test.db"
+        assembler = FactAssembler(vectors_db=db_path)
+        results = [self._make_result(parse_success=False)]
+        assembly = assembler.assemble(results, domain="saas")
+        assert len(assembly.gaps_remaining) == 1
+        assert assembly.facts_added == 0
+
+    def test_assemble_empty_results(self, tmp_path):
+        db_path = tmp_path / "test.db"
+        assembler = FactAssembler(vectors_db=db_path)
+        assembly = assembler.assemble([], domain="saas")
+        assert assembly.total_processed == 0
+        assert assembly.facts_added == 0
+
+    def test_assemble_filters_short_facts(self, tmp_path):
+        db_path = tmp_path / "test.db"
+        assembler = FactAssembler(vectors_db=db_path)
+        results = [self._make_result(fact="Hi", confidence=0.9)]
+        assembly = assembler.assemble(results, domain="saas")
+        assert assembly.facts_added == 0
+
+    def test_dimension_mapping(self):
+        assembler = FactAssembler()
+        assert assembler._map_dimension("base_rates") == "failure_rates"
+        assert assembler._map_dimension("competitive_landscape") == "competitive_landscape"
+        assert assembler._map_dimension("moat_patterns") == "moat_patterns"
+        assert assembler._map_dimension("unknown_dim") == "failure_rates"
+
+    def test_confidence_to_zone(self):
+        assembler = FactAssembler()
+        assert assembler._confidence_to_zone(0.9) == "K"
+        assert assembler._confidence_to_zone(0.6) == "T"
+        assert assembler._confidence_to_zone(0.3) == "?"
+
+    def test_parse_numeric(self):
+        assembler = FactAssembler()
+        assert assembler._parse_numeric(42.5) == 42.5
+        assert assembler._parse_numeric("60") == 60.0
+        assert assembler._parse_numeric(None) is None
+        assert assembler._parse_numeric("not a number") is None
+
+    def test_assembly_result_to_dict(self):
+        result = AssemblyResult(facts_added=5, duplicates=2, total_processed=10)
+        d = result.to_dict()
+        assert d["facts_added"] == 5
+        assert d["duplicates"] == 2
+        assert "gaps_remaining" in d
+
+    def test_assemble_mixed_success_and_failure(self, tmp_path):
+        db_path = tmp_path / "test.db"
+        assembler = FactAssembler(vectors_db=db_path)
+        results = [
+            self._make_result("Good fact about SaaS failure rates", 0.8),
+            self._make_result(parse_success=False),
+            self._make_result("Another good fact about market size", 0.7),
+        ]
+        assembly = assembler.assemble(results, domain="saas")
+        assert assembly.total_processed == 3
+        assert len(assembly.gaps_remaining) == 1
+        assert assembly.facts_added >= 1

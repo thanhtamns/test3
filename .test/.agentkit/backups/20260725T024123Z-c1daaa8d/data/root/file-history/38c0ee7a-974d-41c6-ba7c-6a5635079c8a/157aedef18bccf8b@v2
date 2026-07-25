@@ -1,0 +1,8 @@
+FROM cloakhq/cloakbrowser:latest
+
+EXPOSE 9222
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+  CMD curl -sf http://localhost:9222/json/version || exit 1
+
+ENTRYPOINT ["cloakserve"]

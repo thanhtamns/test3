@@ -1,0 +1,162 @@
+"""
+Bridge: IntelligenceController → ThinkRunner integration.
+
+Runs the hypothesis-driven graph builder as a PRE-STAGE before ThinkRunner's
+decompose→query flow. The graph provides structured context that makes
+downstream decomposition and synthesis far more targeted.
+
+Usage in ThinkRunner:
+    from ..controller.think_runner_bridge import run_intelligence_pre_stage
+    graph_context = run_intelligence_pre_stage(query, research_fn, progress_fn)
+    # graph_context feeds into decomposer as enriched context
+"""
+
+from typing import Callable, Optional
+
+from .intelligence_controller import IntelligenceController, IntelligenceResult
+from .money_flow_graph import MoneyFlowGraph
+
+
+def run_intelligence_pre_stage(
+    query: str,
+    research_fn: Callable[[str], str],
+    webfetch_fn: Optional[Callable[[str], str]] = None,
+    progress_fn: Optional[Callable[[str], None]] = None,
+    max_cycles: int = 3,
+) -> dict:
+    controller = IntelligenceController(
+        research_fn=research_fn,
+        webfetch_fn=webfetch_fn,
+        progress_fn=progress_fn,
+        max_cycles=max_cycles,
+    )
+    result = controller.run(query, mode="money_flow")
+    return _result_to_context(result)
+
+
+def _result_to_context(result: IntelligenceResult) -> dict:
+    graph = result.graph
+    context = {
+        "intelligence_controller": {
+            "enabled": True,
+            "cycles_run": result.cycles_run,
+            "total_searches": result.total_searches,
+            "verdict": result.final_verdict,
+        },
+        "money_flow_graph": {
+            "nodes": [
+                {
+                    "entity": n.entity,
+                    "type": n.entity_type,
+                    "monthly_volume": n.monthly_volume,
+                    "confidence": n.confidence,
+                }
+                for n in graph.nodes.values()
+                if n.confidence >= 0.4
+            ],
+            "edges": [
+                {
+                    "from": graph.nodes[e.source].entity if e.source in graph.nodes else e.source,
+                    "to": graph.nodes[e.target].entity if e.target in graph.nodes else e.target,
+                    "flow_type": e.flow_type,
+                    "amount_per_tx": e.amount_per_tx,
+                    "volume_monthly": e.volume_monthly,
+                    "monthly_value": e.monthly_value,
+                    "confidence": e.confidence,
+                }
+                for e in graph.edges.values()
+                if e.confidence >= 0.3
+            ],
+            "verified_facts": [
+                h.statement
+                for h in graph.confirmed_hypotheses()
+            ],
+            "killed_hypotheses": [
+                h.statement
+                for h in graph.hypotheses.values()
+                if h.status == "KILLED"
+            ],
+        },
+        "bottleneck_positions": result.bottleneck_positions,
+        "graph_stats": graph.to_dict()["stats"],
+    }
+    return context
+
+
+def graph_to_decomposer_hints(context: dict) -> dict:
+    """Extract hints for the Decomposer from intelligence context."""
+    hints = {}
+    mfg = context.get("money_flow_graph", {})
+
+    entities = [n["entity"] for n in mfg.get("nodes", []) if n.get("confidence", 0) >= 0.5]
+    if entities:
+        hints["known_entities"] = entities
+
+    edges = mfg.get("edges", [])
+    if edges:
+        hints["known_flows"] = [
+            f"{e['from']} → {e['to']} ({e['flow_type']}, ${e.get('monthly_value', '?')}/mo)"
+            for e in edges if e.get("confidence", 0) >= 0.5
+        ]
+
+    positions = context.get("bottleneck_positions", [])
+    if positions:
+        hints["bottleneck_positions"] = [
+            f"{p.get('type', '?')}: {p.get('entity', p.get('between', '?'))}"
+            for p in positions
+        ]
+
+    verified = mfg.get("verified_facts", [])
+    if verified:
+        hints["verified_facts"] = verified
+
+    return hints
+
+
+def format_graph_for_prompt(context: dict) -> str:
+    """Format intelligence context as text for injection into LLM prompts."""
+    lines = ["--- INTELLIGENCE CONTROLLER: VERIFIED MONEY FLOW ---"]
+
+    mfg = context.get("money_flow_graph", {})
+    nodes = mfg.get("nodes", [])
+    edges = mfg.get("edges", [])
+    verified = mfg.get("verified_facts", [])
+    killed = mfg.get("killed_hypotheses", [])
+    positions = context.get("bottleneck_positions", [])
+
+    if nodes:
+        lines.append(f"\nENTITIES ({len(nodes)}):")
+        for n in nodes:
+            vol = f" — ${n['monthly_volume']:,.0f}/mo" if n.get("monthly_volume") else ""
+            lines.append(f"  [{n['type']}] {n['entity']}{vol} (conf={n['confidence']:.1f})")
+
+    if edges:
+        lines.append(f"\nMONEY FLOWS ({len(edges)}):")
+        for e in edges:
+            val = f" ${e['monthly_value']:,.0f}/mo" if e.get("monthly_value") else ""
+            lines.append(f"  {e['from']} →{e['flow_type']}→ {e['to']}{val} (conf={e['confidence']:.1f})")
+
+    if verified:
+        lines.append(f"\nVERIFIED FACTS ({len(verified)}):")
+        for f in verified:
+            lines.append(f"  ✓ {f}")
+
+    if killed:
+        lines.append(f"\nKILLED HYPOTHESES ({len(killed)}):")
+        for k in killed:
+            lines.append(f"  ✗ {k}")
+
+    if positions:
+        lines.append(f"\nBOTTLENECK POSITIONS ({len(positions)}):")
+        for p in positions:
+            entity = p.get("entity", p.get("between", "?"))
+            lines.append(f"  → {p.get('type', '?')}: {entity}")
+
+    stats = context.get("graph_stats", {})
+    if stats:
+        lines.append(f"\nGRAPH: {stats.get('node_count', 0)} nodes, {stats.get('edge_count', 0)} edges, "
+                      f"confidence={stats.get('overall_confidence', 0):.2f}, "
+                      f"verified={stats.get('verified_edges', 0)}/{stats.get('edge_count', 0)}")
+
+    lines.append("--- END INTELLIGENCE CONTROLLER ---")
+    return "\n".join(lines)

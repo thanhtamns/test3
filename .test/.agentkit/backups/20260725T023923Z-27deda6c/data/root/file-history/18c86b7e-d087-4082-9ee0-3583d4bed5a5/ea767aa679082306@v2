@@ -1,0 +1,276 @@
+use anyhow::Result;
+use rusqlite::{params, Connection};
+use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+const MAX_ENTRIES: usize = 10_000;
+const SESSION_TTL_SECS: u64 = 3600;
+
+pub struct DedupCache {
+    conn: Connection,
+    session_id: String,
+}
+
+pub struct DedupResult {
+    pub cache_hit: bool,
+    pub content_hash: String,
+    pub tokens_saved: u64,
+    pub summary: Option<String>,
+}
+
+impl DedupCache {
+    pub fn open(db_path: &Path, session_id: &str) -> Result<Self> {
+        let conn = Connection::open(db_path)?;
+        conn.execute_batch(
+            "PRAGMA journal_mode=WAL;
+             PRAGMA synchronous=NORMAL;
+             PRAGMA busy_timeout=5000;"
+        )?;
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS dedup_cache (
+                content_hash TEXT PRIMARY KEY,
+                file_path TEXT NOT NULL,
+                mtime_ns INTEGER NOT NULL,
+                byte_size INTEGER NOT NULL,
+                token_count INTEGER NOT NULL,
+                session_id TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                last_hit_at INTEGER NOT NULL,
+                hit_count INTEGER NOT NULL DEFAULT 1
+            );"
+        )?;
+        Ok(Self {
+            conn,
+            session_id: session_id.to_string(),
+        })
+    }
+
+    pub fn lookup(
+        &self,
+        file_path: &str,
+        current_mtime_ns: u64,
+        content: &str,
+    ) -> Result<DedupResult> {
+        let hash = blake3::hash(content.as_bytes()).to_hex().to_string();
+        let now = now_secs();
+
+        let row: Option<(i64, i64, String)> = self
+            .conn
+            .query_row(
+                "SELECT token_count, mtime_ns, session_id FROM dedup_cache
+                 WHERE content_hash = ?1",
+                params![hash],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()?;
+
+        match row {
+            Some((token_count, stored_mtime, stored_session))
+                if stored_mtime as u64 == current_mtime_ns
+                    && stored_session == self.session_id
+                    && !is_expired(now, SESSION_TTL_SECS) =>
+            {
+                self.conn.execute(
+                    "UPDATE dedup_cache SET last_hit_at = ?1, hit_count = hit_count + 1
+                     WHERE content_hash = ?2",
+                    params![now as i64, hash],
+                )?;
+                let summary = format!(
+                    "File {} ({} tokens) read previously this session, unchanged.",
+                    file_path, token_count
+                );
+                Ok(DedupResult {
+                    cache_hit: true,
+                    content_hash: hash,
+                    tokens_saved: token_count as u64,
+                    summary: Some(summary),
+                })
+            }
+            _ => {
+                let token_count = estimate_tokens(content);
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO dedup_cache
+                     (content_hash, file_path, mtime_ns, byte_size, token_count,
+                      session_id, created_at, last_hit_at, hit_count)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, 1)",
+                    params![
+                        hash,
+                        file_path,
+                        current_mtime_ns as i64,
+                        content.len() as i64,
+                        token_count as i64,
+                        self.session_id,
+                        now as i64,
+                    ],
+                )?;
+                self.evict_if_needed()?;
+                Ok(DedupResult {
+                    cache_hit: false,
+                    content_hash: hash,
+                    tokens_saved: 0,
+                    summary: None,
+                })
+            }
+        }
+    }
+
+    pub fn invalidate_path(&self, file_path: &str) -> Result<u64> {
+        let changes = self.conn.execute(
+            "DELETE FROM dedup_cache WHERE file_path = ?1",
+            params![file_path],
+        )?;
+        Ok(changes as u64)
+    }
+
+    pub fn invalidate_session(&self) -> Result<u64> {
+        let changes = self.conn.execute(
+            "DELETE FROM dedup_cache WHERE session_id = ?1",
+            params![self.session_id],
+        )?;
+        Ok(changes as u64)
+    }
+
+    pub fn clear(&self) -> Result<u64> {
+        let changes = self.conn.execute("DELETE FROM dedup_cache", [])?;
+        Ok(changes as u64)
+    }
+
+    pub fn entry_count(&self) -> Result<usize> {
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM dedup_cache", [], |row| row.get(0))?;
+        Ok(count as usize)
+    }
+
+    fn evict_if_needed(&self) -> Result<()> {
+        let count = self.entry_count()?;
+        if count > MAX_ENTRIES {
+            let to_remove = count - MAX_ENTRIES;
+            self.conn.execute(
+                "DELETE FROM dedup_cache WHERE content_hash IN (
+                    SELECT content_hash FROM dedup_cache
+                    ORDER BY last_hit_at ASC LIMIT ?1
+                )",
+                params![to_remove as i64],
+            )?;
+        }
+        Ok(())
+    }
+}
+
+fn estimate_tokens(text: &str) -> usize {
+    // ~4 chars per token is a reasonable approximation for English/code
+    (text.len() + 3) / 4
+}
+
+fn now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+fn is_expired(_now: u64, _ttl: u64) -> bool {
+    false // TTL checked via session_id match; explicit expiry deferred
+}
+
+trait OptionalRow {
+    fn optional(self) -> Result<Option<(i64, i64, String)>>;
+}
+
+impl OptionalRow for rusqlite::Result<(i64, i64, String)> {
+    fn optional(self) -> Result<Option<(i64, i64, String)>> {
+        match self {
+            Ok(row) => Ok(Some(row)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn setup() -> (DedupCache, TempDir) {
+        let dir = TempDir::new().unwrap();
+        let db_path = dir.path().join("dedup.db");
+        let cache = DedupCache::open(&db_path, "test-session").unwrap();
+        (cache, dir)
+    }
+
+    #[test]
+    fn test_miss_then_hit() {
+        let (cache, _dir) = setup();
+        let r1 = cache.lookup("/foo.rs", 1000, "fn main() {}").unwrap();
+        assert!(!r1.cache_hit);
+        assert_eq!(r1.tokens_saved, 0);
+
+        let r2 = cache.lookup("/foo.rs", 1000, "fn main() {}").unwrap();
+        assert!(r2.cache_hit);
+        assert!(r2.tokens_saved > 0);
+        assert!(r2.summary.is_some());
+    }
+
+    #[test]
+    fn test_mtime_change_invalidates() {
+        let (cache, _dir) = setup();
+        cache.lookup("/foo.rs", 1000, "fn main() {}").unwrap();
+        let r = cache.lookup("/foo.rs", 2000, "fn main() {}").unwrap();
+        assert!(!r.cache_hit);
+    }
+
+    #[test]
+    fn test_different_content_different_hash() {
+        let (cache, _dir) = setup();
+        cache.lookup("/foo.rs", 1000, "version 1").unwrap();
+        let r = cache.lookup("/foo.rs", 1000, "version 2").unwrap();
+        assert!(!r.cache_hit);
+    }
+
+    #[test]
+    fn test_clear() {
+        let (cache, _dir) = setup();
+        cache.lookup("/a.rs", 1, "aaa").unwrap();
+        cache.lookup("/b.rs", 1, "bbb").unwrap();
+        assert_eq!(cache.entry_count().unwrap(), 2);
+        cache.clear().unwrap();
+        assert_eq!(cache.entry_count().unwrap(), 0);
+    }
+
+    #[test]
+    fn test_invalidate_path() {
+        let (cache, _dir) = setup();
+        cache.lookup("/a.rs", 1, "aaa").unwrap();
+        cache.lookup("/b.rs", 1, "bbb").unwrap();
+        cache.invalidate_path("/a.rs").unwrap();
+        assert_eq!(cache.entry_count().unwrap(), 1);
+    }
+
+    #[test]
+    fn test_different_session_is_miss() {
+        let dir = TempDir::new().unwrap();
+        let db_path = dir.path().join("dedup.db");
+        let cache1 = DedupCache::open(&db_path, "session-1").unwrap();
+        cache1.lookup("/foo.rs", 1000, "content").unwrap();
+        drop(cache1);
+
+        let cache2 = DedupCache::open(&db_path, "session-2").unwrap();
+        let r = cache2.lookup("/foo.rs", 1000, "content").unwrap();
+        assert!(!r.cache_hit);
+    }
+
+    #[test]
+    fn test_lru_eviction() {
+        let dir = TempDir::new().unwrap();
+        let db_path = dir.path().join("dedup.db");
+        let cache = DedupCache::open(&db_path, "sess").unwrap();
+        for i in 0..10_005 {
+            cache
+                .lookup(&format!("/file_{}.rs", i), 1, &format!("content_{}", i))
+                .unwrap();
+        }
+        assert!(cache.entry_count().unwrap() <= MAX_ENTRIES);
+    }
+}

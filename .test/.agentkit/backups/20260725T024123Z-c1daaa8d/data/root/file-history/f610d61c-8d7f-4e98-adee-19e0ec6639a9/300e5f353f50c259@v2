@@ -1,0 +1,89 @@
+"""Salience weighter — emotional/financial magnitude amplifies learning signals.
+
+Brain's amygdala marks high-stakes memories for stronger encoding. This primitive
+computes a salience multiplier based on financial magnitude, urgency, irreversibility,
+and recurrence probability. Used by error_magnitude_learning to weight Bayesian updates.
+
+Usage:
+    from primitives.salience_weighter import compute_salience
+    salience = compute_salience(dollars_at_stake=5000, irreversible=True)
+    # salience = 3.0 → feed as magnitude multiplier to bayesian update
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+FINANCIAL_SCALE = 10_000
+FINANCIAL_CAP = 3.0
+URGENCY_BOOST = 1.5
+IRREVERSIBILITY_BOOST = 2.0
+RECURRENCE_DEFAULT = 0.5
+SALIENCE_FLOOR = 0.05
+SALIENCE_CAP = 5.0
+
+
+@dataclass
+class SalienceFactors:
+    """Raw factors before multiplication."""
+
+    financial: float
+    urgency: float
+    irreversibility: float
+    recurrence: float
+    raw_product: float
+    clamped: float
+
+
+def compute_salience(
+    dollars_at_stake: float = 0.0,
+    deadline_miss: bool = False,
+    irreversible: bool = False,
+    recurrence_probability: float = RECURRENCE_DEFAULT,
+    financial_scale: float = FINANCIAL_SCALE,
+) -> float:
+    """Compute salience multiplier for a learning event.
+
+    Returns a float in [SALIENCE_FLOOR, SALIENCE_CAP] suitable as magnitude
+    input to bayesian_confidence.update() or error_magnitude_learning.
+
+    Higher salience = stronger Bayesian update = faster learning from this event.
+    """
+    financial = min(max(dollars_at_stake, 0.0) / financial_scale, FINANCIAL_CAP)
+    financial = max(financial, 0.01)
+
+    urgency = URGENCY_BOOST if deadline_miss else 1.0
+    irreversibility_factor = IRREVERSIBILITY_BOOST if irreversible else 1.0
+    recurrence = max(0.0, min(recurrence_probability, 1.0))
+    recurrence = max(recurrence, 0.1)
+
+    raw = financial * urgency * irreversibility_factor * recurrence
+    return max(SALIENCE_FLOOR, min(raw, SALIENCE_CAP))
+
+
+def compute_salience_detailed(
+    dollars_at_stake: float = 0.0,
+    deadline_miss: bool = False,
+    irreversible: bool = False,
+    recurrence_probability: float = RECURRENCE_DEFAULT,
+    financial_scale: float = FINANCIAL_SCALE,
+) -> SalienceFactors:
+    """Same as compute_salience but returns all intermediate factors for debugging."""
+    financial = min(max(dollars_at_stake, 0.0) / financial_scale, FINANCIAL_CAP)
+    financial = max(financial, 0.01)
+
+    urgency = URGENCY_BOOST if deadline_miss else 1.0
+    irreversibility_factor = IRREVERSIBILITY_BOOST if irreversible else 1.0
+    recurrence = max(0.0, min(recurrence_probability, 1.0))
+    recurrence = max(recurrence, 0.1)
+
+    raw = financial * urgency * irreversibility_factor * recurrence
+    clamped = max(SALIENCE_FLOOR, min(raw, SALIENCE_CAP))
+
+    return SalienceFactors(
+        financial=financial,
+        urgency=urgency,
+        irreversibility=irreversibility_factor,
+        recurrence=recurrence,
+        raw_product=raw,
+        clamped=clamped,
+    )

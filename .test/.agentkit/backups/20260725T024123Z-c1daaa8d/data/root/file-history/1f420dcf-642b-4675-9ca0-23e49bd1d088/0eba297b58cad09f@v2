@@ -1,0 +1,419 @@
+# /hunt — Customer-First Revenue Engine (v1)
+
+## PURPOSE
+
+Find a SPECIFIC group of people with VERIFIED pain, design an offer that solves it, generate copy-paste sales scripts.
+
+**This is NOT stage0.** Stage0 = model classifier (scans internet for known business models, ranks them). Hunt = pain verifier (starts from customer complaints, ends at sales scripts). They complement each other:
+- Stage0 answers: "What business model fits my constraints?"
+- Hunt answers: "Who has pain I can solve, and will they pay?"
+
+**Philosophy:** No Google "business model" searches. No IndieHackers lists. No "top 10 micro-SaaS ideas." Only: real complaints from real forums, verified by real human outreach.
+
+## INPUTS
+
+```
+/hunt <prey description>          # Direct: "/hunt kế toán thuế cá nhân tại VN"
+/hunt                             # Interactive: asks 3 questions
+/hunt continue <hunt_id>          # Resume after human proof step
+```
+
+## EXECUTION CONTRACT
+
+Follow `hunt-checklist.md` step by step. This file provides detailed instructions per step.
+
+---
+
+## STEP 1: PREY — Who is the target?
+
+**Agent:** Load `hunt-lib/prey-profiler.md` instructions.
+
+### 1.1 Interactive Mode (no args)
+
+Ask 3 questions via AskUser. These are NOT generic market research questions — they force the founder to identify SPECIFIC groups they already have access to.
+
+**Q1: "Who can you reach WITHOUT advertising?"**
+Purpose: Identify existing relationships, communities, professional networks. If answer = "nobody" → probe: industry colleagues? university alumni? online communities you participate in? clients from previous jobs?
+
+**Q2: "What problem do you understand that NORMAL PEOPLE don't?"**
+Purpose: Identify domain knowledge advantage. NOT "I'm good at coding" — that's a skill, not domain knowledge. Domain = "I know how VN tax accountants file quarterly reports and where they waste 3 hours per filing."
+
+**Q3: "Where is money flowing that YOU CAN OBSERVE?"**
+Purpose: Identify proximity to cash flow. NOT theoretical TAM — actual transactions the founder can see. "My previous employer pays $2K/mo for X" or "Farmers in my district sell 500kg coffee/week at Y price."
+
+### 1.2 Direct Mode (args provided)
+
+Extract prey description from args. Still validate: is this a SPECIFIC group (role + industry + geography) or a vague category?
+
+**Vague → REJECT:** "small businesses", "startups", "freelancers"
+**Specific → ACCEPT:** "kế toán thuế cá nhân hành nghề tại VN", "Shopify store owners selling handmade jewelry in US", "coffee farmers in Dak Lak province"
+
+### 1.3 Build prey_profile
+
+Output JSON to `data/hunts/HUNT-<id>/prey_profile.json`:
+
+```json
+{
+  "who": "specific role + industry + geography",
+  "count_estimate": 15000,
+  "count_source": "Vietnam Ministry of Finance registered tax practitioners 2025",
+  "count_confidence": "[K]",
+  "where_they_gather": [
+    "https://www.facebook.com/groups/ketoanthue",
+    "https://webketoan.com/forum",
+    "https://community.misa.vn"
+  ],
+  "how_founder_reaches_them": "Direct DM on Facebook groups — zero cost, Vietnamese native",
+  "money_flow_they_sit_in": "Individual taxpayers → Tax accountant (fee 500K-2M VND/filing) → Tax authority",
+  "founder_advantage": "Former accounting student, knows filing pain firsthand, speaks Vietnamese natively"
+}
+```
+
+### 1.4 Gates
+
+| Condition | Action |
+|-----------|--------|
+| count_estimate < 1,000 | WARN: "Niche may be too small for scalable revenue. Continue?" |
+| how_founder_reaches_them contains "advertising" or "paid ads" | WARN: "Reaching prey requires capital. Can you find a free channel?" |
+| founder_advantage is empty or generic | BLOCK: "What specific advantage do YOU have with this group? Re-answer Q1-Q3." |
+| where_they_gather has < 3 entries | WARN: "Need more gathering places for pain mining. Search harder." |
+
+---
+
+## STEP 2: PAIN — What specifically hurts?
+
+**Agent:** Load `hunt-lib/pain-miner.md` instructions.
+
+### 2.1 Forum Mining
+
+Search ONLY in `where_they_gather` URLs. Do NOT search Google generically.
+
+**Search strategy per platform type:**
+- **Facebook groups:** Search group posts for complaint keywords
+- **Forums (webketoan, voz, etc.):** Search threads with keyword filters
+- **Reddit:** Search subreddit with complaint keywords
+- **Discord/Slack:** Note as gathering place but cannot mine directly — flag for manual check
+
+**Keyword templates by language:**
+
+| Language | Complaint keywords |
+|----------|-------------------|
+| EN | "waste of time", "so frustrated", "anyone know how", "looking for tool", "hate doing", "takes forever" |
+| VN | "chán quá", "mất thời gian", "ai biết cách", "có tool nào", "quá mệt", "lâu quá", "khổ quá" |
+| CN | "太麻烦", "浪费时间", "有没有工具", "求推荐", "头疼" |
+
+**Target:** 5+ distinct complaints with frequency counts (same complaint from 3+ different people = signal).
+
+### 2.2 Money Quantification
+
+For EACH pain found:
+- `time_cost_per_occurrence` = hours spent × estimated hourly rate
+- `money_cost_per_occurrence` = direct cost (tool subscription, outsourcing fee, penalty)
+- If neither quantifiable → tag as "emotional pain only" (lower priority)
+
+### 2.3 Solution Landscape
+
+For EACH pain:
+- `current_solution`: What do they use NOW? (manual process, Excel, existing tool, outsource)
+- `existing_paid_tools`: Name, price, user count if findable
+- `gap`: What's missing from current solutions?
+
+### 2.4 Gates
+
+| Condition | Action |
+|-----------|--------|
+| 0 forum mentions for ALL pains | KILL this prey group. Return to Step 1 with different prey. |
+| money_cost < $10/occurrence for top pain | WARN: "Pain exists but may not be painful enough to pay for. Continue with caution." |
+| All pains already solved by free tool | WARN: "Competitive landscape is dense. Need strong differentiator." |
+
+### 2.5 Pain Ranking
+
+Rank by: `money_cost × frequency × forum_mentions`
+
+Pick top 1-2 pains. Save to `data/hunts/HUNT-<id>/pain_map.json`:
+
+```json
+{
+  "pains": [
+    {
+      "pain": "Manually re-entering invoice data from paper receipts into MISA software",
+      "frequency": "50-100 times per month per accountant",
+      "time_cost_per_occurrence": "15 minutes × 50K VND/hr = 12,500 VND",
+      "money_cost_per_occurrence": "$0.50 USD",
+      "monthly_cost_per_person": "$25-50 USD",
+      "forum_mentions": 12,
+      "forum_sources": ["url1", "url2", "url3"],
+      "current_solution": "Manual data entry or hire assistant",
+      "existing_paid_tools": [
+        {"name": "MISA meInvoice", "price": "1.2M VND/year", "gap": "Only works with e-invoices, not paper"}
+      ],
+      "gap": "No OCR tool handles Vietnamese paper receipts accurately"
+    }
+  ],
+  "top_pain_by_money": 0,
+  "top_pain_by_frequency": 0
+}
+```
+
+---
+
+## STEP 3: PROOF — Is the pain REAL? (BLOCKING)
+
+**Agent:** Load `hunt-lib/proof-tracker.md` instructions.
+
+**THIS STEP CANNOT BE SKIPPED.** No amount of forum mining replaces talking to actual humans.
+
+### 3.1 Generate Outreach Scripts
+
+3 variants, each UNDER 50 WORDS. Tone: curious peer, NOT salesperson.
+
+**DM script template:**
+> [Name], tôi thấy bạn chia sẻ về [context from their post]. Tôi đang tìm hiểu về vấn đề [pain]. Bạn có gặp tình trạng này không? Mất bao nhiêu thời gian mỗi lần?
+
+**Email script template:**
+> Subject: Hỏi thăm về [pain]
+> [Name], tôi đang nghiên cứu về [pain] trong ngành [industry]. Bạn có kinh nghiệm với vấn đề này? Tôi muốn nghe ý kiến thực tế, không bán gì cả.
+
+**Forum comment template:**
+> Tôi cũng gặp vấn đề này. Mọi người ở đây giải quyết bằng cách nào? Có ai tìm được tool nào hiệu quả chưa?
+
+### 3.2 Target List
+
+Identify 20 SPECIFIC people from where_they_gather:
+- Names/handles from forum posts about the pain
+- Group members who commented on related complaints
+- People who asked questions about current solutions
+
+Output as table: Name/Handle | Platform | Their complaint/context | Outreach variant to use
+
+### 3.3 PAUSE — Human Action Required
+
+**CREATE ACTION FILE:** `data/actions/ACTION-HUNT-<id>-proof.json`
+
+```json
+{
+  "action_id": "ACTION-HUNT-<id>-proof",
+  "type": "HUNT_PROOF",
+  "hunt_id": "HUNT-<id>",
+  "status": "PENDING",
+  "created": "<timestamp>",
+  "due": "<7 days from now>",
+  "description": "Send 20 outreach messages to validate pain",
+  "target_count": 20,
+  "scripts_location": "data/hunts/HUNT-<id>/proof.json"
+}
+```
+
+**Display to user:**
+```
+═══════════════════════════════════════════
+  HUNT PAUSED — HUMAN ACTION REQUIRED
+═══════════════════════════════════════════
+  Send these 20 messages within 7 days.
+  Track: sent / replied / confirmed pain / asked for solution
+  
+  When done, run: /hunt continue <hunt_id>
+═══════════════════════════════════════════
+```
+
+**UPDATE hunt-meta.json:** status = PROOF_PENDING, current_step = 3
+
+**STOP HERE.** Do not proceed to Step 4.
+
+### 3.4 On `/hunt continue <id>`
+
+1. Load `data/hunts/HUNT-<id>/hunt-meta.json`
+2. Verify status = PROOF_PENDING
+3. AskUser for results:
+   - "How many messages did you send?"
+   - "How many replies did you get?"
+   - "How many confirmed the pain is real?"
+   - "How many asked 'do you have a solution?'"
+   - "Any price quotes? What would they pay?"
+
+4. Evaluate proof_status:
+
+| Condition | Status | Action |
+|-----------|--------|--------|
+| >= 5 replies AND >= 3 confirmed pain | PASSED | Continue to Step 4 |
+| >= 5 replies AND < 3 confirmed | WEAK | Warn: "Pain confirmed by < 60%. Consider: different pain angle? Or continue with risk." |
+| < 5 replies | FAILED | "Not enough data. Options: (1) Send more messages, (2) Try different pain from Step 2, (3) Try different prey group from Step 1" |
+
+5. Save to `data/hunts/HUNT-<id>/proof.json`
+
+### 3.5 WTP Collection
+
+For people who confirmed pain AND asked for solution:
+> "If a tool solved [pain] in 30 seconds instead of [current time], what would you pay per month?"
+
+Collect price anchors. These drive Step 4 pricing — NOT "industry benchmarks."
+
+---
+
+## STEP 4: OFFER — What exactly to sell?
+
+**Agent:** Load `hunt-lib/offer-designer.md` instructions.
+
+Only runs if proof_status = PASSED (or WEAK with user confirmation).
+
+### 4.1 Minimum Viable Offer
+
+- Solves EXACTLY the verified pain — no scope creep
+- Buildable in ≤ 2 weeks by the founder
+- Format matches founder's skills (code → web app, no-code → template, service → done-for-you)
+
+### 4.2 Pricing
+
+- Start from WTP data collected in Step 3.5
+- Price = median WTP × 0.7 (leave room for perceived value)
+- Calculate: `TAM × 1% conversion × price = MRR floor`
+- If MRR floor < $500/mo → WARN: pricing or TAM too low
+
+### 4.3 Money Flow Position
+
+Where in the existing money flow does this offer sit?
+- Intercepts existing spend (replaces something they already pay for)?
+- Creates new spend (solves something they currently do manually)?
+- Percentage captured of total flow?
+
+### 4.4 Delegation Test
+
+"Who runs this when the founder stops working on it?"
+- If answer = "nobody, it requires my expertise" → it's a JOB, not a business. Flag it.
+- If answer = "a VA at $500/mo" or "automated" → passes delegation test.
+
+### 4.5 Kill Criteria
+
+Specific, measurable, time-bound:
+- "< 5 paying customers after 30 days → pivot pain"
+- "< 20 sign-ups for waitlist after 14 days → pivot prey group"
+- "Churn > 30% month 2 → product-market fit failure"
+
+Save to `data/hunts/HUNT-<id>/offer.json`
+
+---
+
+## STEP 5: SCRIPT — Sales materials (copy-paste ready)
+
+**Agent:** Load `hunt-lib/script-writer.md` instructions.
+
+### 5.1 Cold Outreach (3 variants)
+- DM: UNDER 50 words. Lead with THEIR pain, not your product.
+- Email: UNDER 100 words. Subject line from their exact complaint words.
+- Forum comment: UNDER 30 words. Helpful, not promotional.
+
+### 5.2 Landing Page Copy
+- UNDER 200 words total
+- Structure: Pain statement (their words) → Cost of pain (their numbers) → Solution (what it does) → Price → CTA
+- Use VERBATIM quotes from proof interviews where available
+
+### 5.3 Follow-up Sequence
+- Day 2: Value add (share a tip related to their pain — no selling)
+- Day 5: Social proof or case (if available) or "X people also confirmed this pain"
+- Day 10: Direct ask with time limit
+
+### 5.4 Objection Handling
+Top 5 objections:
+1. "Too expensive" → price anchored to their current cost (from Step 2)
+2. "I don't trust you" → proof from interviews, transparent about being new
+3. "I already have a solution" → gap analysis from Step 2.3
+4. "I don't need this" → cost quantification from Step 2.2
+5. "I'm too busy to try" → "takes 30 seconds vs your current X hours"
+
+### 5.5 Week 1 Action Plan
+- Day 1: Send 10 cold outreach messages using scripts
+- Day 2: Send follow-up #1 to any non-replies from proof batch
+- Day 3: Send 10 more cold outreach to new targets
+- Day 5: Send follow-up #2
+- Day 7: Evaluate: replies, interest, objections. Adjust scripts based on actual responses.
+
+Save all scripts to `data/hunts/HUNT-<id>/scripts/`
+
+---
+
+## PERSISTENCE
+
+### Directory Structure
+
+```
+data/hunts/HUNT-<date>-<prey_slug>/
+├── hunt-meta.json           # Case metadata
+├── prey_profile.json        # Step 1 output
+├── pain_map.json            # Step 2 output
+├── proof.json               # Step 3 output (updated after human action)
+├── offer.json               # Step 4 output
+└── scripts/                 # Step 5 output
+    ├── cold-outreach-dm.md
+    ├── cold-outreach-email.md
+    ├── landing-page-copy.md
+    ├── follow-up-sequence.md
+    ├── objection-handling.md
+    └── week-1-action-plan.md
+```
+
+### hunt-meta.json
+
+```json
+{
+  "hunt_id": "HUNT-260522-ke-toan-thue-vn",
+  "created": "2026-05-22T21:00:00Z",
+  "updated": "2026-05-22T21:00:00Z",
+  "status": "PREY_IDENTIFIED",
+  "founder_profile": "phamt-260507",
+  "prey_slug": "ke-toan-thue-vn",
+  "current_step": 1,
+  "proof_action_id": null,
+  "stage0_case_id": null,
+  "notes": []
+}
+```
+
+**Status transitions (valid only):**
+```
+PREY_IDENTIFIED → PAIN_MAPPED → PROOF_PENDING → PROOF_PASSED → OFFER_DESIGNED → SCRIPTS_READY
+                                              → PROOF_FAILED → (back to PREY_IDENTIFIED or PAIN_MAPPED)
+                                              → PROOF_WEAK → OFFER_DESIGNED (with warning)
+Any status → KILLED
+```
+
+### Create directory on first run
+
+```bash
+mkdir -p "data/hunts/HUNT-$(date +%y%m%d)-${prey_slug}"
+```
+
+---
+
+## BRIDGES
+
+### Stage0 → Hunt (optional)
+
+When stage0 verdict = MOUNTAIN or SIDE_HUSTLE_WITH_STAIRCASE:
+- Verdict can suggest: "Run `/hunt <prey from analysis>` to find specific customers"
+- hunt-meta.json records: `stage0_case_id` for traceability
+
+Hunt does NOT require stage0. It runs independently.
+
+### Hunt → Blueprint
+
+After status = SCRIPTS_READY:
+- Suggest: "Run `/blueprint` to create execution plan for building [offer_name]"
+- Pass offer.json as input context
+
+### Hunt → Exec
+
+After scripts ready:
+- First ACTION auto-created: "Send 10 cold outreach messages using scripts/cold-outreach-dm.md"
+- /exec tracks daily execution progress
+
+---
+
+## ANTI-PATTERNS (things /hunt must NEVER do)
+
+1. **No Google "business model" searches.** Hunt searches for COMPLAINTS, not models.
+2. **No "top 10 ideas" lists.** Hunt produces ONE offer for ONE pain for ONE group.
+3. **No skipping proof.** Step 3 is BLOCKING. No human validation = no continuation.
+4. **No "industry benchmark" pricing.** Price comes from WTP data only.
+5. **No scope creep in offer.** MVP solves exactly ONE pain. Nothing more.
+6. **No generic outreach.** Every script uses specific context from the prey's own words.
+7. **No chaining to other commands.** Hunt outputs, displays, and STOPS.

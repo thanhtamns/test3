@@ -1,0 +1,98 @@
+---
+phase: 2
+title: "CLI Test Coverage (P2)"
+status: pending
+priority: P2
+effort: "4h"
+dependencies: [1]
+---
+
+# Phase 2: CLI Test Coverage (P2)
+
+## Overview
+
+Add unit tests for 5 untested CLI modules: wrap.rs compression pipeline, hooks.rs uninstall/conflict, auth.rs token flow, stats.rs formatting, sync.rs batch encoding + circuit breaker. Target: every public function has at least 1 test.
+
+## Requirements
+
+- Functional: Tests cover happy path + at least 1 error path per module
+- Non-functional: Tests run in <5s total. No network calls. No filesystem side effects (use tempdir).
+
+## Related Code Files
+
+- Modify: `cli/crates/cli/src/wrap.rs` (add `#[cfg(test)] mod tests`)
+- Modify: `cli/crates/cli/src/hooks.rs` (add uninstall + conflict tests)
+- Modify: `cli/crates/cli/src/auth.rs` (add `#[cfg(test)] mod tests`)
+- Modify: `cli/crates/cli/src/stats.rs` (add `#[cfg(test)] mod tests`)
+- Modify: `cli/crates/cli/src/sync.rs` (add `#[cfg(test)] mod tests`)
+- Modify: `cli/crates/core/src/util.rs` (add tests for extracted functions)
+
+## Implementation Steps
+
+### Step 1: Test `util.rs` shared functions
+
+1. `session_id()` — test env var precedence: CLAUDE_SESSION_ID > CODEFLOW_SESSION_ID > ppid fallback
+2. `estimate_tokens()` — test: empty=0, "hello"=2, boundary cases
+3. `get_file_mtime_ns()` — test: real file returns Some, nonexistent returns None
+
+### Step 2: Test `wrap.rs` compression pipeline (B1)
+
+1. Test filter-only path: input → filtered output with correct token counts
+2. Test dedup-only path: same command twice → cache hit on second
+3. Test filter+dedup path: filter applied, then dedup on filtered content
+4. Test fail-open: broken filter config → original output unchanged
+5. Test event generation: verify CompressionEvent fields populated correctly
+
+### Step 3: Test `hooks.rs` uninstall + conflict (B2)
+
+1. Test `uninstall()`: hooks present → removed, other hooks preserved
+2. Test `uninstall()`: no hooks → no error
+3. Test `check_rtk_conflict()`: RTK hooks present → warning returned
+4. Test `check_rtk_conflict()`: no RTK → no warning
+
+### Step 4: Test `auth.rs` (B3)
+
+1. Test `extract_code()`: valid redirect URL → code extracted
+2. Test `extract_code()`: missing code param → None
+3. Test token file persistence: write → read back matches
+4. Test TTL expiry logic: expired token → None
+
+### Step 5: Test `stats.rs` (B4)
+
+1. Test display formatting: token counts → human-readable output
+2. Test waste report rendering: mock data → expected table format
+3. Test empty data handling: no events → graceful "no data" message
+
+### Step 6: Test `sync.rs` (B5)
+
+1. Test `encode_batch()`: events → valid protobuf bytes
+2. Test `encode_batch()`: empty batch → empty/zero bytes
+3. Test circuit breaker: 3 consecutive failures → breaker opens
+4. Test circuit breaker: breaker open → wait period → half-open → success → closed
+
+### Step 7: Test `read_dedup.rs` tracking integration (B6)
+
+1. Test: dedup hit → TrackingDb records savings correctly
+2. Test: dedup miss → no savings recorded
+
+### Step 8: Run full suite
+
+1. `cargo test` — all tests pass (existing + new). Run `cargo test 2>&1 | grep 'test result'` to get actual baseline count.
+2. Verify no flaky tests (run 3x)
+
+## Success Criteria
+
+- [ ] `util.rs`: 5+ tests covering all 3 functions
+- [ ] `wrap.rs`: 5+ tests covering filter, dedup, combined, fail-open, events
+- [ ] `hooks.rs`: 4+ tests covering uninstall + RTK conflict
+- [ ] `auth.rs`: 4+ tests covering extract, persist, TTL
+- [ ] `stats.rs`: 3+ tests covering format, waste, empty
+- [ ] `sync.rs`: 4+ tests covering encode, circuit breaker states
+- [ ] `read_dedup.rs`: 2+ tests for tracking integration
+- [ ] All tests pass, no flaky failures
+
+## Risk Assessment
+
+- **Low risk:** Tests are additive, don't change production code.
+- **auth.rs testing:** May need to mock HTTP calls for `exchange_code()`. Use `mockito` or test only the parsing/persistence layer.
+- **sync.rs testing:** Circuit breaker timing tests can be flaky. Use deterministic time injection or test state transitions only.

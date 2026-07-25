@@ -1,0 +1,168 @@
+---
+phase: 2
+title: "Build MVP Core"
+status: pending
+priority: P1
+effort: "15h (Week 2)"
+dependencies: [1]
+---
+
+# Phase 2: Build MVP Core
+
+## Overview
+
+Build the core infrastructure: URL scraper, channel database, simple UI, and payment. NO AI matching yet — that's Phase 3. This phase delivers a manually-curated version that proves the value prop.
+
+## Requirements
+
+- Functional: User pastes URL → sees product analysis + channel recommendations
+- Non-functional: <3s response time, mobile-friendly, works on Cloudflare free tier
+
+## Architecture
+
+```
+User → Landing Page (HTMX)
+  → Paste URL form
+  → POST /api/analyze
+    → Scrape URL (Cheerio)
+    → Extract: title, description, features, pricing, category
+    → Match against channel DB (keyword matching v1)
+    → Return ranked channels + generic outreach templates
+  → Results page (server-rendered)
+  → Stripe checkout ($19/mo or $9 one-time)
+```
+
+## Related Code Files
+
+- Create: `src/index.ts` — Hono worker entry point
+- Create: `src/scraper.ts` — URL scraper (Cheerio + fetch)
+- Create: `src/channels.ts` — Channel database + matching
+- Create: `src/templates/` — HTML templates (landing, results, payment)
+- Create: `src/data/channels.json` — Initial channel database
+- Create: `wrangler.toml` — Cloudflare Workers config
+- Create: `package.json`
+
+## Implementation Steps
+
+### Step 1: Project Setup (2h)
+
+1. Init project:
+   ```bash
+   mkdir distro-intel && cd distro-intel
+   npm init -y
+   npm install hono @hono/node-server cheerio stripe
+   npm install -D wrangler typescript @types/node
+   ```
+
+2. Configure `wrangler.toml`:
+   ```toml
+   name = "distro-intel"
+   main = "src/index.ts"
+   compatibility_date = "2026-05-01"
+   [vars]
+   ENVIRONMENT = "production"
+   ```
+
+3. Create Hono entry point with routes:
+   - `GET /` → landing page
+   - `POST /api/analyze` → analysis endpoint
+   - `GET /results/:id` → results page
+   - `POST /api/checkout` → Stripe redirect
+
+### Step 2: URL Scraper (4h)
+
+4. Build scraper module:
+   - Fetch URL with timeout (5s)
+   - Extract with Cheerio: `<title>`, `<meta name="description">`, `<h1>`, `<h2>`, pricing text
+   - Detect category: SaaS, marketplace, mobile app, Chrome extension, API, template, content
+   - Extract features from bullet points / feature lists
+   - Handle errors gracefully (404, timeout, blocked)
+   - Output: `ProductProfile` object
+
+   ```typescript
+   interface ProductProfile {
+     url: string;
+     title: string;
+     description: string;
+     category: 'saas' | 'marketplace' | 'api' | 'extension' | 'template' | 'content' | 'other';
+     features: string[];
+     pricing: string | null;
+     targetAudience: string | null;
+   }
+   ```
+
+### Step 3: Channel Database (4h)
+
+5. Build initial channel database (500 entries):
+   - 200 Reddit subreddits (categorized by: dev, design, startup, niche-specific)
+   - 100 Discord servers (builder communities)
+   - 100 Facebook groups (global + VN)
+   - 50 forums (HN, IndieHackers, ProductHunt, niche forums)
+   - 50 other (Twitter hashtags, newsletters accepting submissions, podcasts)
+
+6. Each channel entry:
+   ```json
+   {
+     "id": "reddit-sideproject",
+     "platform": "reddit",
+     "name": "r/SideProject",
+     "url": "https://reddit.com/r/SideProject",
+     "category": ["saas", "marketplace", "api", "template"],
+     "audience_size": 150000,
+     "commercial_tolerance": "high",
+     "best_format": "Show post with value-first framing",
+     "best_timing": "Tuesday-Thursday, 9-11 AM EST",
+     "dont_do": "Don't post direct pitch, provide value first",
+     "tags": ["launch", "feedback", "side-project"]
+   }
+   ```
+
+7. Keyword-based matching v1 (no AI yet):
+   - Match product category → channel categories
+   - Rank by: relevance score × audience_size × commercial_tolerance
+   - Return top 15 channels
+
+### Step 4: UI (3h)
+
+8. Landing page — use exact language from Phase 1 discovery:
+   - Hero: "Built something great? Find your first 50 users."
+   - Subhead: "Paste your URL. Get a ranked list of WHERE to post + WHAT to say."
+   - Single input: URL field + "Analyze" button
+   - Social proof section (add after first users)
+
+9. Results page:
+   - Product summary card (what we detected)
+   - Ranked channel list (15 channels)
+   - Each channel: name, why relevant, audience size, best format, timing, template
+   - CTA: "Get full report with AI-powered scripts" → Stripe
+
+10. Keep styling minimal: system fonts, 1 accent color, no framework
+
+### Step 5: Payment Integration (2h)
+
+11. Stripe setup:
+    - Product: "Distribution Intelligence Report"
+    - Price 1: $9 one-time (single report)
+    - Price 2: $19/mo (unlimited reports)
+    - Checkout flow: results preview (5 channels free) → full report (15 channels + scripts) behind paywall
+    - Webhook: `POST /api/webhook` → mark user as paid
+
+## Success Criteria
+
+- [ ] `wrangler dev` runs locally without errors
+- [ ] URL scraper extracts product info from 10 test URLs correctly
+- [ ] Channel database has 500+ entries with categories
+- [ ] Matching returns relevant channels (manual QA: 8/10 relevance)
+- [ ] Landing page renders on mobile
+- [ ] Stripe checkout flow works end-to-end
+- [ ] Deployed to Cloudflare Workers (`wrangler deploy`)
+- [ ] Total infra cost <$10/mo
+
+## Risk Assessment
+
+| Risk | Probability | Mitigation |
+|------|-------------|------------|
+| Scraping blocked by target sites | 20% | Use OG meta tags as fallback; most indie sites don't block |
+| Channel DB too generic | 30% | Start with 200 high-quality entries, expand based on user feedback |
+| Cloudflare Worker limits hit | 10% | Free tier = 100K req/day; won't hit this at MVP stage |
+| Stripe setup complexity | 5% | Standard integration, well-documented |

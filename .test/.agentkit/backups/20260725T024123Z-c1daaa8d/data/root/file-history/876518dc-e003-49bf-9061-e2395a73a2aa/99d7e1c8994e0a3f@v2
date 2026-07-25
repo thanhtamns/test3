@@ -1,0 +1,480 @@
+use anyhow::Result;
+use serde::Serialize;
+
+use crate::session::SessionLog;
+
+pub struct WasteAnalyzer<'a> {
+    session_log: &'a SessionLog,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WasteReport {
+    pub patterns: Vec<WastePattern>,
+    pub total_wasted_tokens: u64,
+    pub total_session_tokens: u64,
+    pub waste_percentage: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type")]
+pub enum WastePattern {
+    ReReadWaste {
+        file_path: String,
+        read_count: u64,
+        redundant_count: u64,
+        tokens_wasted: u64,
+    },
+    RedundantCommand {
+        command_preview: String,
+        run_count: u64,
+        redundant_count: u64,
+        tokens_wasted: u64,
+    },
+    FailedSearch {
+        pattern_preview: String,
+        attempt_count: u64,
+    },
+    GlobSpam {
+        pattern_preview: String,
+        run_count: u64,
+        redundant_count: u64,
+    },
+    LargeUnusedRead {
+        file_path: String,
+        token_count: u64,
+    },
+}
+
+impl<'a> WasteAnalyzer<'a> {
+    pub fn new(session_log: &'a SessionLog) -> Self {
+        Self { session_log }
+    }
+
+    pub fn analyze(&self) -> Result<WasteReport> {
+        let entries = self.session_log.session_entries()?;
+
+        let total_session_tokens: u64 = entries
+            .iter()
+            .filter_map(|e| e.token_count)
+            .map(|t| t as u64)
+            .sum();
+
+        let mut patterns = Vec::new();
+        let mut total_wasted: u64 = 0;
+
+        // 1. Re-read waste (files read >3x)
+        let re_reads = self.detect_re_read_waste(&entries);
+        for p in &re_reads {
+            if let WastePattern::ReReadWaste { tokens_wasted, .. } = p {
+                total_wasted += tokens_wasted;
+            }
+        }
+        patterns.extend(re_reads);
+
+        // 2. Redundant commands (identical within 60s)
+        let redundant = self.detect_redundant_commands(&entries);
+        for p in &redundant {
+            if let WastePattern::RedundantCommand { tokens_wasted, .. } = p {
+                total_wasted += tokens_wasted;
+            }
+        }
+        patterns.extend(redundant);
+
+        // 3. Failed searches
+        patterns.extend(self.detect_failed_searches(&entries));
+
+        // 4. Glob spam
+        patterns.extend(self.detect_glob_spam(&entries));
+
+        // 5. Large unused reads
+        let unused = self.detect_large_unused_reads(&entries);
+        for p in &unused {
+            if let WastePattern::LargeUnusedRead { token_count, .. } = p {
+                total_wasted += token_count;
+            }
+        }
+        patterns.extend(unused);
+
+        let waste_percentage = if total_session_tokens > 0 {
+            (total_wasted as f64 / total_session_tokens as f64) * 100.0
+        } else {
+            0.0
+        };
+
+        Ok(WasteReport {
+            patterns,
+            total_wasted_tokens: total_wasted,
+            total_session_tokens,
+            waste_percentage,
+        })
+    }
+
+    fn detect_re_read_waste(
+        &self,
+        entries: &[crate::session::SessionEntry],
+    ) -> Vec<WastePattern> {
+        use std::collections::HashMap;
+        let mut file_reads: HashMap<&str, Vec<i64>> = HashMap::new();
+
+        for e in entries {
+            if e.tool_name == "Read" {
+                if let Some(ref fp) = e.file_path {
+                    file_reads
+                        .entry(fp.as_str())
+                        .or_default()
+                        .push(e.token_count.unwrap_or(0));
+                }
+            }
+        }
+
+        let mut results = Vec::new();
+        for (path, tokens) in &file_reads {
+            if tokens.len() > 3 {
+                let avg_tokens = tokens.iter().sum::<i64>() / tokens.len() as i64;
+                let redundant = tokens.len() as u64 - 1;
+                results.push(WastePattern::ReReadWaste {
+                    file_path: path.to_string(),
+                    read_count: tokens.len() as u64,
+                    redundant_count: redundant,
+                    tokens_wasted: redundant * avg_tokens as u64,
+                });
+            }
+        }
+        results.sort_by(|a, b| {
+            let wa = match a {
+                WastePattern::ReReadWaste { tokens_wasted, .. } => *tokens_wasted,
+                _ => 0,
+            };
+            let wb = match b {
+                WastePattern::ReReadWaste { tokens_wasted, .. } => *tokens_wasted,
+                _ => 0,
+            };
+            wb.cmp(&wa)
+        });
+        results
+    }
+
+    fn detect_redundant_commands(
+        &self,
+        entries: &[crate::session::SessionEntry],
+    ) -> Vec<WastePattern> {
+        use std::collections::HashMap;
+        let mut groups: HashMap<&str, Vec<(i64, i64)>> = HashMap::new();
+
+        for e in entries {
+            groups
+                .entry(&e.tool_input_hash)
+                .or_default()
+                .push((e.timestamp_ms, e.token_count.unwrap_or(0)));
+        }
+
+        let mut results = Vec::new();
+        for group in groups.values() {
+            if group.len() < 2 {
+                continue;
+            }
+            let mut redundant_count = 0u64;
+            let mut tokens_wasted = 0u64;
+            for i in 1..group.len() {
+                let gap_secs = (group[i].0 - group[i - 1].0) / 1000;
+                if gap_secs <= 60 {
+                    redundant_count += 1;
+                    tokens_wasted += group[i].1 as u64;
+                }
+            }
+            if redundant_count > 0 {
+                // Find preview from entries
+                let hash = groups.keys().find(|k| {
+                    groups[*k].len() == group.len()
+                        && groups[*k][0].0 == group[0].0
+                });
+                let preview = entries
+                    .iter()
+                    .find(|e| {
+                        hash.is_some_and(|h| e.tool_input_hash == *h)
+                    })
+                    .map(|e| {
+                        let s = &e.tool_input_json;
+                        if s.len() > 60 {
+                            format!("{}…", s.chars().take(60).collect::<String>())
+                        } else {
+                            s.clone()
+                        }
+                    })
+                    .unwrap_or_default();
+
+                results.push(WastePattern::RedundantCommand {
+                    command_preview: preview,
+                    run_count: group.len() as u64,
+                    redundant_count,
+                    tokens_wasted,
+                });
+            }
+        }
+        results.sort_by(|a, b| {
+            let wa = match a {
+                WastePattern::RedundantCommand { tokens_wasted, .. } => *tokens_wasted,
+                _ => 0,
+            };
+            let wb = match b {
+                WastePattern::RedundantCommand { tokens_wasted, .. } => *tokens_wasted,
+                _ => 0,
+            };
+            wb.cmp(&wa)
+        });
+        results
+    }
+
+    fn detect_failed_searches(
+        &self,
+        entries: &[crate::session::SessionEntry],
+    ) -> Vec<WastePattern> {
+        let mut results = Vec::new();
+        use std::collections::HashMap;
+        let mut grep_results: HashMap<String, u64> = HashMap::new();
+
+        for e in entries {
+            if e.tool_name == "Grep" && e.token_count.unwrap_or(1) == 0 {
+                let preview = if e.tool_input_json.len() > 60 {
+                    format!("{}…", &e.tool_input_json[..60])
+                } else {
+                    e.tool_input_json.clone()
+                };
+                *grep_results.entry(preview).or_insert(0) += 1;
+            }
+        }
+
+        for (preview, count) in grep_results {
+            results.push(WastePattern::FailedSearch {
+                pattern_preview: preview,
+                attempt_count: count,
+            });
+        }
+        results
+    }
+
+    fn detect_glob_spam(
+        &self,
+        entries: &[crate::session::SessionEntry],
+    ) -> Vec<WastePattern> {
+        use std::collections::HashMap;
+        let mut glob_counts: HashMap<&str, u64> = HashMap::new();
+
+        for e in entries {
+            if e.tool_name == "Glob" {
+                *glob_counts.entry(&e.tool_input_hash).or_insert(0) += 1;
+            }
+        }
+
+        let mut results = Vec::new();
+        for (hash, count) in &glob_counts {
+            if *count > 2 {
+                let preview = entries
+                    .iter()
+                    .find(|e| e.tool_name == "Glob" && &e.tool_input_hash.as_str() == hash)
+                    .map(|e| {
+                        if e.tool_input_json.len() > 60 {
+                            format!("{}…", &e.tool_input_json[..60])
+                        } else {
+                            e.tool_input_json.clone()
+                        }
+                    })
+                    .unwrap_or_default();
+                results.push(WastePattern::GlobSpam {
+                    pattern_preview: preview,
+                    run_count: *count,
+                    redundant_count: count - 1,
+                });
+            }
+        }
+        results
+    }
+
+    fn detect_large_unused_reads(
+        &self,
+        entries: &[crate::session::SessionEntry],
+    ) -> Vec<WastePattern> {
+        let mut results = Vec::new();
+
+        for (i, e) in entries.iter().enumerate() {
+            if e.tool_name != "Read" {
+                continue;
+            }
+            let tokens = e.token_count.unwrap_or(0);
+            if tokens < 1000 {
+                continue;
+            }
+            if let Some(ref fp) = e.file_path {
+                let used_later = entries[i + 1..].iter().any(|later| {
+                    later
+                        .tool_input_json
+                        .contains(fp.as_str())
+                });
+                if !used_later {
+                    results.push(WastePattern::LargeUnusedRead {
+                        file_path: fp.clone(),
+                        token_count: tokens as u64,
+                    });
+                }
+            }
+        }
+        results
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::session::SessionLog;
+    use tempfile::TempDir;
+
+    fn setup() -> (SessionLog, TempDir) {
+        let dir = TempDir::new().unwrap();
+        let db_path = dir.path().join("waste.db");
+        let log = SessionLog::open(&db_path, "test-session").unwrap();
+        (log, dir)
+    }
+
+    #[test]
+    fn test_empty_log_empty_report() {
+        let (log, _dir) = setup();
+        let analyzer = WasteAnalyzer::new(&log);
+        let report = analyzer.analyze().unwrap();
+        assert!(report.patterns.is_empty());
+        assert_eq!(report.total_wasted_tokens, 0);
+    }
+
+    #[test]
+    fn test_re_read_waste_detected() {
+        let (log, _dir) = setup();
+        for i in 0..5 {
+            std::thread::sleep(std::time::Duration::from_millis(2));
+            let id = log
+                .record_pre(
+                    "Read",
+                    r#"{"file_path":"/src/auth.ts"}"#,
+                    Some("/src/auth.ts"),
+                )
+                .unwrap();
+            log.record_post(id, &format!("hash{}", i), 500, None)
+                .unwrap();
+        }
+        let analyzer = WasteAnalyzer::new(&log);
+        let report = analyzer.analyze().unwrap();
+        let re_reads: Vec<_> = report
+            .patterns
+            .iter()
+            .filter(|p| matches!(p, WastePattern::ReReadWaste { .. }))
+            .collect();
+        assert_eq!(re_reads.len(), 1);
+        if let WastePattern::ReReadWaste {
+            read_count,
+            redundant_count,
+            ..
+        } = &re_reads[0]
+        {
+            assert_eq!(*read_count, 5);
+            assert_eq!(*redundant_count, 4);
+        }
+    }
+
+    #[test]
+    fn test_redundant_commands_detected() {
+        let (log, _dir) = setup();
+        let input = r#"{"command":"git status"}"#;
+        for i in 0..3 {
+            let id = log.record_pre("Bash", input, None).unwrap();
+            log.record_post(id, &format!("h{}", i), 200, None)
+                .unwrap();
+        }
+        let analyzer = WasteAnalyzer::new(&log);
+        let report = analyzer.analyze().unwrap();
+        let redundant: Vec<_> = report
+            .patterns
+            .iter()
+            .filter(|p| matches!(p, WastePattern::RedundantCommand { .. }))
+            .collect();
+        assert!(!redundant.is_empty());
+    }
+
+    #[test]
+    fn test_failed_searches_detected() {
+        let (log, _dir) = setup();
+        let id = log
+            .record_pre("Grep", r#"{"pattern":"oldFunction"}"#, Some("/src"))
+            .unwrap();
+        log.record_post(id, "empty", 0, None).unwrap();
+
+        let analyzer = WasteAnalyzer::new(&log);
+        let report = analyzer.analyze().unwrap();
+        let failed: Vec<_> = report
+            .patterns
+            .iter()
+            .filter(|p| matches!(p, WastePattern::FailedSearch { .. }))
+            .collect();
+        assert_eq!(failed.len(), 1);
+    }
+
+    #[test]
+    fn test_glob_spam_detected() {
+        let (log, _dir) = setup();
+        let input = r#"{"pattern":"**/*.ts","path":"/src"}"#;
+        for i in 0..4 {
+            let id = log.record_pre("Glob", input, Some("/src")).unwrap();
+            log.record_post(id, &format!("h{}", i), 30, None)
+                .unwrap();
+        }
+        let analyzer = WasteAnalyzer::new(&log);
+        let report = analyzer.analyze().unwrap();
+        let spam: Vec<_> = report
+            .patterns
+            .iter()
+            .filter(|p| matches!(p, WastePattern::GlobSpam { .. }))
+            .collect();
+        assert_eq!(spam.len(), 1);
+    }
+
+    #[test]
+    fn test_large_unused_reads_detected() {
+        let (log, _dir) = setup();
+        // Large read that's never referenced later
+        let id = log
+            .record_pre(
+                "Read",
+                r#"{"file_path":"/docs/README.md"}"#,
+                Some("/docs/README.md"),
+            )
+            .unwrap();
+        log.record_post(id, "hash1", 2400, None).unwrap();
+
+        // A later tool that doesn't reference README.md
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let id2 = log
+            .record_pre("Grep", r#"{"pattern":"fn main","path":"/src"}"#, Some("/src"))
+            .unwrap();
+        log.record_post(id2, "hash2", 50, None).unwrap();
+
+        let analyzer = WasteAnalyzer::new(&log);
+        let report = analyzer.analyze().unwrap();
+        let unused: Vec<_> = report
+            .patterns
+            .iter()
+            .filter(|p| matches!(p, WastePattern::LargeUnusedRead { .. }))
+            .collect();
+        assert_eq!(unused.len(), 1);
+    }
+
+    #[test]
+    fn test_json_serialization() {
+        let (log, _dir) = setup();
+        let id = log
+            .record_pre("Read", r#"{"file_path":"/a.rs"}"#, Some("/a.rs"))
+            .unwrap();
+        log.record_post(id, "h", 100, None).unwrap();
+
+        let analyzer = WasteAnalyzer::new(&log);
+        let report = analyzer.analyze().unwrap();
+        let json = serde_json::to_string(&report).unwrap();
+        assert!(json.contains("total_wasted_tokens"));
+    }
+}

@@ -1,0 +1,226 @@
+#!/usr/bin/env python3
+"""
+Founder Edge Matcher — Cross-reference signals with founder profile.
+Scores each signal on skill match, location advantage, capital fit, time fit.
+Kills signals where founder has <3/10 skill match.
+Part of Empire Pipeline V1 Layer 1.
+
+Usage:
+    python founder-edge-matcher.py --signals path/to/signals.json
+    python founder-edge-matcher.py --test
+"""
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+PROFILE_PATH = Path(__file__).parent.parent.parent.parent.parent / "data" / "founder-profile.json"
+
+SKILL_MAP = {
+    "tech/code": [
+        "software", "saas", "api", "tool", "app", "platform", "code", "build",
+        "automate", "script", "bot", "extension", "plugin", "dev", "ai",
+        "machine learning", "data", "dashboard", "integration", "mcp",
+    ],
+    "sales/negotiation": [
+        "sell", "sales", "client", "customer", "outreach", "cold", "pitch",
+        "close", "deal", "negotiate", "b2b", "enterprise", "agency",
+    ],
+    "content/marketing": [
+        "content", "blog", "video", "youtube", "newsletter", "seo",
+        "marketing", "social", "audience", "brand", "course", "teach",
+    ],
+    "operations/logistics": [
+        "manage", "process", "supply", "logistics", "inventory", "fulfillment",
+        "operations", "workflow", "coordinate", "schedule",
+    ],
+}
+
+LOCATION_ADVANTAGES = {
+    "vn": [
+        "vietnam", "vn", "southeast asia", "sea", "labor cost", "arbitrage",
+        "offshore", "outsource", "timezone",
+    ],
+}
+
+
+def load_profile() -> dict:
+    if PROFILE_PATH.exists():
+        with open(PROFILE_PATH) as f:
+            return json.load(f)
+    return {
+        "skills": ["tech/code"],
+        "capital_usd": 1000,
+        "hours_per_day": 8,
+        "location": "Vietnam",
+    }
+
+
+def score_skill_match(signal_text: str, founder_skills: list) -> tuple[float, list[str]]:
+    text_lower = signal_text.lower()
+    matched_skills = []
+    total_hits = 0
+
+    for skill in founder_skills:
+        keywords = SKILL_MAP.get(skill, [])
+        hits = sum(1 for k in keywords if k in text_lower)
+        if hits > 0:
+            matched_skills.append(f"{skill} ({hits} hits)")
+            total_hits += hits
+
+    score = min(10.0, total_hits * 2.0)
+    return score, matched_skills
+
+
+def score_location_advantage(signal_text: str, location: str) -> tuple[float, str]:
+    text_lower = signal_text.lower()
+    loc_lower = location.lower()
+
+    if any(k in text_lower for k in LOCATION_ADVANTAGES.get("vn", [])):
+        return 8.0, "Signal mentions VN/SEA advantage"
+
+    if "remote" in text_lower or "global" in text_lower:
+        return 6.0, "Remote/global opportunity — location neutral"
+
+    if "local" in text_lower or "us only" in text_lower or "uk only" in text_lower:
+        return 2.0, "Location-restricted — disadvantage for VN founder"
+
+    return 5.0, "No location signal — neutral"
+
+
+def score_capital_fit(signal_text: str, capital: float) -> tuple[float, str]:
+    text_lower = signal_text.lower()
+
+    if any(k in text_lower for k in ["free", "no cost", "$0", "bootstrap", "zero capital"]):
+        return 10.0, "Zero capital required"
+
+    if any(k in text_lower for k in ["investment", "funding", "venture", "$50k", "$100k"]):
+        return 1.0, "Requires significant capital"
+
+    if capital >= 1000:
+        return 7.0, f"${capital} capital sufficient for most bootstrap opportunities"
+    elif capital >= 500:
+        return 5.0, f"${capital} capital — limited but workable"
+    else:
+        return 3.0, f"${capital} capital — very constrained"
+
+
+def score_time_fit(signal_text: str, hours_per_day: int) -> tuple[float, str]:
+    if hours_per_day >= 8:
+        return 9.0, "Full-time availability — can tackle any opportunity"
+    elif hours_per_day >= 4:
+        return 6.0, "Part-time — need quick-win opportunities"
+    else:
+        return 3.0, "Limited time — need passive/automated opportunities"
+
+
+def match_signal(signal: dict, profile: dict) -> dict:
+    text = f"{signal.get('title', '')} {signal.get('pain_statement', '')} {signal.get('platform', '')}"
+
+    skill_score, skill_reasons = score_skill_match(text, profile.get("skills", []))
+    loc_score, loc_reason = score_location_advantage(text, profile.get("location", ""))
+    cap_score, cap_reason = score_capital_fit(text, profile.get("capital_usd", 0))
+    time_score, time_reason = score_time_fit(text, profile.get("hours_per_day", 4))
+
+    edge_score = round((skill_score + loc_score + cap_score + time_score) / 4, 1)
+
+    return {
+        "signal": signal,
+        "edge_score": edge_score,
+        "skill_match": {"score": skill_score, "matched": skill_reasons},
+        "location_advantage": {"score": loc_score, "reason": loc_reason},
+        "capital_fit": {"score": cap_score, "reason": cap_reason},
+        "time_fit": {"score": time_score, "reason": time_reason},
+        "execution_gap": 10.0 - edge_score,
+        "verdict": "MATCH" if skill_score >= 3.0 else "KILL_NO_SKILL_MATCH",
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Founder Edge Matcher — Empire Pipeline V1")
+    parser.add_argument("--signals", type=str, help="Path to signals JSON file")
+    parser.add_argument("--json", type=str, help="Single signal as JSON string")
+    parser.add_argument("--test", action="store_true")
+    parser.add_argument("--min-edge", type=float, default=3.0, help="Minimum edge score to include")
+    args = parser.parse_args()
+
+    if args.test:
+        run_tests()
+        return
+
+    profile = load_profile()
+
+    if args.signals:
+        with open(args.signals) as f:
+            data = json.load(f)
+        signals = data.get("signals", data) if isinstance(data, dict) else data
+    elif args.json:
+        signals = [json.loads(args.json)]
+    else:
+        parser.print_help()
+        sys.exit(1)
+
+    matched = []
+    killed = []
+    for s in signals:
+        result = match_signal(s, profile)
+        if result["verdict"] == "MATCH" and result["edge_score"] >= args.min_edge:
+            matched.append(result)
+        else:
+            killed.append(result)
+
+    matched.sort(key=lambda x: x["edge_score"], reverse=True)
+
+    output = {
+        "profile_used": profile.get("name", "unknown"),
+        "total_signals": len(signals),
+        "matched": len(matched),
+        "killed": len(killed),
+        "results": matched,
+    }
+
+    print(json.dumps(output, indent=2, ensure_ascii=False))
+
+
+def run_tests():
+    profile = {
+        "skills": ["tech/code", "sales/negotiation", "content/marketing", "operations/logistics"],
+        "capital_usd": 1000,
+        "hours_per_day": 8,
+        "location": "Vietnam",
+    }
+
+    test_cases = [
+        {
+            "signal": {"title": "I wish there was a SaaS tool to automate invoice management", "pain_statement": "need to build a dashboard for tracking"},
+            "expected_verdict": "MATCH",
+            "expected_min_edge": 5.0,
+        },
+        {
+            "signal": {"title": "Looking for local US plumber in NYC", "pain_statement": "need someone local"},
+            "expected_verdict": "KILL_NO_SKILL_MATCH",
+            "expected_min_edge": 0,
+        },
+    ]
+
+    print("=== Founder Edge Matcher Tests ===\n")
+    passed = 0
+    for tc in test_cases:
+        result = match_signal(tc["signal"], profile)
+        verdict_ok = result["verdict"] == tc["expected_verdict"]
+        edge_ok = result["edge_score"] >= tc["expected_min_edge"]
+        ok = verdict_ok and edge_ok
+        passed += ok
+        print(f"[{'PASS' if ok else 'FAIL'}] {tc['signal']['title'][:50]}")
+        print(f"  verdict={result['verdict']} (expected={tc['expected_verdict']})")
+        print(f"  edge={result['edge_score']} (min={tc['expected_min_edge']})")
+        print(f"  skill={result['skill_match']['score']}/10")
+        print()
+
+    print(f"Results: {passed}/{len(test_cases)} passed")
+    sys.exit(0 if passed == len(test_cases) else 1)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,233 @@
+"""
+AtomicResolver — resolves individual atomic questions against local knowledge sources.
+Returns Resolution with answer, confidence, source, and status.
+"""
+
+import json
+import sqlite3
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
+
+from .problem_decomposer import AtomicQuestion
+
+ROOT = Path(__file__).resolve().parents[4]
+VECTORS_DB = ROOT / ".claude" / "data" / "knowledge-distillation" / "decision-vectors.db"
+KILL_SIGNALS_PATH = ROOT / ".claude" / "data" / "knowledge-distillation" / "kill-signals.json"
+PROVENANCE_DB = ROOT / ".claude" / "data" / "provenance" / "facts.db"
+
+
+@dataclass
+class Resolution:
+    question: AtomicQuestion
+    answer: Optional[str]
+    confidence: float
+    source: str
+    status: str  # RESOLVED, GAP
+
+    def to_dict(self) -> dict:
+        return {
+            "question": self.question.text,
+            "answer": self.answer,
+            "confidence": round(self.confidence, 3),
+            "source": self.source,
+            "status": self.status,
+        }
+
+
+CATEGORY_RESOLVERS = {
+    "classification": "_resolve_classification",
+    "competitor": "_resolve_competitor",
+    "financial": "_resolve_financial",
+    "moat": "_resolve_moat",
+    "leverage": "_resolve_leverage",
+    "kill": "_resolve_kill",
+    "base_rate": "_resolve_base_rate",
+    "founder": "_resolve_founder",
+    "timeline": "_resolve_timeline",
+    "risk": "_resolve_risk",
+    "market_size": "_resolve_market_size",
+    "timing": "_resolve_timing",
+    "compound": "_resolve_compound",
+    "regulatory": "_resolve_generic",
+    "pricing": "_resolve_generic",
+    "channel": "_resolve_generic",
+    "conversion": "_resolve_generic",
+    "threat": "_resolve_competitor",
+    "custom": "_resolve_generic",
+}
+
+
+class AtomicResolver:
+    def __init__(
+        self,
+        vectors_db: Optional[Path] = None,
+        kill_signals_path: Optional[Path] = None,
+        provenance_db: Optional[Path] = None,
+    ):
+        self.vectors_db = vectors_db or VECTORS_DB
+        self.kill_signals_path = kill_signals_path or KILL_SIGNALS_PATH
+        self.provenance_db = provenance_db or PROVENANCE_DB
+        self._vectors_cache = None
+        self._signals_cache = None
+
+    def resolve(self, question: AtomicQuestion, context: dict) -> Resolution:
+        resolver_name = CATEGORY_RESOLVERS.get(question.category, "_resolve_generic")
+        resolver = getattr(self, resolver_name, self._resolve_generic)
+        return resolver(question, context)
+
+    def resolve_batch(self, questions: list[AtomicQuestion], context: dict) -> list[Resolution]:
+        return [self.resolve(q, context) for q in questions]
+
+    def _get_vectors(self) -> list[dict]:
+        if self._vectors_cache is not None:
+            return self._vectors_cache
+        if not self.vectors_db.exists():
+            self._vectors_cache = []
+            return self._vectors_cache
+        with sqlite3.connect(str(self.vectors_db)) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute("SELECT * FROM decision_vectors LIMIT 5000").fetchall()
+        results = []
+        for r in rows:
+            try:
+                results.append({**dict(r), "features": json.loads(r["features_json"])})
+            except (json.JSONDecodeError, KeyError):
+                continue
+        self._vectors_cache = results
+        return self._vectors_cache
+
+    def _get_signals(self) -> list[dict]:
+        if self._signals_cache is not None:
+            return self._signals_cache
+        if not self.kill_signals_path.exists():
+            self._signals_cache = []
+            return self._signals_cache
+        self._signals_cache = json.loads(self.kill_signals_path.read_text(encoding="utf-8"))
+        return self._signals_cache
+
+    def _matching_vectors(self, context: dict) -> list[dict]:
+        industry = context.get("industry", "")
+        model = context.get("business_model", "")
+        vectors = self._get_vectors()
+        return [
+            v for v in vectors
+            if v["features"].get("industry") == industry or v["features"].get("business_model") == model
+        ]
+
+    def _resolve_classification(self, q: AtomicQuestion, ctx: dict) -> Resolution:
+        industry = ctx.get("industry", "")
+        model = ctx.get("business_model", "")
+        if industry and model:
+            return Resolution(q, f"industry={industry}, model={model}", 0.9, "context", "RESOLVED")
+        if industry or model:
+            return Resolution(q, f"industry={industry}, model={model}", 0.6, "context", "RESOLVED")
+        return Resolution(q, None, 0.0, "", "GAP")
+
+    def _resolve_competitor(self, q: AtomicQuestion, ctx: dict) -> Resolution:
+        matches = self._matching_vectors(ctx)
+        competitors = [m for m in matches if m["outcome"] in ("success", "mixed")]
+        if len(competitors) >= 3:
+            names = [c["id"] for c in competitors[:5]]
+            return Resolution(q, f"Found {len(competitors)} related decisions: {', '.join(names)}", 0.7, "vectors_db", "RESOLVED")
+        return Resolution(q, None, 0.2, "", "GAP")
+
+    def _resolve_financial(self, q: AtomicQuestion, ctx: dict) -> Resolution:
+        capital = ctx.get("entry_capital", "")
+        if capital:
+            return Resolution(q, f"entry_capital={capital}", 0.8, "context", "RESOLVED")
+        return Resolution(q, None, 0.0, "", "GAP")
+
+    def _resolve_moat(self, q: AtomicQuestion, ctx: dict) -> Resolution:
+        moat = ctx.get("moat_type", [])
+        if moat and moat != ["unknown"]:
+            return Resolution(q, f"moat_type={moat}", 0.7, "context", "RESOLVED")
+        matches = self._matching_vectors(ctx)
+        moats = [m["features"].get("moat_type", []) for m in matches if m["features"].get("moat_type")]
+        if moats:
+            flat = [item for sublist in moats for item in (sublist if isinstance(sublist, list) else [sublist])]
+            from collections import Counter
+            common = Counter(flat).most_common(3)
+            return Resolution(q, f"Common moats in similar: {common}", 0.5, "vectors_db", "RESOLVED")
+        return Resolution(q, None, 0.0, "", "GAP")
+
+    def _resolve_leverage(self, q: AtomicQuestion, ctx: dict) -> Resolution:
+        leverage = ctx.get("leverage_type", [])
+        if leverage and leverage != ["unknown"]:
+            return Resolution(q, f"leverage_type={leverage}", 0.7, "context", "RESOLVED")
+        return Resolution(q, None, 0.1, "", "GAP")
+
+    def _resolve_kill(self, q: AtomicQuestion, ctx: dict) -> Resolution:
+        signals = self._get_signals()
+        matched = []
+        for sig in signals:
+            if sig.get("type") != "feature_combo":
+                continue
+            conditions = sig.get("conditions", {})
+            match = True
+            for key, expected in conditions.items():
+                actual = ctx.get(key, "")
+                if isinstance(expected, list):
+                    if isinstance(actual, list):
+                        if not any(a in expected for a in actual):
+                            match = False
+                    elif actual not in expected:
+                        match = False
+                elif actual != expected:
+                    match = False
+            if match:
+                matched.append(sig["name"])
+
+        if matched:
+            return Resolution(q, f"Kill signals: {matched}", 0.9, "kill_signals", "RESOLVED")
+        return Resolution(q, "No kill signals matched", 0.7, "kill_signals", "RESOLVED")
+
+    def _resolve_base_rate(self, q: AtomicQuestion, ctx: dict) -> Resolution:
+        matches = self._matching_vectors(ctx)
+        if len(matches) >= 5:
+            failures = sum(1 for m in matches if m["outcome"] == "failure")
+            rate = failures / len(matches)
+            return Resolution(q, f"Failure rate: {rate:.0%} ({failures}/{len(matches)})", 0.6, "vectors_db", "RESOLVED")
+        return Resolution(q, None, 0.1, "", "GAP")
+
+    def _resolve_founder(self, q: AtomicQuestion, ctx: dict) -> Resolution:
+        founder = ctx.get("founder_type", "")
+        if founder:
+            return Resolution(q, f"founder_type={founder}", 0.6, "context", "RESOLVED")
+        return Resolution(q, None, 0.0, "", "GAP")
+
+    def _resolve_timeline(self, q: AtomicQuestion, ctx: dict) -> Resolution:
+        horizon = ctx.get("time_horizon", "")
+        if horizon:
+            return Resolution(q, f"time_horizon={horizon}", 0.6, "context", "RESOLVED")
+        return Resolution(q, None, 0.0, "", "GAP")
+
+    def _resolve_risk(self, q: AtomicQuestion, ctx: dict) -> Resolution:
+        moat = ctx.get("moat_type", [])
+        leverage = ctx.get("leverage_type", [])
+        risks = []
+        if "none" in moat:
+            risks.append("no_moat")
+        if "labor" in leverage or "none" in leverage:
+            risks.append("low_leverage")
+        if risks:
+            return Resolution(q, f"Risks: {risks}", 0.6, "inference", "RESOLVED")
+        return Resolution(q, "No obvious risk flags", 0.5, "inference", "RESOLVED")
+
+    def _resolve_market_size(self, q: AtomicQuestion, ctx: dict) -> Resolution:
+        return Resolution(q, None, 0.0, "", "GAP")
+
+    def _resolve_timing(self, q: AtomicQuestion, ctx: dict) -> Resolution:
+        timing = ctx.get("market_timing", "")
+        if timing and timing != "unknown":
+            return Resolution(q, f"market_timing={timing}", 0.6, "context", "RESOLVED")
+        return Resolution(q, None, 0.0, "", "GAP")
+
+    def _resolve_compound(self, q: AtomicQuestion, ctx: dict) -> Resolution:
+        leverage = ctx.get("leverage_type", [])
+        if any(l in ("code", "media") for l in leverage):
+            return Resolution(q, f"Compound via {leverage}", 0.5, "inference", "RESOLVED")
+        return Resolution(q, None, 0.1, "", "GAP")
+
+    def _resolve_generic(self, q: AtomicQuestion, ctx: dict) -> Resolution:
+        return Resolution(q, None, 0.0, "", "GAP")

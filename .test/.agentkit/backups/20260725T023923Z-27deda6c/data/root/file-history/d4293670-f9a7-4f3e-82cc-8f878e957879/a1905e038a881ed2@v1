@@ -1,0 +1,423 @@
+use regex::Regex;
+use std::collections::HashSet;
+
+use super::dep_validator::Severity;
+
+/// Type of hallucination or security finding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum CheckType {
+    HallucinatedDep,
+    Typosquat,
+    SuspiciousApi,
+    HardcodedSecret,
+    FabricatedUrl,
+}
+
+use serde::Serialize;
+
+impl CheckType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::HallucinatedDep => "hallucinated_dep",
+            Self::Typosquat => "typosquat",
+            Self::SuspiciousApi => "suspicious_api",
+            Self::HardcodedSecret => "hardcoded_secret",
+            Self::FabricatedUrl => "fabricated_url",
+        }
+    }
+}
+
+/// A single finding from the hallucination detector.
+#[derive(Debug, Clone, Serialize)]
+pub struct Finding {
+    pub check_type: CheckType,
+    pub severity: Severity,
+    pub file_path: String,
+    pub line: usize,
+    pub message: String,
+    pub suggestion: Option<String>,
+}
+
+impl Finding {
+    fn new(
+        check_type: CheckType,
+        severity: Severity,
+        file_path: &str,
+        line: usize,
+        message: impl Into<String>,
+        suggestion: Option<String>,
+    ) -> Self {
+        Self {
+            check_type,
+            severity,
+            file_path: file_path.to_string(),
+            line,
+            message: message.into(),
+            suggestion,
+        }
+    }
+}
+
+/// Compute Levenshtein distance using two-row DP (no external dep).
+pub fn levenshtein(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    let m = a.len();
+    let n = b.len();
+
+    if m == 0 {
+        return n;
+    }
+    if n == 0 {
+        return m;
+    }
+
+    let mut prev: Vec<usize> = (0..=n).collect();
+    let mut curr = vec![0usize; n + 1];
+
+    for i in 1..=m {
+        curr[0] = i;
+        for j in 1..=n {
+            let cost = if a[i - 1] == b[j - 1] { 0 } else { 1 };
+            curr[j] = (curr[j - 1] + 1)
+                .min(prev[j] + 1)
+                .min(prev[j - 1] + cost);
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+
+    prev[n]
+}
+
+/// Load the top-packages list for a given ecosystem from the embedded data files.
+fn load_top_packages(ecosystem: &str) -> HashSet<String> {
+    let content = match ecosystem {
+        "npm" => include_str!("../../data/top-packages-npm.txt"),
+        "pypi" => include_str!("../../data/top-packages-pypi.txt"),
+        "crates" => include_str!("../../data/top-packages-crates.txt"),
+        _ => return HashSet::new(),
+    };
+    content
+        .lines()
+        .map(|l| l.trim().to_lowercase())
+        .filter(|l| !l.is_empty())
+        .collect()
+}
+
+/// Check if a package name is a typosquat of any top package (Levenshtein ≤ 2).
+pub fn check_typosquat(
+    pkg: &str,
+    ecosystem: &str,
+    file_path: &str,
+    line: usize,
+) -> Option<Finding> {
+    let known = load_top_packages(ecosystem);
+    let pkg_lower = pkg.to_lowercase();
+
+    // Exact match is fine — not a typosquat
+    if known.contains(&pkg_lower) {
+        return None;
+    }
+
+    for known_pkg in &known {
+        let dist = levenshtein(&pkg_lower, known_pkg);
+        if dist > 0 && dist <= 2 {
+            return Some(Finding::new(
+                CheckType::Typosquat,
+                Severity::High,
+                file_path,
+                line,
+                format!(
+                    "Package '{}' looks like a typosquat of well-known '{}'",
+                    pkg, known_pkg
+                ),
+                Some(format!("Did you mean '{}'?", known_pkg)),
+            ));
+        }
+    }
+    None
+}
+
+/// Patterns for suspicious APIs that indicate code execution or shell injection risk.
+fn suspicious_api_patterns(file_ext: &str) -> Vec<(Regex, &'static str, Severity)> {
+    match file_ext {
+        "js" | "ts" | "jsx" | "tsx" | "mjs" | "cjs" => vec![
+            (
+                Regex::new(r"\beval\s*\(").unwrap(),
+                "eval() executes arbitrary code — AI hallucination risk",
+                Severity::Critical,
+            ),
+            (
+                Regex::new(r"\bexec\s*\(").unwrap(),
+                "exec() runs shell commands — verify this is intentional",
+                Severity::High,
+            ),
+            (
+                Regex::new(r"child_process\s*\.\s*exec\s*\(").unwrap(),
+                "child_process.exec() runs shell commands with shell=true by default",
+                Severity::Critical,
+            ),
+            (
+                Regex::new(r"child_process\s*\.\s*execSync\s*\(").unwrap(),
+                "child_process.execSync() runs shell commands synchronously",
+                Severity::High,
+            ),
+            (
+                Regex::new(r"\bnew\s+Function\s*\(").unwrap(),
+                "new Function() is equivalent to eval()",
+                Severity::Critical,
+            ),
+        ],
+        "py" | "python" => vec![
+            (
+                Regex::new(r"\beval\s*\(").unwrap(),
+                "eval() executes arbitrary Python code",
+                Severity::Critical,
+            ),
+            (
+                Regex::new(r"\bexec\s*\(").unwrap(),
+                "exec() executes arbitrary Python code",
+                Severity::Critical,
+            ),
+            (
+                Regex::new(r"subprocess\s*\.\s*call\s*\([^)]*shell\s*=\s*True").unwrap(),
+                "subprocess.call(shell=True) exposes shell injection risk",
+                Severity::Critical,
+            ),
+            (
+                Regex::new(r"subprocess\s*\.\s*run\s*\([^)]*shell\s*=\s*True").unwrap(),
+                "subprocess.run(shell=True) exposes shell injection risk",
+                Severity::Critical,
+            ),
+            (
+                Regex::new(r"os\s*\.\s*system\s*\(").unwrap(),
+                "os.system() runs shell commands — prefer subprocess with shell=False",
+                Severity::High,
+            ),
+            (
+                Regex::new(r"\bpickle\s*\.\s*loads?\s*\(").unwrap(),
+                "pickle.load() on untrusted data enables remote code execution",
+                Severity::High,
+            ),
+        ],
+        "rs" => vec![
+            (
+                Regex::new(r"unsafe\s*\{").unwrap(),
+                "unsafe block in AI-generated Rust code — audit carefully",
+                Severity::Medium,
+            ),
+        ],
+        _ => vec![],
+    }
+}
+
+/// Patterns for hardcoded secrets in any language.
+fn secret_patterns() -> Vec<(Regex, &'static str)> {
+    vec![
+        (
+            Regex::new(r#"(?i)(api[_-]?key|apikey)\s*[=:]\s*['"]([A-Za-z0-9_\-]{16,})['"]\s*"#)
+                .unwrap(),
+            "Hardcoded API key detected",
+        ),
+        (
+            Regex::new(r#"(?i)(secret[_-]?key|secret)\s*[=:]\s*['"]([A-Za-z0-9_\-/+]{16,})['"]\s*"#)
+                .unwrap(),
+            "Hardcoded secret key detected",
+        ),
+        (
+            Regex::new(r#"(?i)(password|passwd|pwd)\s*[=:]\s*['"]([^'"]{6,})['"]\s*"#).unwrap(),
+            "Hardcoded password detected",
+        ),
+        (
+            Regex::new(r#"(?i)(token|auth[_-]?token|bearer)\s*[=:]\s*['"]([A-Za-z0-9_\-\.]{16,})['"]\s*"#)
+                .unwrap(),
+            "Hardcoded auth token detected",
+        ),
+        (
+            // AWS access key pattern
+            Regex::new(r"AKIA[0-9A-Z]{16}").unwrap(),
+            "AWS Access Key ID pattern detected",
+        ),
+        (
+            // Generic private key header
+            Regex::new(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----").unwrap(),
+            "Private key material detected in source file",
+        ),
+    ]
+}
+
+/// Pattern for fabricated HTTP API URLs in strings/comments.
+fn fabricated_url_pattern() -> Regex {
+    Regex::new(
+        r#"https?://(?:api\.|v\d+\.|[a-z]+\.)?[a-z0-9\-]+\.[a-z]{2,}/(?:v\d+/|api/)[a-z0-9_/\-]+"#,
+    )
+    .unwrap()
+}
+
+/// Run all hallucination checks on the given file content.
+///
+/// `file_ext` should be the extension without leading dot (e.g. "js", "py", "rs").
+pub fn detect_hallucinations(content: &str, file_ext: &str, file_path: &str) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    let lines: Vec<&str> = content.lines().collect();
+
+    // 1. Suspicious API patterns (language-specific)
+    let api_patterns = suspicious_api_patterns(file_ext);
+    for (line_num, line_text) in lines.iter().enumerate() {
+        let lineno = line_num + 1;
+        for (re, msg, sev) in &api_patterns {
+            if re.is_match(line_text) {
+                findings.push(Finding::new(
+                    CheckType::SuspiciousApi,
+                    *sev,
+                    file_path,
+                    lineno,
+                    format!("{} (line: {})", msg, line_text.trim()),
+                    None,
+                ));
+            }
+        }
+    }
+
+    // 2. Hardcoded secrets
+    let secret_pats = secret_patterns();
+    for (line_num, line_text) in lines.iter().enumerate() {
+        let lineno = line_num + 1;
+        for (re, msg) in &secret_pats {
+            if re.is_match(line_text) {
+                findings.push(Finding::new(
+                    CheckType::HardcodedSecret,
+                    Severity::Critical,
+                    file_path,
+                    lineno,
+                    format!("{} — use environment variables instead", msg),
+                    Some("Move secrets to .env or a secrets manager".to_string()),
+                ));
+            }
+        }
+    }
+
+    // 3. Fabricated URLs in comments and string literals
+    let url_re = fabricated_url_pattern();
+    for (line_num, line_text) in lines.iter().enumerate() {
+        let lineno = line_num + 1;
+        // Only flag URLs inside comments or string literals
+        let is_comment_or_string = line_text.trim_start().starts_with("//")
+            || line_text.trim_start().starts_with('#')
+            || line_text.trim_start().starts_with('*')
+            || line_text.contains('"')
+            || line_text.contains('\'')
+            || line_text.contains('`');
+
+        if is_comment_or_string {
+            for mat in url_re.find_iter(line_text) {
+                findings.push(Finding::new(
+                    CheckType::FabricatedUrl,
+                    Severity::Low,
+                    file_path,
+                    lineno,
+                    format!(
+                        "API URL '{}' — verify this endpoint actually exists",
+                        mat.as_str()
+                    ),
+                    Some("Test the URL manually before shipping".to_string()),
+                ));
+            }
+        }
+    }
+
+    findings
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn levenshtein_distance_basic() {
+        assert_eq!(levenshtein("", "abc"), 3);
+        assert_eq!(levenshtein("abc", ""), 3);
+        assert_eq!(levenshtein("abc", "abc"), 0);
+        assert_eq!(levenshtein("reqests", "requests"), 1); // typo
+        assert_eq!(levenshtein("nump", "numpy"), 1);
+        assert_eq!(levenshtein("lodsh", "lodash"), 1);
+    }
+
+    #[test]
+    fn typosquat_detected() {
+        // "reqests" is Levenshtein 1 from "requests"
+        let f = check_typosquat("reqests", "pypi", "test.py", 1);
+        assert!(f.is_some(), "should detect typosquat");
+        let f = f.unwrap();
+        assert_eq!(f.check_type, CheckType::Typosquat);
+        assert_eq!(f.severity, Severity::High);
+    }
+
+    #[test]
+    fn typosquat_exact_match_clean() {
+        // Exact match should not be flagged
+        let f = check_typosquat("requests", "pypi", "test.py", 1);
+        assert!(f.is_none(), "exact match should not be a typosquat");
+    }
+
+    #[test]
+    fn suspicious_api_eval_js() {
+        let code = "const result = eval(userInput);";
+        let findings = detect_hallucinations(code, "js", "test.js");
+        assert!(
+            findings.iter().any(|f| f.check_type == CheckType::SuspiciousApi
+                && f.severity == Severity::Critical),
+            "eval() in JS should be critical"
+        );
+    }
+
+    #[test]
+    fn suspicious_api_subprocess_python() {
+        let code = "subprocess.call(cmd, shell=True)";
+        let findings = detect_hallucinations(code, "py", "test.py");
+        assert!(
+            findings.iter().any(|f| f.check_type == CheckType::SuspiciousApi
+                && f.severity == Severity::Critical),
+            "subprocess.call(shell=True) should be critical"
+        );
+    }
+
+    #[test]
+    fn hardcoded_secret_detected() {
+        let code = r#"api_key = "sk-abc123def456ghi789jkl012""#;
+        let findings = detect_hallucinations(code, "py", "config.py");
+        assert!(
+            findings.iter().any(|f| f.check_type == CheckType::HardcodedSecret
+                && f.severity == Severity::Critical),
+            "should detect hardcoded API key"
+        );
+    }
+
+    #[test]
+    fn clean_code_no_findings() {
+        let code = r#"
+fn main() {
+    println!("Hello, world!");
+    let x = 42;
+    let y = x + 1;
+    println!("{}", y);
+}
+"#;
+        let findings = detect_hallucinations(code, "rs", "main.rs");
+        assert!(
+            findings.iter().all(|f| f.check_type != CheckType::HardcodedSecret
+                && f.check_type != CheckType::SuspiciousApi),
+            "clean code should have no security findings"
+        );
+    }
+
+    #[test]
+    fn aws_key_pattern_detected() {
+        let code = r#"let key = "AKIAIOSFODNN7EXAMPLE";"#;
+        let findings = detect_hallucinations(code, "js", "creds.js");
+        assert!(
+            findings.iter().any(|f| f.check_type == CheckType::HardcodedSecret),
+            "should detect AWS access key pattern"
+        );
+    }
+}

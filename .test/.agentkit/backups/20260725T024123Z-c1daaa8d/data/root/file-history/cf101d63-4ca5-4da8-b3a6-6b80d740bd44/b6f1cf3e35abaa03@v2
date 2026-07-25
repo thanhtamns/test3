@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+"""
+Auto-Hunt Hypothesis Adapter — converts signal candidates to novel hypotheses.
+
+Dedupes against existing KB cases. Formats as hypothesis_engine-compatible statements.
+
+Usage:
+    python auto-hunt-hypothesis-adapter.py --signals-json '{"candidates":[...]}' --kb-dir ../kb/cases
+    echo '{"candidates":[...]}' | python auto-hunt-hypothesis-adapter.py --stdin --kb-dir ../kb/cases
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_KB_DIR = SCRIPT_DIR.parent / "kb" / "cases"
+
+DOMAIN_DESCRIPTIONS = {
+    "saas": "SaaS product solving a specific pain point",
+    "b2b_service": "B2B service business with retainer revenue",
+    "commerce": "commerce operation (buy low, sell high)",
+    "export": "export business leveraging Vietnam supply advantage",
+    "digital_product": "digital product (course, template, tool)",
+    "agency": "agency or managed service",
+    "marketplace": "marketplace connecting buyers and sellers",
+    "consulting": "consulting or advisory practice",
+    "content": "content monetization (newsletter, media)",
+    "education": "education or training business",
+    "fintech": "fintech or financial service tool",
+    "healthtech": "healthtech or wellness product",
+    "logistics": "logistics or supply chain service",
+    "real_estate": "real estate or property service",
+    "ai_tools": "AI-powered tool or automation service",
+}
+
+
+def load_kb_domains(kb_dir: Path) -> set[str]:
+    domains = set()
+    if not kb_dir.exists():
+        return domains
+    for f in kb_dir.glob("*.json"):
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            d = data.get("domain", "")
+            if d:
+                domains.add(d.lower().replace("_", "").replace("-", ""))
+                domains.add(d.lower())
+        except (json.JSONDecodeError, OSError):
+            continue
+    return domains
+
+
+def load_kb_verdicts(kb_dir: Path) -> dict[str, list[str]]:
+    domain_verdicts: dict[str, list[str]] = {}
+    if not kb_dir.exists():
+        return domain_verdicts
+    for f in kb_dir.glob("*.json"):
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            domain = data.get("domain", "unknown").lower()
+            verdict = str(data.get("verdict", data.get("verdict_class", "unknown"))).upper()
+            domain_verdicts.setdefault(domain, []).append(verdict)
+        except (json.JSONDecodeError, OSError):
+            continue
+    return domain_verdicts
+
+
+def is_duplicate(domain: str, existing_domains: set[str], domain_verdicts: dict[str, list[str]]) -> tuple[bool, str]:
+    norm = domain.lower().replace("_", "")
+    for ed in existing_domains:
+        if norm == ed or norm in ed or ed in norm:
+            verdicts = domain_verdicts.get(domain.lower(), [])
+            if any(v.startswith("KILL") for v in verdicts):
+                return True, f"domain '{domain}' already explored and KILLED"
+            if any(v.startswith("GO") or v.startswith("CONDITIONAL") or v.startswith("PROVISIONAL") or v.startswith("MOUNTAIN") for v in verdicts):
+                return True, f"domain '{domain}' already has GO/CONDITIONAL verdict"
+            if len(verdicts) >= 2:
+                return True, f"domain '{domain}' already has {len(verdicts)} cases"
+    return False, ""
+
+
+def generate_hypotheses(
+    candidates: list[dict],
+    existing_domains: set[str],
+    domain_verdicts: dict[str, list[str]],
+    profile: dict,
+    max_hypotheses: int = 5,
+) -> list[dict]:
+    hypotheses = []
+
+    capital_tier = profile.get("capital_tier", "TIER_0")
+    skills = profile.get("skills_approach", "market_driven")
+    location = profile.get("location", "Vietnam")
+
+    for candidate in candidates:
+        domain = candidate["domain"]
+        is_dup, reason = is_duplicate(domain, existing_domains, domain_verdicts)
+        if is_dup:
+            continue
+
+        desc = DOMAIN_DESCRIPTIONS.get(domain, f"{domain} business")
+        statement = (
+            f"A {desc} can reach $10K/mo within 12 months "
+            f"for a {capital_tier} founder in {location} with {skills} approach"
+        )
+
+        predicts = [
+            f"There exist underserved customers willing to pay for a {domain} solution",
+            f"A founder with {skills} skills can deliver value in {domain} without paid ads",
+            f"Entry cost is within {capital_tier} range ($0-1K)",
+        ]
+        falsifies = [
+            f"No paying customer found within 30 days of outreach",
+            f"Free alternatives cover >70% of value proposition",
+            f"Requires capital >$5K to start (exceeds {capital_tier})",
+        ]
+
+        hypotheses.append({
+            "id": f"AH-{domain[:8].upper()}-{len(hypotheses)+1:02d}",
+            "statement": statement,
+            "domain": domain,
+            "prior_confidence": round(max(0.2, min(0.6, candidate["total_score"] / 100)), 2),
+            "source_signal": candidate.get("source_evidence", []),
+            "total_score": candidate["total_score"],
+            "predicts": predicts,
+            "falsifies": falsifies,
+        })
+
+        if len(hypotheses) >= max_hypotheses:
+            break
+
+    return hypotheses
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Auto-Hunt Hypothesis Adapter")
+    parser.add_argument("--signals-json", type=str, help="JSON string of signal scanner output")
+    parser.add_argument("--signals-file", type=Path, help="Path to signal scanner JSON output")
+    parser.add_argument("--stdin", action="store_true", help="Read signals from stdin")
+    parser.add_argument("--kb-dir", type=Path, default=DEFAULT_KB_DIR)
+    parser.add_argument("--max-hypotheses", type=int, default=5)
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args()
+
+    if args.stdin:
+        signals_data = json.load(sys.stdin)
+    elif args.signals_file and args.signals_file.exists():
+        signals_data = json.loads(args.signals_file.read_text(encoding="utf-8"))
+    elif args.signals_json:
+        signals_data = json.loads(args.signals_json)
+    else:
+        print("Error: provide --signals-json, --signals-file, or --stdin", file=sys.stderr)
+        return 1
+
+    candidates = signals_data.get("candidates", [])
+    profile = signals_data.get("profile", {})
+
+    existing_domains = load_kb_domains(args.kb_dir)
+    domain_verdicts = load_kb_verdicts(args.kb_dir)
+
+    hypotheses = generate_hypotheses(
+        candidates, existing_domains, domain_verdicts, profile, args.max_hypotheses
+    )
+
+    result = {
+        "timestamp": signals_data.get("timestamp", ""),
+        "candidates_received": len(candidates),
+        "candidates_deduped": len(candidates) - len(hypotheses),
+        "hypotheses": hypotheses,
+        "profile": profile,
+    }
+
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if args.json:
+        json.dump(result, sys.stdout, indent=2, ensure_ascii=False)
+    else:
+        print(f"Received {len(candidates)} candidates, deduped {len(candidates) - len(hypotheses)}")
+        print(f"Novel hypotheses: {len(hypotheses)}")
+        for h in hypotheses:
+            print(f"  [{h['id']}] {h['domain']} (conf={h['prior_confidence']}) — {h['statement'][:80]}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

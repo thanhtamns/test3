@@ -1,0 +1,287 @@
+//! Git branch → PR/feature linkage for cost attribution.
+//!
+//! All detection is <1ms: env vars + branch name only.
+//! No network calls — this runs in the hook hot path.
+
+use std::process::Command;
+
+/// Detect a PR reference from the environment or current git branch.
+///
+/// Detection order:
+/// 1. `GH_PR_NUMBER` / `GITHUB_PR_NUMBER` env vars (CI push events)
+/// 2. `CI_MERGE_REQUEST_IID` (GitLab CI)
+/// 3. Git branch name: `feat/PROJ-123-description` → `PROJ-123`
+/// 4. Most recent commit subject: `fix something (#456)` → `#456`
+pub fn detect_pr_ref() -> Option<String> {
+    // 1. GitHub env vars
+    if let Ok(n) = std::env::var("GH_PR_NUMBER") {
+        let n = n.trim().to_string();
+        if !n.is_empty() {
+            return Some(format!("#{}", n));
+        }
+    }
+    if let Ok(n) = std::env::var("GITHUB_PR_NUMBER") {
+        let n = n.trim().to_string();
+        if !n.is_empty() {
+            return Some(format!("#{}", n));
+        }
+    }
+
+    // 2. GitLab env var
+    if let Ok(iid) = std::env::var("CI_MERGE_REQUEST_IID") {
+        let iid = iid.trim().to_string();
+        if !iid.is_empty() {
+            return Some(format!("!{}", iid));
+        }
+    }
+
+    // 3. Branch name heuristic
+    if let Some(pr) = pr_from_branch() {
+        return Some(pr);
+    }
+
+    // 4. Recent commit message
+    pr_from_commit()
+}
+
+/// Extract a ticket / PR ref from the current git branch name.
+///
+/// Supported patterns:
+/// - `feat/PROJ-123-some-desc`   → `PROJ-123`
+/// - `fix/123-some-desc`         → `#123`
+/// - `pr/456`                    → `#456`
+pub fn pr_from_branch() -> Option<String> {
+    let branch = current_branch()?;
+    parse_branch_ref(&branch)
+}
+
+/// Extract a PR number from the most recent commit subject line.
+///
+/// Matches `(#123)` at the end of the subject (GitHub merge-commit style).
+pub fn pr_from_commit() -> Option<String> {
+    let output = Command::new("git")
+        .args(["log", "-1", "--format=%s"])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let subject = String::from_utf8_lossy(&output.stdout);
+    parse_commit_pr(subject.trim())
+}
+
+/// Derive a feature tag from the git branch prefix.
+///
+/// `feat/auth-refactor` → `feat`
+/// `fix/login-bug`      → `fix`
+/// `main`               → `None`
+pub fn detect_feature_tag() -> Option<String> {
+    let branch = current_branch()?;
+    // Branch format: `<prefix>/<rest>` where prefix is a known type
+    let (prefix, _) = branch.split_once('/')?;
+    let known = ["feat", "fix", "chore", "docs", "refactor", "test", "perf", "ci"];
+    if known.contains(&prefix) {
+        Some(prefix.to_string())
+    } else {
+        None
+    }
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+fn current_branch() -> Option<String> {
+    // HEAD may be detached in CI; fall back to GITHUB_HEAD_REF / CI_COMMIT_BRANCH
+    if let Ok(b) = std::env::var("GITHUB_HEAD_REF") {
+        let b = b.trim().to_string();
+        if !b.is_empty() {
+            return Some(b);
+        }
+    }
+    if let Ok(b) = std::env::var("CI_COMMIT_BRANCH") {
+        let b = b.trim().to_string();
+        if !b.is_empty() {
+            return Some(b);
+        }
+    }
+
+    let output = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if branch.is_empty() || branch == "HEAD" {
+        None
+    } else {
+        Some(branch)
+    }
+}
+
+/// Parse a Jira-style ticket or numeric PR ref from a branch name string.
+pub(crate) fn parse_branch_ref(branch: &str) -> Option<String> {
+    // Strip optional `<prefix>/` prefix
+    let rest = branch.splitn(2, '/').last().unwrap_or(branch);
+
+    // Match Jira-style: PROJ-123 (uppercase letters, dash, digits) at start of segment
+    let jira_re = lazy_regex!(r"([A-Z][A-Z0-9]+-\d+)");
+    if let Some(m) = jira_re.find(rest) {
+        return Some(m.as_str().to_string());
+    }
+
+    // Match pure numeric: `pr/456` or `fix/456-description`
+    let numeric_re = lazy_regex!(r"^(\d+)(?:-|$)");
+    if let Some(caps) = numeric_re.captures(rest) {
+        return Some(format!("#{}", &caps[1]));
+    }
+
+    None
+}
+
+/// Parse a PR number from a commit subject like `Fix login (#123)`.
+pub(crate) fn parse_commit_pr(subject: &str) -> Option<String> {
+    let re = lazy_regex!(r"\(#(\d+)\)\s*$");
+    re.captures(subject)
+        .map(|caps| format!("#{}", &caps[1]))
+}
+
+/// Declare a module-local lazy regex — avoids pulling in the `lazy_regex` crate.
+macro_rules! lazy_regex {
+    ($pat:expr) => {{
+        use std::sync::OnceLock;
+        static RE: OnceLock<regex::Regex> = OnceLock::new();
+        RE.get_or_init(|| regex::Regex::new($pat).expect("invalid regex"))
+    }};
+}
+use lazy_regex;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── Branch parsing ────────────────────────────────────────────────────────
+
+    #[test]
+    fn branch_jira_ticket_with_prefix() {
+        assert_eq!(
+            parse_branch_ref("feat/PROJ-123-add-auth"),
+            Some("PROJ-123".to_string())
+        );
+    }
+
+    #[test]
+    fn branch_jira_ticket_no_prefix() {
+        assert_eq!(
+            parse_branch_ref("RTK-42-fix-hook"),
+            Some("RTK-42".to_string())
+        );
+    }
+
+    #[test]
+    fn branch_numeric_pr_ref() {
+        assert_eq!(
+            parse_branch_ref("fix/456-some-bug"),
+            Some("#456".to_string())
+        );
+    }
+
+    #[test]
+    fn branch_pr_slash_number() {
+        assert_eq!(parse_branch_ref("pr/789"), Some("#789".to_string()));
+    }
+
+    #[test]
+    fn branch_main_returns_none() {
+        assert_eq!(parse_branch_ref("main"), None);
+    }
+
+    #[test]
+    fn branch_feature_no_number() {
+        // No ticket or number — should return None
+        assert_eq!(parse_branch_ref("feat/add-login-page"), None);
+    }
+
+    // ── Commit message parsing ────────────────────────────────────────────────
+
+    #[test]
+    fn commit_github_merge_style() {
+        assert_eq!(
+            parse_commit_pr("Fix login bug (#123)"),
+            Some("#123".to_string())
+        );
+    }
+
+    #[test]
+    fn commit_pr_at_end_only() {
+        // PR ref in the middle should NOT match (must be at end)
+        assert_eq!(parse_commit_pr("Merge (#99) into main"), None);
+    }
+
+    #[test]
+    fn commit_no_pr_ref() {
+        assert_eq!(parse_commit_pr("chore: update dependencies"), None);
+    }
+
+    #[test]
+    fn commit_pr_with_trailing_space() {
+        // trailing whitespace is stripped before calling parse_commit_pr
+        assert_eq!(
+            parse_commit_pr("Add feature (#42)"),
+            Some("#42".to_string())
+        );
+    }
+
+    // ── Env var detection ─────────────────────────────────────────────────────
+
+    #[test]
+    fn env_gh_pr_number_detected() {
+        // Temporarily set env var; restore after test
+        let key = "GH_PR_NUMBER";
+        let prev = std::env::var(key).ok();
+        std::env::set_var(key, "101");
+
+        let result = detect_pr_ref();
+
+        // Restore
+        match prev {
+            Some(v) => std::env::set_var(key, v),
+            None => std::env::remove_var(key),
+        }
+
+        assert_eq!(result, Some("#101".to_string()));
+    }
+
+    #[test]
+    fn env_gitlab_mr_iid_detected() {
+        let key = "CI_MERGE_REQUEST_IID";
+        let prev = std::env::var(key).ok();
+        std::env::set_var(key, "55");
+
+        // Must clear GH vars to avoid them winning first
+        let gh_prev = std::env::var("GH_PR_NUMBER").ok();
+        std::env::remove_var("GH_PR_NUMBER");
+        let gh2_prev = std::env::var("GITHUB_PR_NUMBER").ok();
+        std::env::remove_var("GITHUB_PR_NUMBER");
+
+        let result = detect_pr_ref();
+
+        match prev {
+            Some(v) => std::env::set_var(key, v),
+            None => std::env::remove_var(key),
+        }
+        match gh_prev {
+            Some(v) => std::env::set_var("GH_PR_NUMBER", v),
+            None => std::env::remove_var("GH_PR_NUMBER"),
+        }
+        match gh2_prev {
+            Some(v) => std::env::set_var("GITHUB_PR_NUMBER", v),
+            None => std::env::remove_var("GITHUB_PR_NUMBER"),
+        }
+
+        assert_eq!(result, Some("!55".to_string()));
+    }
+}

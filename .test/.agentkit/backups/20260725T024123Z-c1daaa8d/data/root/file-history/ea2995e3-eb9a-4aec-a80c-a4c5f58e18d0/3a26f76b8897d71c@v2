@@ -1,0 +1,326 @@
+---
+phase: 3
+title: "Iterative Refinement Loop + Evolution Engine"
+status: pending
+priority: P0
+effort: "8h"
+dependencies: [1, 2]
+---
+
+# Phase 3: Iterative Refinement Loop
+
+## Overview
+
+Add Phase 2.8 — an iterative refinement cycle that STRENGTHENS, ATTACKS, and EVOLVES the top-ranked hypotheses from the tournament. This is the core Co-Scientist principle: hypotheses don't just get ranked once — they get refined across multiple rounds until the ranking converges.
+
+Co-Scientist equivalent: the Evolution agent that takes top-ranked ideas, refines them based on verification results, and re-submits for another round of debate. This is where novel discoveries emerge — not from initial generation, but from iterative refinement.
+
+## Requirements
+
+- Functional: After tournament (Phase 2.7), take top-3 ranked hypotheses
+- Functional: For each: STRENGTHEN (fill evidence gaps), ATTACK (find counter-evidence), EVOLVE (merge compatible hypotheses)
+- Functional: Re-run tournament on refined + evolved hypotheses
+- Functional: Convergence detection: stop when top-3 ranking is stable across 2 consecutive rounds
+- Functional: Max 3 refinement rounds (hard cap on compute)
+- Functional: Track evolution trace per hypothesis (what changed and why each round)
+- Non-functional: Each round uses targeted search (gap-filling), not broad web search
+- Non-functional: Protocol is markdown (LLM executes), convergence check is Python (deterministic)
+
+## Architecture
+
+### Refinement Cycle
+
+```
+Tournament Result (Phase 2.7)
+        ↓
+   top_3 hypotheses
+        ↓
+┌─── ROUND N ──────────────────────────────────────┐
+│                                                   │
+│  STRENGTHEN (per hypothesis):                     │
+│    Query KnowledgeGraph for gaps                  │
+│    Generate targeted search queries for each gap  │
+│    Execute searches (max 3 per hypothesis)        │
+│    Update KnowledgeGraph with new evidence        │
+│    Upgrade claim from [T]→[K] if verified         │
+│                                                   │
+│  ATTACK (per hypothesis):                         │
+│    Generate inversion queries:                    │
+│      "[hypothesis] why it fails"                  │
+│      "[business model] common mistakes"           │
+│      "[market] declining saturated"               │
+│    Execute attack searches (max 2 per hypothesis) │
+│    If attack finds strong counter-evidence:       │
+│      Add ContradictionEdge to KnowledgeGraph      │
+│      Hypothesis strength_score decreases          │
+│                                                   │
+│  EVOLVE (across hypotheses):                      │
+│    Check if any 2 hypotheses can MERGE:           │
+│      Compatible if: same customer_segment +       │
+│        complementary mechanisms +                 │
+│        non-overlapping value props                │
+│    If merge possible: create evolved hypothesis   │
+│      with combined mechanism                      │
+│    Evolved hypothesis enters next tournament      │
+│                                                   │
+│  RE-TOURNAMENT (UPGRADED — evidence-based debate): │
+│    Query KnowledgeGraph for each hypothesis's      │
+│      supporting + contradicting evidence           │
+│    Run Phase 2.7 tournament with evidence-backed   │
+│      debate prompts (not opinion-based)            │
+│    New Elo scores + ranking produced               │
+│                                                   │
+│  PROXIMITY FILTER (Phase 3A):                     │
+│    Apply proximity penalties to similar pairs      │
+│    Enforce top-3 archetype diversity               │
+│                                                   │
+│  CONVERGENCE CHECK (DYNAMIC):                     │
+│    Signal A: top-3 IDs stable across 2 rounds?    │
+│    Signal B: top-1 Elo delta < 5%?                │
+│    If either → CONVERGED (log reason)             │
+│    If round >= 5 → FORCE STOP                     │
+│    If Elo accelerating → definitely continue      │
+│    Else → next round                              │
+│                                                   │
+└──────────────────────────────────────────────────┘
+        ↓
+   Final ranked hypotheses with evolution traces
+        ↓
+   Phase 3 (Lens Analysis) + Phase 4 (Synthesis)
+```
+
+### Search Budget Per Round
+
+| Action | Searches per hypothesis | Hypotheses | Total per round |
+|--------|------------------------|------------|-----------------|
+| STRENGTHEN | 3 | 3 | 9 |
+| ATTACK | 2 | 3 | 6 |
+| EVOLVE | 0 (pure reasoning) | — | 0 |
+| **Total** | | | **15 per round** |
+
+Typical: 2-3 rounds × 15 = **30-45 targeted searches**. Max (5 rounds) = 75 targeted searches.
+Dynamic convergence means most sessions finish in 2-3 rounds (Elo stabilizes fast for clear winners).
+Only genuinely competitive hypothesis pools need 4-5 rounds — which is where the extra compute is most valuable.
+The difference from current: these are GAP-DIRECTED searches, not exploratory. Each search has a specific claim to verify or attack.
+
+### Convergence Detection — UPGRADED (Co-Scientist gaps #1, #4)
+
+**Original design:** fixed 3-round cap, convergence = top-3 IDs stable.
+**Upgraded design:** DYNAMIC rounds based on Elo delta rate, dual convergence signal.
+
+```python
+@dataclass
+class RefinementRound:
+    round_number: int
+    top_3_ids: list[str]           # ordered
+    top_3_elos: list[float]        # NEW: Elo scores for delta tracking
+    hypotheses_refined: int
+    hypotheses_evolved: int        # merges created
+    searches_executed: int
+    contradictions_found: int
+    evidence_upgrades: int         # [T]→[K] transitions
+    diversity_report: dict         # NEW: from proximity enforcer (Phase 3A)
+
+@dataclass
+class RefinementResult:
+    rounds: list[RefinementRound]
+    converged: bool
+    convergence_reason: str        # NEW: "elo_stable" | "ranking_stable" | "max_rounds"
+    final_top_3: list[str]
+    evolution_traces: dict[str, list[str]]  # hypothesis_id → [round changes]
+    total_searches: int
+    elo_trajectory: list[float]    # NEW: top-1 Elo per round (monotonic increase = healthy)
+
+# --- DYNAMIC CONVERGENCE (replaces fixed check) ---
+
+ELO_DELTA_THRESHOLD = 0.05   # <5% improvement → stop
+MAX_ROUNDS = 5               # hard cap (up from 3)
+MIN_ROUNDS = 2               # always run at least 2
+
+def check_convergence(rounds: list[RefinementRound]) -> tuple[bool, str]:
+    """Dual convergence signal:
+    Signal A: top-3 IDs stable across 2 rounds (ranking converged)
+    Signal B: top-1 Elo delta <5% (quality plateaued)
+    Either signal → CONVERGE. Max 5 rounds hard cap.
+    """
+    if len(rounds) < MIN_ROUNDS:
+        return False, "min_rounds_not_met"
+
+    # Signal A: ranking stability
+    if rounds[-1].top_3_ids == rounds[-2].top_3_ids:
+        return True, "ranking_stable"
+
+    # Signal B: Elo delta rate
+    if len(rounds) >= 2 and rounds[-2].top_3_elos[0] > 0:
+        delta = (rounds[-1].top_3_elos[0] - rounds[-2].top_3_elos[0]) / rounds[-2].top_3_elos[0]
+        if delta < ELO_DELTA_THRESHOLD:
+            return True, "elo_stable"
+
+    # Hard cap
+    if len(rounds) >= MAX_ROUNDS:
+        return True, "max_rounds"
+
+    return False, "improving"
+
+def should_continue(rounds: list[RefinementRound]) -> tuple[bool, str]:
+    """Inverse of convergence — returns (True, reason) if more rounds help."""
+    converged, reason = check_convergence(rounds)
+    if converged:
+        return False, reason
+
+    # Dynamic signal: if Elo is ACCELERATING (delta increasing), definitely continue
+    if len(rounds) >= 2:
+        deltas = []
+        for i in range(1, len(rounds)):
+            if rounds[i-1].top_3_elos[0] > 0:
+                d = (rounds[i].top_3_elos[0] - rounds[i-1].top_3_elos[0]) / rounds[i-1].top_3_elos[0]
+                deltas.append(d)
+        if deltas and deltas[-1] > deltas[0]:
+            return True, "elo_accelerating"
+
+    return True, "improving"
+```
+
+### Deep Self-Play Debate — UPGRADE (Co-Scientist gap #3)
+
+**Original:** Tournament pairwise comparison via LLM opinion.
+**Upgraded:** Hypotheses actively ARGUE against each other with SPECIFIC EVIDENCE from KnowledgeGraph.
+
+```
+Current debate prompt (simplified):
+  "Compare hypothesis A vs B. Which is better?"
+  → LLM gives opinion based on general reasoning
+
+UPGRADED debate prompt:
+  "Hypothesis A argues: {mechanism_A}
+   Supporting evidence: {graph.query_hypothesis(A).supporting_claims}
+   Counter-evidence: {graph.query_hypothesis(A).contradicting_claims}
+
+   Hypothesis B argues: {mechanism_B}
+   Supporting evidence: {graph.query_hypothesis(B).supporting_claims}
+   Counter-evidence: {graph.query_hypothesis(B).contradicting_claims}
+
+   DEBATE: Each hypothesis must ATTACK the other using the counter-evidence.
+   A attacks B: [A uses B's counter-evidence + A's supporting evidence]
+   B attacks A: [B uses A's counter-evidence + B's supporting evidence]
+
+   After attack rounds, JUDGE: which hypothesis's mechanism SURVIVES
+   the attacks with more intact supporting evidence?"
+```
+
+This changes the tournament from OPINION-BASED to EVIDENCE-BASED debate. The KnowledgeGraph provides the ammunition.
+
+**Implementation:** Modify `tournament-protocol.md` Step T3 (DEBATE) to:
+1. Query KnowledgeGraph for each hypothesis's evidence profile BEFORE debate
+2. Inject evidence into debate prompt (supporting + contradicting)
+3. Require the debate to reference SPECIFIC claims, not generic arguments
+4. Judge based on evidence survival, not persuasiveness
+
+### Evolution Trace
+
+Every hypothesis carries its history:
+
+```python
+@dataclass
+class EvolutionEntry:
+    round: int
+    action: str                    # STRENGTHENED | ATTACKED | EVOLVED | MERGED
+    description: str               # "Evidence gap filled: market size verified at $2.3B [K]"
+    evidence_delta: str            # what changed in supporting/contradicting evidence
+    score_before: float
+    score_after: float
+```
+
+This trace becomes part of the final output — users see HOW the system refined each idea, not just the final ranking.
+
+### Integration with Tournament
+
+The refinement loop REUSES the existing tournament engine (Phase 2.7). Each refinement round:
+1. Collects refined + evolved hypotheses
+2. Converts them to `OpportunityHypothesis` (tournament format)
+3. Runs full tournament (round-robin debates + Elo)
+4. Extracts new top-3
+5. Checks convergence
+
+No changes to tournament-protocol.md or elo_engine.py needed.
+
+## Related Code Files
+
+- Create: `.claude/agents/core/intelligence/refinement-loop-protocol.md` (agent protocol for STRENGTHEN + ATTACK + EVOLVE steps)
+- Create: `.claude/lib/intelligence/refinement/convergence_checker.py` (Python: RefinementRound, RefinementResult, dynamic convergence with Elo delta)
+- Create: `.claude/lib/intelligence/refinement/evidence_debate_builder.py` (NEW: builds evidence-backed debate prompts from KnowledgeGraph)
+- Create: `.claude/lib/intelligence/refinement/tests/test_convergence_checker.py`
+- Create: `.claude/lib/intelligence/refinement/tests/test_evidence_debate_builder.py`
+- Modify: `.claude/agents/core/intelligence/tournament-protocol.md` — Step T3 DEBATE upgraded to evidence-based debate + multi-round invocation note
+- Modify: `.claude/lib/intelligence/knowledge/knowledge_graph.py` — add `gaps_for_hypothesis(hypothesis_id)` + `evidence_profile(hypothesis_text)` methods
+- Read: `.claude/lib/intelligence/tournament/elo_engine.py` — reused, not modified
+- Read: `.claude/lib/intelligence/tournament/models.py` — reused, not modified
+
+## Implementation Steps
+
+1. Create `refinement/` directory under `.claude/lib/intelligence/`
+2. Implement `convergence_checker.py`:
+   - `RefinementRound` dataclass
+   - `RefinementResult` dataclass  
+   - `EvolutionEntry` dataclass
+   - `check_convergence(rounds)` — top-3 stable across 2 rounds
+   - `should_stop(rounds, max_rounds=3)` — convergence OR max reached
+   - `to_dict()` / `from_dict()` for all dataclasses
+3. Write `refinement-loop-protocol.md`:
+   - Header: agent name=refinement-executor, model=opus, timeout=600s (longer — multiple rounds)
+   - Input: tournament_result_path, knowledge_graph (serialized), founder_context
+   - STRENGTHEN step: query graph gaps → generate search queries → execute → update graph
+   - ATTACK step: generate inversion queries → execute → add contradictions to graph
+   - EVOLVE step: check merge compatibility → create evolved hypotheses
+   - RE-TOURNAMENT step: invoke tournament protocol on refined candidates
+   - CONVERGENCE step: call Python check_convergence → continue or stop
+   - Output: `plans/{session_id}/refinement-result.md` with evolution traces
+4. Write unit tests for convergence_checker.py:
+   - `test_convergence_ranking_stable` — 2 rounds same top-3 IDs → converged (reason: ranking_stable)
+   - `test_convergence_elo_stable` — Elo delta <5% → converged (reason: elo_stable)
+   - `test_no_convergence_elo_improving` — Elo delta >5% → continue
+   - `test_no_convergence_different_ids` — different IDs + high delta → continue
+   - `test_force_stop_at_max_5` — round 5 always stops (reason: max_rounds)
+   - `test_min_2_rounds_enforced` — 1 round → never converge regardless of stability
+   - `test_should_continue_elo_accelerating` — Elo delta increasing → definitely continue
+   - `test_elo_trajectory_tracked` — top-1 Elo recorded per round
+   - `test_convergence_reason_logged` — result contains convergence_reason field
+   - `test_evolution_entry_serialization` — roundtrip
+   - `test_refinement_result_total_searches` — sum across rounds
+4b. Create `evidence_debate_builder.py`:
+   - `EvidenceProfile` dataclass: supporting_claims, contradicting_claims, gap_count, strength_score
+   - `build_evidence_debate_prompt(hypothesis_a, hypothesis_b, graph)` — queries graph for evidence profiles, constructs attack/defense debate prompt
+   - `extract_debate_winner(debate_response)` — parse LLM debate output for winner + reasoning
+4c. Write tests for evidence_debate_builder:
+   - `test_build_prompt_includes_evidence` — debate prompt contains specific claim text from graph
+   - `test_build_prompt_empty_graph` — falls back to opinion-based debate when graph is empty
+   - `test_evidence_profile_from_graph` — correct supporting/contradicting split
+5. Add `gaps_for_hypothesis(text)` + `evidence_profile(text)` to KnowledgeGraph:
+   - Find claims related to hypothesis with evidence_type=INFERRED
+   - Return as list of gap descriptions + suggested search queries
+6. Modify tournament-protocol.md:
+   - Add note in header: "May be invoked multiple times per session during refinement loop"
+   - No functional changes needed
+
+## Success Criteria
+
+- [ ] Dynamic convergence: dual signal (ranking stable OR Elo delta <5%)
+- [ ] Max 5 rounds (up from 3), min 2 rounds enforced
+- [ ] Elo trajectory tracked per round (monotonic increase = healthy)
+- [ ] should_continue() detects Elo acceleration → force continue
+- [ ] Evidence-based debate: tournament prompts include specific claims from KnowledgeGraph
+- [ ] Evidence debate falls back to opinion-based when graph is empty
+- [ ] Protocol defines STRENGTHEN/ATTACK/EVOLVE steps with search budget per round
+- [ ] Evolution trace captures what changed per hypothesis per round
+- [ ] KnowledgeGraph.gaps_for_hypothesis() + evidence_profile() return actionable data
+- [ ] Tournament reusable across refinement rounds without modification
+- [ ] 15+ unit tests (convergence + evidence debate)
+
+## Risk Assessment
+
+- **Risk:** 3 refinement rounds × tournament = very long wall time (15+ min total)
+  - Mitigation: Most sessions converge in 1-2 rounds (if initial tournament had strong winner). Round 3 is rare. 600s timeout on refinement-executor catches runaway. Each round's search is targeted (15 searches), not broad.
+- **Risk:** EVOLVE step produces Frankenstein hypotheses (forced merge of incompatible ideas)
+  - Mitigation: Merge compatibility check requires same customer_segment + complementary (not overlapping) mechanisms. If no compatible pair exists, EVOLVE step produces nothing — no forced merges.
+- **Risk:** ATTACK step kills all hypotheses (every idea has counter-evidence)
+  - Mitigation: Attack doesn't KILL — it adds contradictions to graph and lowers strength_score. A hypothesis with counter-evidence but also strong supporting evidence survives. Only hypotheses where attack evidence overwhelms support evidence drop in tournament ranking.

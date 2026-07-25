@@ -1,0 +1,220 @@
+"""
+Brain 2: Forced Flow Engine.
+Scans regulatory feeds for mandates that FORCE new spending.
+Python controls search templates. LLM parses legal text only.
+"""
+
+import json
+import logging
+import math
+from dataclasses import dataclass
+from typing import Callable, Optional
+
+from .models import ForcedFlow, FounderProfile
+from .price_delta_engine import BudgetTracker
+
+logger = logging.getLogger(__name__)
+
+REGULATORY_SOURCES = {
+    "US": "site:federalregister.gov final rule 2026",
+    "EU": "site:eur-lex.europa.eu regulation 2026",
+    "VN": "site:thuvienphapluat.vn nghị định 2026",
+    "global": "new regulation compliance deadline 2026 2027",
+}
+
+REGULATORY_TEMPLATES = [
+    "new {industry} regulation {geography} 2026 effective date",
+    "{industry} compliance requirement deadline {geography}",
+    "{regulation} how many companies affected",
+    "{regulation} compliance cost estimate",
+    "{regulation} compliance provider service",
+    '{regulation} "how to comply" guide consultant',
+]
+
+MANDATE_EXTRACTION_PROMPT = """Extract regulatory mandate from this text. Return JSON:
+{{"regulation": "name/number", "jurisdiction": "US|EU|VN|...", "effective_date": "YYYY-MM-DD", "who_must_comply": "entity type", "entity_count_estimate": <number or null>, "compliance_cost_per_entity": <number in USD or null>, "penalty": "description", "summary": "1-line summary"}}
+If no regulation found, return {{"regulation": null}}.
+
+Text:
+{text}"""
+
+PROVIDER_EXTRACTION_PROMPT = """From this text, identify compliance service providers and gaps. Return JSON:
+{{"providers": ["name1", "name2"], "gap": "what service is missing or underserved"}}
+If no providers found, return {{"providers": [], "gap": "no providers identified"}}.
+
+Text:
+{text}"""
+
+DEFAULT_GEOGRAPHIES = ["US", "EU", "VN", "global"]
+DEFAULT_INDUSTRIES = ["technology", "finance", "agriculture", "healthcare", "trade"]
+
+
+class ForcedFlowEngine:
+    def __init__(self, research_fn: Callable, llm_fn: Callable,
+                 max_calls: int = 30):
+        self.research_fn = research_fn
+        self.llm_fn = llm_fn
+        self.budget = BudgetTracker(max_calls=max_calls)
+
+    def scan(self, geographies: Optional[list[str]] = None,
+             industries: Optional[list[str]] = None,
+             founder: Optional[FounderProfile] = None) -> list[ForcedFlow]:
+        geos = geographies or DEFAULT_GEOGRAPHIES
+        inds = self._resolve_industries(industries, founder)
+        logger.info(f"Scanning {len(geos)} geographies × {len(inds)} industries "
+                    f"(budget: {self.budget.max_calls})")
+
+        candidates: list[dict] = []
+        for geo in geos:
+            for ind in inds:
+                if not self.budget.can_call():
+                    break
+                mandate = self._search_mandate(geo, ind)
+                if mandate and mandate.get("regulation"):
+                    candidates.append(mandate)
+
+        flows: list[ForcedFlow] = []
+        for mandate in candidates:
+            flow = self._quantify_and_build(mandate)
+            if flow:
+                flows.append(flow)
+
+        flows.sort(key=lambda f: f.priority_score(), reverse=True)
+        logger.info(f"Found {len(flows)} forced flows "
+                    f"(used {self.budget.calls_used}/{self.budget.max_calls} calls)")
+        return flows
+
+    def _resolve_industries(self, explicit: Optional[list[str]],
+                            founder: Optional[FounderProfile]) -> list[str]:
+        inds = list(explicit or [])
+        if founder:
+            inds.extend(founder.industries)
+        if not inds:
+            inds = DEFAULT_INDUSTRIES[:3]
+        seen = set()
+        unique = []
+        for i in inds:
+            il = i.lower().strip()
+            if il not in seen:
+                seen.add(il)
+                unique.append(i.strip())
+        return unique
+
+    def _search_mandate(self, geography: str, industry: str) -> Optional[dict]:
+        query = REGULATORY_TEMPLATES[0].format(
+            industry=industry, geography=geography
+        )
+        if not self.budget.use():
+            return None
+
+        try:
+            raw = self.research_fn(query)
+        except Exception as e:
+            logger.warning(f"Search failed for {industry}/{geography}: {e}")
+            return None
+
+        if not raw:
+            return None
+
+        try:
+            prompt = MANDATE_EXTRACTION_PROMPT.format(text=raw[:3000])
+            result = self.llm_fn(prompt)
+            if isinstance(result, str):
+                result = json.loads(result)
+            if result and result.get("regulation"):
+                result["_geography"] = geography
+                result["_industry"] = industry
+            return result
+        except Exception as e:
+            logger.warning(f"LLM extraction failed for {industry}/{geography}: {e}")
+            return None
+
+    def _quantify_and_build(self, mandate: dict) -> Optional[ForcedFlow]:
+        entity_count = mandate.get("entity_count_estimate") or 0
+        cost_per = mandate.get("compliance_cost_per_entity") or 0
+
+        if entity_count == 0 or cost_per == 0:
+            entity_count, cost_per = self._search_impact(mandate)
+
+        providers, gap = self._search_providers(mandate)
+        position = self._recommend_position(gap, entity_count, cost_per)
+        deadline_days = self._calc_deadline_days(mandate.get("effective_date", ""))
+
+        flow = ForcedFlow(
+            regulation=mandate["regulation"],
+            jurisdiction=mandate.get("jurisdiction", mandate.get("_geography", "")),
+            effective_date=mandate.get("effective_date", ""),
+            who_must_comply=mandate.get("who_must_comply", ""),
+            entity_count=entity_count,
+            compliance_cost=cost_per,
+            penalty_for_noncompliance=mandate.get("penalty", ""),
+            current_providers=providers,
+            provider_gap=gap,
+            position_opportunity=position,
+            deadline_urgency=deadline_days,
+            confidence="[T]",
+            sources=[],
+        )
+
+        if flow.total_forced_spend > 0 and flow.provider_gap:
+            capture_rate = 0.001
+            flow.monthly_income_estimate = (flow.total_forced_spend * capture_rate) / 12
+
+        return flow
+
+    def _search_impact(self, mandate: dict) -> tuple[int, float]:
+        reg = mandate.get("regulation", "")
+        query = f"{reg} how many companies affected compliance cost"
+        if not self.budget.use():
+            return 0, 0
+
+        try:
+            raw = self.research_fn(query)
+            if not raw:
+                return 0, 0
+            prompt = f"From this text, extract: entity count (number of companies/entities affected) and compliance cost per entity in USD. Return JSON: {{\"entity_count\": <int>, \"cost_per_entity\": <float>}}\n\nText:\n{raw[:2000]}"
+            result = self.llm_fn(prompt)
+            if isinstance(result, str):
+                result = json.loads(result)
+            return (result.get("entity_count") or 0, result.get("cost_per_entity") or 0)
+        except Exception:
+            return 0, 0
+
+    def _search_providers(self, mandate: dict) -> tuple[list[str], str]:
+        reg = mandate.get("regulation", "")
+        query = f"{reg} compliance provider service consultant"
+        if not self.budget.use():
+            return [], ""
+
+        try:
+            raw = self.research_fn(query)
+            if not raw:
+                return [], "no providers found"
+            prompt = PROVIDER_EXTRACTION_PROMPT.format(text=raw[:2000])
+            result = self.llm_fn(prompt)
+            if isinstance(result, str):
+                result = json.loads(result)
+            return (result.get("providers", []), result.get("gap", ""))
+        except Exception:
+            return [], ""
+
+    def _recommend_position(self, gap: str, entity_count: int,
+                            cost_per: float) -> str:
+        if gap and entity_count > 1000:
+            return "BROKER"
+        if gap and "technical" in gap.lower():
+            return "INTELLIGENCE"
+        if entity_count > 5000:
+            return "AGGREGATOR"
+        return "INTELLIGENCE"
+
+    def _calc_deadline_days(self, effective_date: str) -> int:
+        if not effective_date:
+            return 365
+        try:
+            from datetime import datetime, timezone
+            eff = datetime.strptime(effective_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
+            return max(0, (eff - now).days)
+        except (ValueError, TypeError):
+            return 365

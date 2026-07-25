@@ -1,0 +1,64 @@
+{
+  "type": "plan",
+  "trigger_patterns": ["## Phase", "## Implementation Steps", "plan.md", "/plan", "## Success Criteria", "## Requirements"],
+  "min_length": 600,
+  "dimensions": {
+    "completeness": {
+      "weight": 0.3,
+      "checks": [
+        {
+          "id": "plan_phases",
+          "rule": "section_exists('phase|step|stage|implementation')",
+          "severity": "critical",
+          "description": "No phases/steps section found",
+          "fix": "Add numbered phases or implementation steps"
+        },
+        {
+          "id": "plan_success_criteria",
+          "rule": "section_exists('success|criteria|done|acceptance|deliverable')",
+          "severity": "major",
+          "description": "No success criteria or definition of done",
+          "fix": "Add measurable success criteria for each phase"
+        }
+      ]
+    },
+    "depth": {
+      "weight": 0.3,
+      "checks": [
+        {
+          "id": "plan_concrete_steps",
+          "rule": "contains('create|modify|delete|add|remove|update|implement|write|build')",
+          "severity": "major",
+          "description": "Steps are too abstract — no concrete actions",
+          "fix": "Add specific file paths, function names, or concrete actions to steps"
+        },
+        {
+          "id": "plan_risk",
+          "rule": "section_exists('risk|mitigation|concern|blocker')",
+          "severity": "minor",
+          "description": "No risk assessment section"
+        }
+      ]
+    },
+    "actionability": {
+      "weight": 0.4,
+      "checks": [
+        {
+          "id": "plan_not_vague",
+          "rule": "vague_phrase_count('consider|perhaps|might want|could potentially|it depends|look into') <= 4",
+          "severity": "major",
+          "description": "Too many vague/uncommitted phrases",
+          "fix": "Replace vague phrases with committed actions (will/must/should)"
+        },
+        {
+          "id": "plan_has_files",
+          "rule": "contains('\\.|/|src/|lib/|\\.cjs|\\.ts|\\.json|\\.md')",
+          "severity": "minor",
+          "description": "No file paths referenced — plan may be too abstract"
+        }
+      ]
+    }
+  },
+  "pass_criteria": { "critical": 0, "major": 0 },
+  "max_iterations": 2
+}

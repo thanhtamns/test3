@@ -1,0 +1,118 @@
+"""Tests for FitnessScorer — composite scoring and evaluation."""
+
+import pytest
+
+from ..fitness_scorer import (
+    FitnessScorer,
+    BRIER_WEIGHT,
+    YIELD_WEIGHT,
+    PARSE_WEIGHT,
+    MIN_CASES,
+    PROMOTION_THRESHOLD,
+)
+from ..registry import EvolutionRegistry
+
+
+@pytest.fixture
+def registry(tmp_path):
+    return EvolutionRegistry(db_path=tmp_path / "test.db")
+
+
+@pytest.fixture
+def scorer(registry):
+    return FitnessScorer(registry)
+
+
+def _setup_mutation_with_data(registry, original_yield=1.0, variant_yield=3.0, n_cases=6,
+                              original_brier=0.3, variant_brier=0.1,
+                              original_parse=0.8, variant_parse=1.0):
+    m = registry.create_mutation("template", "dimension:x")
+    v0 = registry.add_variant(m.id, 0, "original {topic}")
+    v1 = registry.add_variant(m.id, 1, "better {topic}")
+
+    for i in range(n_cases):
+        registry.log_fitness(v0.id, f"case-{i}", brier=original_brier, fact_yield=original_yield, parse_success=original_parse)
+        registry.log_fitness(v1.id, f"case-{i}", brier=variant_brier, fact_yield=variant_yield, parse_success=variant_parse)
+
+    return m, v0, v1
+
+
+def test_compute_fitness(registry, scorer):
+    m = registry.create_mutation("template", "dimension:x")
+    v = registry.add_variant(m.id, 0, "tmpl {topic}")
+    registry.log_fitness(v.id, "c1", brier=0.2, fact_yield=3.0, parse_success=1.0)
+    registry.log_fitness(v.id, "c2", brier=0.1, fact_yield=2.0, parse_success=1.0)
+
+    fitness = scorer.compute_fitness(v.id)
+    assert fitness is not None
+    assert 0.0 < fitness <= 1.0
+
+
+def test_compute_fitness_no_entries(registry, scorer):
+    m = registry.create_mutation("template", "dimension:x")
+    v = registry.add_variant(m.id, 0, "tmpl {topic}")
+    assert scorer.compute_fitness(v.id) is None
+
+
+def test_compute_fitness_no_brier(registry, scorer):
+    m = registry.create_mutation("template", "dimension:x")
+    v = registry.add_variant(m.id, 0, "tmpl {topic}")
+    registry.log_fitness(v.id, "c1", brier=None, fact_yield=2.0, parse_success=1.0)
+    fitness = scorer.compute_fitness(v.id)
+    assert fitness is not None
+    # brier_component defaults to 0.5 when no brier data
+    expected_brier = 0.5 * BRIER_WEIGHT
+    expected_yield = min(2.0 / 3.0, 1.0) * YIELD_WEIGHT
+    expected_parse = 1.0 * PARSE_WEIGHT
+    assert abs(fitness - (expected_brier + expected_yield + expected_parse)) < 0.001
+
+
+def test_evaluate_promote(registry, scorer):
+    m, v0, v1 = _setup_mutation_with_data(registry, original_yield=1.0, variant_yield=3.0)
+    result = scorer.evaluate(m.id)
+    assert result.decision == "PROMOTE"
+    assert result.winner_id == v1.id
+    assert result.improvement_pct > 0
+
+
+def test_evaluate_kill(registry, scorer):
+    m, v0, v1 = _setup_mutation_with_data(
+        registry, original_yield=2.5, variant_yield=2.5,
+        original_brier=0.2, variant_brier=0.2,
+        original_parse=1.0, variant_parse=1.0,
+    )
+    result = scorer.evaluate(m.id)
+    assert result.decision == "KILL"
+
+
+def test_evaluate_pending_insufficient_cases(registry, scorer):
+    m = registry.create_mutation("template", "dimension:x")
+    v0 = registry.add_variant(m.id, 0, "orig {topic}")
+    v1 = registry.add_variant(m.id, 1, "alt {topic}")
+    registry.log_fitness(v0.id, "c1", 0.2, 2.0, 1.0)
+    result = scorer.evaluate(m.id)
+    assert result.decision == "PENDING"
+
+
+def test_check_regression_no_regression(registry, scorer):
+    m, v0, v1 = _setup_mutation_with_data(registry, n_cases=6)
+    registry.promote_variant(v1.id)
+    assert scorer.check_regression(m.id) is False
+
+
+def test_check_regression_detected(registry, scorer):
+    m = registry.create_mutation("template", "dimension:x")
+    v0 = registry.add_variant(m.id, 0, "orig {topic}")
+    v1 = registry.add_variant(m.id, 1, "winner {topic}")
+
+    # Good period
+    for i in range(5):
+        registry.log_fitness(v1.id, f"pre-{i}", 0.1, 3.0, 1.0)
+
+    registry.promote_variant(v1.id)
+
+    # Bad period (regression)
+    for i in range(3):
+        registry.log_fitness(v1.id, f"post-{i}", 0.5, 0.5, 0.3)
+
+    assert scorer.check_regression(m.id) is True

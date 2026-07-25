@@ -1,0 +1,150 @@
+import * as vscode from "vscode";
+import * as path from "path";
+import * as os from "os";
+import { StatsPanel } from "./stats-panel";
+
+let statusBarItem: vscode.StatusBarItem;
+let refreshTimer: ReturnType<typeof setInterval>;
+let statsPanel: StatsPanel | undefined;
+
+export function activate(context: vscode.ExtensionContext) {
+  const config = vscode.workspace.getConfiguration("codeflow");
+  if (!config.get<boolean>("enabled", true)) {
+    return;
+  }
+
+  statusBarItem = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Right,
+    100
+  );
+  statusBarItem.command = "codeflow.showStats";
+  statusBarItem.tooltip = "Click to view CODEFLOW session stats";
+  context.subscriptions.push(statusBarItem);
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("codeflow.showStats", () => {
+      const dbPath = resolveDbPath();
+      if (!statsPanel) {
+        statsPanel = new StatsPanel(context.extensionUri);
+      }
+      statsPanel.show(dbPath);
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("codeflow.refresh", () => {
+      updateStatusBar();
+    })
+  );
+
+  updateStatusBar();
+
+  const intervalSec = config.get<number>("refreshInterval", 10);
+  refreshTimer = setInterval(updateStatusBar, intervalSec * 1000);
+
+  context.subscriptions.push({
+    dispose: () => {
+      clearInterval(refreshTimer);
+      statsPanel?.dispose();
+    },
+  });
+}
+
+export function deactivate() {
+  clearInterval(refreshTimer);
+}
+
+async function updateStatusBar() {
+  const dbPath = resolveDbPath();
+  try {
+    const stats = await queryStats(dbPath);
+    if (stats.eventCount === 0) {
+      statusBarItem.text = "$(zap) CODEFLOW: no data";
+      statusBarItem.show();
+      return;
+    }
+
+    const saved = formatTokens(stats.totalSaved);
+    const pct = stats.savingsPct.toFixed(0);
+    statusBarItem.text = `$(zap) CODEFLOW: ${saved} saved (${pct}%)`;
+    statusBarItem.show();
+  } catch {
+    statusBarItem.text = "$(zap) CODEFLOW";
+    statusBarItem.tooltip = "CODEFLOW CLI not installed or no data yet";
+    statusBarItem.show();
+  }
+}
+
+interface Stats {
+  totalSaved: number;
+  totalInput: number;
+  savingsPct: number;
+  eventCount: number;
+}
+
+async function queryStats(dbPath: string): Promise<Stats> {
+  const initSqlJs = require("sql.js");
+  const fs = require("fs");
+  const SQL = await initSqlJs();
+  const buffer = fs.readFileSync(dbPath);
+  const db = new SQL.Database(buffer);
+
+  try {
+    const result = db.exec(
+      `SELECT
+        COALESCE(SUM(tokens_saved), 0) as total_saved,
+        COALESCE(SUM(input_tokens), 0) as total_input,
+        COUNT(*) as event_count
+      FROM tracking
+      WHERE timestamp > datetime('now', '-1 day')`
+    );
+
+    if (result.length === 0 || result[0].values.length === 0) {
+      return { totalSaved: 0, totalInput: 0, savingsPct: 0, eventCount: 0 };
+    }
+
+    const [totalSaved, totalInput, eventCount] = result[0].values[0] as [number, number, number];
+    const savingsPct = totalInput > 0 ? (totalSaved / totalInput) * 100 : 0;
+
+    return { totalSaved, totalInput, savingsPct, eventCount };
+  } finally {
+    db.close();
+  }
+}
+
+function resolveDbPath(): string {
+  const config = vscode.workspace.getConfiguration("codeflow");
+  const override = config.get<string>("dbPath", "");
+  if (override) return override;
+
+  const platform = os.platform();
+  const home = os.homedir();
+
+  if (platform === "darwin") {
+    return path.join(
+      home,
+      "Library",
+      "Application Support",
+      "codeflow",
+      "codeflow.db"
+    );
+  }
+  if (platform === "win32") {
+    return path.join(
+      process.env.LOCALAPPDATA || path.join(home, "AppData", "Local"),
+      "codeflow",
+      "codeflow.db"
+    );
+  }
+  return path.join(
+    process.env.XDG_DATA_HOME || path.join(home, ".local", "share"),
+    "codeflow",
+    "codeflow.db"
+  );
+}
+
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return n.toString();
+}

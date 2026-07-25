@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Asset Class Database Schema",
+  "description": "Validates entries in asset-classes.json for the stage0 Intelligence Layer",
+  "type": "array",
+  "minItems": 15,
+  "items": {
+    "type": "object",
+    "required": [
+      "id", "name", "category", "capital_entry_min", "capital_entry_max",
+      "roi_distribution", "time_to_first_dollar_days", "sleep_test",
+      "leverage_class", "lindy_years", "compound_mechanism",
+      "failure_rate_year1", "structural_risks", "data_sources",
+      "founder_fit_tags", "capital_tiers"
+    ],
+    "properties": {
+      "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+      "name": { "type": "string" },
+      "category": { "type": "string", "enum": ["digital_product", "service", "media", "physical", "financial"] },
+      "capital_entry_min": { "type": "integer", "minimum": 0 },
+      "capital_entry_max": { "type": "integer", "minimum": 0 },
+      "roi_distribution": {
+        "type": "object",
+        "required": ["p10", "p25", "p50", "p75", "p90"],
+        "properties": {
+          "p10": { "type": "number" },
+          "p25": { "type": "number" },
+          "p50": { "type": "number" },
+          "p75": { "type": "number" },
+          "p90": { "type": "number" }
+        },
+        "additionalProperties": false
+      },
+      "time_to_first_dollar_days": {
+        "type": "object",
+        "required": ["p25", "p50", "p75"],
+        "properties": {
+          "p25": { "type": "integer", "minimum": 1 },
+          "p50": { "type": "integer", "minimum": 1 },
+          "p75": { "type": "integer", "minimum": 1 }
+        },
+        "additionalProperties": false
+      },
+      "sleep_test": { "type": "string", "enum": ["YES", "PARTIAL", "NO"] },
+      "leverage_class": { "type": "string", "enum": ["CODE", "MEDIA", "CAPITAL", "LABOR", "HYBRID"] },
+      "lindy_years": { "type": "integer", "minimum": 1 },
+      "compound_mechanism": { "type": "string" },
+      "failure_rate_year1": { "type": "number", "minimum": 0, "maximum": 1 },
+      "structural_risks": { "type": "array", "items": { "type": "string" } },
+      "data_sources": {
+        "type": "array",
+        "minItems": 3,
+        "items": {
+          "type": "object",
+          "required": ["source", "year", "zone_tag"],
+          "properties": {
+            "source": { "type": "string" },
+            "year": { "type": "integer" },
+            "zone_tag": { "type": "string", "enum": ["K", "T", "?"] }
+          },
+          "additionalProperties": false
+        }
+      },
+      "founder_fit_tags": { "type": "array", "items": { "type": "string" } },
+      "capital_tiers": {
+        "type": "object",
+        "required": ["TIER_0"],
+        "properties": {
+          "TIER_0": { "$ref": "#/$defs/tier_entry" },
+          "TIER_1": { "$ref": "#/$defs/tier_entry" },
+          "TIER_2": { "$ref": "#/$defs/tier_entry" },
+          "TIER_3": { "$ref": "#/$defs/tier_entry" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "additionalProperties": false
+  },
+  "$defs": {
+    "tier_entry": {
+      "type": "object",
+      "required": ["viable", "expected_roi_p50", "notes"],
+      "properties": {
+        "viable": { "type": "boolean" },
+        "expected_roi_p50": { "type": "number" },
+        "notes": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

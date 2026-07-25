@@ -1,0 +1,226 @@
+#!/usr/bin/env python3
+"""
+LLM Query Executor - Makes atomic queries to LLM
+System calls this for small, focused answers. Not monolithic requests.
+"""
+
+import json
+import os
+import subprocess
+import sys
+from dataclasses import dataclass
+from typing import Optional, List
+
+@dataclass
+class AtomicResponse:
+    """Structured response from LLM"""
+    answer: str
+    confidence: float
+    gaps: List[str]
+    raw_tokens: int
+
+class LLMQueryExecutor:
+    """
+    Executes atomic queries to LLM.
+    Enforces: short responses, focused questions, structured output.
+    """
+
+    def __init__(self, model: str = "claude-sonnet-4-20250514"):
+        self.model = model
+        self.query_count = 0
+        self.total_tokens = 0
+        self._init_client()
+
+    def _init_client(self):
+        """Initialize Anthropic client if available"""
+        try:
+            import anthropic
+            self.client = anthropic.Anthropic()
+            self.use_api = True
+        except Exception:
+            self.client = None
+            self.use_api = False
+
+    def query(
+        self,
+        question: str,
+        context: str = "",
+        constraints: List[str] = None,
+        max_tokens: int = 200,
+        response_format: str = "text"  # or "json"
+    ) -> AtomicResponse:
+        """
+        Execute single atomic query.
+        System controls: what to ask, how much output, what format.
+        """
+
+        constraints = constraints or []
+
+        # Build focused prompt - system controls structure
+        prompt = self._build_prompt(question, context, constraints, response_format)
+
+        # Execute via claude CLI (available in environment)
+        result = self._execute_claude(prompt, max_tokens)
+
+        self.query_count += 1
+
+        return AtomicResponse(
+            answer=result["answer"],
+            confidence=self._estimate_confidence(result["answer"]),
+            gaps=self._extract_gaps(result["answer"]),
+            raw_tokens=result.get("tokens", 0)
+        )
+
+    def _build_prompt(
+        self,
+        question: str,
+        context: str,
+        constraints: List[str],
+        response_format: str
+    ) -> str:
+        """System builds focused prompt"""
+
+        parts = []
+
+        # Question first - most important
+        parts.append(f"QUESTION: {question}")
+
+        # Context if provided
+        if context:
+            parts.append(f"CONTEXT: {context}")
+
+        # Constraints - system enforces focus
+        if constraints:
+            parts.append("CONSTRAINTS:")
+            for c in constraints:
+                parts.append(f"- {c}")
+
+        # Response format
+        if response_format == "json":
+            parts.append("OUTPUT: JSON only, no prose")
+        else:
+            parts.append("OUTPUT: Direct answer, max 3 sentences")
+
+        # Force gaps identification
+        parts.append("If information is missing to fully answer, end with 'GAPS: [list]'")
+
+        return "\n".join(parts)
+
+    def _execute_claude(self, prompt: str, max_tokens: int) -> dict:
+        """Execute query - API first, CLI fallback"""
+
+        # Try API first (faster, more reliable)
+        if self.use_api and self.client:
+            try:
+                response = self.client.messages.create(
+                    model=self.model,
+                    max_tokens=max_tokens,
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                answer = response.content[0].text if response.content else ""
+                return {
+                    "answer": answer,
+                    "tokens": response.usage.output_tokens if hasattr(response, 'usage') else len(answer.split())
+                }
+            except Exception as e:
+                pass  # Fall through to CLI
+
+        # CLI fallback
+        try:
+            result = subprocess.run(
+                ["claude", "--print", "-p", prompt],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                cwd=os.getcwd()
+            )
+
+            if result.returncode == 0:
+                return {
+                    "answer": result.stdout.strip(),
+                    "tokens": len(result.stdout.split())
+                }
+            else:
+                return {
+                    "answer": f"[ERROR: {result.stderr}]",
+                    "tokens": 0
+                }
+
+        except subprocess.TimeoutExpired:
+            return {"answer": "[TIMEOUT]", "tokens": 0}
+        except Exception as e:
+            return {"answer": f"[EXCEPTION: {str(e)}]", "tokens": 0}
+
+    def _estimate_confidence(self, answer: str) -> float:
+        """System estimates confidence from answer characteristics"""
+
+        confidence = 0.7  # Base
+
+        # Hedging words reduce confidence
+        hedging = ["maybe", "perhaps", "might", "could be", "uncertain", "unclear"]
+        for word in hedging:
+            if word in answer.lower():
+                confidence -= 0.1
+
+        # Specific numbers increase confidence
+        import re
+        if re.search(r'\d+%|\$\d+|\d+ days', answer):
+            confidence += 0.1
+
+        # Sources increase confidence
+        if "source:" in answer.lower() or "according to" in answer.lower():
+            confidence += 0.1
+
+        return max(0.1, min(1.0, confidence))
+
+    def _extract_gaps(self, answer: str) -> List[str]:
+        """System extracts gaps LLM identified"""
+
+        gaps = []
+
+        # Look for explicit gaps section
+        if "GAPS:" in answer:
+            gap_section = answer.split("GAPS:")[-1]
+            # Parse list
+            import re
+            items = re.findall(r'[-•]\s*(.+?)(?=[-•]|$)', gap_section)
+            gaps.extend([item.strip() for item in items if item.strip()])
+
+        # Look for implicit gaps
+        gap_phrases = [
+            "need more info",
+            "unclear",
+            "not specified",
+            "depends on",
+            "would need to know"
+        ]
+        for phrase in gap_phrases:
+            if phrase in answer.lower():
+                # Extract the context around the phrase
+                idx = answer.lower().find(phrase)
+                context = answer[max(0, idx-20):min(len(answer), idx+50)]
+                gaps.append(context.strip())
+
+        return gaps
+
+
+def main():
+    """Test the executor"""
+
+    executor = LLMQueryExecutor()
+
+    # Test atomic query
+    result = executor.query(
+        question="What are the 3 primitives of cash flow?",
+        constraints=["No definitions, only mechanisms", "Be specific"],
+        max_tokens=150
+    )
+
+    print(f"Answer: {result.answer}")
+    print(f"Confidence: {result.confidence}")
+    print(f"Gaps: {result.gaps}")
+    print(f"Tokens: {result.raw_tokens}")
+
+
+if __name__ == "__main__":
+    main()

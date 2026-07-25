@@ -1,0 +1,201 @@
+---
+name: refinement-loop-protocol
+description: >-
+  Phase 2.8 — Iterative refinement of top-3 tournament hypotheses.
+  STRENGTHEN (fill evidence gaps), ATTACK (find counter-evidence),
+  EVOLVE (merge compatible). Dynamic convergence via Elo delta rate.
+  Evidence-based debate, not opinion. Max 5 rounds, typically 2-3.
+---
+
+# Refinement Loop Protocol
+
+## Purpose
+
+Take top-3 ranked hypotheses from tournament (Phase 2.7) and iteratively refine them through STRENGTHEN + ATTACK + EVOLVE cycles. Each round uses targeted search to fill specific evidence gaps or find specific counter-evidence. Re-run tournament after each round. Stop when ranking converges.
+
+This is the core Co-Scientist principle: hypotheses don't just get ranked once — they get refined until the ranking is STABLE.
+
+## When This Runs
+
+Phase 2.8 in Stage0 pipeline. Runs AFTER tournament (Phase 2.7), BEFORE lens analysis (Phase 3). May run multiple rounds (typically 2-3, max 5).
+
+## Input
+
+- `tournament_result_path` — path to tournament-result.md with Elo-ranked hypotheses
+- `knowledge_graph` — serialized KnowledgeGraph (from Phase 2.5A upgrade)
+- `founder_context` — from Phase 0 intent_meta
+
+## Round Structure
+
+Each refinement round has 4 steps:
+
+### Step R1: STRENGTHEN (per hypothesis, 3 searches each)
+
+For each top-3 hypothesis:
+1. Query knowledge graph for evidence GAPS: `knowledge_graph.gaps_for_hypothesis(hypothesis)`
+2. For each gap, generate a TARGETED search query (not broad — specific claim to verify)
+3. Execute searches (max 3 per hypothesis = 9 total per round)
+4. Update knowledge graph with new evidence
+5. Upgrade claims from [T] → [K] if verified by search results
+
+**Query template:**
+```
+Gap: "Market size for {niche} is claimed $X but unverified"
+Query: "{niche} market size 2025 2026 report"
+```
+
+### Step R2: ATTACK (per hypothesis, 2 searches each)
+
+For each top-3 hypothesis:
+1. Generate INVERSION queries:
+   - `"{hypothesis topic}" why it fails`
+   - `"{business model}" common mistakes`
+   - `"{market}" declining saturated 2026`
+2. Execute attack searches (max 2 per hypothesis = 6 total per round)
+3. If attack finds strong counter-evidence:
+   - Add ContradictionEdge to knowledge graph
+   - Hypothesis strength_score decreases
+4. If no counter-evidence found: note "Attack survived — no contradictions found"
+
+**Important:** Attack doesn't KILL. It adds contradictions. A hypothesis with counter-evidence AND strong supporting evidence SURVIVES. Only hypotheses where attack overwhelms support drop in tournament.
+
+### Step R3: EVOLVE (across hypotheses, no search)
+
+Check if any 2 of the top-3 hypotheses can MERGE into a stronger form:
+- Compatible if: same customer_segment + complementary mechanisms + non-overlapping value props
+- If merge possible: create EVOLVED hypothesis with combined mechanism
+- Evolved hypothesis enters next tournament round
+- If no compatible pair: skip EVOLVE, note "No merge candidates"
+
+**Never force merges.** Incompatible hypotheses stay separate.
+
+### Step R4: RE-TOURNAMENT (evidence-based debate)
+
+Run Phase 2.7 tournament protocol on refined + evolved candidates.
+
+**Upgrade from opinion-based to evidence-based debate:**
+
+For each pairwise comparison, build debate prompt:
+```
+Hypothesis A argues: {mechanism_A}
+Supporting evidence: {knowledge_graph.evidence_profile(A).supporting_claims}
+Counter-evidence: {knowledge_graph.evidence_profile(A).contradicting_claims}
+
+Hypothesis B argues: {mechanism_B}
+Supporting evidence: {knowledge_graph.evidence_profile(B).supporting_claims}
+Counter-evidence: {knowledge_graph.evidence_profile(B).contradicting_claims}
+
+DEBATE: Each hypothesis must ATTACK the other using counter-evidence.
+A attacks B using B's contradictions + A's supporting evidence.
+B attacks A using A's contradictions + B's supporting evidence.
+
+JUDGE: Which hypothesis's mechanism SURVIVES the attacks 
+with more intact supporting evidence?
+```
+
+## Convergence Rules
+
+After each round's re-tournament, check convergence:
+
+```
+Signal A: top-3 IDs stable across 2 consecutive rounds → CONVERGED
+Signal B: top-1 Elo delta < 5% from previous round → CONVERGED
+Either signal → STOP (log which signal triggered)
+
+Hard cap: 5 rounds maximum
+Min rounds: 2 (always run at least 2, even if ranking looks stable)
+Elo accelerating (delta increasing): definitely continue
+```
+
+## Search Budget Per Round
+
+| Action | Per hypothesis | Hypotheses | Per round |
+|--------|---------------|------------|-----------|
+| STRENGTHEN | 3 | 3 | 9 |
+| ATTACK | 2 | 3 | 6 |
+| EVOLVE | 0 | — | 0 |
+| **Total** | | | **15** |
+
+Typical total: 2-3 rounds × 15 = 30-45 targeted searches.
+Max (5 rounds) = 75 targeted searches.
+
+Key difference from current: these are GAP-DIRECTED searches, not exploratory. Each search has a specific claim to verify or attack.
+
+## Evolution Trace
+
+Every hypothesis carries its change history. Record per round:
+
+```
+Round {N}: {ACTION} — "{description of what changed}"
+  Evidence delta: {what supporting/contradicting evidence changed}
+  Score: {before} → {after}
+```
+
+Example:
+```
+Round 0: Generated — "SaaS for compliance in industry X" (from pattern-matcher)
+Round 1: STRENGTHENED — "Market size verified at $2.3B [K] (was [T]). Added 3 competitor prices."
+  Evidence delta: +2 supporting [K], +1 contradicting (free template covers 30%)
+  Score: 1520 → 1635
+Round 2: EVOLVED — "Merged with FP03 (automation angle) → compliance automation SaaS"
+  Evidence delta: +1 supporting (automation demand signal from LinkedIn jobs)
+  Score: 1635 → 1710
+```
+
+## Output
+
+Write to session plan directory:
+```
+plans/{session_id}/refinement-result.md
+```
+
+Format:
+```markdown
+# Refinement Result — {domain}
+
+## Convergence
+- Rounds executed: {N}
+- Convergence signal: {ranking_stable | elo_stable | max_rounds}
+- Elo trajectory: {round-by-round top-1 Elo}
+
+## Final Ranking
+| Rank | ID | Title | Elo | Source | Rounds Survived |
+|------|-----|-------|-----|--------|----------------|
+| 1 | {id} | {title} | {elo} | {source} | {N}/{total} |
+
+## Evolution Traces
+
+### {hypothesis_id}: {title}
+- Round 0: {original form}
+- Round 1: {change + evidence delta + score change}
+- Round 2: {change + evidence delta + score change}
+
+## Contradictions Discovered
+| Hypothesis | Contradiction | Source | Impact |
+|-----------|---------------|--------|--------|
+| {id} | {counter-claim} | {URL/source} | {HIGH/MED/LOW} |
+
+## Evidence Gaps Remaining
+- {hypothesis_id}: {what's still unverified, [T] claims}
+```
+
+## Fallback
+
+If refinement fails (timeout, error, < 3 hypotheses):
+- Set `refinement_result = null`
+- Synthesis uses tournament result directly (Phase 2.7 output)
+- No mechanism is blocked by refinement failure
+
+If convergence never reached after 5 rounds:
+- Force stop, use latest ranking
+- Note in output: "Convergence: forced stop at round 5 — ranking may be unstable"
+
+## Critical Rules
+
+1. TARGETED searches only — never broad "tell me about {topic}" queries
+2. Attack is MANDATORY — skipping attack produces overconfident output
+3. Evolution trace is MANDATORY — even "no changes" must be logged
+4. Evidence-based debate: tournament prompts MUST include specific claims from graph
+5. If graph is empty/null: fall back to opinion-based debate (current behavior)
+6. Max 15 searches per round, hard cap — don't exceed even if gaps remain
+7. Log which convergence signal fired — essential for debugging

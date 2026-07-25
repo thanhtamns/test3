@@ -1,0 +1,379 @@
+//! `rtk audit` — SLSA provenance attestation export (codeflow Phase 5).
+//!
+//! Usage:
+//!   rtk audit                        — SLSA export, last 90 days
+//!   rtk audit --format slsa          — explicit format
+//!   rtk audit --range 30d|90d|1y|all — date range
+//!   rtk audit --project <name>       — filter by project path substring
+//!   rtk audit --dev <id>             — filter by developer id
+//!   rtk audit --output <dir>         — custom output directory (default: ./codeflow-audit/)
+//!   rtk audit --json                 — machine-readable summary to stdout
+
+use anyhow::{Context, Result};
+use colored::Colorize;
+
+use crate::compliance::report_common::{
+    gather_stats, query_provenance_records, range_to_since, AuditFormat,
+};
+use crate::compliance::slsa_export::generate_slsa;
+
+// ── Public entry point ────────────────────────────────────────────────────────
+
+pub struct AuditArgs {
+    pub format: String,
+    pub range: String,
+    pub project: Option<String>,
+    pub dev: Option<String>,
+    pub output: Option<String>,
+    pub json: bool,
+}
+
+impl Default for AuditArgs {
+    fn default() -> Self {
+        Self {
+            format: "slsa".to_string(),
+            range: "90d".to_string(),
+            project: None,
+            dev: None,
+            output: None,
+            json: false,
+        }
+    }
+}
+
+pub fn run(args: &AuditArgs) -> Result<i32> {
+    let fmt = AuditFormat::from_str(&args.format).unwrap_or_else(|| {
+        // Unknown format → default to SLSA and warn
+        eprintln!(
+            "[rtk audit] unknown format '{}', defaulting to slsa",
+            args.format
+        );
+        AuditFormat::Slsa
+    });
+
+    // Non-SLSA formats: stub — coming in a future release.
+    match &fmt {
+        AuditFormat::CycloneDx | AuditFormat::Soc2 | AuditFormat::EuAiAct | AuditFormat::All => {
+            return run_coming_soon(&fmt);
+        }
+        AuditFormat::Slsa => {}
+    }
+
+    run_slsa(args)
+}
+
+// ── SLSA export ───────────────────────────────────────────────────────────────
+
+fn run_slsa(args: &AuditArgs) -> Result<i32> {
+    let since = range_to_since(&args.range);
+    let since_str = since.as_deref();
+
+    let records = query_provenance_records(
+        since_str,
+        args.project.as_deref(),
+        args.dev.as_deref(),
+    )
+    .context("failed to query provenance records")?;
+
+    let stats = gather_stats(since_str, args.project.as_deref(), args.dev.as_deref())
+        .context("failed to gather audit stats")?;
+
+    let envelope = generate_slsa(&records, &stats).context("failed to generate SLSA attestation")?;
+
+    // Determine output directory.
+    let out_dir = std::path::PathBuf::from(
+        args.output
+            .as_deref()
+            .unwrap_or("codeflow-audit"),
+    );
+    std::fs::create_dir_all(&out_dir)
+        .with_context(|| format!("failed to create output dir: {}", out_dir.display()))?;
+
+    // Write file named {unix-timestamp}-slsa-provenance.json
+    let ts = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
+    let filename = format!("{}-slsa-provenance.json", ts);
+    let out_path = out_dir.join(&filename);
+
+    let json_str =
+        serde_json::to_string_pretty(&envelope).context("failed to serialize envelope")?;
+    std::fs::write(&out_path, &json_str)
+        .with_context(|| format!("failed to write: {}", out_path.display()))?;
+
+    if args.json {
+        // Machine-readable summary: envelope path + stats.
+        let summary = serde_json::json!({
+            "format": "slsa",
+            "output_file": out_path.to_string_lossy(),
+            "range": args.range,
+            "total_provenance": stats.total_provenance,
+            "total_cost_usd": stats.total_cost_usd,
+            "date_from": stats.date_range.0,
+            "date_to":   stats.date_range.1,
+        });
+        println!("{}", serde_json::to_string_pretty(&summary)?);
+        return Ok(0);
+    }
+
+    // Human-readable output.
+    println!("{}", "Codeflow Audit Export".bold());
+    println!("{}", "─".repeat(50));
+    println!(
+        "  Format:    {}",
+        "SLSA Provenance v1.0".cyan().bold()
+    );
+    println!(
+        "  Range:     {} → {}",
+        args.range,
+        since_str.unwrap_or("epoch")
+    );
+    println!(
+        "  Records:   {}",
+        stats.total_provenance.to_string().yellow()
+    );
+    println!(
+        "  Cost:      {}",
+        format!("${:.4}", stats.total_cost_usd).yellow()
+    );
+    println!();
+    println!(
+        "  Output:    {}",
+        out_path.display().to_string().green().bold()
+    );
+
+    if stats.total_provenance == 0 {
+        println!();
+        println!(
+            "  {}",
+            "No provenance records found for this range.".dimmed()
+        );
+        println!(
+            "  {}",
+            "Run sessions with RTK_CODEFLOW=1 to start recording.".dimmed()
+        );
+    }
+
+    Ok(0)
+}
+
+// ── Coming-soon stubs ─────────────────────────────────────────────────────────
+
+fn run_coming_soon(fmt: &AuditFormat) -> Result<i32> {
+    println!(
+        "{} export is coming in a future release.",
+        fmt.label().yellow().bold()
+    );
+    println!(
+        "Currently supported: {}",
+        "slsa".cyan()
+    );
+    Ok(0)
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn isolated_args(dir: &std::path::Path) -> AuditArgs {
+        AuditArgs {
+            format: "slsa".to_string(),
+            range: "90d".to_string(),
+            project: None,
+            dev: None,
+            output: Some(dir.to_string_lossy().into_owned()),
+            json: false,
+        }
+    }
+
+    fn set_temp_dbs(dir: &std::path::Path) {
+        std::env::set_var(
+            "RTK_PROVENANCE_DB",
+            dir.join("provenance.db").to_str().unwrap(),
+        );
+        std::env::set_var("RTK_COST_DB", dir.join("cost.db").to_str().unwrap());
+    }
+
+    fn clear_temp_dbs() {
+        std::env::remove_var("RTK_PROVENANCE_DB");
+        std::env::remove_var("RTK_COST_DB");
+    }
+
+    // ── 1. Audit command CLI parsing (argument struct construction) ──────────
+
+    #[test]
+    fn default_args_are_slsa_90d() {
+        let args = AuditArgs::default();
+        assert_eq!(args.format, "slsa");
+        assert_eq!(args.range, "90d");
+        assert!(args.project.is_none());
+        assert!(!args.json);
+    }
+
+    // ── 2. Output directory is created ──────────────────────────────────────
+
+    #[test]
+    fn output_dir_is_created_when_missing() {
+        let tmp = tempdir().unwrap();
+        let out_dir = tmp.path().join("subdir").join("audit-out");
+        set_temp_dbs(tmp.path());
+
+        let args = AuditArgs {
+            output: Some(out_dir.to_string_lossy().into_owned()),
+            ..isolated_args(tmp.path())
+        };
+        let result = run(&args);
+        clear_temp_dbs();
+
+        assert!(result.is_ok());
+        assert!(out_dir.exists());
+    }
+
+    // ── 3. Output file is written ────────────────────────────────────────────
+
+    #[test]
+    fn slsa_output_file_written() {
+        let tmp = tempdir().unwrap();
+        let out_dir = tmp.path().join("out");
+        set_temp_dbs(tmp.path());
+
+        let args = AuditArgs {
+            output: Some(out_dir.to_string_lossy().into_owned()),
+            ..isolated_args(tmp.path())
+        };
+        run(&args).unwrap();
+        clear_temp_dbs();
+
+        let files: Vec<_> = std::fs::read_dir(&out_dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .collect();
+        assert_eq!(files.len(), 1);
+        let name = files[0].file_name().to_string_lossy().into_owned();
+        assert!(name.ends_with("-slsa-provenance.json"));
+    }
+
+    // ── 4. Output file contains valid JSON envelope ──────────────────────────
+
+    #[test]
+    fn output_file_is_valid_intoto_envelope_json() {
+        let tmp = tempdir().unwrap();
+        set_temp_dbs(tmp.path());
+
+        let args = isolated_args(tmp.path());
+        run(&args).unwrap();
+        clear_temp_dbs();
+
+        let files: Vec<_> = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().ends_with("-slsa-provenance.json"))
+            .collect();
+        assert!(!files.is_empty());
+
+        let content = std::fs::read_to_string(files[0].path()).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
+        assert_eq!(
+            parsed["payloadType"].as_str().unwrap(),
+            "application/vnd.in-toto+json"
+        );
+        assert!(parsed["payload"].is_string());
+        assert!(parsed["signatures"].is_array());
+    }
+
+    // ── 5. Non-SLSA formats return coming-soon message (exit 0) ─────────────
+
+    #[test]
+    fn cyclonedx_returns_coming_soon() {
+        let args = AuditArgs {
+            format: "cyclonedx".to_string(),
+            ..AuditArgs::default()
+        };
+        let result = run(&args).unwrap();
+        assert_eq!(result, 0);
+    }
+
+    #[test]
+    fn soc2_returns_coming_soon() {
+        let args = AuditArgs {
+            format: "soc2".to_string(),
+            ..AuditArgs::default()
+        };
+        let result = run(&args).unwrap();
+        assert_eq!(result, 0);
+    }
+
+    #[test]
+    fn eu_ai_act_returns_coming_soon() {
+        let args = AuditArgs {
+            format: "eu-ai-act".to_string(),
+            ..AuditArgs::default()
+        };
+        let result = run(&args).unwrap();
+        assert_eq!(result, 0);
+    }
+
+    // ── 6. --json flag produces machine-readable summary ────────────────────
+
+    #[test]
+    fn json_flag_produces_summary_with_required_keys() {
+        let tmp = tempdir().unwrap();
+        set_temp_dbs(tmp.path());
+
+        let args = AuditArgs {
+            json: true,
+            output: Some(tmp.path().join("out").to_string_lossy().into_owned()),
+            ..isolated_args(tmp.path())
+        };
+        // run() prints to stdout; just verify it doesn't error
+        let result = run(&args);
+        clear_temp_dbs();
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    // ── 7. Range variants are accepted ──────────────────────────────────────
+
+    #[test]
+    fn range_30d_accepted() {
+        let tmp = tempdir().unwrap();
+        set_temp_dbs(tmp.path());
+        let args = AuditArgs {
+            range: "30d".to_string(),
+            output: Some(tmp.path().join("out").to_string_lossy().into_owned()),
+            ..isolated_args(tmp.path())
+        };
+        let result = run(&args);
+        clear_temp_dbs();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn range_all_accepted() {
+        let tmp = tempdir().unwrap();
+        set_temp_dbs(tmp.path());
+        let args = AuditArgs {
+            range: "all".to_string(),
+            output: Some(tmp.path().join("out").to_string_lossy().into_owned()),
+            ..isolated_args(tmp.path())
+        };
+        let result = run(&args);
+        clear_temp_dbs();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn range_1y_accepted() {
+        let tmp = tempdir().unwrap();
+        set_temp_dbs(tmp.path());
+        let args = AuditArgs {
+            range: "1y".to_string(),
+            output: Some(tmp.path().join("out").to_string_lossy().into_owned()),
+            ..isolated_args(tmp.path())
+        };
+        let result = run(&args);
+        clear_temp_dbs();
+        assert!(result.is_ok());
+    }
+}

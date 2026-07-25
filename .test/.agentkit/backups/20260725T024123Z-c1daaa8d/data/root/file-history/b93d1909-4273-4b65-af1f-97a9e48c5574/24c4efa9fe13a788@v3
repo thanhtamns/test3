@@ -1,0 +1,132 @@
+{
+  "type": "stage0",
+  "trigger_patterns": ["/stage0", "## Stage 0", "VERDICT:", "Kill Probability", "## Verdict", "GO/NO-GO"],
+  "min_length": 1000,
+  "dimensions": {
+    "completeness": {
+      "weight": 0.25,
+      "checks": [
+        {
+          "id": "s0_profile",
+          "rule": "section_exists('profile|founder|constraints|position')",
+          "severity": "critical",
+          "description": "Missing founder profile/constraints section",
+          "fix": "Add founder profile with actual constraints (capital, time, skills, location)"
+        },
+        {
+          "id": "s0_verdict",
+          "rule": "section_exists('verdict|recommendation|GO|KILL|decision')",
+          "severity": "critical",
+          "description": "Missing verdict/recommendation section",
+          "fix": "Add clear GO/KILL/CONDITIONAL verdict with justification"
+        },
+        {
+          "id": "s0_execution",
+          "rule": "section_exists('execution|next step|action plan|playbook')",
+          "severity": "major",
+          "description": "Missing execution/next-steps section",
+          "fix": "Add specific actionable next steps with timeline"
+        },
+        {
+          "id": "s0_risk",
+          "rule": "section_exists('risk|danger|concern|threat|kill')",
+          "severity": "major",
+          "description": "Missing risk assessment section",
+          "fix": "Add risk factors with severity and mitigation"
+        }
+      ]
+    },
+    "evidence": {
+      "weight": 0.25,
+      "checks": [
+        {
+          "id": "s0_failure_arch",
+          "rule": "contains('fail|bankrupt|closed|shut down|post-mortem|collapsed|died')",
+          "severity": "critical",
+          "description": "No failure archaeology evidence found",
+          "fix": "Run failure archaeology WebSearch for this business category and include findings"
+        },
+        {
+          "id": "s0_zone_tags",
+          "rule": "zone_tag_ratio() >= 0.2",
+          "severity": "major",
+          "description": "Insufficient zone tags [K]/[T]/[?] on factual claims",
+          "fix": "Add [K]/[T]/[?] tags to all factual claims with numbers or specifics"
+        },
+        {
+          "id": "s0_sourced_numbers",
+          "rule": "unsourced_number_count() <= 5",
+          "severity": "major",
+          "description": "Too many unsourced numeric claims",
+          "fix": "Source or tag [?] remaining unsourced numeric claims"
+        }
+      ]
+    },
+    "depth": {
+      "weight": 0.2,
+      "checks": [
+        {
+          "id": "s0_mechanism",
+          "rule": "count_pattern('because|mechanism|works by|caused by|driven by|due to|the reason') >= 5",
+          "severity": "major",
+          "description": "Insufficient mechanism explanations — surface-level listing without causal reasoning",
+          "fix": "Add 5+ WHY explanations. Each model needs a 'because X' or 'driven by Y' sentence, not just WHAT it is."
+        },
+        {
+          "id": "s0_money_flow",
+          "rule": "contains('revenue|margin|cost|pricing|unit economics|cash flow')",
+          "severity": "major",
+          "description": "No money flow / economics analysis",
+          "fix": "Add revenue model, unit economics, or cost structure analysis"
+        },
+        {
+          "id": "s0_prose_depth",
+          "rule": "prose_ratio() >= 0.25",
+          "severity": "major",
+          "description": "Output is mostly tables/lists with insufficient analytical prose — tables are data, not thinking",
+          "fix": "Add analytical paragraphs explaining insights, tradeoffs, and reasoning. Tables show data; prose shows thinking."
+        }
+      ]
+    },
+    "consistency": {
+      "weight": 0.15,
+      "checks": [
+        {
+          "id": "s0_no_contradiction",
+          "rule": "no_score_contradiction()",
+          "severity": "critical",
+          "description": "Contradicting scores detected (high and low for same entity)",
+          "fix": "Reconcile contradicting agent assessments — explain why scores differ"
+        },
+        {
+          "id": "s0_verdict_matches",
+          "rule": "verdict_aligned_with_scores()",
+          "severity": "major",
+          "description": "Verdict direction conflicts with majority of sub-scores",
+          "fix": "Align verdict with evidence or explain why verdict overrides scores"
+        }
+      ]
+    },
+    "domain_specific": {
+      "weight": 0.15,
+      "checks": [
+        {
+          "id": "s0_agent_count",
+          "rule": "count_pattern('\\bpersona\\b|\\banalysis by\\b|— .*persona|\\[.*analyst\\]') >= 3",
+          "severity": "major",
+          "description": "Insufficient agent/persona coverage (need 5+ for robust analysis)",
+          "fix": "Fire additional analysis agents to reach minimum coverage"
+        },
+        {
+          "id": "s0_anti_confirm",
+          "rule": "contains('against|risk|fail|competition|alternative|weakness|threat')",
+          "severity": "major",
+          "description": "No anti-confirmation evidence (all positive, no challenges)",
+          "fix": "Add counterarguments, risks, competitor threats, or failure scenarios"
+        }
+      ]
+    }
+  },
+  "pass_criteria": { "critical": 0, "major": 0 },
+  "max_iterations": 4
+}

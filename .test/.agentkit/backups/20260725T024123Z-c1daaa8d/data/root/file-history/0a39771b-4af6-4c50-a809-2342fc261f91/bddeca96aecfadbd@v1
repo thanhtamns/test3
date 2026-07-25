@@ -1,0 +1,103 @@
+"""
+Technique Engine base dataclasses.
+All 15 techniques conform to: Callable[[TechniqueInput], TechniqueResult]
+"""
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
+
+from ...hunger.claim_parser import ParsedClaim
+
+
+@dataclass
+class TechniqueInput:
+    facts: list[ParsedClaim]
+    context: dict
+    founder_context: dict
+    ecosystem_map: dict
+    vectors_db: Optional[Path] = None
+    kill_signals: list[dict] = field(default_factory=list)
+
+    def facts_by_dimension(self, dimension: str) -> list[ParsedClaim]:
+        return [f for f in self.facts if f.dimension == dimension]
+
+    def facts_with_min_confidence(self, min_conf: float) -> list[ParsedClaim]:
+        return [f for f in self.facts if f.confidence >= min_conf]
+
+    def has_facts_for(self, dimension: str) -> bool:
+        return any(f.dimension == dimension for f in self.facts)
+
+
+@dataclass
+class TechniqueResult:
+    technique_id: str
+    score: float
+    confidence: float
+    verdict: str  # GO / KILL / CAUTION / INVESTIGATE / NEEDS_DATA
+    reasoning_chain: list[str]
+    zone_tag: str = "T"  # [K] / [T] / [?]
+    data_used: list[str] = field(default_factory=list)
+    needs_data: list[str] = field(default_factory=list)
+    metadata: dict = field(default_factory=dict)
+
+    def __post_init__(self):
+        if not 0.0 <= self.score <= 1.0:
+            raise ValueError(f"score must be 0.0-1.0, got {self.score}")
+        if not 0.0 <= self.confidence <= 1.0:
+            raise ValueError(f"confidence must be 0.0-1.0, got {self.confidence}")
+        valid_verdicts = {"GO", "KILL", "CAUTION", "INVESTIGATE", "NEEDS_DATA",
+                         "STAIRCASE_GO", "STAIRCASE_POSSIBLE"}
+        if self.verdict not in valid_verdicts:
+            raise ValueError(f"verdict must be one of {valid_verdicts}, got {self.verdict}")
+
+    @property
+    def is_positive(self) -> bool:
+        return self.verdict in ("GO", "STAIRCASE_GO")
+
+    @property
+    def is_negative(self) -> bool:
+        return self.verdict == "KILL"
+
+    @property
+    def is_uncertain(self) -> bool:
+        return self.verdict in ("CAUTION", "INVESTIGATE", "NEEDS_DATA")
+
+    def to_dict(self) -> dict:
+        return {
+            "technique_id": self.technique_id,
+            "score": round(self.score, 3),
+            "confidence": round(self.confidence, 3),
+            "verdict": self.verdict,
+            "reasoning_chain": self.reasoning_chain,
+            "zone_tag": self.zone_tag,
+            "data_used": self.data_used,
+            "needs_data": self.needs_data,
+            "metadata": self.metadata,
+        }
+
+
+@dataclass
+class OrchestratorResult:
+    results: dict[str, TechniqueResult]
+    overall_score: float
+    consensus: str  # GO / KILL / INVESTIGATE / SPLIT
+    techniques_agreeing_go: int
+    techniques_agreeing_kill: int
+    needs_data_dimensions: list[str]
+    reasoning_summary: str
+    staircase_override: bool = False
+    fragile_block: bool = False
+
+    def to_dict(self) -> dict:
+        return {
+            "results": {k: v.to_dict() for k, v in self.results.items()},
+            "overall_score": round(self.overall_score, 3),
+            "consensus": self.consensus,
+            "techniques_agreeing_go": self.techniques_agreeing_go,
+            "techniques_agreeing_kill": self.techniques_agreeing_kill,
+            "needs_data_dimensions": self.needs_data_dimensions,
+            "reasoning_summary": self.reasoning_summary,
+            "staircase_override": self.staircase_override,
+            "fragile_block": self.fragile_block,
+        }

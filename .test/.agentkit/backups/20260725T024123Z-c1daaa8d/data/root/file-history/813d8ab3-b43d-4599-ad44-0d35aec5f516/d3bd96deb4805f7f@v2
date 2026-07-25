@@ -1,0 +1,83 @@
+"""Tests for FidelityMonitor — Loop 1 vs Loop 2 cross-calibration."""
+
+import logging
+
+import pytest
+
+from ..case_archiver import CaseArchiver
+from ..fidelity_monitor import FidelityMonitor, MIN_CASES_FOR_FIDELITY
+
+
+@pytest.fixture
+def archiver(tmp_path):
+    return CaseArchiver(db_path=tmp_path / "test-archive.db")
+
+
+@pytest.fixture
+def monitor(archiver):
+    return FidelityMonitor(archiver=archiver)
+
+
+class TestFidelityScoring:
+    def test_perfect_fidelity_when_all_match(self, monitor):
+        for i in range(6):
+            monitor.record_comparison(f"strat_a", f"case_{i}", replay_correct=True)
+        assert monitor.get_fidelity("strat_a") == 1.0
+
+    def test_zero_fidelity_when_all_wrong(self, monitor):
+        for i in range(6):
+            monitor.record_comparison("strat_a", f"case_{i}", replay_correct=False)
+        assert monitor.get_fidelity("strat_a") == 0.0
+
+    def test_partial_fidelity_mixed(self, monitor):
+        for i in range(7):
+            monitor.record_comparison("strat_a", f"case_{i}", replay_correct=True)
+        for i in range(7, 10):
+            monitor.record_comparison("strat_a", f"case_{i}", replay_correct=False)
+        fidelity = monitor.get_fidelity("strat_a")
+        assert abs(fidelity - 0.7) < 0.05  # recency weighting may shift slightly
+
+    def test_fidelity_per_strategy(self, monitor):
+        for i in range(6):
+            monitor.record_comparison("strat_good", f"case_{i}", replay_correct=True)
+        for i in range(6):
+            monitor.record_comparison("strat_bad", f"case_{i}", replay_correct=False)
+        assert monitor.get_fidelity("strat_good") > 0.9
+        assert monitor.get_fidelity("strat_bad") < 0.1
+
+    def test_insufficient_data_returns_neutral(self, monitor):
+        monitor.record_comparison("strat_a", "case_0", replay_correct=True)
+        assert monitor.get_fidelity("strat_a") is None
+
+
+class TestAlertAndWeight:
+    def test_alert_emitted_below_threshold(self, monitor, caplog):
+        for i in range(6):
+            monitor.record_comparison("strat_a", f"case_{i}", replay_correct=False)
+        with caplog.at_level(logging.WARNING):
+            alert = monitor.should_alert("strat_a")
+        assert alert is True
+
+    def test_decay_weight_applied_to_replay_fitness(self, monitor):
+        for i in range(6):
+            monitor.record_comparison("strat_a", f"case_{i}", replay_correct=False)
+        weight = monitor.get_replay_weight("strat_a")
+        assert weight < 0.5
+        # Perfect fidelity → weight=1.0
+        for i in range(10):
+            monitor.record_comparison("strat_b", f"case_{i}", replay_correct=True)
+        weight_b = monitor.get_replay_weight("strat_b")
+        assert weight_b >= 0.9
+
+
+class TestRecencyBias:
+    def test_recency_bias_newer_cases_weighted_more(self, monitor):
+        # Older cases: all wrong
+        for i in range(5):
+            monitor.record_comparison("strat_a", f"old_{i}", replay_correct=False, recency_rank=i)
+        # Newer cases: all correct
+        for i in range(5):
+            monitor.record_comparison("strat_a", f"new_{i}", replay_correct=True, recency_rank=i + 5)
+        fidelity = monitor.get_fidelity("strat_a")
+        # With recency bias, newer correct cases weighted more → fidelity > 0.5
+        assert fidelity > 0.5

@@ -1,0 +1,234 @@
+"""
+segment_evaluator.py — Tracks and evaluates meta-edit segments.
+
+After a knob edit is applied, the next N verdicts form a "segment."
+This module compares Brier scores before vs after the edit to decide:
+- KEEP: Brier improved or unchanged
+- REVERT: Brier worsened beyond threshold
+- AMPLIFY: Brier improved significantly (>15%)
+
+Usage:
+    evaluator = SegmentEvaluator()
+    seg_id = evaluator.start_segment(edit, brier_before=0.35)
+    evaluator.record_verdict(seg_id, brier_score=0.28)
+    # ... after N verdicts ...
+    decision = evaluator.evaluate(seg_id)
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from dataclasses import dataclass, asdict
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+_DEFAULT_STATE_PATH = _REPO_ROOT / "data" / "config" / "meta-edit-state.json"
+_DEFAULT_HISTORY_PATH = _REPO_ROOT / "data" / "config" / "meta-edit-history.jsonl"
+
+
+@dataclass
+class SegmentResult:
+    segment_id: str
+    ready: bool
+    verdicts_collected: int
+    verdicts_needed: int
+
+
+@dataclass
+class EvalDecision:
+    segment_id: str
+    decision: str  # KEEP, REVERT, AMPLIFY
+    brier_before: float
+    brier_after: float
+    brier_delta_pct: float
+    reason: str
+    knob_id: str = ""
+    old_value: float = 0.0
+    new_value: float = 0.0
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+class SegmentEvaluator:
+    """Tracks meta-edit segments and evaluates their effect on Brier score."""
+
+    def __init__(
+        self,
+        segment_size: int = 5,
+        revert_threshold: float = 0.10,
+        amplify_threshold: float = 0.15,
+        state_path: Optional[Path] = None,
+        history_path: Optional[Path] = None,
+    ):
+        self.segment_size = segment_size
+        self.revert_threshold = revert_threshold
+        self.amplify_threshold = amplify_threshold
+        self.state_path = Path(state_path or _DEFAULT_STATE_PATH)
+        self.history_path = Path(history_path or _DEFAULT_HISTORY_PATH)
+
+    def start_segment(self, edit_dict: dict, brier_before: float) -> str:
+        """
+        Record the start of a new evaluation segment.
+
+        Args:
+            edit_dict: KnobEdit.to_dict() with knob_id, old_value, new_value
+            brier_before: Average Brier score before this edit
+
+        Returns:
+            segment_id string
+        """
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        knob_id = edit_dict.get("knob_id", "unknown")
+        segment_id = f"seg-{knob_id}-{ts}"
+
+        state = {
+            "segment_id": segment_id,
+            "knob_id": knob_id,
+            "edit": edit_dict,
+            "brier_before": brier_before,
+            "brier_scores": [],
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "status": "running",
+        }
+
+        self._save_state(state)
+        logger.info("Segment started: %s (Brier before=%.3f)", segment_id, brier_before)
+        return segment_id
+
+    def record_verdict(self, segment_id: str, brier_score: float) -> SegmentResult:
+        """Record a verdict's Brier score in the active segment."""
+        state = self._load_state()
+        if not state or state.get("segment_id") != segment_id:
+            return SegmentResult(segment_id=segment_id, ready=False,
+                                 verdicts_collected=0, verdicts_needed=self.segment_size)
+
+        state["brier_scores"].append(brier_score)
+        self._save_state(state)
+
+        collected = len(state["brier_scores"])
+        return SegmentResult(
+            segment_id=segment_id,
+            ready=collected >= self.segment_size,
+            verdicts_collected=collected,
+            verdicts_needed=self.segment_size,
+        )
+
+    def check_segment(self, segment_id: str) -> SegmentResult:
+        """Check if segment has enough verdicts to evaluate."""
+        state = self._load_state()
+        if not state or state.get("segment_id") != segment_id:
+            return SegmentResult(segment_id=segment_id, ready=False,
+                                 verdicts_collected=0, verdicts_needed=self.segment_size)
+
+        collected = len(state.get("brier_scores", []))
+        return SegmentResult(
+            segment_id=segment_id,
+            ready=collected >= self.segment_size,
+            verdicts_collected=collected,
+            verdicts_needed=self.segment_size,
+        )
+
+    def evaluate(self, segment_id: str) -> Optional[EvalDecision]:
+        """
+        Evaluate segment: compare Brier before vs after.
+
+        Returns:
+            EvalDecision with KEEP/REVERT/AMPLIFY, or None if segment not ready
+        """
+        state = self._load_state()
+        if not state or state.get("segment_id") != segment_id:
+            return None
+
+        scores = state.get("brier_scores", [])
+        if len(scores) < self.segment_size:
+            return None
+
+        brier_before = state["brier_before"]
+        brier_after = sum(scores) / len(scores)
+
+        if brier_before == 0:
+            delta_pct = 0.0
+        else:
+            delta_pct = (brier_after - brier_before) / brier_before
+
+        edit = state.get("edit", {})
+
+        if delta_pct > self.revert_threshold:
+            decision = "REVERT"
+            reason = f"Brier worsened by {delta_pct:.1%} (>{self.revert_threshold:.0%} threshold)"
+        elif delta_pct < -self.amplify_threshold:
+            decision = "AMPLIFY"
+            reason = f"Brier improved by {abs(delta_pct):.1%} (>{self.amplify_threshold:.0%} threshold)"
+        else:
+            decision = "KEEP"
+            reason = f"Brier delta {delta_pct:+.1%} within acceptable range"
+
+        result = EvalDecision(
+            segment_id=segment_id,
+            decision=decision,
+            brier_before=brier_before,
+            brier_after=brier_after,
+            brier_delta_pct=delta_pct,
+            reason=reason,
+            knob_id=edit.get("knob_id", ""),
+            old_value=edit.get("old_value", 0),
+            new_value=edit.get("new_value", 0),
+        )
+
+        self._append_history(state, result)
+
+        state["status"] = "completed"
+        state["decision"] = decision
+        self._save_state(state)
+
+        logger.info("Segment %s evaluated: %s (%.3f → %.3f, %+.1f%%)",
+                     segment_id, decision, brier_before, brier_after, delta_pct * 100)
+        return result
+
+    def get_active_segment(self) -> Optional[dict]:
+        """Get the currently running segment, if any."""
+        state = self._load_state()
+        if state and state.get("status") == "running":
+            return state
+        return None
+
+    def clear_segment(self):
+        """Clear active segment (used after revert/complete)."""
+        if self.state_path.exists():
+            self.state_path.unlink()
+
+    def _save_state(self, state: dict):
+        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        self.state_path.write_text(
+            json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+
+    def _load_state(self) -> Optional[dict]:
+        if not self.state_path.exists():
+            return None
+        try:
+            return json.loads(self.state_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return None
+
+    def _append_history(self, state: dict, decision: EvalDecision):
+        self.history_path.parent.mkdir(parents=True, exist_ok=True)
+        record = {
+            "segment_id": decision.segment_id,
+            "knob_id": decision.knob_id,
+            "decision": decision.decision,
+            "brier_before": decision.brier_before,
+            "brier_after": decision.brier_after,
+            "brier_delta_pct": decision.brier_delta_pct,
+            "edit": state.get("edit", {}),
+            "started_at": state.get("started_at", ""),
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+        }
+        with open(self.history_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")

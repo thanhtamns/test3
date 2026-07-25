@@ -1,0 +1,147 @@
+"""
+QueryClassifier — keyword + pattern matching to classify question type.
+Zero LLM calls. Pure rule-based classification + context extraction.
+"""
+
+import re
+from dataclasses import dataclass, field
+
+
+@dataclass
+class ClassificationResult:
+    query_type: str
+    confidence: float
+    context: dict = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        return {"query_type": self.query_type, "confidence": self.confidence, "context": self.context}
+
+
+CLASSIFICATION_RULES: list[tuple[str, list[str], float]] = [
+    ("career_path", [
+        "career", "become", "achieve like", "path to", "how to become",
+        "director", "manager", "CEO", "fund", "position", "role",
+        "age", "by age", "years old", "young",
+    ], 1.0),
+    ("deal_analysis", [
+        "deal", "acquisition", "invest in", "buy", "valuation",
+        "due diligence", "DD", "term sheet", "Series", "round",
+        "startup", "evaluate", "worth investing",
+    ], 1.0),
+    ("market_entry", [
+        "enter market", "market entry", "launch in", "start selling",
+        "export to", "expand to", "new market", "go-to-market",
+        "SaaS", "agency", "product", "build a",
+    ], 1.0),
+    ("competitor_audit", [
+        "competitor", "competition", "vs", "versus", "compare",
+        "alternative", "better than", "market share", "who else",
+    ], 1.0),
+    ("wealth_strategy", [
+        "wealth", "rich", "millionaire", "passive income", "financial freedom",
+        "net worth", "compound", "portfolio", "$100M", "$10M", "$1M",
+        "MRR", "ARR", "revenue",
+    ], 1.0),
+    ("indirect_strategy", [
+        "indirect", "back door", "bypass", "workaround", "alternative path",
+        "gatekeep", "blocked", "can't access", "no connections",
+        "infiltrate", "bridge", "parasitic",
+    ], 1.0),
+]
+
+ENTITY_PATTERNS = {
+    "money_amount": re.compile(r'\$[\d,.]+[KMBkmb]?|\d+\s*(?:USD|VND|EUR)'),
+    "age": re.compile(r'(?:age|aged?)\s*(\d{1,2})|(\d{1,2})\s*(?:years?\s*old|y/?o)'),
+    "percentage": re.compile(r'(\d+(?:\.\d+)?)\s*%'),
+    "role": re.compile(r'(?:as|become|like)\s+(?:a\s+)?([A-Za-z]+(?:\s+[A-Za-z]+){0,4}?)(?:\s+(?:in|at|by|for|like|,)|$)', re.IGNORECASE),
+    "person_name": re.compile(r'(?:like|achieve like|follow)\s+([A-ZÀ-ɏ][a-zÀ-ɏ]+(?:\s+[A-ZÀ-ɏ][a-zÀ-ɏ]+){1,4})'),
+    "market": re.compile(r'(?:in|for|at)\s+(Vietnam|SEA|US|USA|EU|Europe|Asia|Japan|Korea|China|Thailand|Singapore|Indonesia|Malaysia|Philippines|India|Brazil|Africa)'),
+    "industry": re.compile(r'(?:in|for)\s+(?:the\s+)?(\w+(?:\s+\w+)?)\s+(?:industry|sector|market|space|field|niche)'),
+    "timeframe": re.compile(r'(?:in|within|by)\s+(\d+)\s*(years?|months?|days?|weeks?)'),
+}
+
+
+class QueryClassifier:
+    def classify(self, query: str) -> ClassificationResult:
+        query_lower = query.lower()
+        scores: dict[str, float] = {}
+
+        for qtype, keywords, base_weight in CLASSIFICATION_RULES:
+            score = 0.0
+            for kw in keywords:
+                if kw.lower() in query_lower:
+                    score += base_weight
+            scores[qtype] = score
+
+        best_type = max(scores, key=scores.get) if any(v > 0 for v in scores.values()) else "custom"
+        best_score = scores.get(best_type, 0.0)
+
+        max_possible = max(len(kws) for _, kws, _ in CLASSIFICATION_RULES)
+        confidence = min(1.0, best_score / max(max_possible * 0.3, 1.0))
+
+        if confidence < 0.2:
+            best_type = "custom"
+            confidence = 0.1
+
+        context = self._extract_context(query)
+
+        return ClassificationResult(
+            query_type=best_type,
+            confidence=round(confidence, 3),
+            context=context,
+        )
+
+    def _extract_context(self, query: str) -> dict:
+        context: dict = {}
+
+        for key, pattern in ENTITY_PATTERNS.items():
+            matches = pattern.findall(query)
+            if not matches:
+                continue
+
+            if key == "age":
+                for match in matches:
+                    age_val = match[0] or match[1]
+                    if age_val:
+                        context["target_age"] = int(age_val)
+                        break
+            elif key == "money_amount":
+                context["money_amounts"] = [m if isinstance(m, str) else m for m in matches]
+            elif key == "percentage":
+                context["percentages"] = [float(m) for m in matches]
+            elif key == "role":
+                context["target_role"] = matches[0].strip()
+            elif key == "person_name":
+                context["reference_person"] = matches[0].strip()
+            elif key == "market":
+                context["market"] = matches[0]
+            elif key == "industry":
+                context["industry"] = matches[0].strip()
+            elif key == "timeframe":
+                val, unit = matches[0]
+                context["timeframe"] = f"{val} {unit}"
+
+        if "market" not in context:
+            context["market"] = "global"
+        if "industry" not in context:
+            context["industry"] = self._infer_industry(query)
+
+        return context
+
+    def _infer_industry(self, query: str) -> str:
+        query_lower = query.lower()
+        industry_hints = {
+            "saas": "SaaS", "software": "software", "app": "software",
+            "coffee": "coffee", "export": "trade", "import": "trade",
+            "vc": "venture capital", "fund": "investment management",
+            "real estate": "real estate", "property": "real estate",
+            "agency": "agency", "smma": "social media marketing",
+            "e-commerce": "e-commerce", "ecommerce": "e-commerce", "shopify": "e-commerce",
+            "crypto": "cryptocurrency", "defi": "cryptocurrency",
+            "ai": "artificial intelligence", "machine learning": "artificial intelligence",
+            "consulting": "consulting", "freelance": "freelancing",
+        }
+        for hint, industry in industry_hints.items():
+            if hint in query_lower:
+                return industry
+        return "general"

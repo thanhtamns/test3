@@ -1,0 +1,119 @@
+---
+phase: 3
+title: "Chaos Portfolio Launch"
+status: pending
+priority: P1
+effort: "4 weeks"
+dependencies: [1]
+---
+
+# Phase 3: Chaos Portfolio Launch (4 Parallel Convex Bets)
+
+## Overview
+Launch ALL chaos bets simultaneously in Week 1. Run parallel for 30 days. Kill losers fast, double winners. Total chaos budget: $200 capital, 6h/week. Each bet is a lottery ticket with capped downside.
+
+**Source:** Hunt `HUNT-260529-cn-vn-trade-intelligence` (7 anomaly cards)
+
+## Architecture
+
+```
+CHAOS PORTFOLIO (6h/week total)
+├── CHAOS-1: Trade Intelligence (3h/wk, $98 budget) — PRIMARY
+│   └── Hunt Card #1: VN regulatory × 1688 price gap
+├── CHAOS-2: AI SaaS + Content (1.5h/wk, $50 budget)
+│   └── Micro tool solving specific pain
+├── CHAOS-3: CN-VN Content Bridge (1h/wk, $50 budget)
+│   └── Mandarin information arbitrage
+└── CHAOS-4: Hunt Rotating Bets (0.5h/wk, $0 budget)
+    └── Monthly /hunt → execute highest-scored card
+```
+
+## Implementation Steps
+
+### CHAOS-1: CN-VN Trade Intelligence (PRIMARY — hunt-validated)
+
+**Week 1 ($0, 3h):**
+1. Create free Zalo group: "Tin tức thương mại Trung-Việt" (15min)
+2. Create matching Telegram channel (15min)
+3. Manually curate 5 posts/day from: VN gov gazette (thuvienphapluat.vn) + 1688 price changes for 3 categories (2h)
+4. Invite 50 people from VN 1688 buyer Facebook groups (30min)
+5. **SIGNAL GATE:** <20 members in 7 days → no demand pull → PIVOT to regulatory-only
+
+**Week 2 ($0, 3h):**
+1. Continue daily curation (1.5h)
+2. Track: which posts get most engagement? (regulatory alerts vs prices vs HS codes)
+3. Google Form survey: "Would you pay $29/mo for daily automated alerts?" (15min)
+4. Post in 3 more FB groups / forums for growth (1h)
+5. **SIGNAL GATE:** <5 people say "yes" to $29/mo → insufficient WTP → PIVOT
+
+**Week 3 ($49, 3h):**
+1. Sign up Oxylabs ($49/mo) — 1688 scraping API
+2. Build basic price scraper: top 10 products VN resellers care about (2h, use Python)
+3. Automate daily price alert via Telegram bot (30min)
+4. Add regulatory alert automation: scrape thuvienphapluat.vn for new circulars mentioning "nhập khẩu" or "hải quan" (30min)
+5. **SIGNAL GATE:** Automated content engagement drops vs manual → automation adds no value → PIVOT
+
+**Week 4 ($49, 3h):**
+1. Launch paid tier: $29/mo for daily automated alerts + weekly regulatory digest
+2. Offer 30-day free trial to all group members
+3. Set up Stripe/payment page
+4. **KILL GATE (Day 30):** 0 conversions free→paid → **KILL CHAOS-1**
+
+**Economics at kill gate:** $98 spent + 12h time. Max loss capped.
+**Economics if works:** 50 subs × $29 = $1,450/mo, $69/mo operating cost = $1,381 net
+
+### CHAOS-2: AI SaaS + Content (SECONDARY)
+
+**Week 1-2 (2h total):**
+1. From safe-side client conversations, identify 1 repetitive pain point (30min)
+2. Search if existing tool solves it. If yes → skip. If no → proceed (30min)
+3. Build landing page with waitlist (Carrd.co, $0) describing the tool (1h)
+
+**Week 3-4 (2h total):**
+1. Share landing page in relevant communities (1h)
+2. Track signups (1h monitoring)
+3. **SIGNAL GATE (Day 60):** <100 waitlist signups → **KILL**. ≥100 → build MVP
+
+**Capital:** $0-50 (domain only if signals positive)
+
+### CHAOS-3: CN-VN Content Bridge (TERTIARY)
+
+**Week 1-4 (4h total, 1h/week):**
+1. Week 1: Translate 1 interesting CN business article/forum post → post on TikTok VN (Vietnamese text over images/slides)
+2. Week 2: Same format, different topic. Test: business tips vs market data vs product trends
+3. Week 3: Analyze which format/topic got most views. Double down
+4. Week 4: Post 3 pieces of best-performing format
+
+**Platforms:** TikTok VN (primary), Facebook group (secondary)
+**Moat:** Mandarin reading ability — 95%+ VN creators CAN'T access CN source material
+**Capital:** $0
+**Kill (Day 90):** <500 followers → KILL or reduce to 1h/week maintenance
+
+### CHAOS-4: Hunt Rotating Bets (EXPLORATORY)
+
+**Monthly cadence:**
+1. Run `/hunt` on 1 new topic related to founder advantages
+2. Review deal cards → pick highest asymmetry score
+3. Execute 1 micro-action per card (send 1 message, check 1 price, make 1 call)
+4. If signal → promote to full chaos bet (replace killed bet)
+
+**Capital:** $0 per month
+**Time:** 30min/week monitoring + 2h/month for /hunt run
+**Kill:** Per individual deal card criteria
+
+## Success Criteria
+- [ ] CHAOS-1: Zalo group created + 20 members by Day 7
+- [ ] CHAOS-1: WTP survey sent + ≥5 "yes" responses by Day 14
+- [ ] CHAOS-1: Automated bot running by Day 21
+- [ ] CHAOS-1: Paid tier launched by Day 28
+- [ ] CHAOS-2: Landing page live by Day 14
+- [ ] CHAOS-3: 4 content pieces published by Day 28
+- [ ] CHAOS-4: 1st /hunt run completed by Day 30
+- [ ] Total chaos spend ≤$200
+- [ ] Total chaos time ≤6h/week (tracked)
+
+## Risk Assessment
+- **Risk:** ALL chaos bets fail at Day 30 → EXPECTED outcome (power law). **Mitigation:** CHAOS-4 provides continuous new bets. Kill fast, replace fast.
+- **Risk:** Mandarin insufficient for 1688 scraping → **Mitigation:** Drop 1688, focus regulatory intelligence (Card #2 scored 0.85, requires zero CN language)
+- **Risk:** 1688 blocks scraping → **Mitigation:** Regulatory angle survives (free public data, zero scraping needed)
+- **Risk:** Chaos bets distract from safe side → **Mitigation:** Hard time cap 6h/week. Safe side is ALWAYS priority.

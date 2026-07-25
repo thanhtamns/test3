@@ -1,0 +1,202 @@
+package api
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"testing"
+)
+
+func TestWithTenantAuth_AuthDisabled_XTenantID(t *testing.T) {
+	t_setAuthDisabled()
+
+	var gotTenant string
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotTenant = tenantFromCtx(r)
+		w.WriteHeader(200)
+	})
+
+	handler := withTenantAuth(inner)
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("X-Tenant-ID", "header-tenant")
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if gotTenant != "header-tenant" {
+		t.Fatalf("expected 'header-tenant', got '%s'", gotTenant)
+	}
+}
+
+func TestWithTenantAuth_AuthDisabled_DevTenantFallback(t *testing.T) {
+	t_setAuthDisabled()
+
+	var gotTenant string
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotTenant = tenantFromCtx(r)
+		w.WriteHeader(200)
+	})
+
+	handler := withTenantAuth(inner)
+	req := httptest.NewRequest("GET", "/test", nil)
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if gotTenant != "dev-tenant" {
+		t.Fatalf("expected 'dev-tenant', got '%s'", gotTenant)
+	}
+}
+
+func TestWithTenantAuth_NoAuth_Returns401(t *testing.T) {
+	os.Unsetenv("CODEFLOW_AUTH_DISABLED")
+	os.Unsetenv("WORKOS_JWKS_URL")
+	defer t_setAuthDisabled()
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	})
+
+	handler := withTenantAuth(inner)
+	req := httptest.NewRequest("GET", "/test", nil)
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestWithTenantAuth_InvalidBearer_AuthDisabled_Fallback(t *testing.T) {
+	t_setAuthDisabled()
+
+	var gotTenant string
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotTenant = tenantFromCtx(r)
+		w.WriteHeader(200)
+	})
+
+	handler := withTenantAuth(inner)
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "Bearer invalid-token")
+	req.Header.Set("X-Tenant-ID", "fallback-tenant")
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if gotTenant != "fallback-tenant" {
+		t.Fatalf("expected 'fallback-tenant', got '%s'", gotTenant)
+	}
+}
+
+func TestWithTenantAuth_AuthDisabledIgnoredWhenJWKSSet(t *testing.T) {
+	os.Setenv("CODEFLOW_AUTH_DISABLED", "true")
+	os.Setenv("WORKOS_JWKS_URL", "https://example.com/.well-known/jwks.json")
+	defer t_setAuthDisabled()
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	})
+
+	handler := withTenantAuth(inner)
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("X-Tenant-ID", "should-not-work")
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 when JWKS URL is set (auth disabled should be ignored), got %d", w.Code)
+	}
+}
+
+func TestRateLimiter_AllowsBurst(t *testing.T) {
+	rl := newRateLimiter()
+	for i := 0; i < 100; i++ {
+		if !rl.allow("tenant-1") {
+			t.Fatalf("expected allow on request %d", i+1)
+		}
+	}
+}
+
+func TestRateLimiter_DeniesExcess(t *testing.T) {
+	rl := newRateLimiter()
+	for i := 0; i < 101; i++ {
+		rl.allow("tenant-1")
+	}
+	if rl.allow("tenant-1") {
+		t.Fatal("expected rate limit denial after exceeding capacity")
+	}
+}
+
+func TestRateLimiter_TenantIsolation(t *testing.T) {
+	rl := newRateLimiter()
+	for i := 0; i < 101; i++ {
+		rl.allow("tenant-1")
+	}
+	if !rl.allow("tenant-2") {
+		t.Fatal("tenant-2 should not be rate limited")
+	}
+}
+
+func TestCORS_PreflightResponse(t *testing.T) {
+	store := newFakeStorage()
+	router := newTestRouter(store)
+
+	req := httptest.NewRequest("OPTIONS", "/v1/overview", nil)
+	req.Header.Set("Origin", "http://localhost:3000")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", w.Code)
+	}
+	if w.Header().Get("Access-Control-Allow-Origin") != "http://localhost:3000" {
+		t.Fatalf("missing CORS allow origin header")
+	}
+	if w.Header().Get("Access-Control-Allow-Methods") == "" {
+		t.Fatal("missing CORS allow methods header")
+	}
+}
+
+func TestCORS_DisallowedOrigin(t *testing.T) {
+	store := newFakeStorage()
+	router := newTestRouter(store)
+
+	req := httptest.NewRequest("OPTIONS", "/v1/overview", nil)
+	req.Header.Set("Origin", "http://evil.com")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Fatal("should not set CORS headers for disallowed origin")
+	}
+}
+
+func TestHealthz(t *testing.T) {
+	store := newFakeStorage()
+	router := newTestRouter(store)
+
+	req := httptest.NewRequest("GET", "/healthz", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if w.Body.String() != `{"status":"ok"}` {
+		t.Fatalf("unexpected body: %s", w.Body.String())
+	}
+}

@@ -1,0 +1,158 @@
+---
+phase: 3
+title: "Pipeline Integration (Stage0 Phase 2.7)"
+status: complete
+priority: P1
+effort: "4h"
+dependencies: [2]
+---
+
+# Phase 3: Pipeline Integration (Stage0 Phase 2.7)
+
+## Overview
+
+Wire the tournament into Stage0's startup SKILL.md as Phase 2.7. Define the activation gate, modify Phase 4's input contract with a null-check fallback, and ensure < 3 hypothesis case is identical to current behavior.
+
+## Requirements
+
+- Functional: SKILL.md gains Phase 2.7 (Tournament) between Phase 2.5C and Phase 3
+- Functional: Activation gate uses zero-LLM dual condition (keyword count >= 3 AND pattern count >= 3) before spawning tournament agent
+- Functional: Phase 4 Vision Gate + Synthesis receives `tournament_context` when populated, falls back to Phase 2.5C `top_5` when null
+- Functional: Phase 3 (Lens Analysis) unchanged — still reads evidence vault + reasoning chain
+- Non-functional: When < 3 hypotheses detected, pipeline behavior identical to current (zero regression)
+- Non-functional: Tournament output is a markdown file (tournament-result.md) in the session plan directory
+
+## Architecture
+
+### Data Flow (Corrected)
+
+```
+CURRENT:
+  Phase 2.5C pattern_matcher → top_5 → Phase 4 vision-quality-gate + synthesis-engine
+  Phase 3 lens agents → read evidence_vault_path + reasoning_chain_path (unchanged)
+
+WITH TOURNAMENT:
+  Phase 2.5C pattern_matcher → top_5 → 
+    ACTIVATION GATE (keyword pre-filter, zero LLM):
+      count >= 3 → spawn tournament-executor agent → tournament_context
+      count < 3 → tournament_context = null
+    
+  Phase 3 lens agents → read evidence_vault_path + reasoning_chain_path (UNCHANGED)
+  
+  Phase 4:
+    IF tournament_context != null:
+      vision-quality-gate receives tournament-ranked hypotheses (replaces 2.5C top_5)
+      synthesis-engine receives debate highlights + ranked hypotheses
+    ELSE:
+      vision-quality-gate receives 2.5C top_5 (current behavior, UNCHANGED)
+      synthesis-engine receives 2.5C pattern results (current behavior, UNCHANGED)
+```
+
+**Key insight:** Phase 3 (Lens Analysis) is NOT modified. It reads evidence vault + reasoning chain, which are unchanged. Only Phase 4 (Vision Gate + Synthesis) receives tournament context as an additional input.
+
+### Activation Gate (Zero LLM Cost)
+
+```
+ACTIVATION_KEYWORDS = [
+    "opportunity", "business model", "revenue", "pricing", "market",
+    "SaaS", "service", "commerce", "export", "arbitrage", "platform",
+    "subscription", "affiliate", "consulting", "agency", "product"
+]
+
+def should_activate_tournament(pattern_matcher_output: str, pattern_count: int) -> bool:
+    """Dual gate: keyword matches AND pattern count. Zero LLM cost."""
+    if pattern_count < 3:
+        return False  # Not enough distinct patterns to debate
+    matches = set()
+    text_lower = pattern_matcher_output.lower()
+    for kw in ACTIVATION_KEYWORDS:
+        if kw.lower() in text_lower:
+            matches.add(kw)
+    return len(matches) >= 3
+```
+
+This runs BEFORE any LLM call. Both conditions must be true: keyword count >= 3 AND pattern matcher found >= 3 distinct patterns. If either fails, tournament is skipped entirely — zero additional cost.
+
+### Tournament Agent Spawn
+
+```
+Phase 2.7 [NEW]:
+1. Run activation gate on Phase 2.5C output
+2. If gate passes:
+   a. Spawn `tournament-executor` agent (general-purpose, model=opus)
+      - Protocol: .claude/agents/core/intelligence/tournament-protocol.md
+      - Input: evidence_vault_path, pattern_matcher_top5, founder_context (from Phase 0 intent_meta)
+      - Timeout: 300s (5 min max)
+      - Output: plans/{session_id}/tournament-result.md
+   b. Parse tournament-result.md for tournament_context
+3. If gate fails OR tournament agent fails:
+   - Set tournament_context = null
+   - Log: "Tournament skipped: {reason}"
+   - Pipeline continues with current behavior
+```
+
+### Phase 4 Modification (Null-Check Pattern)
+
+Vision Quality Gate (SKILL.md line 233) currently reads:
+```
+Input: pattern-matcher top_5 (from Phase 2.5) + prompt_intelligence.vision_quality_criteria
+```
+
+Modified to:
+```
+Input: 
+  IF tournament_context exists:
+    tournament-ranked hypotheses (from Phase 2.7) + prompt_intelligence.vision_quality_criteria
+    + debate highlights from tournament for scoring context
+  ELSE:
+    pattern-matcher top_5 (from Phase 2.5) + prompt_intelligence.vision_quality_criteria  [UNCHANGED]
+```
+
+Synthesis Engine (SKILL.md line 255) gains:
+```
+Additional input (when tournament_context exists):
+  - TOURNAMENT RANKING section with Elo scores
+  - DEBATE HIGHLIGHTS section with key arguments for top-3
+  - DIVERSITY REPORT section
+```
+
+## Related Code Files
+
+- Modify: `.claude/skills/business/startup/SKILL.md` — add Phase 2.7 section, modify Phase 4 input contract
+- Read: `.claude/skills/business/startup/SKILL.md:194-208` — Phase 2.5C current output
+- Read: `.claude/skills/business/startup/SKILL.md:229-268` — Phase 4 current input contracts
+- Read: `.claude/agents/core/intelligence/evidence-vault-protocol.md` — agent spawn pattern
+
+## Implementation Steps
+
+1. Read SKILL.md lines 194-208 (Phase 2.5C) to understand exact output format of pattern matcher
+2. Read SKILL.md lines 229-268 (Phase 4) to understand exact input contracts for vision gate + synthesis
+3. Add Phase 2.7 section to SKILL.md after Phase 2.5C:
+   - Activation gate description (keyword pre-filter)
+   - Tournament agent spawn instruction (protocol path, inputs, timeout)
+   - Output handling (parse tournament-result.md)
+   - Failure fallback (tournament_context = null)
+4. Modify Phase 4A (Vision Quality Gate) input specification:
+   - Add null-check: IF tournament_context → use tournament-ranked, ELSE → use 2.5C top_5
+   - When tournament-ranked: scores are on tournament hypotheses, not raw patterns
+5. Modify Phase 4B (Synthesis) input specification:
+   - Add optional tournament sections: TOURNAMENT RANKING, DEBATE HIGHLIGHTS, DIVERSITY REPORT
+   - These are additive inputs — synthesis engine receives everything it currently receives PLUS tournament context
+6. Verify Phase 3 is NOT modified (confirm it only reads evidence vault + reasoning chain)
+7. Add explicit "Tournament skipped" log message for the < 3 hypothesis path
+
+## Success Criteria
+
+- [ ] SKILL.md Phase 2.7 section is self-contained between Phase 2.5C and Phase 3
+- [ ] Phase 3 (Lens Analysis) has zero changes — verified by diff
+- [ ] Phase 4 has null-check pattern: tournament_context populated OR null (fallback to current)
+- [ ] Activation gate uses zero LLM calls (keyword only)
+- [ ] Tournament failure (timeout, malformed output) degrades gracefully to current behavior
+- [ ] Simple queries producing < 3 hypotheses produce identical output to pre-tournament pipeline
+
+## Risk Assessment
+
+- **Risk:** SKILL.md is actively evolving; modification may conflict with other plans
+  - Mitigation: Phase 2.7 is an INSERT between existing sections, not a modification of existing text. Phase 4 changes are additive (new conditional block, existing behavior preserved in ELSE branch)
+- **Risk:** Tournament timeout adds too much latency for N=10 (hard cap)
+  - Mitigation: N=10 cap limits worst case to ~2.5 min. Timeout kills tournament gracefully, sets tournament_context = null, pipeline continues

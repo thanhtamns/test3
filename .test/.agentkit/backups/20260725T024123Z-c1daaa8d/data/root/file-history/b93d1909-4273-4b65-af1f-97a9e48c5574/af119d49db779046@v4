@@ -1,0 +1,170 @@
+#!/usr/bin/env node
+'use strict';
+
+/**
+ * Stage 2: Universal Audit-Completion Engine — Stop hook
+ *
+ * Audits every assistant output against type-specific quality schemas.
+ * Blocks (exit 2) with structured gap injection when critical/major gaps found.
+ * Convergence safety prevents infinite loops.
+ */
+
+try {
+  const fs = require('fs');
+  const path = require('path');
+
+  let isHookEnabled;
+  try { ({ isHookEnabled } = require('./lib/ck-config-utils.cjs')); }
+  catch { isHookEnabled = () => true; }
+
+  if (!isHookEnabled('stage2-audit-completion')) process.exit(0);
+
+  const { audit } = require('./lib/audit-engine.cjs');
+  const { MAX_ITERATIONS } = require('./lib/convergence-detector.cjs');
+
+  function main() {
+    let raw = '';
+    try {
+      raw = fs.readFileSync(0, 'utf-8').trim();
+    } catch {
+      process.exit(0);
+    }
+
+    if (!raw) process.exit(0);
+
+    let payload;
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      process.exit(0);
+    }
+
+    // Debug: log payload keys and sizes for diagnosis
+    const debugDir = path.join(__dirname, '.logs');
+    try {
+      if (!fs.existsSync(debugDir)) fs.mkdirSync(debugDir, { recursive: true });
+      const keys = Object.keys(payload);
+      const sizes = keys.map(k => `${k}:${typeof payload[k] === 'string' ? payload[k].length : typeof payload[k]}`);
+      fs.appendFileSync(path.join(debugDir, 'stage2-debug.log'),
+        `[${new Date().toISOString()}] keys=[${sizes.join(',')}]\n`);
+    } catch {}
+
+    // Extract assistant text from Stop hook payload
+    const text = extractAssistantText(payload);
+    if (!text || text.length < 500) {
+      try {
+        fs.appendFileSync(path.join(debugDir, 'stage2-debug.log'),
+          `[${new Date().toISOString()}] SKIP: text length=${text ? text.length : 0}\n`);
+      } catch {}
+      process.exit(0);
+    }
+
+    // Skip if this looks like a simple conversational reply
+    if (isConversational(text)) process.exit(0);
+
+    const result = audit(text);
+
+    // Log to stderr for observability (non-blocking)
+    const { critical, major, minor } = result.gaps;
+    process.stderr.write(
+      `[STAGE2] type=${result.type} iter=${result.iteration}/${MAX_ITERATIONS} gaps=${critical.length}/${major.length}/${minor.length} result=${result.passed ? 'pass' : 'block'}${result.converged ? ` converged=${result.reason}` : ''}\n`
+    );
+
+    if (result.passed) {
+      if (result.converged && result.unfillable && result.unfillable.length > 0) {
+        process.stderr.write(`[STAGE2-CONVERGED] reason=${result.reason} unfillable=[${result.unfillable.join(',')}]\n`);
+      }
+      process.exit(0);
+    }
+
+    // Block with gap injection
+    const actionable = [...critical, ...major];
+    const injection = formatGapInjection(actionable, result.iteration);
+    process.stderr.write(injection + '\n');
+    process.exit(2);
+  }
+
+  function extractAssistantText(payload) {
+    // Claude Code Stop hook provides transcript_path or direct content
+    if (payload.transcript_path && fs.existsSync(payload.transcript_path)) {
+      try {
+        const lines = fs.readFileSync(payload.transcript_path, 'utf8').trim().split('\n');
+        for (let i = lines.length - 1; i >= 0; i--) {
+          const entry = JSON.parse(lines[i]);
+          if (entry.type === 'assistant' || entry.role === 'assistant') {
+            const content = entry.content || entry.message?.content;
+            if (typeof content === 'string') return content;
+            if (Array.isArray(content)) {
+              return content
+                .filter(b => b.type === 'text' || !b.type)
+                .map(b => b.text || b.content || '')
+                .join('\n');
+            }
+          }
+        }
+      } catch { /* fall through */ }
+    }
+
+    // Direct content fields — use field names matching Claude Code's actual payload
+    if (typeof payload.assistant_message === 'string') return payload.assistant_message;
+    if (typeof payload.last_message === 'string') return payload.last_message;
+    if (typeof payload.content === 'string') return payload.content;
+    if (typeof payload.message === 'string') return payload.message;
+    if (payload.message?.content) {
+      const c = payload.message.content;
+      if (typeof c === 'string') return c;
+      if (Array.isArray(c)) return c.map(b => b.text || '').join('\n');
+    }
+
+    return '';
+  }
+
+  function isConversational(text) {
+    // Short replies, simple acknowledgments, questions only
+    if (text.length < 800 && !text.includes('#') && !text.includes('```')) return true;
+    return false;
+  }
+
+  function formatGapInjection(gaps, iteration) {
+    const lines = [`[STAGE2-AUDIT] Iteration ${iteration}/${MAX_ITERATIONS} — ${gaps.filter(g => g.severity === 'critical').length} critical, ${gaps.filter(g => g.severity === 'major').length} major gaps found:`];
+
+    const autoGaps = [];
+    const mediumGaps = [];
+    const largeGaps = [];
+
+    for (const gap of gaps) {
+      const cost = gap.fix_cost || 'auto';
+      if (cost === 'large') largeGaps.push(gap);
+      else if (cost === 'medium') mediumGaps.push(gap);
+      else autoGaps.push(gap);
+    }
+
+    // Auto-fixable gaps (<30s): inject fix instruction directly
+    for (const gap of autoGaps) {
+      const fix = gap.fix ? ` — Fix: ${gap.fix}` : '';
+      lines.push(`  [${gap.severity.toUpperCase()}] ${gap.id}: ${gap.description}${fix}`);
+    }
+
+    // Medium gaps (30s-2min): inject with notice about effort
+    for (const gap of mediumGaps) {
+      const fix = gap.fix ? ` — Fix: ${gap.fix}` : '';
+      lines.push(`  [${gap.severity.toUpperCase()}][MEDIUM] ${gap.id}: ${gap.description}${fix}`);
+    }
+
+    // Large gaps (>2min): ask user permission
+    for (const gap of largeGaps) {
+      const fix = gap.fix ? ` Fix: ${gap.fix}` : '';
+      lines.push(`  [${gap.severity.toUpperCase()}][USER DECISION NEEDED] ${gap.id}: ${gap.description}.${fix} Say "skip ${gap.id}" to accept as-is, or address it.`);
+    }
+
+    lines.push('');
+    lines.push('Address these gaps in your response. Say "skip [gap_id]" for any you cannot fix.');
+    return lines.join('\n');
+  }
+
+  main();
+} catch (err) {
+  // Fail-open: never crash the session
+  process.stderr.write(`[STAGE2-ERROR] ${err.message}\n`);
+  process.exit(0);
+}

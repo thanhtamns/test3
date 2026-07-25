@@ -1,0 +1,56 @@
+---
+title: "Stage0 Deadlock Breaker — Brier Fix + Execution Gate"
+description: "Fix 3 structural problems preventing stage0 from producing real outcomes: Brier math bug, synthetic data pollution, and missing execution forcing mechanism."
+status: pending
+priority: P0
+branch: "master"
+tags: [stage0, calibration, execution, deadlock-fix]
+blockedBy: []
+blocks: []
+created: "2026-05-17T01:06:42.062Z"
+createdBy: "ck:plan"
+source: skill
+---
+
+# Stage0 Deadlock Breaker — Brier Fix + Execution Gate
+
+## Overview
+
+Stage0 has produced 49 analyses and 0 real actions. Three structural problems create an infinite analysis loop:
+
+1. **Brier inversion bug** — KILL verdicts scored as "wrong" when actually correct (p_mountain not inverted)
+2. **Synthetic data masquerading as real** — 35 "resolved outcomes" are all auto-backfilled, 0 from reality
+3. **No execution forcing mechanism** — system has no way to break the analyze→analyze→analyze cycle
+
+This plan fixes all three. Target repo: `D:\code\invesments\master_investments` (NOT _mmo).
+
+## Phases
+
+| Phase | Name | Status | Effort | Priority |
+|-------|------|--------|--------|----------|
+| 1 | [Brier Score Inversion Fix](./phase-01-brier-score-inversion-fix.md) | Pending | 1h | P1 |
+| 2 | [Synthetic Data Purge](./phase-02-synthetic-data-purge.md) | Pending | 30m | P1 |
+| 3 | [Execution Gate Design](./phase-03-execution-gate-design.md) | Pending | 3h | P0 |
+| 4 | [Integration and Recalculation](./phase-04-integration-and-recalculation.md) | Pending | 1h | P1 |
+
+**Total effort:** ~5.5h | **Phases 1+2 are independent, 3+4 depend on both.**
+
+## Execution Order
+
+```
+Phase 1 (Brier fix) ──┐
+                       ├──→ Phase 4 (Recalculate + smoke test)
+Phase 2 (Purge)  ─────┘
+                       
+Phase 3 (Execution gate) ── can run parallel to 1+2, integrates in Phase 4
+```
+
+## Success Metric (single)
+
+**After this plan ships:** The next MOUNTAIN verdict from /stage0 produces a file in `data/actions/` with a specific 2-hour task, and the user CANNOT run /stage0 again until that action is resolved.
+
+## Context
+
+- Brainstorm report: [brainstorm-report.md](./brainstorm-report.md)
+- Root cause: architectural deadlock (need outcomes to calibrate → need calibration to execute → need execution to get outcomes)
+- Trigger: comparison to TikTok pseudoscience revealed same pattern of "progress without reality contact"

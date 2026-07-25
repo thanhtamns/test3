@@ -1,0 +1,203 @@
+---
+phase: 1
+title: "First Principles Generator"
+status: complete
+priority: P0
+effort: "5h"
+dependencies: []
+---
+
+# Phase 1: First Principles Generator
+
+## Overview
+
+Create a new Phase 2.6 agent protocol that generates NOVEL business hypotheses from first principles BEFORE any web search verification. This is the single highest-impact change — it shifts the pipeline from "search for what exists" to "imagine what COULD exist, then verify."
+
+Co-Scientist equivalent: the Generation agent that creates novel scientific hypotheses by combining known facts into new propositions. Stage0 currently skips this entirely — it goes straight to web search.
+
+## Requirements
+
+- Functional: Generate 5-8 novel business hypotheses from founder context + domain knowledge alone (zero web search)
+- Functional: Each hypothesis has: mechanism (causal chain), falsification criteria, evidence gaps to fill
+- Functional: Hypotheses are NOVEL — not descriptions of existing companies
+- Functional: Output feeds into tournament (Phase 2.7) as additional candidates alongside pattern-matcher results
+- Non-functional: Pure LLM reasoning step — no WebSearch, no WebFetch, no external calls
+- Non-functional: Protocol follows same markdown structure as evidence-vault-protocol.md and tournament-protocol.md
+- Non-functional: Bounded: max 8 hypotheses, timeout 120s
+
+## Architecture
+
+### Why First Principles BEFORE Search
+
+```
+CURRENT FLOW (search-first):
+  Web Search → "Here's what exists" → Organize → Debate existing ideas
+  Problem: Can only find what someone already wrote about
+
+PROPOSED FLOW (think-first):
+  First Principles → "Here's what COULD work and WHY" → Verify → Debate novel + existing
+  Advantage: Can discover opportunities no one has written about yet
+```
+
+### Generation Strategy (5 techniques)
+
+The protocol instructs the LLM to generate hypotheses using 5 distinct thinking techniques:
+
+```
+T1: STRUCTURAL ANALYSIS
+  - Map the money flow: who pays → who provides → what's the bottleneck
+  - Find the node where founder fits
+  - Hypothesis = "insert yourself at bottleneck X because Y"
+
+T2: INVERSION (Munger)
+  - "What would make EVERY existing player in this market FAIL?"
+  - Reverse each failure mode → opportunity hypothesis
+  - "If X fails when Y happens, then Z position profits from Y"
+
+T3: ADJACENT TRANSFER
+  - Find a solved problem in ANOTHER industry
+  - Transfer the solution mechanism to THIS domain
+  - "Industry A solved bottleneck B with mechanism C → apply C to domain D"
+
+T4: CONSTRAINT EXPLOITATION
+  - List founder's constraints (capital, location, skills, language)
+  - For each constraint: what opportunity does this constraint CREATE?
+  - "Being in Vietnam is a constraint for US SaaS, but an ADVANTAGE for..."
+
+T5: TEMPORAL ARBITRAGE
+  - What's happening NOW that creates a window in 90-180 days?
+  - Regulatory changes, platform shifts, technology transitions
+  - "When X happens in N months, the market will need Y — position now"
+```
+
+### Hypothesis Structure
+
+```python
+@dataclass
+class FirstPrinciplesHypothesis:
+    id: str                           # FP01, FP02, ...
+    title: str                        # Short name
+    thesis: str                       # 1 sentence
+    mechanism: str                    # WHY this works (causal chain)
+    generation_technique: str         # T1-T5 (which technique produced this)
+    falsification_criteria: list[str] # What evidence would KILL this
+    evidence_gaps: list[str]          # What we need to verify (becomes search queries)
+    founder_fit_score: int            # 1-10, self-assessed by generator
+    novelty_claim: str                # Why this is NOT just "existing company X"
+    
+    # These get filled by verification (Phase 2.8)
+    verified: bool = False
+    verification_evidence: list[str] = field(default_factory=list)
+    attack_results: list[str] = field(default_factory=list)
+```
+
+### Protocol Flow
+
+```
+INPUT:
+  - founder_context (from Phase 0 intent_meta: capital, skills, location, timeline)
+  - domain (from original query)
+  - evidence_vault_path (read for context, but DO NOT just summarize it)
+  - reasoning_chain_path (read for patterns already found)
+
+STEP FP1: DOMAIN DECOMPOSITION
+  Break the domain into structural components:
+  - Who are the payers? (demand side)
+  - Who are the providers? (supply side)  
+  - What are the bottlenecks? (friction points)
+  - What information asymmetries exist?
+  - What are the switching costs?
+
+STEP FP2: TECHNIQUE APPLICATION
+  Apply all 5 techniques (T1-T5) to the decomposed domain.
+  Each technique MUST produce at least 1 hypothesis.
+  Total: 5-8 hypotheses.
+
+STEP FP3: NOVELTY CHECK
+  For each hypothesis, ask:
+  - "Is this just describing [existing company X]?"
+  - If YES → reframe: what is DIFFERENT about this approach?
+  - If still just a copy → KILL the hypothesis, replace with a new one
+
+STEP FP4: SELF-SCORING
+  Rate each hypothesis on founder_fit (1-10):
+  - Capital match (can founder afford to start?)
+  - Skill match (can founder execute?)
+  - Location advantage (does founder's location help or hurt?)
+  - Timeline match (can this generate revenue within founder's timeline?)
+  
+  KILL hypotheses scoring < 4.
+
+STEP FP5: OUTPUT
+  Write first-principles-hypotheses.md to session plan dir.
+  Format: structured list with all fields filled.
+  These feed into tournament (Phase 2.7) alongside pattern-matcher results.
+
+OUTPUT:
+  plans/{session_id}/first-principles-hypotheses.md
+```
+
+### Integration with Existing Pipeline
+
+```
+Phase 2.5C (Pattern Matcher) → top_5 patterns (EXISTING)
+Phase 2.6 (First Principles) → 5-8 novel hypotheses (NEW)
+                    ↓
+Phase 2.7 (Tournament) receives BOTH as candidates
+  - Pattern matcher candidates: source_phase = "pattern_matcher"
+  - First principles candidates: source_phase = "first_principles"
+  - Tournament debates ALL candidates together
+  - Novel hypotheses compete directly against web-sourced patterns
+```
+
+## Related Code Files
+
+- Create: `.claude/agents/core/intelligence/first-principles-protocol.md` (agent protocol)
+- Create: `.claude/lib/intelligence/hypothesis/first_principles_models.py` (dataclasses)
+- Create: `.claude/lib/intelligence/hypothesis/tests/test_first_principles_models.py` (unit tests)
+- Modify: `.claude/agents/core/intelligence/tournament-protocol.md` Step T1 HARVEST — accept first_principles source
+- Read: `.claude/agents/core/intelligence/evidence-vault-protocol.md` — structural pattern
+- Read: `.claude/agents/core/intelligence/tournament-protocol.md` — integration point
+- Read: `.claude/lib/intelligence/controller/hypothesis_generator.py` — existing hypothesis generation (money flow graph level)
+
+## Implementation Steps
+
+1. Read evidence-vault-protocol.md + tournament-protocol.md for structural pattern
+2. Read hypothesis_generator.py to understand existing hypothesis generation at graph level (DO NOT duplicate — this is a different layer: business opportunities, not graph edges)
+3. Create `first_principles_models.py`:
+   - `FirstPrinciplesHypothesis` dataclass with all fields
+   - `to_dict()` / `from_dict()` for serialization
+   - `to_tournament_hypothesis()` — converts to `OpportunityHypothesis` for tournament
+4. Create `first-principles-protocol.md`:
+   - Header: agent name, model=opus, timeout=120s
+   - Input specification: founder_context, domain, evidence_vault_path, reasoning_chain_path
+   - 5-step protocol (FP1-FP5) as defined above
+   - 5 generation techniques (T1-T5) with examples
+   - Novelty check rules
+   - Self-scoring rubric
+   - Output format specification
+5. Modify tournament-protocol.md Step T1 HARVEST:
+   - Add first-principles-hypotheses.md as additional source
+   - Accept hypotheses with `source_phase = "first_principles"`
+   - Tag in tournament output which hypotheses were novel vs web-sourced
+6. Write unit tests for FirstPrinciplesHypothesis:
+   - Creation + serialization roundtrip
+   - to_tournament_hypothesis conversion
+   - founder_fit_score validation (1-10 range)
+   - Novelty claim not empty
+
+## Success Criteria
+
+- [ ] Protocol generates hypotheses WITHOUT any web search (pure reasoning)
+- [ ] Each hypothesis has mechanism + falsification criteria + evidence gaps
+- [ ] Tournament accepts first-principles hypotheses alongside pattern-matcher results
+- [ ] At least 1 of the 5 generation techniques (T1-T5) produces non-obvious output in manual test
+- [ ] Unit tests pass for models
+- [ ] Protocol follows evidence-vault-protocol.md structural pattern
+
+## Risk Assessment
+
+- **Risk:** LLM generates generic/obvious hypotheses despite novelty check
+  - Mitigation: Novelty check in FP3 explicitly asks "is this just describing existing company X?". Protocol includes anti-generic instruction: "If a business school student would suggest this in their first lecture, it's too generic."
+- **Risk:** First-principles hypotheses are creative but unfounded (hallucination)
+  - Mitigation: They enter the tournament and get debated against evidence-backed pattern-matcher results. Unfounded hypotheses lose debates on evidence_strength criterion. Phase 2.8 refinement loop then attacks survivors.

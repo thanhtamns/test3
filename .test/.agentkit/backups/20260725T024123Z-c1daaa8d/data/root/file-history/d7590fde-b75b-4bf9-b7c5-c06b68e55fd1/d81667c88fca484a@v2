@@ -1,0 +1,93 @@
+# Brainstorm: Stage0 Leverage-First Scoring Redesign
+
+**Date:** 2026-05-18
+**Status:** APPROVED — ready for `/ck:plan`
+**Scope:** Full redesign (scoring + Mountain Test + audit schema)
+**Policy:** Labor models hard-capped at SIDE_HUSTLE
+
+---
+
+## Problem
+
+Stage0 scoring measures ANALYSIS QUALITY (agents, URLs, zone tags) but NOT BUSINESS MODEL QUALITY. A 3000-word verdict about "visit factories for commission" can score Grade A despite being a labor job, not a business. The system thinks like a laborer — "what can founder DO for money" — instead of "what can founder OWN that generates money."
+
+## Root Cause
+
+3 layers lack leverage classification:
+1. `stage0-quality-score.py` — 11 dimensions, ZERO measure leverage/asset
+2. Mountain Test v23 — Q1-Q3 + Compounding, NO sleep test, NO leverage gate
+3. `audit-schemas/stage0.json` — 5 dimension groups, NO leverage group
+
+## Design
+
+### Change 1: Mountain Test → v24 (Step 6)
+
+Add Q4-SLEEP and Q5-LEVERAGE:
+
+```
+Q4-SLEEP: Revenue continues when founder does zero work? (YES/NO/PARTIAL)
+Q5-LEVERAGE: CODE/MEDIA/CAPITAL/LABOR/HYBRID (Naval hierarchy)
+```
+
+Verdict logic additions:
+- Q4=NO + Q5=LABOR → SIDE_HUSTLE (HARD CAP)
+- Q4=NO + Q5=HYBRID → SIDE_HUSTLE_WITH_STAIRCASE
+- Q4=PARTIAL → -0.10 confidence penalty
+- Q4=YES → proceed unchanged
+
+Stair-step (Step 6.3) compatible: HYBRID + stair-step = SIDE_HUSTLE_WITH_STAIRCASE.
+
+### Change 2: `stage0-quality-score.py`
+
+Add `check_leverage_classification()` dimension (max 15 pts):
+- Sleep test present: +5
+- Leverage classification found: +5
+- Asset identification: +5
+- PENALTY: labor rec without staircase: -5
+
+Max score: 175 (was 160). Grade map adjusted.
+
+### Change 3: `audit-schemas/stage0.json`
+
+New `leverage` dimension group (weight 0.15):
+- `s0_sleep_test` (critical) — every model must answer sleep test
+- `s0_leverage_class` (major) — Naval hierarchy classification
+- `s0_asset_at_m12` (major) — what founder owns after 12 months
+- `s0_labor_staircase` (major) — labor models need transition path
+
+Rebalance weights (total=1.0): completeness 0.15, evidence 0.20, depth 0.20, consistency 0.15, domain_specific 0.15, leverage 0.15.
+
+### Change 4: Decision Question Generator (Step 2.65)
+
+Add 7th mandatory question type: LEVERAGE — "Sau 12 tháng bạn SỞ HỮU cái gì bán được mà không cần bạn?"
+
+### Change 5: Verdict output format (Step 7)
+
+Each model must include: Sleep test, Leverage class, Asset at M12, Staircase path (if LABOR/HYBRID).
+
+## Files to Modify
+
+| File | Change |
+|------|--------|
+| `commands/stage0.md` | Step 6 Q4-Q5, Step 2.65 LEVERAGE Q, Step 7 format |
+| `commands/stage0-spec-detail.md` | Mountain Test v24 spec |
+| `commands/stage0-checklist.md` | Checklist items for Q4-Q5 |
+| `nui-hunter/scripts/stage0-quality-score.py` | Add leverage dimension |
+| `hooks/lib/audit-schemas/stage0.json` | Add leverage dimension group |
+| `nui-hunter/scripts/tier-adjusted-dq-generator.py` | Add LEVERAGE question |
+| `tests/stage0/test_stage0_acceptance.py` | Test cases for leverage scoring |
+| `tests/stage0/fixtures/expected-dimensions.json` | Add leverage dimension |
+
+## Success Criteria
+
+1. `/stage0 "vietnam sourcing agent"` → SIDE_HUSTLE (Q4=NO, Q5=LABOR)
+2. `/stage0 "supplier directory SaaS"` → MOUNTAIN_CANDIDATE (Q4=YES, Q5=CODE)
+3. `/stage0 "ESG audit → template SaaS"` → SIDE_HUSTLE_WITH_STAIRCASE (Q5=HYBRID)
+4. Old verdicts without leverage section → score drops 10-15 pts
+5. New verdicts with leverage section → dimension 10-15/15
+
+## Risks
+
+- Hard cap kills legitimate $50K+/mo consulting → acceptable: $50K/mo consulting IS still a job
+- Backward compat with existing case JSONs → leverage fields optional, default null
+- Audit hook rejects → leverage checks severity=major (not critical) initially

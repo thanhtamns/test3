@@ -1,0 +1,447 @@
+# Hướng dẫn kiểm tra thủ công CODEFLOW
+
+Tài liệu này giúp bạn tự tay kiểm chứng rằng hệ thống CODEFLOW tiết kiệm token thật sự, không gian lận số liệu. Mỗi bước đều so sánh **TRƯỚC** (không dùng CODEFLOW) và **SAU** (có dùng CODEFLOW).
+
+---
+
+## Yêu cầu trước khi bắt đầu
+
+### Phần mềm cần cài
+
+- **Docker Desktop** (đã cài và đang chạy)
+- **Git** (đã cài)
+- **Terminal** (PowerShell, Git Bash, hoặc WSL)
+
+### Kiểm tra Docker đang chạy
+
+```bash
+docker --version
+docker compose version
+```
+
+Nếu cả hai lệnh đều trả về phiên bản → tiếp tục. Nếu lỗi → mở Docker Desktop trước.
+
+---
+
+## Phần A: Khởi động toàn bộ hệ thống
+
+### Bước A1 — Giải phóng cổng mạng
+
+Kiểm tra xem các cổng 3000, 8080, 8123, 9000, 4222 có đang bị chiếm không:
+
+```bash
+# Windows PowerShell
+netstat -ano | findstr "3000 8080 8123 9000 4222"
+
+# Git Bash / WSL
+netstat -ano | grep -E "(3000|8080|8123|9000|4222)" | grep LISTEN
+```
+
+Nếu có tiến trình đang chiếm → tắt chúng trước khi tiếp tục.
+
+### Bước A2 — Dọn dẹp dữ liệu cũ (nếu có)
+
+```bash
+cd D:/code/codeflow
+docker compose down -v
+```
+
+Lệnh này xoá toàn bộ container và volume cũ, đảm bảo bắt đầu từ trạng thái sạch.
+
+### Bước A3 — Khởi động hệ thống
+
+```bash
+docker compose up -d --build
+```
+
+Chờ khoảng 1-2 phút để tất cả container build và khởi động.
+
+### Bước A4 — Kiểm tra trạng thái các dịch vụ
+
+```bash
+docker compose ps
+```
+
+**Kết quả mong đợi:** 5 container đang chạy:
+
+| Tên | Trạng thái | Cổng |
+|-----|-----------|------|
+| codeflow-clickhouse-1 | Up (healthy) | 8123, 9000 |
+| codeflow-nats-1 | Up (healthy) | 4222 |
+| codeflow-ingest-1 | Up | 8080 |
+| codeflow-writer-1 | Up | — |
+| codeflow-dashboard-1 | Up | 3000 |
+
+### Bước A5 — Kiểm tra API hoạt động
+
+```bash
+curl http://localhost:8080/healthz
+```
+
+**Kết quả mong đợi:** `{"status":"ok"}`
+
+### Bước A6 — Nạp dữ liệu mẫu (570 sự kiện)
+
+```bash
+docker compose --profile seed up seed
+```
+
+**Kết quả mong đợi:** Dòng cuối cùng hiển thị:
+```
+seed-1  | Seeding 570 events (54970 bytes proto, 5208 bytes gzipped)...
+seed-1  | Response: 202 {"accepted":570}
+```
+
+### Bước A7 — Mở Dashboard
+
+Mở trình duyệt, truy cập: **http://localhost:3000**
+
+**Kết quả mong đợi:**
+- Trang Overview hiển thị: "CODEFLOW" ở thanh bên trái
+- Góc dưới bên trái hiển thị: "Demo User" và "Demo Mode"
+- Không có lỗi 500 hay trang trắng
+
+---
+
+## Phần B: Kiểm chứng dữ liệu API
+
+Mục đích: Đảm bảo số liệu trên Dashboard khớp với dữ liệu thực trong cơ sở dữ liệu.
+
+### Bước B1 — Lấy tổng quan từ API
+
+```bash
+curl -s -H "X-Tenant-ID: demo-tenant" http://localhost:8080/v1/overview
+```
+
+**Kết quả mong đợi:**
+```json
+{
+  "total_input_tokens": 2982000,
+  "total_output_tokens": 1652700,
+  "total_saved": 1566675,
+  "savings_pct": 52.54,
+  "event_count": 570,
+  "top_commands": [...]
+}
+```
+
+### Bước B2 — Tự tính toán để kiểm chứng
+
+Mở file `cloud/cmd/seed/main.go` và xem bảng lệnh:
+
+| Lệnh | Input tokens | Saved tokens | Tỷ lệ |
+|-------|-------------|-------------|--------|
+| git diff | 8.000 | 3.200 | 40% |
+| git status | 2.000 | 1.400 | 70% |
+| cargo test | 12.000 | 5.400 | 45% |
+| npm test | 6.000 | 2.100 | 35% |
+| tsc | 3.000 | 900 | 30% |
+| cargo build | 15.000 | 7.500 | 50% |
+| eslint . | 4.000 | 1.600 | 40% |
+| pytest | 5.000 | 1.750 | 35% |
+| go test ./... | 9.000 | 3.600 | 40% |
+| docker logs | 7.000 | 4.200 | 60% |
+| **Tổng mỗi vòng** | **71.000** | **31.650** | **44,6%** |
+
+**Cách tính:**
+- Mỗi vòng = 10 lệnh × 3 dự án = 30 sự kiện nén
+- 14 ngày × 30 = 420 sự kiện nén
+- Ngày chia hết cho 3 (ngày 0, 3, 6, 9, 12) thêm sự kiện dedup: 5 ngày × 30 = 150 sự kiện
+- **Tổng: 420 + 150 = 570 sự kiện** ← khớp với API
+
+**Kiểm tra total_input_tokens:**
+- 420 sự kiện nén: 42 vòng × 71.000 = 2.982.000
+- API trả về: 2.982.000 ← **khớp**
+
+**Kiểm tra total_saved:**
+- Nén: 42 vòng × 31.650 = 1.329.300
+- Dedup: mỗi sự kiện dedup lưu = saved/2. Tổng dedup = 15 vòng × 31.650/2 = 237.375
+- Tổng saved = 1.329.300 + 237.375 = 1.566.675
+- API trả về: 1.566.675 ← **khớp**
+
+### Bước B3 — Kiểm tra danh sách dự án
+
+```bash
+curl -s -H "X-Tenant-ID: demo-tenant" http://localhost:8080/v1/projects
+```
+
+**Kết quả mong đợi:** 3 dự án, mỗi dự án có 190 sự kiện và 522.225 token đã tiết kiệm.
+
+**Tự kiểm chứng:** 570 / 3 = 190 sự kiện mỗi dự án. 1.566.675 / 3 = 522.225 token mỗi dự án.
+
+### Bước B4 — Kiểm tra xu hướng theo ngày
+
+```bash
+curl -s -H "X-Tenant-ID: demo-tenant" "http://localhost:8080/v1/savings/trend?days=14"
+```
+
+Đếm số phần tử trong mảng JSON — phải có 14 ngày dữ liệu.
+
+### Bước B5 — Kiểm tra từng trang Dashboard
+
+Mở trình duyệt và kiểm tra từng trang:
+
+| URL | Kiểm tra |
+|-----|---------|
+| http://localhost:3000 | Thẻ tổng quan: tokens saved, savings rate, events |
+| http://localhost:3000/projects | Danh sách 3 dự án |
+| http://localhost:3000/waste | Trang waste (có thể trống với dữ liệu mẫu) |
+| http://localhost:3000/roi | Bảng tính ROI với biểu đồ hàng tháng |
+| http://localhost:3000/security | Trang bảo mật (trống với dữ liệu mẫu) |
+| http://localhost:3000/billing | Hiển thị gói "free" |
+| http://localhost:3000/settings | Trang cài đặt |
+
+Tất cả trang phải tải được, không có lỗi trắng hay lỗi 500.
+
+---
+
+## Phần C: Kiểm chứng bộ lọc nén (So sánh TRƯỚC/SAU)
+
+Mục đích: Chạy lệnh thật và so sánh đầu ra gốc với đầu ra đã lọc.
+
+### Điều kiện tiên quyết
+
+Bạn cần build CLI trước (chỉ lần đầu):
+
+```bash
+cd D:/code/codeflow/cli
+cargo build
+```
+
+Sau đó dùng binary tại `cli/target/debug/codeflow.exe`.
+
+### Bước C1 — So sánh `git status`
+
+**TRƯỚC (không dùng CODEFLOW):**
+```bash
+cd D:/code/codeflow
+git status > /tmp/raw_status.txt
+wc -c /tmp/raw_status.txt    # đếm số byte
+wc -l /tmp/raw_status.txt    # đếm số dòng
+cat /tmp/raw_status.txt       # xem nội dung
+```
+
+**SAU (có dùng CODEFLOW):**
+```bash
+cli/target/debug/codeflow.exe wrap git status > /tmp/filtered_status.txt
+wc -c /tmp/filtered_status.txt
+wc -l /tmp/filtered_status.txt
+cat /tmp/filtered_status.txt
+```
+
+**So sánh:**
+```bash
+diff /tmp/raw_status.txt /tmp/filtered_status.txt
+```
+
+**Những gì bạn sẽ thấy bị loại bỏ:**
+- Dòng `(use "git add..." ...)` — gợi ý không cần thiết cho AI
+- Dòng trống
+- Nếu file quá 50 dòng → bị cắt xuống còn 50 (max_lines)
+- `modified:` có thể được viết tắt thành `M`
+
+**Quy tắc lọc** (xem file `cli/filters/git-status.toml`):
+```bash
+cat cli/filters/git-status.toml
+```
+
+### Bước C2 — So sánh `git diff`
+
+**TRƯỚC:**
+```bash
+git diff -- README.md > /tmp/raw_diff.txt
+wc -c /tmp/raw_diff.txt
+```
+
+**SAU:**
+```bash
+cli/target/debug/codeflow.exe wrap git diff -- README.md > /tmp/filtered_diff.txt
+wc -c /tmp/filtered_diff.txt
+```
+
+**So sánh:**
+```bash
+diff /tmp/raw_diff.txt /tmp/filtered_diff.txt
+```
+
+**Những gì bị loại bỏ:**
+- Dòng `diff --git a/... b/...` — header không cần thiết
+- Dòng `index abc123..def456 100644` — hash nội bộ
+- Dòng `\ No newline at end of file`
+
+### Bước C3 — So sánh `git log`
+
+**TRƯỚC:**
+```bash
+git log --oneline -10 > /tmp/raw_log.txt
+wc -c /tmp/raw_log.txt
+```
+
+**SAU:**
+```bash
+cli/target/debug/codeflow.exe wrap git log --oneline -10 > /tmp/filtered_log.txt
+wc -c /tmp/filtered_log.txt
+```
+
+**Kết quả mong đợi:** Kích thước giống nhau hoặc gần giống (git log ngắn không có gì để lọc). Đây là bằng chứng hệ thống **trung thực** — không phóng đại số liệu khi không có gì để tiết kiệm.
+
+### Bước C4 — Trường hợp đặc biệt: output trống
+
+```bash
+# Lệnh không có output
+cli/target/debug/codeflow.exe wrap echo ""
+```
+
+Kiểm tra xem CODEFLOW có trả về output gốc hay không (không thêm hay bớt gì).
+
+---
+
+## Phần D: Kiểm chứng model routing
+
+Mục đích: Xác nhận hệ thống phân loại độ phức tạp của lệnh đúng cách.
+
+### Bước D1 — Lệnh đơn giản → nên route sang Haiku (rẻ nhất)
+
+```bash
+cli/target/debug/codeflow.exe route "git status" --tokens 500
+```
+
+**Kết quả mong đợi:**
+```
+Route to:   haiku ($0.25/1M tokens)
+Savings:    98% vs Opus
+```
+
+### Bước D2 — Lệnh phức tạp → nên route sang Opus (mạnh nhất)
+
+```bash
+cli/target/debug/codeflow.exe route "implement authentication middleware" --tokens 60000 --files "src/auth.rs,src/middleware.rs"
+```
+
+**Kết quả mong đợi:**
+```
+Route to:   opus ($15/1M tokens)
+Savings:    0% vs Opus
+```
+
+### Bước D3 — Lệnh trung bình → nên route sang Sonnet
+
+```bash
+cli/target/debug/codeflow.exe route "cargo test" --tokens 10000 --files "src/lib.rs"
+```
+
+**Kết quả mong đợi:**
+```
+Route to:   sonnet ($3/1M tokens)
+```
+
+**Ý nghĩa:** Hệ thống tiết kiệm tiền bằng cách gửi lệnh đơn giản sang model rẻ, chỉ dùng model đắt cho lệnh phức tạp.
+
+---
+
+## Phần E: Kiểm chứng thống kê cục bộ
+
+### Bước E1 — Xem thống kê hiện tại
+
+```bash
+cli/target/debug/codeflow.exe stats
+```
+
+**Kết quả:** Bảng hiển thị tổng token đã tiết kiệm, phân theo lớp (Compression, Dedup, Read Dedup).
+
+### Bước E2 — Xem dạng JSON (để tính toán)
+
+```bash
+cli/target/debug/codeflow.exe stats --json
+```
+
+Kiểm tra:
+- `total_saved` > 0
+- `savings_pct` = `total_saved / total_input_tokens * 100`
+- `top_commands` liệt kê đúng các lệnh đã chạy
+
+### Bước E3 — Chạy thêm lệnh để thấy số liệu tăng
+
+```bash
+# Ghi nhớ total_saved hiện tại
+cli/target/debug/codeflow.exe stats --json | grep total_saved
+
+# Chạy thêm một lệnh
+cli/target/debug/codeflow.exe wrap git status
+
+# Kiểm tra lại total_saved — phải tăng
+cli/target/debug/codeflow.exe stats --json | grep total_saved
+```
+
+**Kết quả mong đợi:** Giá trị `total_saved` tăng lên sau mỗi lệnh wrap.
+
+### Bước E4 — Phát hiện lãng phí
+
+```bash
+cli/target/debug/codeflow.exe stats --waste
+```
+
+Hiển thị các mẫu lãng phí (nếu có): file đọc lại nhiều lần, lệnh chạy trùng lặp, tìm kiếm thất bại.
+
+---
+
+## Phần F: Kiểm chứng xuất dữ liệu CSV
+
+```bash
+curl -s -H "X-Tenant-ID: demo-tenant" "http://localhost:8080/v1/export/csv?days=7"
+```
+
+**Kết quả mong đợi:** File CSV với header:
+```
+date,project,command,event_type,input_tokens,output_tokens,tokens_saved,filter_name
+```
+
+Mở file bằng Excel hoặc Google Sheets để kiểm tra từng dòng có hợp lý không.
+
+---
+
+## Phần G: Kiểm tra ROI (Lợi tức đầu tư)
+
+```bash
+curl -s -H "X-Tenant-ID: demo-tenant" "http://localhost:8080/v1/roi?days=30"
+```
+
+**Kết quả mong đợi:**
+```json
+{
+  "total_saved": 1566675,
+  "estimated_cost_saved": 4.70,
+  ...
+}
+```
+
+**Tự kiểm chứng:** 
+- Chi phí mỗi token (Claude Sonnet): ~$3/1M token
+- 1.566.675 token × $3/1M = ~$4,70
+- Khớp với `estimated_cost_saved` trong API
+
+---
+
+## Phần H: Dọn dẹp sau khi kiểm tra
+
+```bash
+cd D:/code/codeflow
+docker compose down -v
+```
+
+Lệnh này tắt tất cả container và xoá dữ liệu.
+
+---
+
+## Tóm tắt: Bảng so sánh TRƯỚC/SAU
+
+| Khía cạnh | KHÔNG dùng CODEFLOW | CÓ dùng CODEFLOW |
+|-----------|-------------------|-----------------|
+| git status (repo lớn) | ~400KB, 2.927 dòng | ~3KB, 50 dòng (giảm 99%) |
+| git status (repo nhỏ) | ~500 byte | ~400 byte (giảm ~20%) |
+| git diff (file nhỏ) | ~1KB | ~900 byte (giảm ~9%) |
+| git log (11 dòng) | 843 byte | 843 byte (giảm 0% — trung thực) |
+| Đọc file lần 2 | Gửi lại toàn bộ nội dung | 1 dòng "đã đọc, không đổi" |
+| Model routing | Luôn dùng Opus ($15/1M) | Tự chọn Haiku/Sonnet/Opus theo ngữ cảnh |
+
+**Điểm mấu chốt:** CODEFLOW chỉ tiết kiệm khi có "tiếng ồn" trong output. Với output sạch và ngắn, tỷ lệ tiết kiệm là 0% — đây là bằng chứng hệ thống không gian lận.

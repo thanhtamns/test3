@@ -1,0 +1,333 @@
+#!/usr/bin/env python3
+"""
+Auto-Hunt Signal Scanner — deterministic niche gap detector.
+
+Scans KB cases for unexplored domains + external signals for trending opportunities.
+Pure Python, no LLM calls, <30s runtime.
+
+Usage:
+    python auto-hunt-signal-scanner.py --kb-dir ../kb/cases --profile-dir ../kb/profiles --json
+    python auto-hunt-signal-scanner.py --max-candidates 5
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from collections import Counter
+from datetime import datetime
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_KB_DIR = SCRIPT_DIR.parent / "kb" / "cases"
+DEFAULT_PROFILE_DIR = SCRIPT_DIR.parent / "kb" / "profiles"
+
+HIGH_VALUE_DOMAINS = [
+    "saas", "b2b_service", "commerce", "export", "digital_product",
+    "agency", "marketplace", "consulting", "content", "education",
+    "fintech", "healthtech", "logistics", "real_estate", "ai_tools",
+]
+
+SIGNAL_KEYWORDS = {
+    "new_platform": ["launch", "beta", "new platform", "marketplace", "just launched"],
+    "policy_change": ["regulation", "policy", "ban", "compliance", "law change"],
+    "tool_launch": ["ai tool", "saas", "automation", "no-code", "api"],
+    "complaint_pattern": ["pain point", "frustrat", "broken", "nobody solves", "wish there was"],
+    "rising_demand": ["growing", "trend", "surge", "boom", "demand"],
+}
+
+PROFILE_SKILL_DOMAIN_MAP = {
+    "market_driven": {"saas": 25, "ai_tools": 25, "digital_product": 20, "b2b_service": 20, "consulting": 15},
+    "technical": {"saas": 30, "ai_tools": 30, "fintech": 20, "healthtech": 15},
+    "sales": {"agency": 25, "b2b_service": 25, "consulting": 20, "commerce": 20},
+    "analytical": {"saas": 25, "ai_tools": 20, "fintech": 20, "consulting": 20},
+}
+
+VERDICT_NORMALIZE = {
+    "GO": "GO", "CONDITIONAL_GO": "GO", "CONDITIONAL": "GO",
+    "PROVISIONAL_MOUNTAIN": "GO", "MOUNTAIN": "GO",
+    "SIDE_HUSTLE": "GO", "SIDE_HUSTLE_WITH_STAIRCASE": "GO",
+    "KILL": "KILL",
+    "EXPLORATION_COMPLETE": "EXPLORATION", "EXPLORATION_ONGOING": "EXPLORATION",
+    "BREADTH_SCAN_COMPLETE": "EXPLORATION",
+}
+
+
+def load_kb_cases(kb_dir: Path) -> list[dict]:
+    cases = []
+    if not kb_dir.exists():
+        return cases
+    for f in sorted(kb_dir.glob("*.json")):
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and "case_id" in data:
+                cases.append(data)
+        except (json.JSONDecodeError, OSError):
+            continue
+    return cases
+
+
+def normalize_verdict(raw: str) -> str:
+    raw_upper = raw.upper().strip()
+    for prefix, norm in VERDICT_NORMALIZE.items():
+        if raw_upper.startswith(prefix):
+            return norm
+    return "OTHER"
+
+
+def analyze_gaps(cases: list[dict]) -> list[dict]:
+    domain_counts = Counter()
+    for c in cases:
+        d = c.get("domain", "unknown")
+        if d and d != "unknown":
+            domain_counts[d] += 1
+
+    existing_domains_lower = {d.lower().replace("_", "").replace("-", "") for d in domain_counts}
+
+    candidates = []
+    for hv_domain in HIGH_VALUE_DOMAINS:
+        normalized = hv_domain.lower().replace("_", "")
+        matched = any(normalized in ed or ed in normalized for ed in existing_domains_lower)
+        count = 0
+        if matched:
+            for d, c in domain_counts.items():
+                dn = d.lower().replace("_", "").replace("-", "")
+                if normalized in dn or dn in normalized:
+                    count += c
+
+        if count < 2:
+            gap_score = 40 if count == 0 else 20
+            candidates.append({
+                "domain": hv_domain,
+                "gap_score": gap_score,
+                "kb_case_count": count,
+                "source": "kb_gap",
+            })
+
+    return candidates
+
+
+def analyze_verdicts(cases: list[dict]) -> dict:
+    domain_verdicts: dict[str, list[str]] = {}
+    kill_reasons: list[str] = []
+
+    for c in cases:
+        domain = c.get("domain", "unknown")
+        raw_verdict = c.get("verdict", c.get("verdict_class", "unknown"))
+        norm = normalize_verdict(str(raw_verdict))
+        domain_verdicts.setdefault(domain, []).append(norm)
+
+        if norm == "KILL":
+            reason = str(raw_verdict)
+            if len(reason) > 10:
+                kill_reasons.append(reason[:120])
+
+    avoid_domains = set()
+    explore_adjacent = set()
+    for domain, verdicts in domain_verdicts.items():
+        total = len(verdicts)
+        if total == 0:
+            continue
+        kill_rate = verdicts.count("KILL") / total
+        go_rate = verdicts.count("GO") / total
+        if kill_rate > 0.75:
+            avoid_domains.add(domain)
+        if go_rate > 0.50:
+            explore_adjacent.add(domain)
+
+    return {
+        "avoid_domains": list(avoid_domains),
+        "explore_adjacent": list(explore_adjacent),
+        "common_kill_reasons": kill_reasons[:5],
+    }
+
+
+def scan_external_signals(max_queries: int = 5, delay_sec: float = 2.0) -> list[dict]:
+    month = datetime.now().strftime("%B %Y")
+    queries = [
+        f"emerging business models {month}",
+        f"zero capital business {month}",
+        f"micro-saas trends {month}",
+        "service business opportunities Vietnam",
+        "bootstrap business model profitable 2026",
+    ][:max_queries]
+
+    signals = []
+    for q in queries:
+        try:
+            url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote_plus(q)}"
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                html = resp.read().decode("utf-8", errors="replace")
+
+            snippets = re.findall(r'class="result__snippet"[^>]*>(.*?)</a>', html, re.DOTALL)
+            titles = re.findall(r'class="result__a"[^>]*>(.*?)</a>', html, re.DOTALL)
+            text_blob = " ".join(titles[:5] + snippets[:5]).lower()
+            text_blob = re.sub(r"<[^>]+>", " ", text_blob)
+
+            matched_categories = set()
+            for category, keywords in SIGNAL_KEYWORDS.items():
+                for kw in keywords:
+                    if kw.lower() in text_blob:
+                        matched_categories.add(category)
+                        break
+
+            if matched_categories:
+                strength = "STRONG" if len(matched_categories) >= 3 else "MEDIUM"
+                signals.append({
+                    "query": q,
+                    "signal_categories": sorted(matched_categories),
+                    "strength": strength,
+                    "source": "duckduckgo",
+                })
+
+            if delay_sec > 0:
+                time.sleep(delay_sec)
+
+        except (urllib.error.URLError, OSError, TimeoutError):
+            continue
+
+    return signals
+
+
+def load_founder_profile(profile_dir: Path) -> dict:
+    if not profile_dir.exists():
+        return _default_profile()
+
+    profiles = sorted(profile_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not profiles:
+        return _default_profile()
+
+    try:
+        data = json.loads(profiles[0].read_text(encoding="utf-8"))
+        return {
+            "profile_id": data.get("profile_id", "unknown"),
+            "capital_tier": data.get("capital_tier", "TIER_0"),
+            "skills_approach": data.get("skills", {}).get("approach", "market_driven"),
+            "location": data.get("location", "Vietnam"),
+            "constraints": data.get("constraints", []),
+            "_needs_validation": False,
+        }
+    except (json.JSONDecodeError, OSError):
+        return _default_profile()
+
+
+def _default_profile() -> dict:
+    return {
+        "profile_id": "default",
+        "capital_tier": "TIER_0",
+        "skills_approach": "market_driven",
+        "location": "Vietnam",
+        "constraints": ["no_product_dev", "no_paid_ads", "service_first"],
+        "_needs_validation": True,
+    }
+
+
+def score_candidates(
+    gap_candidates: list[dict],
+    external_signals: list[dict],
+    verdict_analysis: dict,
+    profile: dict,
+    max_candidates: int = 10,
+) -> list[dict]:
+    scored = []
+    avoid = {d.lower() for d in verdict_analysis.get("avoid_domains", [])}
+
+    skill_approach = profile.get("skills_approach", "market_driven")
+    skill_scores = PROFILE_SKILL_DOMAIN_MAP.get(skill_approach, {})
+
+    signal_domain_boost: dict[str, int] = {}
+    for sig in external_signals:
+        for cat in sig.get("signal_categories", []):
+            if cat == "tool_launch":
+                for d in ("saas", "ai_tools"):
+                    signal_domain_boost[d] = signal_domain_boost.get(d, 0) + 15
+            elif cat == "rising_demand":
+                for d in ("commerce", "b2b_service", "agency"):
+                    signal_domain_boost[d] = signal_domain_boost.get(d, 0) + 10
+            elif cat == "complaint_pattern":
+                for d in ("saas", "consulting", "digital_product"):
+                    signal_domain_boost[d] = signal_domain_boost.get(d, 0) + 10
+
+    for gap in gap_candidates:
+        domain = gap["domain"]
+        if domain.lower() in avoid:
+            continue
+
+        gap_score = gap.get("gap_score", 0)
+        signal_strength = min(signal_domain_boost.get(domain, 0), 30)
+        profile_fit = min(skill_scores.get(domain, 10), 30)
+
+        total = gap_score + signal_strength + profile_fit
+
+        evidence = [f"KB gap (count={gap['kb_case_count']})"]
+        if signal_strength > 0:
+            evidence.append(f"External signals (boost={signal_strength})")
+        if profile_fit > 15:
+            evidence.append(f"Profile fit ({skill_approach}→{domain})")
+
+        scored.append({
+            "domain": domain,
+            "gap_score": gap_score,
+            "signal_strength": signal_strength,
+            "profile_fit": profile_fit,
+            "total_score": total,
+            "source_evidence": evidence,
+        })
+
+    scored.sort(key=lambda x: -x["total_score"])
+    return scored[:max_candidates]
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Auto-Hunt Signal Scanner")
+    parser.add_argument("--kb-dir", type=Path, default=DEFAULT_KB_DIR)
+    parser.add_argument("--profile-dir", type=Path, default=DEFAULT_PROFILE_DIR)
+    parser.add_argument("--max-candidates", type=int, default=10)
+    parser.add_argument("--skip-external", action="store_true", help="Skip DuckDuckGo scan")
+    parser.add_argument("--json", action="store_true", help="JSON output to stdout")
+    args = parser.parse_args()
+
+    cases = load_kb_cases(args.kb_dir)
+    gap_candidates = analyze_gaps(cases)
+    verdict_analysis = analyze_verdicts(cases)
+    profile = load_founder_profile(args.profile_dir)
+
+    external_signals = []
+    if not args.skip_external:
+        external_signals = scan_external_signals()
+
+    candidates = score_candidates(
+        gap_candidates, external_signals, verdict_analysis, profile, args.max_candidates
+    )
+
+    result = {
+        "timestamp": datetime.now().isoformat(),
+        "kb_cases_scanned": len(cases),
+        "gaps_found": len(gap_candidates),
+        "external_signals": len(external_signals),
+        "profile": profile,
+        "verdict_analysis": verdict_analysis,
+        "candidates": candidates,
+    }
+
+    if args.json:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        json.dump(result, sys.stdout, indent=2, ensure_ascii=False)
+    else:
+        print(f"Scanned {len(cases)} KB cases, found {len(gap_candidates)} gaps")
+        print(f"External signals: {len(external_signals)}")
+        print(f"Top candidates ({len(candidates)}):")
+        for i, c in enumerate(candidates, 1):
+            print(f"  {i}. {c['domain']} (score={c['total_score']}) — {', '.join(c['source_evidence'])}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

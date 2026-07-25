@@ -1,0 +1,238 @@
+#!/usr/bin/env python3
+"""Tests for MTDE — Decomposer, Retriever, Aggregator."""
+
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "mtde"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "engine"))
+
+from decomposer import MTDEDecomposer, MicroQuestion
+from retriever import MTDERetriever, FactSheet
+from aggregator import MTDEAggregator, AggregatedEvidence
+
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+TEMPLATES_PATH = DATA_DIR / "dimension-templates.json"
+
+
+def test_decomposer_generates_questions():
+    d = MTDEDecomposer(TEMPLATES_PATH)
+    questions = d.decompose("coffee export Japan", {"industry": "commodities", "country": "Japan"})
+    assert len(questions) > 0
+    assert len(questions) <= 200
+    assert questions[0].priority >= questions[-1].priority
+
+
+def test_decomposer_respects_budget():
+    d = MTDEDecomposer(TEMPLATES_PATH)
+    questions = d.decompose("saas tool", {"industry": "tech"}, budget=20)
+    assert len(questions) <= 20
+
+
+def test_decomposer_includes_principle_questions():
+    d = MTDEDecomposer(TEMPLATES_PATH)
+    principle_qs = ["how many coffee exporters in Vietnam"]
+    questions = d.decompose("coffee export", {}, principle_questions=principle_qs)
+    assert any("coffee exporters" in q.text for q in questions)
+    assert questions[0].source == "principle"
+    assert questions[0].priority == 10.0
+
+
+def test_decomposer_deduplicates():
+    d = MTDEDecomposer(TEMPLATES_PATH)
+    d.similarity_threshold = 0.9
+    questions = d.decompose("agency", {"industry": "services"})
+    texts = [q.text for q in questions]
+    for i, t in enumerate(texts):
+        for j, t2 in enumerate(texts):
+            if i != j:
+                assert t != t2, f"Exact duplicate found: {t}"
+
+
+def test_decomposer_assigns_batches():
+    d = MTDEDecomposer(TEMPLATES_PATH)
+    questions = d.decompose("trading", {"industry": "finance"}, budget=50)
+    assert questions[0].batch_group == 0
+    if len(questions) > 10:
+        assert questions[10].batch_group == 1
+
+
+def test_decomposer_fills_templates():
+    d = MTDEDecomposer(TEMPLATES_PATH)
+    questions = d.decompose("dropshipping", {"industry": "retail", "country": "US"})
+    has_filled = any("{" not in q.text for q in questions)
+    assert has_filled, "No templates were filled"
+
+
+def test_retriever_no_search_fn():
+    r = MTDERetriever(search_fn=None, extract_fn=None)
+    q = MicroQuestion(text="test question", source="test", priority=1.0, dimension="DIM-01")
+    facts = r.retrieve([q])
+    assert len(facts) == 1
+    assert facts[0].status == "no_search_fn"
+
+
+def test_retriever_with_mock_search():
+    def mock_search(query, max_results=3):
+        return [{"snippet": "There are approximately 50 competitors in this market", "url": "https://statista.com/report"}]
+
+    def mock_extract(prompt):
+        return '{"field": "competition_count", "value": 50, "date": "2025", "confidence": 0.8}'
+
+    r = MTDERetriever(search_fn=mock_search, extract_fn=mock_extract)
+    q = MicroQuestion(text="how many competitors", source="dimension", priority=1.5, dimension="DIM-01", target_fields=["competition_count"])
+    facts = r.retrieve([q])
+    assert len(facts) == 1
+    assert facts[0].status == "found"
+    assert facts[0].value == 50
+    assert facts[0].source_tier == "S"  # statista.com
+
+
+def test_retriever_source_classification():
+    r = MTDERetriever()
+    assert r._classify_source("https://statista.com/report/123") == "S"
+    assert r._classify_source("https://reuters.com/article") == "A"
+    assert r._classify_source("https://g2.com/products") == "B"
+    assert r._classify_source("https://reddit.com/r/entrepreneur") == "C"
+    assert r._classify_source("https://youtube.com/watch") == "D"
+    assert r._classify_source("https://random-blog.xyz") == "C"
+
+
+def test_retriever_token_estimate():
+    r = MTDERetriever()
+    est = r.get_token_estimate(100)
+    assert est["total_extraction_tokens"] == 12000
+    assert est["llm_calls"] == 100
+
+
+def test_aggregator_detects_contradictions():
+    a = MTDEAggregator(kill_signals_path=Path("/nonexistent"))
+    facts = [
+        FactSheet(question_text="q1", field_name="competition_count", value=12, source_tier="B", status="found", dimension="DIM-01", confidence=0.8),
+        FactSheet(question_text="q2", field_name="competition_count", value=150, source_tier="D", status="found", dimension="DIM-01", confidence=0.6),
+    ]
+    result = a.aggregate(facts)
+    dim = result.dimensions.get("DIM-01")
+    assert dim is not None
+    assert len(dim.contradictions) > 0
+    assert dim.contradictions[0].field_name == "competition_count"
+
+
+def test_aggregator_resolves_by_tier():
+    a = MTDEAggregator(kill_signals_path=Path("/nonexistent"))
+    facts = [
+        FactSheet(question_text="q1", field_name="tam_usd", value=1000000, source_tier="S", status="found", dimension="DIM-02", confidence=0.9),
+        FactSheet(question_text="q2", field_name="tam_usd", value=5000000, source_tier="D", status="found", dimension="DIM-02", confidence=0.5),
+    ]
+    result = a.aggregate(facts)
+    assert result.enriched_features["tam_usd"] == 1000000
+
+
+def test_aggregator_extracts_patterns():
+    a = MTDEAggregator(kill_signals_path=Path("/nonexistent"))
+    facts = [
+        FactSheet(question_text="q1", field_name="competition_count", value=60, status="found", dimension="DIM-01", confidence=0.8, source_tier="B"),
+        FactSheet(question_text="q2", field_name="competition_count", value=55, status="found", dimension="DIM-04", confidence=0.7, source_tier="B"),
+        FactSheet(question_text="q3", field_name="competition_count", value=70, status="found", dimension="DIM-12", confidence=0.7, source_tier="C"),
+    ]
+    result = a.aggregate(facts)
+    pattern_names = [p.name for p in result.cross_patterns]
+    assert "red_ocean" in pattern_names
+
+
+def test_aggregator_produces_enriched_features():
+    a = MTDEAggregator(kill_signals_path=Path("/nonexistent"))
+    facts = [
+        FactSheet(question_text="q1", field_name="competition_count", value=12, status="found", dimension="DIM-01", confidence=0.8, source_tier="B"),
+        FactSheet(question_text="q2", field_name="time_to_first_revenue_days", value=30, status="found", dimension="DIM-03", confidence=0.7, source_tier="C"),
+    ]
+    result = a.aggregate(facts)
+    assert result.enriched_features["competition_count"] == 12
+    assert result.enriched_features["time_to_first_revenue_days"] == 30
+
+
+def test_aggregator_identifies_gaps():
+    a = MTDEAggregator(kill_signals_path=Path("/nonexistent"))
+    facts = [
+        FactSheet(question_text="q1", field_name="competition_count", value=12, status="found", dimension="DIM-01", confidence=0.8, source_tier="B"),
+    ]
+    result = a.aggregate(facts)
+    dim = result.dimensions.get("DIM-01")
+    assert dim is not None
+    assert "market_saturation" in dim.gaps
+    assert "barrier_score" in dim.gaps
+
+
+def test_aggregator_coverage():
+    a = MTDEAggregator(kill_signals_path=Path("/nonexistent"))
+    facts = [
+        FactSheet(question_text="q1", field_name="x", value=1, status="found", dimension="DIM-01", confidence=0.8, source_tier="B"),
+        FactSheet(question_text="q2", field_name="y", value=2, status="found", dimension="DIM-02", confidence=0.7, source_tier="B"),
+        FactSheet(question_text="q3", field_name="z", value=3, status="found", dimension="DIM-03", confidence=0.7, source_tier="C"),
+    ]
+    result = a.aggregate(facts)
+    assert result.coverage_pct == (3 / 15) * 100
+
+
+def test_aggregator_json_serializable():
+    a = MTDEAggregator(kill_signals_path=Path("/nonexistent"))
+    facts = [
+        FactSheet(question_text="q1", field_name="competition_count", value=12, status="found", dimension="DIM-01", confidence=0.8, source_tier="B"),
+    ]
+    result = a.aggregate(facts)
+    output = result.to_dict()
+    serialized = json.dumps(output)
+    assert isinstance(serialized, str)
+
+
+def test_dimension_templates_integrity():
+    with open(TEMPLATES_PATH) as f:
+        data = json.load(f)
+    dims = data["dimensions"]
+    assert len(dims) == 15, f"Expected 15 dimensions, got {len(dims)}"
+    for d in dims:
+        assert "id" in d
+        assert "name" in d
+        assert "weight" in d
+        assert "questions" in d
+        assert len(d["questions"]) >= 4
+
+
+if __name__ == "__main__":
+    tests = [
+        test_decomposer_generates_questions,
+        test_decomposer_respects_budget,
+        test_decomposer_includes_principle_questions,
+        test_decomposer_deduplicates,
+        test_decomposer_assigns_batches,
+        test_decomposer_fills_templates,
+        test_retriever_no_search_fn,
+        test_retriever_with_mock_search,
+        test_retriever_source_classification,
+        test_retriever_token_estimate,
+        test_aggregator_detects_contradictions,
+        test_aggregator_resolves_by_tier,
+        test_aggregator_extracts_patterns,
+        test_aggregator_produces_enriched_features,
+        test_aggregator_identifies_gaps,
+        test_aggregator_coverage,
+        test_aggregator_json_serializable,
+        test_dimension_templates_integrity,
+    ]
+
+    passed = 0
+    failed = 0
+    for test in tests:
+        try:
+            test()
+            print(f"  PASS {test.__name__}")
+            passed += 1
+        except Exception as e:
+            print(f"  FAIL {test.__name__}: {e}")
+            failed += 1
+
+    print(f"\n{'='*50}")
+    print(f"Results: {passed} passed, {failed} failed, {len(tests)} total")
+    if failed > 0:
+        sys.exit(1)

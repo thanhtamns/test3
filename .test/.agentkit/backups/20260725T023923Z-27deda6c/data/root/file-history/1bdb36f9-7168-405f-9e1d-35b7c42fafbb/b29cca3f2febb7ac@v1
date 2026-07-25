@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+"""
+Extract recurring kill signal patterns from failure decisions in the vector DB.
+Outputs kill-signals.json for use by the local reasoning engine.
+"""
+
+import json
+import sqlite3
+from collections import Counter
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]  # master_investments/
+DB_PATH = ROOT / ".claude" / "data" / "knowledge-distillation" / "decision-vectors.db"
+OUTPUT_PATH = ROOT / ".claude" / "data" / "knowledge-distillation" / "kill-signals.json"
+
+
+def load_failure_vectors(db_path: Path) -> list:
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT * FROM decision_vectors WHERE outcome = 'failure'"
+    ).fetchall()
+    conn.close()
+    results = []
+    for row in rows:
+        r = dict(row)
+        r["features"] = json.loads(r["features_json"])
+        r["kill_signals"] = json.loads(r["kill_signals"] or "[]")
+        results.append(r)
+    return results
+
+
+def extract_feature_combos(failures: list) -> list:
+    """Find recurring feature combinations in failures."""
+    combo_counter = Counter()
+    combo_details = {}
+
+    for f in failures:
+        feats = f["features"]
+        moats = feats.get("moat_type", [])
+        leverages = feats.get("leverage_type", [])
+        model = feats.get("business_model", "")
+        capital = feats.get("entry_capital", "")
+        timing = feats.get("market_timing", "")
+
+        combos = []
+
+        if "none" in moats and capital in ("zero", "low"):
+            combos.append(("no_moat_low_capital", {
+                "moat_type": ["none"],
+                "entry_capital": ["zero", "low"],
+            }))
+
+        if "none" in moats and timing == "mature":
+            combos.append(("no_moat_mature_market", {
+                "moat_type": ["none"],
+                "market_timing": "mature",
+            }))
+
+        if "none" in leverages or leverages == ["labor"]:
+            if capital in ("zero", "low"):
+                combos.append(("no_leverage_low_capital", {
+                    "leverage_type": ["labor", "none"],
+                    "entry_capital": ["zero", "low"],
+                }))
+
+        if model in ("agency", "consulting") and "none" in moats:
+            combos.append(("commodity_service_no_moat", {
+                "business_model": ["agency", "consulting"],
+                "moat_type": ["none"],
+            }))
+
+        if timing == "declining":
+            combos.append(("declining_market", {
+                "market_timing": "declining",
+            }))
+
+        for combo_name, conditions in combos:
+            combo_counter[combo_name] += 1
+            if combo_name not in combo_details:
+                combo_details[combo_name] = conditions
+
+    return combo_counter, combo_details
+
+
+def extract_text_kill_signals(failures: list) -> Counter:
+    """Count recurring kill signal phrases across failures."""
+    signal_counter = Counter()
+    for f in failures:
+        for signal in f["kill_signals"]:
+            normalized = signal.lower().strip()
+            signal_counter[normalized] += 1
+    return signal_counter
+
+
+def build_kill_rules(failures: list) -> list:
+    combo_counter, combo_details = extract_feature_combos(failures)
+    text_signals = extract_text_kill_signals(failures)
+
+    rules = []
+
+    # Feature-combo rules (seen in 3+ failures)
+    for combo_name, count in combo_counter.most_common():
+        if count < 2:
+            break
+        conditions = combo_details[combo_name]
+        rules.append({
+            "name": combo_name,
+            "type": "feature_combo",
+            "conditions": conditions,
+            "threshold": 0.8,
+            "seen_in_count": count,
+            "description": f"Pattern seen in {count} failure cases",
+        })
+
+    # Text-signal rules (seen in 3+ failures)
+    for signal, count in text_signals.most_common(20):
+        if count < 2:
+            break
+        rules.append({
+            "name": f"text_signal_{signal[:30].replace(' ', '_')}",
+            "type": "text_signal",
+            "signal": signal,
+            "seen_in_count": count,
+            "description": f"Kill signal '{signal}' seen in {count} failures",
+            "conditions": {},
+            "threshold": 1.0,
+        })
+
+    return rules
+
+
+def main():
+    if not DB_PATH.exists():
+        print(f"DB not found: {DB_PATH}")
+        print("Run vectorize-existing-decisions.py first.")
+        return
+
+    failures = load_failure_vectors(DB_PATH)
+    print(f"Loaded {len(failures)} failure decisions")
+
+    if not failures:
+        print("No failures in DB yet. Creating empty kill-signals.json")
+        OUTPUT_PATH.write_text("[]", encoding="utf-8")
+        return
+
+    rules = build_kill_rules(failures)
+    print(f"Extracted {len(rules)} kill rules")
+
+    for r in rules[:10]:
+        print(f"  - {r['name']}: seen in {r['seen_in_count']} failures")
+
+    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    OUTPUT_PATH.write_text(json.dumps(rules, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(f"\nSaved to: {OUTPUT_PATH}")
+
+
+if __name__ == "__main__":
+    main()

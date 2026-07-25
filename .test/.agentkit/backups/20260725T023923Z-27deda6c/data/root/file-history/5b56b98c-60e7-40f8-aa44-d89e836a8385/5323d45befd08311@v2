@@ -1,0 +1,74 @@
+---
+status: complete
+created: 2026-05-13
+target_repo: D:/code/invesments/master_investments
+plan_repo: D:/code/invesments/master_investments_mmo
+phases: 7
+estimated_effort: 12-16h
+blockedBy: []
+blocks: []
+---
+
+# Deep Intelligence Evolution — Wire Orphaned Components Into Live Pipeline
+
+## Problem Statement
+
+Live test on KVision/Vietnam VC case (2026-05-13) revealed: ThinkRunner runs 15 reasoning techniques (T00-T14) and stores results in `result.technique_results` — but StrategicReasoner NEVER receives them. The 5 LLM calls in StrategicReasoner operate in isolation, producing "ordinary" thinking. Similarly:
+- VerdictGenerator (learning/) is orphaned — never called in main pipeline
+- PredictionEngine (learning/) has Bayesian calculation but no feedback loop
+- MTDE (686 LOC) capped at 50 tokens via sbe_bridge.py
+- Adversarial pipeline personas lack operator-layer voices
+
+Root cause: components built in isolation, never wired together. ~22,000 LOC of intelligence code, <40% actually flows into final output.
+
+## Solutions → Phases
+
+| Phase | Solution | Key Change | Files Modified | Effort | Deps |
+|-------|----------|-----------|----------------|--------|------|
+| 01 | Research: verify current wiring | Read + trace data flow | (read-only) | 1h | — |
+| 02 | S-1: Technique→Reasoner wiring | Pass technique_results into all 5 LLM calls | think_runner.py, strategic_reasoner.py | 3h | 01 |
+| 03 | S-1: Technique→Output wiring | Narrate technique insights in output | output_formatter.py | 2h | 02 |
+| 04 | S-2: Unified verdict + learning loop | Merge verdict_generator into reasoner Call 5 | strategic_reasoner.py, verdict_generator.py | 4h | 02 |
+| 05 | S-2: Prediction feedback wire | outcome_tracker → prediction_engine → weights | think_runner.py, calibration_config.py | 3h | 04 |
+| 06 | S-3: Operator personas + MTDE uncap | Add operator voices, feed techniques to personas | persona_debate.py, adversarial_orchestrator.py, sbe_bridge.py | 3h | 02,03 |
+| 07 | Integration test + regression | Full pipeline test on KVision case | tests/ | 2h | 02-06 |
+
+**Total: ~900 LOC new/modified, 12-16h**
+
+## Architecture: Before vs After
+
+```
+BEFORE (current — orphaned):
+ThinkRunner → SynthesisEngine → StrategicReasoner (5 LLM, NO technique input)
+                               → TechniqueOrch (15 T00-T14, results stored but UNUSED)
+                               → SBEBridge (MTDE capped at 50 tokens)
+                               → VerdictGenerator (NEVER CALLED)
+                               → PredictionEngine (NEVER CALLED)
+
+AFTER (wired):
+ThinkRunner → SynthesisEngine → TechniqueOrch (15 T00-T14)
+                                     ↓ technique_results
+                               → StrategicReasoner (5 LLM, RECEIVES techniques + learning)
+                                     ↓ merged verdict (includes VerdictGenerator logic)
+                               → PredictionEngine (receives outcome, updates Bayesian priors)
+                                     ↓ calibrated weights
+                               → OutputFormatter (narrates technique insights + strategic reasoning)
+                               → AdversarialOrchestrator (personas get technique context)
+```
+
+## Key Constraints
+- Target repo: `D:/code/invesments/master_investments/.claude/lib/intelligence/`
+- Plan repo: `D:/code/invesments/master_investments_mmo/plans/`
+- Keep files under 200 lines
+- All existing 13+ test files must still pass
+- No new external dependencies
+- StrategicReasoner stays at max 5 LLM calls (budget unchanged)
+
+## Phase Details
+- [Phase 01](phase-01-research-verify-wiring.md) — Verify current data flow, confirm orphan points
+- [Phase 02](phase-02-technique-to-reasoner.md) — S-1: Wire technique_results into StrategicReasoner
+- [Phase 03](phase-03-technique-to-output.md) — S-1: Wire technique insights into OutputFormatter
+- [Phase 04](phase-04-unified-verdict-learning.md) — S-2: Merge VerdictGenerator into Reasoner Call 5
+- [Phase 05](phase-05-prediction-feedback-wire.md) — S-2: Wire prediction feedback loop
+- [Phase 06](phase-06-operator-personas-mtde.md) — S-3: Operator personas + MTDE uncap
+- [Phase 07](phase-07-integration-test.md) — Full pipeline regression test

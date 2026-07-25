@@ -1,0 +1,92 @@
+---
+phase: 4
+title: "Brain 3 Anomaly Cross-Reference"
+status: pending
+priority: P1
+effort: "2d"
+dependencies: [1, 2, 3]
+---
+
+# Phase 4: Brain 3 — Anomaly Cross-Reference
+
+## Overview
+
+Triangulate signals from Brain 1 (price deltas) + Brain 2 (forced flows) + founder profile + historical anomalies → find NON-OBVIOUS intersections. Each intersection becomes a scored AnomalyCard with specific margin calculations, contacts, and outreach scripts.
+
+## Requirements
+
+- Functional: apply 5 intersection rules, score each anomaly (score × margin × fit × urgency), compare with historical anomalies for delta_trend, generate AnomalyCards with contacts
+- Non-functional: deterministic rule application, no additional web calls (uses Brain 1+2 outputs only), reproducible scoring
+
+## Architecture
+
+```
+AnomalyCrossReferencer
+  ├── cross_reference(deltas, flows, founder, graph, history) → list[AnomalyCard]
+  │   ├── Rule 1: forced_flow creates delta (regulation + pricing gap in same market)
+  │   ├── Rule 2: delta + founder access (language/location match)
+  │   ├── Rule 3: forced_flow + founder expertise (domain match)
+  │   ├── Rule 4: historical persistence (same delta in DuckDB, not shrunk >20%)
+  │   ├── Rule 5: convergence (3+ independent signals → same market/position)
+  │   ├── Score: anomaly_score × margin × founder_fit × urgency
+  │   └── Output: ranked list[AnomalyCard]
+  └── No web calls — pure computation on Brain 1+2 outputs
+```
+
+## Related Code Files
+
+- Create: `.claude/lib/intelligence/brains/anomaly_crossref.py`
+- Create: `.claude/lib/intelligence/brains/tests/test_anomaly_crossref.py`
+- Read: `.claude/lib/intelligence/brains/models.py` (Phase 1)
+- Read: `.claude/lib/intelligence/store/anomaly_store.py` (Phase 1)
+
+## Implementation Steps
+
+1. Implement `AnomalyCrossReferencer.__init__(store: AnomalyStore)` — loads historical anomalies
+2. Implement 5 intersection rule functions:
+   - `_rule_forced_creates_delta(delta, flow)` → bool: same market/industry
+   - `_rule_delta_founder_access(delta, founder)` → float (0-1): language overlap, location proximity
+   - `_rule_flow_founder_expertise(flow, founder)` → float (0-1): domain expertise match
+   - `_rule_historical_persistence(delta_or_flow, history)` → float: if same entity in history, not shrunk >20% → boost
+   - `_rule_convergence(signals: list)` → float: 3+ independent signals → highest score
+3. Implement `_score_anomaly(card)`:
+   - `anomaly_score` = weighted combination of triggered rules (0-1)
+   - `founder_fit` = average of Rule 2 + Rule 3 scores
+   - `urgency` = from ForcedFlow deadline_urgency (or 0.5 for pure deltas)
+   - `final_rank` = anomaly_score × (margin_per_unit/1000) × founder_fit × urgency
+4. Implement `_design_position(delta, flow, founder)`:
+   - Map to position_type: BROKER/ARBITRAGE/INTELLIGENCE/AGGREGATOR
+   - Generate action, supply_side, demand_side, channel
+5. Implement `_generate_contacts(card)` → list of 5 contact templates:
+   - 3 demand-side contact templates with role/industry/outreach channel
+   - 2 supply-side contact templates
+   - Outreach script < 50 words
+6. Implement `cross_reference()` main function:
+   - For each delta × flow combination: test all 5 rules
+   - For standalone deltas (no matching flow): test Rules 2, 4, 5
+   - For standalone flows (no matching delta): test Rules 3, 4, 5
+   - Create AnomalyCard for each triggered combination
+   - Score and rank all cards
+   - Set kill_criteria and deadline per card
+7. Write tests:
+   - `test_rule_forced_creates_delta`: matching market → True
+   - `test_rule_founder_access`: VN founder + VN market = high fit
+   - `test_rule_convergence`: 3 signals → highest score
+   - `test_historical_persistence`: old anomaly not shrunk → boost
+   - `test_scoring_formula`: known inputs → correct rank
+   - `test_position_design`: delta type → correct position_type
+   - `test_contact_generation`: 5 contacts with scripts
+
+## Success Criteria
+
+- [ ] All 5 intersection rules implemented and tested
+- [ ] Scoring formula produces deterministic results for same inputs
+- [ ] Historical comparison: loads from DuckDB, computes delta_trend
+- [ ] Each AnomalyCard has: position_type, margin calc, 5 contacts, outreach script
+- [ ] No web calls — pure computation
+- [ ] >=80% coverage
+
+## Risk Assessment
+
+- **False intersections:** Rule 1 may match unrelated regulation + delta in same market. Mitigation: require industry overlap, not just geography overlap.
+- **Founder profile quality:** Garbage in → garbage out. Mitigation: FounderProfile validation in Phase 1 models, warn if sparse.

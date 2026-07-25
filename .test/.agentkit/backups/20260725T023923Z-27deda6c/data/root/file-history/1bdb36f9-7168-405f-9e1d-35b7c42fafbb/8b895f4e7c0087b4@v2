@@ -1,0 +1,147 @@
+"""
+ContradictionDetector — flags conflicting conclusions between resolved atoms.
+Rule-based: checks known incompatible feature combinations.
+"""
+
+from dataclasses import dataclass
+from typing import Optional
+
+from .atomic_resolver import Resolution
+
+
+@dataclass
+class Contradiction:
+    atom_a: str
+    atom_b: str
+    rule: str
+    severity: str  # HIGH, MEDIUM, LOW
+
+    def to_dict(self) -> dict:
+        return {
+            "atom_a": self.atom_a,
+            "atom_b": self.atom_b,
+            "rule": self.rule,
+            "severity": self.severity,
+        }
+
+
+CONTRADICTION_RULES = [
+    {
+        "name": "network_effect_crowded_market",
+        "category_a": "moat",
+        "pattern_a": "network",
+        "category_b": "competitor",
+        "pattern_b_min_count": 20,
+        "severity": "HIGH",
+        "description": "Claims network effect moat but 20+ competitors exist",
+    },
+    {
+        "name": "low_capital_huge_tam",
+        "category_a": "financial",
+        "pattern_a": "entry_capital=low",
+        "category_b": "market_size",
+        "pattern_b": "tam",
+        "severity": "MEDIUM",
+        "description": "Low entry capital targeting billion-dollar TAM — suspicious",
+    },
+    {
+        "name": "high_failure_no_kills",
+        "category_a": "base_rate",
+        "pattern_a_threshold": 70,
+        "category_b": "kill",
+        "pattern_b": "No kill signals",
+        "severity": "HIGH",
+        "description": "Failure rate >70% but no kill signals matched — data gap",
+    },
+    {
+        "name": "no_moat_high_score",
+        "category_a": "moat",
+        "pattern_a": "none",
+        "category_b": "compound",
+        "pattern_b": "Compound via",
+        "severity": "MEDIUM",
+        "description": "No moat but claims compound mechanism",
+    },
+    {
+        "name": "labor_leverage_passive",
+        "category_a": "leverage",
+        "pattern_a": "labor",
+        "category_b": "compound",
+        "pattern_b": "Compound via",
+        "severity": "MEDIUM",
+        "description": "Labor leverage contradicts compound/passive claims",
+    },
+]
+
+
+class ContradictionDetector:
+    def detect(self, resolutions: list[Resolution]) -> list[Contradiction]:
+        by_category: dict[str, list[Resolution]] = {}
+        for r in resolutions:
+            by_category.setdefault(r.question.category, []).append(r)
+
+        contradictions = []
+        for rule in CONTRADICTION_RULES:
+            c = self._check_rule(rule, by_category)
+            if c:
+                contradictions.append(c)
+        return contradictions
+
+    def _check_rule(self, rule: dict, by_cat: dict) -> Optional[Contradiction]:
+        cat_a = rule.get("category_a", "")
+        cat_b = rule.get("category_b", "")
+        items_a = by_cat.get(cat_a, [])
+        items_b = by_cat.get(cat_b, [])
+
+        if not items_a or not items_b:
+            return None
+
+        a_match = self._matches_pattern(items_a, rule)
+        b_match = self._matches_pattern_b(items_b, rule)
+
+        if a_match and b_match:
+            return Contradiction(
+                atom_a=a_match.question.text,
+                atom_b=b_match.question.text,
+                rule=rule["description"],
+                severity=rule["severity"],
+            )
+        return None
+
+    def _matches_pattern(self, items: list[Resolution], rule: dict) -> Optional[Resolution]:
+        pattern = rule.get("pattern_a", "")
+        threshold = rule.get("pattern_a_threshold")
+
+        for item in items:
+            if not item.answer:
+                continue
+            if threshold is not None:
+                try:
+                    parts = item.answer.split("%")[0].split(":")
+                    rate_str = parts[-1].strip().rstrip("%")
+                    rate = float(rate_str)
+                    if rate >= threshold:
+                        return item
+                except (ValueError, IndexError):
+                    pass
+            elif pattern and pattern.lower() in item.answer.lower():
+                return item
+        return None
+
+    def _matches_pattern_b(self, items: list[Resolution], rule: dict) -> Optional[Resolution]:
+        pattern = rule.get("pattern_b", "")
+        min_count = rule.get("pattern_b_min_count")
+
+        for item in items:
+            if not item.answer:
+                continue
+            if min_count is not None:
+                try:
+                    nums = [int(s) for s in item.answer.split() if s.isdigit()]
+                    if any(n >= min_count for n in nums):
+                        return item
+                except ValueError:
+                    pass
+            elif pattern and pattern.lower() in item.answer.lower():
+                return item
+        return None

@@ -1,0 +1,109 @@
+---
+phase: 4
+title: Live Session and Quality Scorecard
+status: completed
+priority: P1
+effort: 45min
+dependencies:
+  - 3
+---
+
+# Phase 4: Live Session and Quality Scorecard
+
+## Overview
+
+Run a real 5-min Claude Code session with hooks installed, sync to cloud, verify data appears in dashboard, then compile quality scorecard into a final report.
+
+## Requirements
+
+- Functional: End-to-end data flow proven (CLI → local SQLite → sync → Cloud → Dashboard)
+- Non-functional: Report suitable for investor presentation
+
+## Related Code Files
+
+- Run: `codeflow init` (install hooks)
+- Run: `codeflow sync --once` (push events to cloud)
+- Create: `plans/reports/e2e-test-report.md` (final report)
+
+## Implementation Steps
+
+### Part A: Live Session (5 min)
+
+1. Ensure hooks installed: `codeflow init`
+2. Open a Claude Code session in the codeflow repo
+3. Perform typical dev tasks for ~5 minutes:
+   - Read files, grep for patterns, run git status/diff
+   - Run tests, check build
+   - These are READ-HEAVY operations that trigger dedup + compression
+4. Exit Claude Code session
+5. Check local stats: `codeflow stats` — should show new savings
+6. Check waste: `codeflow stats --waste` — should detect patterns if any
+7. Sync to cloud: `codeflow sync --once --api-url http://localhost:8080`
+8. Refresh dashboard — new events should appear
+
+### Part B: Quality Scorecard
+
+Compile all metrics into `plans/reports/e2e-test-report.md`:
+
+```markdown
+# CODEFLOW E2E Test Report — 2026-06-04
+
+## System Status
+| Component | Status | Version |
+|-----------|--------|---------|
+| CLI       | ✅/❌   | 0.1.0   |
+| Cloud API | ✅/❌   | docker  |
+| Dashboard | ✅/❌   | next.js |
+| ClickHouse| ✅/❌   | 24.8    |
+
+## Auth Hardening Verification
+| Test | Expected | Actual |
+|------|----------|--------|
+| No auth → 401 | 401 | ? |
+| X-Tenant-ID (dev mode) | 200 | ? |
+| Stripe webhook (no auth) | 503 | ? |
+| /healthz (no auth) | 200 | ? |
+
+## CLI Benchmark Results
+(paste from benchmark-report.md)
+
+## Live Session Results
+| Metric | Value |
+|--------|-------|
+| Session duration | ~5 min |
+| Total events | ? |
+| Tokens saved | ? |
+| Savings % | ? |
+| Waste patterns detected | ? |
+
+## Quality Scorecard
+| Metric | Target | Actual | Pass? |
+|--------|--------|--------|-------|
+| Avg savings % | >40% | ? | ? |
+| Latency p50 | <5ms | ? | ? |
+| Fail-open rate | 0% | ? | ? |
+| Dedup hit rate | >90% | ? | ? |
+| E2E flow | works | ? | ? |
+| Test count | >100 | 161 | ✅ |
+
+## Verdict: GO / NO-GO
+```
+
+### Part C: Cleanup
+
+1. `codeflow uninit` (remove hooks if not wanted permanently)
+2. Optionally `docker-compose down` to stop cloud stack
+
+## Success Criteria
+
+- [ ] Live session produces real savings events
+- [ ] `codeflow sync --once` pushes events to cloud successfully
+- [ ] Dashboard shows new events from live session (not just seed data)
+- [ ] Quality scorecard has all cells filled
+- [ ] Verdict is GO (all targets met)
+
+## Risk Assessment
+
+- **Sync to cloud:** CLI sync may fail if API URL or auth not configured correctly. Pass `--api-url` flag explicitly.
+- **Live session variability:** Actual savings depend on what Claude Code does. 5-min session should generate 10-30 events minimum.
+- **Dashboard real-time:** WebSocket may not update immediately. Refresh page to verify.

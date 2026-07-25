@@ -1,0 +1,239 @@
+---
+phase: 2
+title: "Cloud MVP (Go Ingest + ClickHouse + React Dashboard)"
+status: pending
+priority: P1
+effort: "4 weeks"
+dependencies: [1]
+---
+
+# Phase 2: Cloud MVP
+
+## Overview
+
+Build cloud backend: Go ingest API (direct to ClickHouse Cloud, NO NATS), React/Next.js dashboard with cost attribution, WorkOS auth, and Rust sync daemon. First revenue at Week 8. Deploy on Railway/Fly.io (no K8s). Manual billing for first 10 customers (no Stripe yet).
+
+**Red team changes applied:**
+- NO NATS JetStream — direct Go→ClickHouse Cloud batch insert. NATS added in Phase 3 when waste detector consumer exists
+- NO self-managed ClickHouse cluster — ClickHouse Cloud single instance. Scale to cluster when >1M events/day
+- NO Kubernetes — deploy Go service on Railway or Fly.io. K8s when >10 services
+- NO Stripe — manual invoicing for first 10 Pro customers. Stripe in Phase 3
+- Tenant isolation: Go middleware enforces tenant_id from JWT (not ClickHouse row policies — row policies broken for shared-service arch)
+- Server MUST override client-supplied tenant_id from auth context — never trust client protobuf tenant_id
+- Auth: short-lived tokens (24h) via WorkOS, not long-lived device certs. Revocation = token expiry. mTLS deferred to Phase 5 enterprise
+- Dashboard: 3 pages (overview + projects + settings), not 8. Add remaining pages in Phase 3
+- Landing page + docs site: GitHub README is the landing page
+
+## Context
+
+- [Architecture Review](./architecture-review.md) — Ingest Tier, ClickHouse Schema, Dashboard sections
+- Phase 1 provides: protobuf event schema, mmap ring buffer, CLI binary
+
+## Requirements
+
+**Functional:**
+- Sync daemon in CLI: drain mmap ring buffer → cloud API (adaptive batching)
+- Go ingest API: receive events, validate schema, rate-limit, publish to NATS
+- NATS JetStream: durable event streams per tenant, 7-day retention
+- Analytics writer: NATS consumer → ClickHouse batch insert
+- ClickHouse: events table + 5 materialized views for dashboard queries
+- Row-level tenant isolation via ClickHouse row policies
+- React dashboard: 8 pages (overview, projects, developers, productivity, waste, security, policies, settings)
+- WorkOS auth: OIDC login, organization → tenant_id mapping, RBAC (admin/manager/dev/viewer)
+- `codeflow login` — authenticate + provision device certificate
+- `codeflow sync` — manual sync trigger
+- `codeflow status` — show sync health
+
+**Non-functional:**
+- Ingest API: <10ms p99, 50K events/sec/pod
+- ClickHouse dashboard queries: <500ms p99 (via materialized views)
+- Dashboard TTFB: <50ms globally (edge CDN)
+- Dashboard LCP: <1.5s
+- Event pipeline latency: <60s end-to-end (event → dashboard visible)
+- 99.9% uptime SLA for ingest API
+- Offline resilience: CLI works fully offline, syncs on reconnect
+
+## Architecture
+
+```
+CLI (Rust)                    Cloud
+┌──────────┐                 ┌────────────────────────────────────────┐
+│ mmap ring│  HTTP/2+proto   │ Envoy/Caddy → Rate Limiter → Validator│
+│ buffer   │──────────────→  │      │                                 │
+│          │  mTLS           │ NATS JetStream                        │
+│ Sync     │  adaptive batch │      ├→ Analytics Writer → ClickHouse │
+│ Daemon   │  (50ev/30s/512K)│      ├→ (Phase 5: Security Scanner)  │
+└──────────┘                 │      └→ (Phase 3: Waste Detector)     │
+                             │                                        │
+                             │ Query API (Go) ← Dashboard (Next.js)  │
+                             │ WorkOS Auth ← SSO/OIDC                │
+                             └────────────────────────────────────────┘
+```
+
+## Related Code Files
+
+**Create:**
+- `cli/crates/cli/src/sync.rs` — sync daemon (Rust, same binary)
+- `cli/crates/cli/src/auth.rs` — `codeflow login` + device cert provisioning
+- `cloud/` — Go module root
+- `cloud/go.mod` — Go module with dependencies
+- `cloud/cmd/ingest/main.go` — ingest API entry point
+- `cloud/cmd/writer/main.go` — analytics writer (NATS → ClickHouse)
+- `cloud/internal/api/` — HTTP handlers, middleware
+- `cloud/internal/api/handler_events.go` — POST /v1/events endpoint
+- `cloud/internal/api/middleware_auth.go` — mTLS device cert validation
+- `cloud/internal/api/middleware_ratelimit.go` — token-bucket per tenant
+- `cloud/internal/validator/` — protobuf schema validation
+- `cloud/internal/nats/` — NATS JetStream producer/consumer
+- `cloud/internal/clickhouse/` — ClickHouse client, batch inserter
+- `cloud/internal/clickhouse/schema.sql` — DDL for tables + MVs + row policies
+- `cloud/proto/` — shared protobuf definitions (copy from cli/proto/)
+- `cloud/Dockerfile` — multi-stage Go build
+- `cloud/docker-compose.yml` — local dev stack (NATS + ClickHouse + API)
+- `dashboard/` — Next.js app root
+- `dashboard/package.json`
+- `dashboard/src/app/layout.tsx` — root layout with WorkOS auth
+- `dashboard/src/app/page.tsx` — redirect to /overview
+- `dashboard/src/app/overview/page.tsx` — org-level cost + savings
+- `dashboard/src/app/projects/[id]/page.tsx` — per-project deep dive
+- `dashboard/src/app/developers/[id]/page.tsx` — per-dev metrics
+- `dashboard/src/app/productivity/page.tsx` — PR velocity, cycle time
+- `dashboard/src/app/settings/page.tsx` — team mgmt, billing
+- `dashboard/src/lib/api.ts` — Go Query API client
+- `dashboard/src/lib/auth.ts` — WorkOS AuthKit integration
+- `dashboard/src/components/charts/` — Recharts wrappers for cost/savings/productivity
+- `infra/` — infrastructure configs
+- `infra/k8s/` — Kubernetes manifests (ingest, writer, NATS, ClickHouse)
+- `infra/terraform/` — cloud resources (ClickHouse Cloud, NATS, Vercel)
+
+## Implementation Steps
+
+### Week 1-2: Sync Daemon + Ingest API
+
+1. Implement sync daemon in `cli/crates/cli/src/sync.rs`:
+   - Read events from mmap ring buffer
+   - Adaptive batching: flush on 50 events OR 30s OR 512KB
+   - Protobuf encode → gzip compress → HTTP/2 POST
+   - mTLS with device certificate (provisioned on `codeflow login`)
+   - Exponential retry: 1s → 2s → 4s → 8s → max 5min
+   - Circuit breaker: 5 consecutive failures → store-only mode, retry after 10min
+   - Offline buffer: max 100MB, FIFO drain on reconnect, LRU evict oldest if full
+2. Implement `codeflow login` in `cli/crates/cli/src/auth.rs`:
+   - Open browser for WorkOS OIDC flow
+   - Store auth token + device cert at `~/.config/codeflow/`
+   - Refresh token automatically
+3. Set up Go module (`cloud/go.mod`) with dependencies:
+   - `github.com/nats-io/nats.go` — NATS client
+   - `github.com/ClickHouse/clickhouse-go/v2` — ClickHouse driver
+   - `google.golang.org/protobuf` — protobuf runtime
+   - `github.com/prometheus/client_golang` — metrics
+4. Implement ingest API (`cloud/cmd/ingest/main.go`):
+   - `POST /v1/events` — receive EventBatch protobuf
+   - mTLS device cert validation middleware
+   - Token-bucket rate limiter per tenant (Free: 100/min, Pro: 10K/min)
+   - Protobuf decode + schema version check
+   - Publish to NATS JetStream stream `events.{tenant_id}`
+   - `GET /healthz` — K8s readiness probe
+   - `GET /metrics` — Prometheus metrics endpoint
+   - Graceful shutdown: drain connections + flush NATS
+5. Write Go integration tests: API → NATS → verify message
+
+### Week 3: ClickHouse + Analytics Writer
+
+6. Create ClickHouse schema (`cloud/internal/clickhouse/schema.sql`):
+   - `events` table (ReplicatedMergeTree, partitioned by month)
+   - ORDER BY (tenant_id, project_id, toDate(timestamp), tool_name, event_id)
+   - 5 materialized views: cost_by_project_daily, savings_by_layer_hourly, productivity_by_dev_weekly, waste_by_pattern_daily, security_alerts
+   - Row policy for tenant isolation
+   - TTL: 90 days (Free/Pro), 365 days (Enterprise)
+7. Implement analytics writer (`cloud/cmd/writer/main.go`):
+   - NATS JetStream consumer (durable consumer group)
+   - Batch insert to ClickHouse (10K rows/batch, flush every 5s)
+   - Backpressure: if CH insert fails, NATS Nak + retry
+   - Prometheus metrics: insert rate, latency, error count
+8. Set up docker-compose for local dev:
+   - NATS (with JetStream enabled)
+   - ClickHouse (single-node dev mode)
+   - Ingest API
+   - Analytics Writer
+9. Write integration tests: event → API → NATS → Writer → ClickHouse → query
+
+### Week 4-5: Dashboard
+
+10. Initialize Next.js app (`dashboard/`):
+    - App Router, TypeScript, Tailwind CSS, shadcn/ui
+    - WorkOS AuthKit for auth (`@workos-inc/authkit-nextjs`)
+    - TanStack Query for server state
+    - Recharts for charts
+11. Implement Go Query API (add to `cloud/cmd/ingest/` or separate service):
+    - `GET /v1/overview?tenant_id=X` — org summary (total cost, savings, devs)
+    - `GET /v1/projects/:id/stats` — per-project cost + savings
+    - `GET /v1/developers/:id/stats` — per-dev efficiency
+    - `GET /v1/productivity?tenant_id=X` — PR velocity, cycle time, acceptance rate
+    - All queries hit materialized views (not raw events table)
+    - JWT auth from WorkOS, extract tenant_id from token
+12. Build dashboard pages:
+    - `/overview` — org-level cards: total tokens saved, cost saved ($), compression ratio, active devs. Line chart: savings over time. Bar chart: savings by layer
+    - `/projects/:id` — per-project: daily cost trend, top commands by waste, dev breakdown
+    - `/developers/:id` — per-dev: session efficiency, tokens/PR, command frequency
+    - `/productivity` — team: PRs merged/week, cycle time trend, build success rate
+    - `/settings` — team invite, role management (admin/manager/dev/viewer), billing link
+13. Implement RBAC in dashboard:
+    - Admin: all pages + settings
+    - Manager: all pages, team settings (no billing)
+    - Developer: own metrics + team aggregates
+    - Viewer: read-only all pages (for CFO/board access)
+
+### Week 6: Polish + Deploy
+
+14. Deploy infrastructure:
+    - ClickHouse Cloud (or self-hosted on Hetzner/GCP for cost)
+    - NATS on K8s (3-node JetStream cluster)
+    - Go services on K8s (2 replicas each, HPA)
+    - Dashboard on Vercel
+15. Set up monitoring:
+    - Prometheus + Grafana for Go services + ClickHouse
+    - Vercel Analytics for dashboard
+    - PagerDuty alerts: ingest error rate >1%, CH replication lag >60s
+16. Load testing (k6):
+    - Target: 50K events/sec sustained for 10 minutes
+    - Verify ClickHouse query performance under load (<500ms p99)
+17. End-to-end test: CLI install → login → coding session → events appear in dashboard
+18. Stripe integration for Pro tier billing ($12/dev/month)
+19. Landing page + docs site for launch
+
+## Success Criteria
+
+- [ ] Sync daemon drains ring buffer within 60s of reconnection
+- [ ] Ingest API handles 50K events/sec/pod with <10ms p99
+- [ ] ClickHouse queries return in <500ms p99 on materialized views
+- [ ] Dashboard loads in <1.5s LCP globally
+- [ ] WorkOS auth: login, org management, RBAC all functional
+- [ ] End-to-end pipeline: event → dashboard visible in <60s
+- [ ] 10+ teams using Pro tier within 4 weeks of launch
+- [ ] $1K+ MRR within 4 weeks
+
+## Risk Assessment
+
+| Risk | Severity | Mitigation |
+|------|----------|------------|
+| ClickHouse Cloud cost exceeds budget | MEDIUM | Start with smallest tier. Monitor usage. Self-host fallback at $2K/mo threshold |
+| NATS message loss | LOW | JetStream durable consumers + R=3 replication |
+| Dashboard performance on large datasets | MEDIUM | Materialized views pre-aggregate. Paginate queries. Add date range filters |
+| WorkOS integration complexity | LOW | AuthKit is well-documented. Fallback: simple JWT if WorkOS is too complex |
+| mTLS certificate management | MEDIUM | Auto-rotate certs. Fallback: API key auth for Phase 2 MVP |
+
+## Security Considerations
+
+- mTLS between CLI and cloud (device certificates)
+- Row-level tenant isolation in ClickHouse
+- JWT auth for dashboard API (WorkOS-issued tokens)
+- No PII stored: developer_id is blake3 hash of email
+- All data in transit: TLS 1.3
+- ClickHouse data at rest: encrypted (cloud-managed keys)
+
+## Next Steps
+
+- Phase 3 adds waste detector NATS consumer + model routing
+- Phase 4 IDE plugins will use same sync daemon path
+- Phase 5 adds security scanner NATS consumer

@@ -1,0 +1,249 @@
+use serde::Serialize;
+use std::path::Path;
+
+use crate::dep_validator::{self, DepStatus};
+use crate::license_checker::{self, CopyleftRisk};
+use crate::security::{self, Action};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub enum Severity {
+    Critical,
+    High,
+    Medium,
+    Low,
+    Info,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub enum FindingKind {
+    Security(String),
+    HallucinatedDep(String),
+    License(String),
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GateFinding {
+    pub file: String,
+    pub line: usize,
+    pub severity: Severity,
+    pub kind: FindingKind,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GateResult {
+    pub findings: Vec<GateFinding>,
+    pub blocked: bool,
+    pub exit_code: i32,
+    pub files_scanned: usize,
+}
+
+pub fn run_gate(files: &[(String, String)]) -> GateResult {
+    let mut findings = Vec::new();
+    let files_scanned = files.len();
+
+    for (file_path, content) in files {
+        let ext = Path::new(file_path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
+
+        // Security scan
+        let sec_result = security::scan(content);
+        for f in &sec_result.findings {
+            let severity = match f.finding_type.severity() {
+                "critical" => Severity::Critical,
+                "high" => Severity::High,
+                "medium" => Severity::Medium,
+                _ => Severity::Low,
+            };
+            findings.push(GateFinding {
+                file: file_path.clone(),
+                line: f.line_number,
+                severity,
+                kind: FindingKind::Security(f.finding_type.name().to_string()),
+                message: format!(
+                    "{}: {} ({})",
+                    f.finding_type.name(),
+                    f.redacted,
+                    if f.action == Action::Block { "blocked" } else { "warning" }
+                ),
+            });
+        }
+
+        // Dependency validation
+        if let Some(lang) = dep_validator::language_from_extension(ext) {
+            let imports = dep_validator::extract_imports(content, &lang);
+            let registry = dep_validator::registry_for_language(&lang);
+            for (pkg, line) in &imports {
+                let status = dep_validator::validate_package(pkg, &registry);
+                if status == DepStatus::Hallucinated {
+                    findings.push(GateFinding {
+                        file: file_path.clone(),
+                        line: *line,
+                        severity: Severity::High,
+                        kind: FindingKind::HallucinatedDep(pkg.clone()),
+                        message: format!(
+                            "hallucinated dependency: '{}' not found on {:?}",
+                            pkg, registry
+                        ),
+                    });
+                }
+            }
+        }
+
+        // License scan
+        let license_findings = license_checker::scan_file(content);
+        for f in &license_findings {
+            let severity = match f.risk {
+                CopyleftRisk::Strong => Severity::High,
+                CopyleftRisk::Weak => Severity::Medium,
+                CopyleftRisk::None => Severity::Info,
+            };
+            findings.push(GateFinding {
+                file: file_path.clone(),
+                line: f.line_number,
+                severity,
+                kind: FindingKind::License(f.pattern.clone()),
+                message: format!("copyleft license detected: {}", f.pattern),
+            });
+        }
+    }
+
+    let blocked = findings
+        .iter()
+        .any(|f| matches!(f.severity, Severity::Critical | Severity::High));
+
+    let exit_code = if blocked { 1 } else { 0 };
+
+    GateResult {
+        findings,
+        blocked,
+        exit_code,
+        files_scanned,
+    }
+}
+
+pub fn run_gate_offline(files: &[(String, String)]) -> GateResult {
+    let mut findings = Vec::new();
+    let files_scanned = files.len();
+
+    for (file_path, content) in files {
+        let sec_result = security::scan(content);
+        for f in &sec_result.findings {
+            let severity = match f.finding_type.severity() {
+                "critical" => Severity::Critical,
+                "high" => Severity::High,
+                "medium" => Severity::Medium,
+                _ => Severity::Low,
+            };
+            findings.push(GateFinding {
+                file: file_path.clone(),
+                line: f.line_number,
+                severity,
+                kind: FindingKind::Security(f.finding_type.name().to_string()),
+                message: format!("{}: {}", f.finding_type.name(), f.redacted),
+            });
+        }
+
+        let license_findings = license_checker::scan_file(content);
+        for f in &license_findings {
+            let severity = match f.risk {
+                CopyleftRisk::Strong => Severity::High,
+                CopyleftRisk::Weak => Severity::Medium,
+                CopyleftRisk::None => Severity::Info,
+            };
+            findings.push(GateFinding {
+                file: file_path.clone(),
+                line: f.line_number,
+                severity,
+                kind: FindingKind::License(f.pattern.clone()),
+                message: format!("copyleft license: {}", f.pattern),
+            });
+        }
+    }
+
+    let blocked = findings
+        .iter()
+        .any(|f| matches!(f.severity, Severity::Critical | Severity::High));
+
+    GateResult {
+        findings,
+        blocked,
+        exit_code: if blocked { 1 } else { 0 },
+        files_scanned,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_gate_pass_clean_code() {
+        let files = vec![
+            ("src/main.rs".to_string(), "fn main() { println!(\"hello\"); }".to_string()),
+        ];
+        let result = run_gate_offline(&files);
+        assert_eq!(result.exit_code, 0);
+        assert!(!result.blocked);
+        assert!(result.findings.is_empty());
+        assert_eq!(result.files_scanned, 1);
+    }
+
+    #[test]
+    fn test_gate_blocked_by_security() {
+        let files = vec![
+            ("config.js".to_string(), "const key = 'AKIAIOSFODNN7EXAMPLE';".to_string()),
+        ];
+        let result = run_gate_offline(&files);
+        assert_eq!(result.exit_code, 1);
+        assert!(result.blocked);
+        assert!(!result.findings.is_empty());
+    }
+
+    #[test]
+    fn test_gate_blocked_by_license() {
+        let files = vec![
+            ("lib.py".to_string(), "# Licensed under GPL-3.0\ndef hello(): pass".to_string()),
+        ];
+        let result = run_gate_offline(&files);
+        assert_eq!(result.exit_code, 1);
+        assert!(result.blocked);
+        let license_findings: Vec<_> = result.findings.iter()
+            .filter(|f| matches!(f.kind, FindingKind::License(_)))
+            .collect();
+        assert!(!license_findings.is_empty());
+    }
+
+    #[test]
+    fn test_gate_aggregates_findings() {
+        let files = vec![
+            ("a.py".to_string(), "# GPL-3.0\nimport os\n".to_string()),
+            ("b.js".to_string(), "const k = 'AKIAIOSFODNN7EXAMPLE';".to_string()),
+            ("c.rs".to_string(), "fn clean() {}".to_string()),
+        ];
+        let result = run_gate_offline(&files);
+        assert!(result.blocked);
+        assert!(result.findings.len() >= 2);
+        assert_eq!(result.files_scanned, 3);
+    }
+
+    #[test]
+    fn test_gate_exit_code_pass() {
+        let files = vec![
+            ("clean.rs".to_string(), "fn main() {}".to_string()),
+        ];
+        let result = run_gate_offline(&files);
+        assert_eq!(result.exit_code, 0);
+    }
+
+    #[test]
+    fn test_gate_exit_code_blocked() {
+        let files = vec![
+            ("bad.py".to_string(), "# AGPL-3.0\napi_key = \"sk_live_abcdef1234567890abcdef\"".to_string()),
+        ];
+        let result = run_gate_offline(&files);
+        assert_eq!(result.exit_code, 1);
+    }
+}

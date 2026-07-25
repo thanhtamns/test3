@@ -1,0 +1,141 @@
+"""
+SearchDirector — allocates search budget and selects method per hypothesis.
+Deterministic: ranks by priority × information_gain, picks method by value threshold.
+"""
+
+from dataclasses import dataclass, field
+from typing import Callable, Optional
+
+from .money_flow_graph import MoneyFlowGraph, Hypothesis, HYPOTHESIS_UNTESTED
+
+
+TOTAL_BUDGET = 15
+SEED_BUDGET = 3
+TEST_BUDGET = TOTAL_BUDGET - SEED_BUDGET
+
+WEBFETCH_PRIORITY_THRESHOLD = 0.7
+MAX_TESTS_PER_CYCLE = 3
+
+
+@dataclass
+class SearchTask:
+    hypothesis: Hypothesis
+    query: str
+    method: str  # DDG | WEBFETCH
+    priority: float
+    budget_cost: int = 1
+
+    def to_dict(self) -> dict:
+        return {
+            "hypothesis_id": self.hypothesis.id,
+            "query": self.query,
+            "method": self.method,
+            "priority": self.priority,
+        }
+
+
+@dataclass
+class SearchResult:
+    task: SearchTask
+    raw_response: str
+    success: bool = False
+    content_length: int = 0
+
+    def to_dict(self) -> dict:
+        return {
+            "hypothesis_id": self.task.hypothesis.id,
+            "method": self.task.method,
+            "success": self.success,
+            "content_length": self.content_length,
+            "response_preview": self.raw_response[:200] if self.raw_response else "",
+        }
+
+
+class SearchDirector:
+    def __init__(
+        self,
+        research_fn: Callable[[str], str],
+        webfetch_fn: Optional[Callable[[str], str]] = None,
+    ):
+        self.research_fn = research_fn
+        self.webfetch_fn = webfetch_fn
+        self.budget_spent = 0
+        self.budget_total = TEST_BUDGET
+
+    @property
+    def budget_remaining(self) -> int:
+        return max(0, self.budget_total - self.budget_spent)
+
+    def plan_searches(self, graph: MoneyFlowGraph, cycle: int) -> list[SearchTask]:
+        untested = [h for h in graph.untested_hypotheses() if h.cycle_created <= cycle]
+        untested.sort(key=lambda h: h.priority, reverse=True)
+
+        tasks = []
+        budget_for_cycle = min(MAX_TESTS_PER_CYCLE, self.budget_remaining)
+
+        for h in untested[:budget_for_cycle]:
+            method = "WEBFETCH" if (h.priority >= WEBFETCH_PRIORITY_THRESHOLD and self.webfetch_fn) else "DDG"
+            tasks.append(SearchTask(
+                hypothesis=h,
+                query=h.test_query,
+                method=method,
+                priority=h.priority,
+            ))
+        return tasks
+
+    def execute(self, tasks: list[SearchTask]) -> list[SearchResult]:
+        results = []
+        for task in tasks:
+            if self.budget_remaining <= 0:
+                break
+
+            raw = self._execute_single(task)
+            self.budget_spent += task.budget_cost
+
+            results.append(SearchResult(
+                task=task,
+                raw_response=raw,
+                success=bool(raw and len(raw) > 50),
+                content_length=len(raw) if raw else 0,
+            ))
+        return results
+
+    def _execute_single(self, task: SearchTask) -> str:
+        try:
+            if task.method == "WEBFETCH" and self.webfetch_fn:
+                return self.webfetch_fn(task.query)
+            return self.research_fn(task.query)
+        except Exception:
+            return ""
+
+    def narrow_query(self, task: SearchTask) -> SearchTask:
+        """Rewrite a failed query with narrower scope for retry."""
+        original = task.query
+        narrowing_suffixes = [
+            " pricing revenue cost",
+            " company size employees",
+            " market share percentage",
+            " founded year location",
+        ]
+        suffix_idx = hash(original) % len(narrowing_suffixes)
+        narrowed = original.split('"')
+        if len(narrowed) >= 2:
+            entity = narrowed[1]
+            new_query = f'"{entity}"{narrowing_suffixes[suffix_idx]}'
+        else:
+            new_query = f"{original}{narrowing_suffixes[suffix_idx]}"
+
+        return SearchTask(
+            hypothesis=task.hypothesis,
+            query=new_query,
+            method="DDG",
+            priority=task.priority * 0.8,
+            budget_cost=1,
+        )
+
+    def budget_report(self) -> dict:
+        return {
+            "total": self.budget_total,
+            "spent": self.budget_spent,
+            "remaining": self.budget_remaining,
+        }

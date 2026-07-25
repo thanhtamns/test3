@@ -1,0 +1,225 @@
+---
+phase: 7
+title: "Tests and Validation"
+status: pending
+priority: P1
+effort: "3h"
+dependencies: [1, 2, 3, 4, 5]
+---
+
+# Phase 7: Tests and Validation
+
+## Overview
+
+Update existing test suite + add new tests for capital deployment paradigm. Covers all 4 modified scripts + audit schema. Must pass 100% before merge.
+
+## Requirements
+
+- Functional: Update `test_leverage_scoring.py` → rename to `test_capital_deployment_scoring.py`
+- Functional: New tests for classifier track names (MICRO_DEPLOY, ASSET_BUILDER)
+- Functional: New tests for DQ generator capital questions
+- Functional: New tests for quality scorer `check_capital_deployment()`
+- Functional: New tests for DEPLOY_CANDIDATE verdict class
+- Functional: Existing tests updated for new grade thresholds (180 max)
+- Non-functional: All 118+ existing tests still pass (no regression)
+
+## Related Code Files
+
+- Modify: `tests/stage0/test_leverage_scoring.py` → rename + expand
+- Modify: any other test files referencing old track names or thresholds
+- Create: `tests/stage0/test_capital_deployment.py` (if renaming is cleaner as new file)
+
+## Implementation Steps
+
+### A. Capital-Path Classifier Tests
+
+```python
+class TestCapitalDeploymentClassifier(unittest.TestCase):
+
+    def test_tier_0_default_track_is_micro_deploy(self):
+        result = classify({"capital_usd": 500})
+        self.assertEqual(result["track"], "MICRO_DEPLOY")
+
+    def test_tier_0_has_deployment_budget(self):
+        result = classify({"capital_usd": 500})
+        self.assertEqual(result["deployment_budget"], 500)
+
+    def test_tier_0_has_asset_slots(self):
+        result = classify({"capital_usd": 500})
+        self.assertGreaterEqual(result["asset_slots"], 3)
+
+    def test_tier_0_has_per_slot_budget(self):
+        result = classify({"capital_usd": 500})
+        expected = 500 // result["asset_slots"]
+        self.assertAlmostEqual(result["per_slot_budget"], expected, delta=1)
+
+    def test_tier_0_no_product_dev_removed(self):
+        result = classify({"capital_usd": 500})
+        self.assertNotIn("no_product_dev", result["constraints"])
+
+    def test_tier_0_no_cash_first(self):
+        result = classify({"capital_usd": 500})
+        self.assertNotIn("cash_first", result["constraints"])
+
+    def test_tier_0_sleep_test_required(self):
+        result = classify({"capital_usd": 500})
+        self.assertTrue(result["constraints"].get("sleep_test_required"))
+
+    def test_tier_0_max_founder_hours(self):
+        result = classify({"capital_usd": 500})
+        self.assertLessEqual(result["constraints"]["max_founder_hours_post_setup"], 5)
+
+    def test_old_track_alias_cashflow_seed(self):
+        self.assertIn("CASHFLOW_SEED", TRACK_ALIASES)
+
+    def test_tier_2_unchanged(self):
+        result = classify({"capital_usd": 10000})
+        self.assertEqual(result["track"], "PRODUCT")
+        self.assertNotIn("deployment_budget", result)
+```
+
+### B. DQ Generator Tests
+
+```python
+class TestDQCapitalQuestions(unittest.TestCase):
+
+    def test_tier_0_has_deploy_budget(self):
+        result = generate("TIER_0")
+        codes = [q["code"] for q in result["questions"]]
+        self.assertIn("DEPLOY_BUDGET", codes)
+
+    def test_tier_0_has_roi_target(self):
+        result = generate("TIER_0")
+        codes = [q["code"] for q in result["questions"]]
+        self.assertIn("ROI_TARGET", codes)
+
+    def test_tier_0_no_first_500(self):
+        result = generate("TIER_0")
+        codes = [q["code"] for q in result["questions"]]
+        self.assertNotIn("FIRST_500", codes)
+
+    def test_tier_0_no_time_to_cash(self):
+        result = generate("TIER_0")
+        codes = [q["code"] for q in result["questions"]]
+        self.assertNotIn("TIME_TO_CASH", codes)
+
+    def test_tier_0_still_has_leverage(self):
+        result = generate("TIER_0")
+        codes = [q["code"] for q in result["questions"]]
+        self.assertIn("LEVERAGE", codes)
+
+    def test_tier_2_unchanged(self):
+        result = generate("TIER_2")
+        codes = [q["code"] for q in result["questions"]]
+        self.assertIn("WINNER", codes)
+        self.assertIn("LEVERAGE", codes)
+
+    def test_deploy_budget_has_kill_signal(self):
+        q = DECISION_QUESTIONS["DEPLOY_BUDGET"]
+        self.assertIn("kill_signal", q)
+
+    def test_deprecated_questions_exist(self):
+        # Old questions still accessible for backward compat
+        self.assertIn("FIRST_500", DEPRECATED_QUESTIONS)
+        self.assertIn("TIME_TO_CASH", DEPRECATED_QUESTIONS)
+```
+
+### C. Quality Score Tests
+
+```python
+class TestCapitalDeploymentScoring(unittest.TestCase):
+
+    def test_full_capital_deployment_scores_20(self):
+        text = (
+            "ROI: 40%/mo\n"
+            "deploy_cost: $200\n"
+            "Sleep test used as filter — only sleep-passing models included\n"
+            "Portfolio: 5 micro-assets with 30-day kill criteria\n"
+            "founder hours post-setup: <2h/week"
+        )
+        result = check_capital_deployment(text)
+        self.assertEqual(result["score"], 20)
+        self.assertEqual(result["max"], 20)
+
+    def test_zero_signals_scores_zero(self):
+        text = "Standard business analysis without capital deployment language."
+        result = check_capital_deployment(text)
+        self.assertEqual(result["score"], 0)
+
+    def test_labor_penalty_still_fires(self):
+        text = "Q5-LEVERAGE: LABOR\nNo staircase path."
+        result = check_capital_deployment(text)
+        self.assertIn("PENALTY", result["detail"])
+
+    def test_grade_a_at_140(self):
+        self.assertEqual(grade(140), "A")
+
+    def test_grade_b_at_139(self):
+        self.assertEqual(grade(139), "B")
+
+    def test_grade_c_at_95(self):
+        self.assertEqual(grade(95), "C")
+
+    def test_max_is_180(self):
+        result = score_verdict("minimal")
+        self.assertIn("180", result["grade_map"])
+
+    def test_dimension_key_is_capital_deployment(self):
+        result = score_verdict("minimal")
+        self.assertIn("capital_deployment", result["dimensions"])
+        self.assertNotIn("leverage_classification", result["dimensions"])
+```
+
+### D. Verdict Class Tests
+
+```python
+class TestDeployCandidateVerdict(unittest.TestCase):
+
+    def test_deploy_candidate_in_valid_verdicts(self):
+        self.assertIn("DEPLOY_CANDIDATE", VALID_VERDICTS)
+
+    def test_all_original_verdicts_still_present(self):
+        for v in ["KILL", "SIDE_HUSTLE", "SIDE_HUSTLE_WITH_STAIRCASE",
+                   "MOUNTAIN_CANDIDATE", "INSUFFICIENT_SIGNAL"]:
+            self.assertIn(v, VALID_VERDICTS)
+```
+
+### E. Audit Schema Tests
+
+```python
+class TestAuditSchemaCapitalDeployment(unittest.TestCase):
+
+    def test_weights_sum_to_one(self):
+        total = sum(d["weight"] for d in schema["dimensions"].values())
+        self.assertAlmostEqual(total, 1.0, places=2)
+
+    def test_leverage_group_still_exists(self):
+        self.assertIn("leverage", schema["dimensions"])
+```
+
+## Implementation Steps
+
+1. Create `tests/stage0/test_capital_deployment.py` with all test classes above
+2. Update `tests/stage0/test_leverage_scoring.py`:
+   - Update grade threshold tests (136→140 for A, etc.)
+   - Update dimension key test (leverage_classification → capital_deployment)
+   - Update max score test (175→180)
+   - Keep leverage-specific tests that still apply
+3. Run full test suite: `pytest tests/stage0/ -v`
+4. Fix any failures from Phase 1-5 changes
+5. Run broader repo tests: `pytest tests/ -v` to check no regression
+6. Verify test count: should be 118+ (existing) + ~25 (new) = 143+
+
+## Success Criteria
+
+- [ ] All new tests pass
+- [ ] All existing tests pass (0 regressions)
+- [ ] Test count >= 140
+- [ ] No test uses hardcoded old track names without alias resolution
+- [ ] No test references old grade thresholds (136/120/93/71)
+- [ ] Coverage: every new function has at least 3 tests
+
+## Risk Assessment
+
+- **Old tests break from renamed tracks/dimensions:** Expected. Update old tests to match new names. Keep backward-compat tests for aliases
+- **Import paths change:** Unlikely — scripts stay in same directory. Only function/constant names change

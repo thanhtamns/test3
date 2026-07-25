@@ -1,0 +1,282 @@
+"""Tests for Micro-Decomposition Engine Phase 1: Decomposer + Dimension Registry."""
+
+import pytest
+from unittest.mock import MagicMock
+
+from ..decomposer import Decomposer, DecompositionTree
+from ..dimension_registry import (
+    DIMENSION_REGISTRY, QUESTION_TYPE_DIMENSIONS, Dimension,
+    get_dimensions, load_evolved_weights,
+)
+from ..micro_query_generator import (
+    MAX_QUERIES_PER_DIMENSION, MAX_TOTAL_QUERIES,
+    MicroQuery, MicroQueryGenerator,
+)
+from ..query_classifier import QueryClassifier, ClassificationResult
+
+
+# ── QueryClassifier ──────────────────────────────────────────────────────────
+
+
+class TestQueryClassifier:
+    def setup_method(self):
+        self.classifier = QueryClassifier()
+
+    def test_classify_career_path(self):
+        result = self.classifier.classify("How to become a fund director by age 25?")
+        assert result.query_type == "career_path"
+        assert result.confidence > 0.2
+
+    def test_classify_deal_analysis(self):
+        result = self.classifier.classify("Should I invest in this startup? Series A valuation seems high.")
+        assert result.query_type == "deal_analysis"
+
+    def test_classify_market_entry(self):
+        result = self.classifier.classify("How to enter market and start selling SaaS in Vietnam?")
+        assert result.query_type == "market_entry"
+
+    def test_classify_competitor_audit(self):
+        result = self.classifier.classify("Who are the competitors vs our product?")
+        assert result.query_type == "competitor_audit"
+
+    def test_classify_wealth_strategy(self):
+        result = self.classifier.classify("How to reach $10M net worth through compound passive income?")
+        assert result.query_type == "wealth_strategy"
+
+    def test_classify_indirect_strategy(self):
+        result = self.classifier.classify("I can't access the market directly, need an indirect back door approach")
+        assert result.query_type == "indirect_strategy"
+
+    def test_classify_unknown_falls_to_custom(self):
+        result = self.classifier.classify("What is the meaning of life?")
+        assert result.query_type == "custom"
+        assert result.confidence <= 0.2
+
+    def test_extract_context_age(self):
+        result = self.classifier.classify("Achieve like Giang by age 25")
+        assert result.context.get("target_age") == 25
+
+    def test_extract_context_market(self):
+        result = self.classifier.classify("How to enter SaaS market in Vietnam?")
+        assert result.context.get("market") == "Vietnam"
+
+    def test_extract_context_industry_hint(self):
+        result = self.classifier.classify("Start a SaaS business")
+        assert result.context.get("industry") == "SaaS"
+
+    def test_extract_context_person_name(self):
+        result = self.classifier.classify("How to achieve like Giang Trần Minh Thành?")
+        assert "reference_person" in result.context
+
+    def test_extract_context_money(self):
+        result = self.classifier.classify("Build a $100M fund")
+        assert "money_amounts" in result.context
+
+    def test_default_market_is_global(self):
+        result = self.classifier.classify("How to start a business?")
+        assert result.context.get("market") == "global"
+
+    def test_empty_query(self):
+        result = self.classifier.classify("")
+        assert result.query_type == "custom"
+        assert result.confidence <= 0.2
+
+
+# ── DimensionRegistry ────────────────────────────────────────────────────────
+
+
+class TestDimensionRegistry:
+    def test_registry_has_15_plus_dimensions(self):
+        assert len(DIMENSION_REGISTRY) >= 15
+
+    def test_each_dimension_has_templates(self):
+        for name, dim in DIMENSION_REGISTRY.items():
+            assert len(dim.templates) >= 3, f"{name} has fewer than 3 templates"
+
+    def test_all_question_types_have_dimension_mapping(self):
+        expected_types = ["career_path", "deal_analysis", "market_entry",
+                          "competitor_audit", "wealth_strategy", "custom"]
+        for qtype in expected_types:
+            assert qtype in QUESTION_TYPE_DIMENSIONS, f"Missing mapping for {qtype}"
+
+    def test_get_dimensions_returns_weighted_subset(self):
+        dims = get_dimensions("career_path")
+        assert 5 <= len(dims) <= 15
+        for dim in dims:
+            assert dim.weight > 0
+
+    def test_get_dimensions_unknown_type_uses_custom(self):
+        dims = get_dimensions("nonexistent_type")
+        custom_dims = get_dimensions("custom")
+        assert len(dims) == len(custom_dims)
+
+    def test_dimension_weights_are_positive(self):
+        for name, dim in DIMENSION_REGISTRY.items():
+            assert dim.weight > 0, f"{name} has non-positive weight"
+
+    def test_indirect_entry_dimension_exists(self):
+        assert "indirect_entry" in DIMENSION_REGISTRY
+        dim = DIMENSION_REGISTRY["indirect_entry"]
+        assert dim.weight >= 1.0
+        assert len(dim.templates) >= 5
+
+
+# ── MicroQueryGenerator ──────────────────────────────────────────────────────
+
+
+class TestMicroQueryGenerator:
+    def setup_method(self):
+        self.generator = MicroQueryGenerator()
+
+    def test_generate_fills_templates(self):
+        dim = Dimension(name="base_rates", weight=2.0, templates=[
+            "What % of {industry} businesses fail in year 1?",
+        ])
+        context = {"industry": "SaaS", "market": "global"}
+        queries = self.generator.generate(dim, context)
+        assert len(queries) == 1
+        assert "SaaS" in queries[0].text
+        assert queries[0].dimension == "base_rates"
+
+    def test_generate_caps_at_max_per_dimension(self):
+        dim = Dimension(name="test", weight=1.0, templates=[
+            f"Query {i} for {{industry}}?" for i in range(10)
+        ])
+        queries = self.generator.generate(dim, {"industry": "tech"})
+        assert len(queries) <= MAX_QUERIES_PER_DIMENSION
+
+    def test_generate_batch_caps_at_max_total(self):
+        dims = [
+            Dimension(name=f"dim_{i}", weight=1.0, templates=[
+                f"Q{j} for {{industry}}?" for j in range(5)
+            ])
+            for i in range(20)
+        ]
+        queries = self.generator.generate_batch(dims, {"industry": "tech"})
+        assert len(queries) <= MAX_TOTAL_QUERIES
+
+    def test_generate_skips_unfillable_templates(self):
+        dim = Dimension(name="test", weight=1.0, templates=[
+            "Query about {unknown_placeholder}?",
+            "Query about {industry}?",
+        ])
+        queries = self.generator.generate(dim, {"industry": "SaaS"})
+        assert len(queries) == 1
+        assert "SaaS" in queries[0].text
+
+    def test_infer_expected_type_number(self):
+        dim = Dimension(name="test", weight=1.0, templates=[
+            "Average salary for {role}?",
+        ])
+        queries = self.generator.generate(dim, {"role": "developer"})
+        assert queries[0].expected_type == "number"
+
+    def test_infer_expected_type_list(self):
+        dim = Dimension(name="test", weight=1.0, templates=[
+            "Top 5 players in {industry}?",
+        ])
+        queries = self.generator.generate(dim, {"industry": "SaaS"})
+        assert queries[0].expected_type == "list"
+
+    def test_infer_expected_type_boolean(self):
+        dim = Dimension(name="test", weight=1.0, templates=[
+            "Are there regulatory barriers in {industry}?",
+        ])
+        queries = self.generator.generate(dim, {"industry": "fintech"})
+        assert queries[0].expected_type == "boolean"
+
+    def test_verification_hint_present(self):
+        dim = Dimension(name="test", weight=1.0, templates=[
+            "What % fail in {industry}?",
+        ])
+        queries = self.generator.generate(dim, {"industry": "SaaS"})
+        assert queries[0].verification_hint
+
+
+# ── Decomposer ───────────────────────────────────────────────────────────────
+
+
+class TestDecomposer:
+    def setup_method(self):
+        self.decomposer = Decomposer()
+
+    def test_decompose_career_query(self):
+        tree = self.decomposer.decompose(
+            "How to achieve like Giang Trần Minh Thành — $450M fund director at 25?"
+        )
+        assert tree.query_type == "career_path"
+        assert 15 <= tree.total_queries <= 40
+        assert len(tree.dimensions) >= 5
+
+    def test_decompose_market_entry(self):
+        tree = self.decomposer.decompose("How to enter the SaaS market in Vietnam?")
+        assert tree.query_type == "market_entry"
+        assert tree.total_queries > 0
+        assert tree.context.get("market") == "Vietnam"
+
+    def test_decompose_empty_query(self):
+        tree = self.decomposer.decompose("")
+        assert tree.query_type == "custom"
+        assert tree.total_queries == 0
+        assert len(tree.dimensions) == 0
+
+    def test_decompose_none_query(self):
+        tree = self.decomposer.decompose(None)
+        assert tree.total_queries == 0
+
+    def test_decompose_very_long_query(self):
+        long_query = "How to build a SaaS " + "really " * 500 + "good product?"
+        tree = self.decomposer.decompose(long_query)
+        assert tree.total_queries <= MAX_TOTAL_QUERIES
+
+    def test_queries_to_fire_without_resolver(self):
+        tree = self.decomposer.decompose("Build a SaaS product")
+        assert len(tree.queries_to_fire) == tree.total_queries
+        assert tree.cached_count == 0
+
+    def test_decompose_with_resolver_pre_resolves(self):
+        mock_resolver = MagicMock()
+        mock_resolution = MagicMock()
+        mock_resolution.status = "RESOLVED"
+        mock_resolution.confidence = 0.8
+        mock_resolution.answer = "Test answer"
+        mock_resolution.source = "test_source"
+        mock_resolver.resolve.return_value = mock_resolution
+
+        decomposer = Decomposer(resolver=mock_resolver)
+        tree = decomposer.decompose("How to start a SaaS business?")
+        assert tree.cached_count > 0
+        assert len(tree.queries_to_fire) < tree.total_queries
+
+    def test_decompose_with_resolver_low_confidence_not_cached(self):
+        mock_resolver = MagicMock()
+        mock_resolution = MagicMock()
+        mock_resolution.status = "GAP"
+        mock_resolution.confidence = 0.2
+        mock_resolver.resolve.return_value = mock_resolution
+
+        decomposer = Decomposer(resolver=mock_resolver)
+        tree = decomposer.decompose("How to start a SaaS business?")
+        assert tree.cached_count == 0
+
+    def test_to_dict_serialization(self):
+        tree = self.decomposer.decompose("Build a SaaS in Vietnam")
+        d = tree.to_dict()
+        assert "original_query" in d
+        assert "query_type" in d
+        assert "micro_queries" in d
+        assert "total_queries" in d
+        assert "queries_to_fire" in d
+        assert isinstance(d["micro_queries"], list)
+
+    def test_all_query_types_produce_queries(self):
+        test_cases = [
+            ("How to become a CEO by age 30?", "career_path"),
+            ("Should I invest in this Series A deal?", "deal_analysis"),
+            ("Enter the SaaS market in Vietnam", "market_entry"),
+            ("Who are the competitors vs Notion?", "competitor_audit"),
+            ("How to reach $10M net worth through compound wealth?", "wealth_strategy"),
+        ]
+        for query, expected_type in test_cases:
+            tree = self.decomposer.decompose(query)
+            assert tree.total_queries >= 10, f"Too few queries for {expected_type}: {tree.total_queries}"

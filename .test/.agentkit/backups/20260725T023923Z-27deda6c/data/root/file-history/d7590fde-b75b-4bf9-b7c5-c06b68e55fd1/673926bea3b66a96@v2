@@ -1,0 +1,119 @@
+---
+phase: 2
+title: "DQ Generator Capital Questions"
+status: pending
+priority: P1
+effort: "2h"
+dependencies: []
+---
+
+# Phase 2: DQ Generator Capital Questions
+
+## Overview
+
+Replace labor-thinking decision questions (FIRST_500, TIME_TO_CASH, SKILL_MATCH) with capital-deployment questions (DEPLOY_BUDGET, RISK_CAPITAL, ASSET_SCAN, ROI_TARGET). The DQ generator drives Wave 1 agent prompts — changing questions changes what agents SEARCH for.
+
+## Requirements
+
+- Functional: New TIER_0 question codes: DEPLOY_BUDGET, RISK_CAPITAL, ASSET_SCAN, ROI_TARGET, KILL_CRITERIA (reuse existing code)
+- Functional: Remove or deprecate: FIRST_500, TIME_TO_CASH (pure labor questions)
+- Functional: Keep: SKILL_MATCH (useful for asset-building), NETWORK_ENTRY (useful for deal flow), RISK_CAP→rename to RISK_CAPITAL
+- Functional: Keep sophisticated questions: P90_MECHANISM, ARBITRAGE_WINDOW, COMPOUND_ASSET, STAIR_STEP_PATH, SURVIVORSHIP_DELTA, BRIDGE_CAPITAL
+- Non-functional: LEVERAGE question stays in ALL tiers (already shipped)
+
+## Architecture
+
+New questions replace old:
+
+```python
+# OLD: labor questions
+"FIRST_500": "How to earn first $500 from this ecosystem?"
+"TIME_TO_CASH": "Days from today to first payment?"
+
+# NEW: capital questions
+"DEPLOY_BUDGET": {
+    "question": "How much can you LOSE without affecting life? (= deployment budget)",
+    "question_vi": "Bao nhiêu tiền bạn có thể MẤT mà không ảnh hưởng cuộc sống? (= ngân sách triển khai)",
+    "kill_signal": "$0 = no deployment possible, pivot to pure-build assets only",
+    "tiers": ["TIER_0", "TIER_1"],
+},
+"RISK_CAPITAL": {
+    "question": "What % of capital are you willing to lose in 30 days on failed assets?",
+    "question_vi": "Bạn sẵn sàng mất bao nhiêu % vốn trong 30 ngày cho asset thất bại?",
+    "kill_signal": "0% = no risk tolerance, cannot deploy micro-assets",
+    "tiers": ["TIER_0", "TIER_1"],
+},
+"ASSET_SCAN": {
+    "question": "What micro-assets (<$200) can generate revenue WITHOUT you after setup?",
+    "question_vi": "Micro-asset nào (<$200) có thể tạo revenue MÀ KHÔNG CẦN BẠN sau setup?",
+    "kill_signal": "0 assets identified = sleep test impossible at this capital level",
+    "tiers": ["TIER_0"],
+},
+"ROI_TARGET": {
+    "question": "Target ROI: $X deployed → $Y/mo passive. What's your Y/X ratio target?",
+    "question_vi": "Target ROI: triển khai $X → $Y/tháng passive. Tỷ lệ Y/X mục tiêu?",
+    "kill_signal": "Expects >100% monthly ROI = delusional, needs calibration",
+    "tiers": ["TIER_0", "TIER_1", "TIER_2"],
+},
+"ASSET_TYPE": {
+    "question": "Build (code/content) or Buy (domain/template/tool) or Both?",
+    "question_vi": "Build (code/content) hay Buy (domain/template/tool) hay Both?",
+    "kill_signal": "Neither — no deployment path",
+    "tiers": ["TIER_0", "TIER_1"],
+},
+"BUILD_VS_BUY": {
+    "question": "For $500: build 1 custom asset OR buy 3-5 existing micro-assets?",
+    "question_vi": "Với $500: build 1 custom asset HOẶC mua 3-5 micro-asset có sẵn?",
+    "kill_signal": "Neither viable at this budget",
+    "tiers": ["TIER_0", "TIER_1"],
+},
+"COMPOUND_MECHANISM": {
+    "question": "How does profit from Asset A fund/improve Asset B?",
+    "question_vi": "Profit từ Asset A fund/improve Asset B thế nào?",
+    "kill_signal": "No cross-asset compound — portfolio is just a list",
+    "tiers": ["TIER_0", "TIER_1", "TIER_2"],
+},
+```
+
+Update `TIER_QUESTION_CODES`:
+
+```python
+"TIER_0": [
+    # Capital deployment questions (NEW)
+    "DEPLOY_BUDGET", "RISK_CAPITAL", "ASSET_SCAN", "ROI_TARGET",
+    # Keep sophisticated questions
+    "P90_MECHANISM", "ARBITRAGE_WINDOW", "COMPOUND_ASSET",
+    "STAIR_STEP_PATH", "SURVIVORSHIP_DELTA", "BRIDGE_CAPITAL",
+    # Keep universal
+    "LEVERAGE", "KILL_CRITERIA",
+],
+```
+
+## Related Code Files
+
+- Modify: `.claude/skills/business/transaction-layer/nui-hunter/scripts/tier-adjusted-dq-generator.py`
+
+## Implementation Steps
+
+1. Add 5 new question definitions: DEPLOY_BUDGET, RISK_CAPITAL, ASSET_SCAN, ROI_TARGET, ASSET_TYPE, BUILD_VS_BUY, COMPOUND_MECHANISM
+2. Deprecate FIRST_500 and TIME_TO_CASH: move to `DEPRECATED_QUESTIONS` dict (keep for old case JSON compat, remove from TIER_QUESTION_CODES)
+3. Rename RISK_CAP → RISK_CAPITAL (update question text + keep alias)
+4. Update TIER_QUESTION_CODES["TIER_0"] with new codes
+5. Update TIER_QUESTION_CODES["TIER_1"] — keep SERVICE_FLOOR but add DEPLOY_BUDGET, ROI_TARGET, COMPOUND_MECHANISM
+6. TIER_2/TIER_3 unchanged (already capital-oriented)
+7. Verify generate() output structure unchanged (same JSON shape)
+
+## Success Criteria
+
+- [ ] `generate("TIER_0")` returns DEPLOY_BUDGET, RISK_CAPITAL, ASSET_SCAN, ROI_TARGET
+- [ ] `generate("TIER_0")` does NOT return FIRST_500 or TIME_TO_CASH
+- [ ] FIRST_500 and TIME_TO_CASH still exist in DEPRECATED_QUESTIONS (backward compat)
+- [ ] LEVERAGE still present in ALL tiers
+- [ ] `generate("TIER_2")` output unchanged
+- [ ] All new questions have `kill_signal` field
+- [ ] CLI test: `--tier TIER_0` → 12 questions with new codes
+
+## Risk Assessment
+
+- **Stage0 spec references FIRST_500/TIME_TO_CASH by name:** Search stage0.md for these codes. If referenced, update in Phase 5
+- **Wave 1 agents receive DQ codes as prompt injection:** New codes will naturally change what agents search for — this is the DESIRED EFFECT

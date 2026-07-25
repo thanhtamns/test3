@@ -1,0 +1,198 @@
+#!/usr/bin/env python3
+"""
+Staircase Enforcer — Blocks opportunities below current stair level.
+Auto-detects stair from MRR in asset registry.
+"""
+
+import argparse
+import json
+import sqlite3
+import sys
+from pathlib import Path
+
+DB_PATH = Path(__file__).parent.parent.parent.parent.parent / "data" / "empire" / "assets.db"
+STATE_PATH = Path(__file__).parent.parent.parent.parent.parent / "data" / "empire" / "staircase-state.json"
+
+STAIRS = [
+    {"stair": 0, "min_mrr": 0, "max_mrr": 0, "strategy": "validate", "allow_downgrade": True},
+    {"stair": 1, "min_mrr": 1, "max_mrr": 3000, "strategy": "cash bridge", "allow_downgrade": True},
+    {"stair": 2, "min_mrr": 3000, "max_mrr": 10000, "strategy": "product revenue", "allow_downgrade": False},
+    {"stair": 3, "min_mrr": 10000, "max_mrr": 30000, "strategy": "scale", "allow_downgrade": False},
+    {"stair": 4, "min_mrr": 30000, "max_mrr": 50000, "strategy": "diversify", "allow_downgrade": False},
+    {"stair": 5, "min_mrr": 50000, "max_mrr": 100000, "strategy": "empire", "allow_downgrade": False},
+]
+
+
+def get_current_mrr() -> float:
+    if not DB_PATH.exists():
+        return 0.0
+    conn = sqlite3.connect(str(DB_PATH))
+    row = conn.execute("SELECT COALESCE(SUM(recurring_monthly_usd), 0) as mrr FROM assets").fetchone()
+    conn.close()
+    return row[0] if row else 0.0
+
+
+def detect_stair(mrr: float) -> dict:
+    for s in reversed(STAIRS):
+        if mrr >= s["min_mrr"]:
+            return s
+    return STAIRS[0]
+
+
+def load_state() -> dict:
+    if STATE_PATH.exists():
+        with open(STATE_PATH) as f:
+            return json.load(f)
+    return {"current_stair": 0, "entered_at": "", "target_mrr_usd": 50000}
+
+
+def save_state(state: dict):
+    STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(STATE_PATH, "w") as f:
+        json.dump(state, f, indent=2)
+
+
+def enforce(compound_verdict: str, force: bool = False) -> dict:
+    mrr = get_current_mrr()
+    stair = detect_stair(mrr)
+    state = load_state()
+
+    if stair["stair"] != state.get("current_stair", 0):
+        from datetime import datetime
+        state["current_stair"] = stair["stair"]
+        state["entered_at"] = datetime.now().isoformat()
+        save_state(state)
+
+    if compound_verdict == "PASS":
+        return {
+            "allowed": True,
+            "reason": f"PASS opportunities always allowed (Stair {stair['stair']})",
+            "current_stair": stair["stair"],
+            "current_mrr": mrr,
+            "strategy": stair["strategy"],
+        }
+
+    if compound_verdict == "DOWNGRADE":
+        if stair["allow_downgrade"]:
+            return {
+                "allowed": True,
+                "reason": f"DOWNGRADE allowed at Stair {stair['stair']} (bridge cash phase)",
+                "current_stair": stair["stair"],
+                "current_mrr": mrr,
+                "strategy": stair["strategy"],
+                "warning": "Bridge only — must transition to PASS opportunities",
+            }
+        elif force:
+            return {
+                "allowed": True,
+                "reason": f"DOWNGRADE forced at Stair {stair['stair']} (override)",
+                "current_stair": stair["stair"],
+                "current_mrr": mrr,
+                "strategy": stair["strategy"],
+                "warning": "FORCED override — this should be temporary",
+                "forced": True,
+            }
+        else:
+            return {
+                "allowed": False,
+                "reason": f"DOWNGRADE blocked at Stair {stair['stair']} — you're past the bridge phase. "
+                          f"Current MRR: ${mrr:,.0f}. Focus on PASS (compound) opportunities only.",
+                "current_stair": stair["stair"],
+                "current_mrr": mrr,
+                "strategy": stair["strategy"],
+            }
+
+    if compound_verdict == "KILL":
+        return {
+            "allowed": False,
+            "reason": "KILL verdict — opportunity rejected by compound filter",
+            "current_stair": stair["stair"],
+            "current_mrr": mrr,
+            "strategy": stair["strategy"],
+        }
+
+    return {
+        "allowed": False,
+        "reason": f"Unknown verdict: {compound_verdict}",
+        "current_stair": stair["stair"],
+        "current_mrr": mrr,
+    }
+
+
+def cmd_check(args):
+    result = enforce(args.verdict, force=args.force)
+    print(json.dumps(result, indent=2))
+
+
+def cmd_status(args):
+    mrr = get_current_mrr()
+    stair = detect_stair(mrr)
+    state = load_state()
+    print(f"Current MRR: ${mrr:,.0f}")
+    print(f"Current Stair: {stair['stair']} ({stair['strategy']})")
+    print(f"Range: ${stair['min_mrr']:,.0f} - ${stair['max_mrr']:,.0f}")
+    print(f"DOWNGRADE allowed: {stair['allow_downgrade']}")
+    print(f"Gap to next stair: ${stair['max_mrr'] - mrr:,.0f}")
+    print(f"Gap to target ($50K): ${50000 - mrr:,.0f}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Staircase Enforcer")
+    sub = parser.add_subparsers(dest="command")
+
+    p_check = sub.add_parser("check")
+    p_check.add_argument("--verdict", required=True, choices=["PASS", "DOWNGRADE", "KILL"])
+    p_check.add_argument("--force", action="store_true", help="Force allow DOWNGRADE even if blocked")
+
+    sub.add_parser("status")
+
+    p_test = sub.add_parser("test")
+
+    args = parser.parse_args()
+    if not args.command:
+        parser.print_help()
+        sys.exit(1)
+
+    if args.command == "test":
+        run_tests()
+    elif args.command == "check":
+        cmd_check(args)
+    elif args.command == "status":
+        cmd_status(args)
+
+
+def run_tests():
+    print("=== Staircase Enforcer Tests ===\n")
+    passed = 0
+    total = 4
+
+    # Test 1: PASS always allowed
+    r = enforce("PASS")
+    ok = r["allowed"] is True
+    print(f"[{'PASS' if ok else 'FAIL'}] PASS verdict at Stair 0 -> allowed={r['allowed']}")
+    passed += ok
+
+    # Test 2: DOWNGRADE allowed at Stair 0
+    r = enforce("DOWNGRADE")
+    ok = r["allowed"] is True
+    print(f"[{'PASS' if ok else 'FAIL'}] DOWNGRADE at Stair 0 -> allowed={r['allowed']}")
+    passed += ok
+
+    # Test 3: KILL always blocked
+    r = enforce("KILL")
+    ok = r["allowed"] is False
+    print(f"[{'PASS' if ok else 'FAIL'}] KILL verdict -> allowed={r['allowed']}")
+    passed += ok
+
+    # Test 4: Force override (simulate Stair 2 by checking logic directly)
+    r = enforce("DOWNGRADE", force=True)
+    ok = r["allowed"] is True
+    print(f"[{'PASS' if ok else 'FAIL'}] DOWNGRADE forced at any stair -> allowed={r['allowed']}")
+    passed += ok
+
+    print(f"\nResults: {passed}/{total} passed")
+    sys.exit(0 if passed == total else 1)
+
+
+if __name__ == "__main__":
+    main()

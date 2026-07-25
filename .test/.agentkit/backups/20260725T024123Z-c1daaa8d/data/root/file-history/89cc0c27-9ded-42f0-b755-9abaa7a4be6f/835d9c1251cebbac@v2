@@ -1,0 +1,280 @@
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID || "";
+
+export interface OverviewStats {
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_saved: number;
+  savings_pct: number;
+  event_count: number;
+  top_commands: CommandStat[];
+}
+
+export interface CommandStat {
+  command: string;
+  saved: number;
+  count: number;
+}
+
+export interface ProjectSummary {
+  project_dir: string;
+  total_saved: number;
+  total_input: number;
+  event_count: number;
+  savings_pct: number;
+  last_event_at: string;
+}
+
+export interface ProjectDailyStat {
+  day: string;
+  total_saved: number;
+  total_input: number;
+  event_count: number;
+}
+
+export interface ProjectStats {
+  project_dir: string;
+  summary: ProjectSummary;
+  daily: ProjectDailyStat[];
+  top_filters: CommandStat[];
+}
+
+export interface DailySavings {
+  day: string;
+  total_saved: number;
+  total_input: number;
+  event_count: number;
+  compression_saved: number;
+  dedup_saved: number;
+}
+
+async function apiFetch<T>(path: string): Promise<T> {
+  if (!TENANT_ID) {
+    console.error("NEXT_PUBLIC_TENANT_ID not set — API calls will fail");
+  }
+  const res = await fetch(`${API_URL}${path}`, {
+    cache: "no-store",
+    headers: {
+      "X-Tenant-ID": TENANT_ID,
+    },
+  });
+  if (!res.ok) {
+    throw new Error(`API error: ${res.status}`);
+  }
+  return res.json();
+}
+
+export function fetchOverview(): Promise<OverviewStats> {
+  return apiFetch("/v1/overview");
+}
+
+export function fetchProjects(): Promise<ProjectSummary[]> {
+  return apiFetch("/v1/projects");
+}
+
+export function fetchProjectStats(projectDir: string): Promise<ProjectStats> {
+  const normalized = projectDir.replaceAll("\\", "/");
+  const encoded = normalized.replaceAll("/", "|");
+  return apiFetch(`/v1/projects/${encodeURIComponent(encoded)}/stats`);
+}
+
+export function fetchSavingsTrend(days: number = 30): Promise<DailySavings[]> {
+  return apiFetch(`/v1/savings/trend?days=${days}`);
+}
+
+export function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return n.toString();
+}
+
+export function estimateCost(tokens: number): string {
+  // Canonical pricing: cli/crates/core/src/router.rs — Sonnet $3/1M tokens
+  const costPer1k = 0.003;
+  const cost = (tokens / 1000) * costPer1k;
+  if (cost < 0.01) return "<$0.01";
+  return `$${cost.toFixed(2)}`;
+}
+
+export interface WasteReport {
+  pattern_type: string;
+  command: string;
+  total_wasted: number;
+  occurrences: number;
+  session_count: number;
+  suggestion: string;
+}
+
+export interface ProjectWasteScore {
+  project_dir: string;
+  total_wasted: number;
+  total_input: number;
+  waste_pct: number;
+  pattern_count: number;
+}
+
+export function fetchWasteReport(days: number = 30): Promise<WasteReport[]> {
+  return apiFetch(`/v1/waste?days=${days}`);
+}
+
+export function fetchProjectWasteScores(
+  days: number = 30
+): Promise<ProjectWasteScore[]> {
+  return apiFetch(`/v1/waste/projects?days=${days}`);
+}
+
+export interface SecurityAlert {
+  finding_type: string;
+  severity: string;
+  action: string;
+  command: string;
+  redacted_preview: string;
+  detected_at: string;
+  count: number;
+}
+
+export function fetchSecurityAlerts(
+  days: number = 30
+): Promise<SecurityAlert[]> {
+  return apiFetch(`/v1/security/alerts?days=${days}`);
+}
+
+export interface ROISummary {
+  total_input_tokens: number;
+  total_saved: number;
+  estimated_cost_saved: number;
+  event_count: number;
+  project_count: number;
+  days_tracked: number;
+  savings_pct: number;
+  monthly: { month: string; input_tokens: number; tokens_saved: number; event_count: number }[];
+}
+
+export function fetchROISummary(days: number = 90): Promise<ROISummary> {
+  return apiFetch(`/v1/roi?days=${days}`);
+}
+
+export async function exportCSV(days: number = 30): Promise<void> {
+  const res = await fetch(`${API_URL}/v1/export/csv?days=${days}`, {
+    headers: { "X-Tenant-ID": TENANT_ID },
+  });
+  if (!res.ok) throw new Error(`Export failed: ${res.status}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `codeflow-export-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export interface BillingInfo {
+  tenant_id: string;
+  plan: string;
+  status: string;
+}
+
+export function fetchBillingStatus(): Promise<BillingInfo> {
+  return apiFetch("/v1/billing/status");
+}
+
+export async function createCheckout(): Promise<string> {
+  const res = await fetch(`${API_URL}/v1/billing/checkout`, {
+    method: "POST",
+    headers: { "X-Tenant-ID": TENANT_ID },
+  });
+  if (!res.ok) throw new Error(`Checkout failed: ${res.status}`);
+  const data = await res.json();
+  return data.checkout_url;
+}
+
+export function shortProjectName(projectDir: string): string {
+  const parts = projectDir.split(/[/\\]/).filter(Boolean);
+  return parts.length > 0 ? parts[parts.length - 1] : projectDir;
+}
+
+// --- Pillar types (Phase 6) ---
+
+export interface CostByPR {
+  pr_ref: string;
+  total_cost_usd: number;
+  input_tokens: number;
+  output_tokens: number;
+  record_count: number;
+}
+
+export interface ProvenanceSummary {
+  total_records: number;
+  unique_files: number;
+  unique_models: number;
+  ai_percentage: number;
+}
+
+export interface BudgetSummary {
+  total_spent_usd: number;
+  budget_limit_usd: number;
+  latest_action: string;
+  policy_count: number;
+}
+
+export interface QualitySummary {
+  total_findings: number;
+  blocked_count: number;
+  pass_rate: number;
+  by_severity: Record<string, number>;
+  by_check_type: Record<string, number>;
+}
+
+export async function fetchCostByPR(days: number = 90): Promise<CostByPR[]> {
+  const res = await apiFetch<{ by_pr: CostByPR[] }>(`/v1/cost/by-pr?days=${days}`);
+  return res.by_pr || [];
+}
+
+export interface ProvenanceRecord {
+  file_path: string;
+  model_id: string;
+  contributor_type: string;
+}
+
+export async function fetchProvenance(days: number = 90): Promise<ProvenanceSummary> {
+  const res = await apiFetch<{ records: ProvenanceRecord[]; count: number }>(
+    `/v1/provenance?days=${days}`
+  );
+  const records = res.records || [];
+  const files = new Set(records.map((r) => r.file_path));
+  const models = new Set(records.map((r) => r.model_id));
+  const aiCount = records.filter((r) => r.contributor_type === "ai").length;
+  return {
+    total_records: records.length,
+    unique_files: files.size,
+    unique_models: models.size,
+    ai_percentage: records.length > 0 ? (aiCount / records.length) * 100 : 0,
+  };
+}
+
+export function fetchBudgetStatus(): Promise<BudgetSummary> {
+  return apiFetch("/v1/budget/status");
+}
+
+export function fetchQualitySummary(days: number = 90): Promise<QualitySummary> {
+  return apiFetch(`/v1/quality/summary?days=${days}`);
+}
+
+export async function downloadComplianceExport(
+  format: string,
+  days: number = 90
+): Promise<void> {
+  const res = await fetch(
+    `${API_URL}/v1/compliance/export?format=${format}&days=${days}`,
+    { headers: { "X-Tenant-ID": TENANT_ID } }
+  );
+  if (!res.ok) throw new Error(`Export failed: ${res.status}`);
+  const blob = await res.blob();
+  const ext = format === "soc2" ? "md" : "json";
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `codeflow-${format}-${new Date().toISOString().slice(0, 10)}.${ext}`;
+  a.click();
+  URL.revokeObjectURL(url);
+}

@@ -1,0 +1,50 @@
+---
+title: "Stage0 Intelligence Layer: Calculate→Search→Validate"
+description: "Replace Search→Summarize→Format with Calculate→Search→Validate. Asset Class DB + Portfolio Optimizer + Search Rewriter. Makes stage0 think like an investor, not a laborer."
+status: pending
+priority: P1
+branch: "master"
+tags: [stage0, intelligence-layer, capital-thinking, portfolio-optimizer]
+blockedBy: [260518-1600-stage0-capital-deployment-paradigm-shift]
+blocks: []
+created: "2026-05-18T12:33:16.642Z"
+createdBy: "ck:plan"
+source: skill
+---
+
+# Stage0 Intelligence Layer: Calculate→Search→Validate
+
+## Overview
+
+The capital deployment paradigm shift (v25.5) changed stage0's language but not its thinking. The LLM still Googles "business ideas $500" and gets labor models. This plan adds a computation layer that runs BEFORE any web search:
+
+1. **Asset Class Database** — static data of 15+ asset classes with ROI distributions
+2. **Portfolio Optimizer** — computes optimal allocation using Kelly/Monte Carlo/power-law
+3. **Search Rewriter** — converts winning classes into targeted instance-search queries
+
+All code targets `D:\code\invesments\master_investments` (NOT _mmo).
+
+## Phases
+
+| Phase | Name | Status | Effort | Deps |
+|-------|------|--------|--------|------|
+| 1 | [Asset Class Database](./phase-01-asset-class-database.md) | Pending | 4h | — |
+| 2 | [Portfolio Optimizer](./phase-02-portfolio-optimizer.md) | Pending | 6h | 1 |
+| 3 | [Search Rewriter](./phase-03-search-rewriter.md) | Pending | 4h | 1 |
+| 4 | [Pipeline Integration](./phase-04-pipeline-integration.md) | Pending | 4h | 1,2,3 |
+| 5 | [Tests](./phase-05-tests.md) | Pending | 3h | 1,2,3,4 |
+
+**Total estimated: ~21h**
+
+## Dependencies
+
+- **blockedBy:** `260518-1600-stage0-capital-deployment-paradigm-shift` — v25.5 spec changes must be in place (COMPLETED in prior session, all 7 phases done, 163/163 tests pass)
+- **Brainstorm:** `plans/reports/brainstorm-260518-1730-intelligence-layer-for-stage0.md`
+
+## Key Design Decisions
+
+- Portfolio optimizer reuses existing calc engines (Kelly, Monte Carlo, power-law) — no new math
+- Asset class database is static JSON, not computed — changes slowly, curated manually
+- Search Rewriter produces queries, does NOT execute them — LLM still runs WebSearch
+- Backward compatible: old verdicts without portfolio still score, just miss bonus points
+- Max score stays 180 (redistribute, don't increase) to avoid grade threshold cascade

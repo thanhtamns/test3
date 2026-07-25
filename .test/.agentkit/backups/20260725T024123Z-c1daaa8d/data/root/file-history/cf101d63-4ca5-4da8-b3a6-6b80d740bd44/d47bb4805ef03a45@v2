@@ -1,0 +1,175 @@
+#!/usr/bin/env node
+/**
+ * auto-hunt-session-start.cjs — SessionStart hook
+ * Runs auto-hunt pipeline (signal scan → hypothesis gen → prompt build).
+ * Outputs context for Claude to analyze top niche hypotheses.
+ * 12h cooldown between runs. Fail-open: errors never block session.
+ */
+
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const { execFileSync } = require('child_process');
+
+let isHookEnabled;
+try {
+  ({ isHookEnabled } = require('./lib/ck-config-utils.cjs'));
+} catch {
+  isHookEnabled = () => true;
+}
+
+if (!isHookEnabled('auto-hunt-session-start')) {
+  process.exit(0);
+}
+
+const REPO_ROOT = path.resolve(__dirname, '..', '..');
+const PYTHON_EXE = path.join(REPO_ROOT, '.claude', 'skills', '.venv', 'Scripts', 'python.exe');
+const SCRIPTS_DIR = path.join(
+  REPO_ROOT, '.claude', 'skills', 'business', 'transaction-layer',
+  'nui-hunter', 'scripts'
+);
+const LOGS_DIR = path.join(REPO_ROOT, '.claude', 'logs', 'hooks');
+const STATE_FILE = path.join(LOGS_DIR, 'auto-hunt-last-run.json');
+const PENDING_FILE = path.join(LOGS_DIR, 'auto-hunt-pending-prompt.json');
+const COOLDOWN_HOURS = 12;
+
+function main() {
+  try {
+    if (!fs.existsSync(PYTHON_EXE)) {
+      process.exit(0);
+    }
+
+    // Cooldown check
+    if (fs.existsSync(STATE_FILE)) {
+      try {
+        const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+        const lastRun = new Date(state.last_run);
+        const hoursSince = (Date.now() - lastRun.getTime()) / 3600000;
+        if (hoursSince < COOLDOWN_HOURS) {
+          process.exit(0);
+        }
+      } catch { /* corrupted state = re-run */ }
+    }
+
+    // Phase 1: Signal Scanner
+    const signalScript = path.join(SCRIPTS_DIR, 'auto-hunt-signal-scanner.py');
+    if (!fs.existsSync(signalScript)) {
+      process.exit(0);
+    }
+
+    let signalsJson;
+    try {
+      signalsJson = execFileSync(PYTHON_EXE, [
+        signalScript, '--skip-external', '--json'
+      ], { timeout: 30000, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+    } catch (e) {
+      logError('Phase 1 (signal scan) failed', e);
+      process.exit(0);
+    }
+
+    let signals;
+    try {
+      signals = JSON.parse(signalsJson);
+    } catch {
+      logError('Phase 1 JSON parse failed');
+      process.exit(0);
+    }
+
+    const candidateCount = (signals.candidates || []).length;
+    if (candidateCount === 0) {
+      updateState('no_signals');
+      process.exit(0);
+    }
+
+    // Phase 2: Hypothesis Adapter
+    const adapterScript = path.join(SCRIPTS_DIR, 'auto-hunt-hypothesis-adapter.py');
+    let hypJson;
+    try {
+      hypJson = execFileSync(PYTHON_EXE, [
+        adapterScript, '--signals-json', signalsJson, '--json'
+      ], { timeout: 15000, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+    } catch (e) {
+      logError('Phase 2 (hypothesis adapter) failed', e);
+      process.exit(0);
+    }
+
+    let hypotheses;
+    try {
+      hypotheses = JSON.parse(hypJson);
+    } catch {
+      logError('Phase 2 JSON parse failed');
+      process.exit(0);
+    }
+
+    const hypCount = (hypotheses.hypotheses || []).length;
+    if (hypCount === 0) {
+      updateState('all_deduped');
+      process.exit(0);
+    }
+
+    // Phase 3: Build prompts (don't run LLM)
+    const stage0Script = path.join(SCRIPTS_DIR, 'auto-hunt-mini-stage0.py');
+    let promptsJson;
+    try {
+      promptsJson = execFileSync(PYTHON_EXE, [
+        stage0Script, '--hypotheses-json', hypJson, '--prompt-only'
+      ], { timeout: 10000, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+    } catch (e) {
+      logError('Phase 3 (prompt build) failed', e);
+      process.exit(0);
+    }
+
+    let prompts;
+    try {
+      prompts = JSON.parse(promptsJson);
+    } catch {
+      logError('Phase 3 JSON parse failed');
+      process.exit(0);
+    }
+
+    const promptCount = (prompts.prompts || []).length;
+
+    // Save pending prompt for /auto-hunt command
+    try {
+      fs.mkdirSync(LOGS_DIR, { recursive: true });
+      fs.writeFileSync(PENDING_FILE, promptsJson, 'utf8');
+    } catch { /* non-critical */ }
+
+    updateState('success', { candidates: candidateCount, hypotheses: hypCount, prompts: promptCount });
+
+    // Output context to Claude
+    const domains = (prompts.prompts || []).map(p => p.domain).join(', ');
+    console.log(
+      `🎯 Auto-Hunt: ${promptCount} new niche hypotheses ready (${domains}). ` +
+      `Scanned ${signals.kb_cases_scanned || '?'} KB cases, found ${candidateCount} gaps. ` +
+      `Run /auto-hunt to analyze with full stage0 pipeline.`
+    );
+
+  } catch (e) {
+    logError('Unhandled error', e);
+    process.exit(0);
+  }
+}
+
+function updateState(status, extra = {}) {
+  try {
+    fs.mkdirSync(LOGS_DIR, { recursive: true });
+    fs.writeFileSync(STATE_FILE, JSON.stringify({
+      last_run: new Date().toISOString(),
+      status,
+      ...extra,
+    }, null, 2), 'utf8');
+  } catch { /* non-critical */ }
+}
+
+function logError(msg, err) {
+  try {
+    const logFile = path.join(LOGS_DIR, 'auto-hunt-session-start.log');
+    const entry = `[${new Date().toISOString()}] ${msg}: ${err ? err.message || err : 'unknown'}\n`;
+    fs.mkdirSync(LOGS_DIR, { recursive: true });
+    fs.appendFileSync(logFile, entry, 'utf8');
+  } catch { /* truly non-critical */ }
+}
+
+main();

@@ -1,0 +1,46 @@
+{
+  "type": "deal_observation",
+  "description": "Template for Deal Journal entries (Phase 1 Pattern Recognition)",
+  "required_fields": ["parties", "size_vnd", "sector", "source_url"],
+  "template": {
+    "id": "deal-YYMMDD-NNNN",
+    "type": "deal_observation",
+    "date_observed": "",
+    "parties": {
+      "buyer": "",
+      "seller": "",
+      "introducer": ""
+    },
+    "size_vnd": 0,
+    "size_usd": 0,
+    "sector": "",
+    "source_url": "",
+    "structure": {
+      "type": "cash|equity_swap|percentage|earnout|mixed",
+      "details": ""
+    },
+    "timeline": {
+      "discussion_started": "",
+      "closed_at": "",
+      "duration_days": 0
+    },
+    "middleman": {
+      "visible": false,
+      "name": "",
+      "role": "",
+      "estimated_fee_pct": 0
+    },
+    "outcome": "succeeded|failed|pending|unknown",
+    "why_outcome": "",
+    "pattern_match": {
+      "similar_to_deal_ids": [],
+      "pattern_type": "",
+      "difference_noted": ""
+    },
+    "prediction": {
+      "my_prediction_before_outcome": "",
+      "prediction_correct": null,
+      "what_i_missed": ""
+    }
+  }
+}

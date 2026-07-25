@@ -1,0 +1,219 @@
+use anyhow::Result;
+use codeflow_core::cost::CostStore;
+
+use crate::paths;
+
+pub fn show(by: Option<&str>, pr: Option<&str>, json: bool, days: Option<i64>) -> Result<()> {
+    let db_path = paths::data_dir().join("cost.db");
+    if !db_path.exists() {
+        if json {
+            println!("{{}}");
+        } else {
+            println!("No cost data yet.");
+            println!("Cost records are created when sessions are tracked with provenance.");
+            println!("Run `codeflow cost record` to manually add cost data.");
+        }
+        return Ok(());
+    }
+
+    let store = CostStore::open(&db_path)?;
+    let project_dir = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+
+    if let Some(pr_ref) = pr {
+        return show_pr_detail(&store, pr_ref, json);
+    }
+
+    if let Some(group) = by {
+        return show_breakdown(&store, group, Some(&project_dir), days, json);
+    }
+
+    show_summary(&store, Some(&project_dir), days, json)
+}
+
+fn show_summary(store: &CostStore, project_dir: Option<&str>, days: Option<i64>, json: bool) -> Result<()> {
+    let summary = store.summary(project_dir, days)?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&summary)?);
+        return Ok(());
+    }
+
+    println!("╔══════════════════════════════════════════════════╗");
+    println!("║           CODEFLOW Cost Attribution              ║");
+    println!("╠══════════════════════════════════════════════════╣");
+    println!(
+        "║  Total cost:     ${:>10.2}                     ║",
+        summary.total_cost_usd
+    );
+    println!(
+        "║  Input tokens:   {:>10}                    ║",
+        format_number(summary.total_input_tokens)
+    );
+    println!(
+        "║  Output tokens:  {:>10}                    ║",
+        format_number(summary.total_output_tokens)
+    );
+    println!(
+        "║  Sessions:       {:>10}                    ║",
+        summary.record_count
+    );
+    println!("╚══════════════════════════════════════════════════╝");
+
+    Ok(())
+}
+
+fn show_breakdown(store: &CostStore, group: &str, project_dir: Option<&str>, days: Option<i64>, json: bool) -> Result<()> {
+    let groups = store.by_group(group, project_dir, days)?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&groups)?);
+        return Ok(());
+    }
+
+    if groups.is_empty() {
+        println!("No cost data for grouping by '{}'.", group);
+        return Ok(());
+    }
+
+    let header = match group {
+        "pr" => "PR",
+        "dev" | "developer" => "Developer",
+        "model" => "Model",
+        "day" => "Day",
+        "session" => "Session",
+        _ => group,
+    };
+
+    println!();
+    println!(
+        "  {:<30} {:>10} {:>12} {:>12} {:>6}",
+        header, "Cost ($)", "Input Tok", "Output Tok", "Count"
+    );
+    println!("  {}", "─".repeat(72));
+
+    for g in &groups {
+        println!(
+            "  {:<30} {:>10.2} {:>12} {:>12} {:>6}",
+            truncate(&g.key, 30),
+            g.cost_usd,
+            format_number(g.input_tokens),
+            format_number(g.output_tokens),
+            g.record_count,
+        );
+    }
+
+    let total: f64 = groups.iter().map(|g| g.cost_usd).sum();
+    println!("  {}", "─".repeat(72));
+    println!("  {:<30} {:>10.2}", "TOTAL", total);
+    println!();
+
+    Ok(())
+}
+
+fn show_pr_detail(store: &CostStore, pr_ref: &str, json: bool) -> Result<()> {
+    let normalized = if pr_ref.starts_with('#') {
+        pr_ref.to_string()
+    } else {
+        format!("#{}", pr_ref)
+    };
+
+    let breakdown = store.by_pr(&normalized, None)?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&breakdown)?);
+        return Ok(());
+    }
+
+    println!("Cost detail for PR {}", normalized);
+    if breakdown.is_empty() {
+        println!("  No cost records found.");
+    } else {
+        let total: f64 = breakdown.iter().map(|g| g.cost_usd).sum();
+        for g in &breakdown {
+            println!(
+                "  {:<20} ${:.2} ({} events)",
+                g.key, g.cost_usd, g.record_count
+            );
+        }
+        println!("  {:<20} ${:.2}", "TOTAL", total);
+    }
+
+    Ok(())
+}
+
+pub fn record_manual(
+    session_id: &str,
+    model_id: &str,
+    input_tokens: u64,
+    output_tokens: u64,
+    cost_override: Option<f64>,
+) -> Result<()> {
+    let db_path = paths::data_dir().join("cost.db");
+    std::fs::create_dir_all(paths::data_dir())?;
+    let store = CostStore::open(&db_path)?;
+
+    let pricing = codeflow_core::pricing::PricingTable::bundled();
+    let cost = cost_override.unwrap_or_else(|| {
+        pricing.cost_for_tokens(model_id, input_tokens, output_tokens, 0, 0)
+    });
+
+    let pr_ref = codeflow_core::pr_linker::detect_pr_ref().unwrap_or_default();
+    let feature_tag = codeflow_core::pr_linker::detect_feature_tag().unwrap_or_default();
+    let project_dir = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+
+    let rec = codeflow_core::cost::CostRecord {
+        id: None,
+        session_id: session_id.to_string(),
+        timestamp_ms: chrono::Utc::now().timestamp_millis(),
+        model_id: model_id.to_string(),
+        input_tokens,
+        output_tokens,
+        cache_read_tokens: 0,
+        cache_write_tokens: 0,
+        cost_usd: cost,
+        pr_ref,
+        feature_tag,
+        project_dir,
+        developer_id: whoami(),
+    };
+
+    let id = store.record(&rec)?;
+    println!(
+        "✓ Cost recorded: ${:.4} ({} → {}) [id={}]",
+        cost, model_id, format_number(input_tokens + output_tokens), id
+    );
+
+    Ok(())
+}
+
+fn whoami() -> String {
+    std::env::var("USER")
+        .or_else(|_| std::env::var("USERNAME"))
+        .or_else(|_| std::env::var("LOGNAME"))
+        .unwrap_or_else(|_| "unknown".to_string())
+}
+
+fn format_number(n: u64) -> String {
+    if n >= 1_000_000 {
+        format!("{:.1}M", n as f64 / 1_000_000.0)
+    } else if n >= 1_000 {
+        format!("{:.1}K", n as f64 / 1_000.0)
+    } else {
+        n.to_string()
+    }
+}
+
+fn truncate(s: &str, max: usize) -> String {
+    if s.chars().count() > max {
+        let truncated: String = s.chars().take(max - 1).collect();
+        format!("{}…", truncated)
+    } else {
+        s.to_string()
+    }
+}

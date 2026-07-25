@@ -1,0 +1,170 @@
+"""Ladder bridge — non-Google source escalation when SEO saturation detected."""
+
+import json
+import subprocess
+from pathlib import Path
+from typing import Optional
+
+from ..hunger.claim_parser import ParsedClaim
+
+_DEFAULT_LADDER_PATH = (
+    Path(__file__).resolve().parents[4]
+    / "data"
+    / "knowledge-sources"
+    / "ladder-runner.py"
+)
+
+_SEO_PATTERNS = (
+    "top ",
+    "best ",
+    "how to ",
+    "/blog/",
+    "aff=",
+    "ref=",
+    "utm_",
+    " for beginners",
+    " ultimate guide",
+    " complete guide",
+)
+
+_VN_KEYWORDS = (
+    "vietnam", " vn ", "dak lak", "tay nguyen", "mmo", "kiem tien",
+    "kiếm tiền", "việt nam", "dắk lắk",
+)
+_SAAS_KEYWORDS = ("saas", "bootstrap", "micro-saas", "indie hacker", "mrr", "arr")
+_VC_KEYWORDS = ("venture capital", "vc fund", "investment fund", "angel invest", "due diligence")
+
+
+class LadderBridge:
+    """Escalates research to non-Google sources when SEO saturation detected.
+
+    Gracefully degrades if ladder-runner.py is unavailable.
+    """
+
+    def __init__(
+        self,
+        ladder_runner_path: Optional[str] = None,
+        route_key: Optional[str] = None,
+    ):
+        if ladder_runner_path:
+            self.ladder_path = Path(ladder_runner_path)
+        else:
+            self.ladder_path = _DEFAULT_LADDER_PATH
+
+        self._available = self.ladder_path.exists()
+        self.default_route = route_key
+
+    @property
+    def available(self) -> bool:
+        return self._available
+
+    # ── Public API ─────────────────────────────────────────────────────────────
+
+    def should_escalate(self, search_results: list[str]) -> bool:
+        """Return True if >= 60% of result snippets match SEO-pollution patterns."""
+        if not search_results:
+            return False
+        polluted = sum(
+            1 for r in search_results if self._is_seo_polluted(r)
+        )
+        return (polluted / len(search_results)) >= 0.6
+
+    def detect_route(self, query: str) -> Optional[str]:
+        """Classify query into a research ladder route key."""
+        q = query.lower()
+        if any(kw in q for kw in _VN_KEYWORDS):
+            if any(w in q for w in ("mmo", "kiem tien", "kiếm tiền", "grey", "gray")):
+                return "vn_greyhat_mmo"
+            return "vn_legitimate_business"
+        if any(kw in q for kw in _SAAS_KEYWORDS):
+            return "western_bootstrap_saas"
+        if any(kw in q for kw in _VC_KEYWORDS):
+            return "founder_due_diligence"
+        return None
+
+    def run_ladder(self, topic: str, route_key: str) -> list[ParsedClaim]:
+        """Invoke ladder-runner.py subprocess. Returns parsed facts or empty list."""
+        if not self._available:
+            return []
+        try:
+            proc = subprocess.run(
+                [
+                    "python",
+                    str(self.ladder_path),
+                    "--topic", topic,
+                    "--route", route_key,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if proc.returncode != 0:
+                return []
+            return self._parse_ladder_output(proc.stdout, route_key)
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            return []
+        except Exception:
+            return []
+
+    # ── Internal ───────────────────────────────────────────────────────────────
+
+    def _is_seo_polluted(self, snippet: str) -> bool:
+        s = snippet.lower()
+        return any(pat in s for pat in _SEO_PATTERNS)
+
+    def _parse_ladder_output(self, raw: str, dimension: str) -> list[ParsedClaim]:
+        """Parse JSON array or newline-delimited JSON from ladder-runner output."""
+        if not raw.strip():
+            return []
+
+        facts: list[ParsedClaim] = []
+
+        # Try JSON array first
+        try:
+            data = json.loads(raw)
+            if isinstance(data, list):
+                for item in data:
+                    claim = self._item_to_claim(item, dimension)
+                    if claim:
+                        facts.append(claim)
+                return facts
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        # Try newline-delimited JSON
+        for line in raw.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                item = json.loads(line)
+                claim = self._item_to_claim(item, dimension)
+                if claim:
+                    facts.append(claim)
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+        return facts
+
+    def _item_to_claim(self, item: dict, dimension: str) -> Optional[ParsedClaim]:
+        if not isinstance(item, dict):
+            return None
+        fact = item.get("fact", item.get("text", item.get("content", "")))
+        if not fact or len(str(fact).strip()) < 5:
+            return None
+        conf = float(item.get("confidence", 0.45))
+        zone = "K" if conf >= 0.75 else "T" if conf >= 0.5 else "?"
+        value = item.get("value")
+        try:
+            value = float(value) if value is not None else None
+        except (TypeError, ValueError):
+            value = None
+        return ParsedClaim(
+            fact=str(fact)[:300],
+            value=value,
+            dimension=dimension,
+            source_url=item.get("source", item.get("url")),
+            source_date=item.get("date"),
+            confidence=conf,
+            zone_tag=zone,
+        )

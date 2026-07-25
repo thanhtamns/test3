@@ -1,0 +1,106 @@
+---
+name: reflection-protocol
+description: >-
+  Phase 2.6B — Self-critique each hypothesis BEFORE tournament entry.
+  Scores mechanism clarity, falsifiability, novelty. Kills <3/10, refines 3-5/10.
+  Saves tournament compute by filtering weak candidates early.
+---
+
+# Reflection Agent Protocol
+
+## Purpose
+
+Pre-tournament quality gate. Score EVERY hypothesis on 3 dimensions (mechanism, falsification, novelty). Kill weak ones before they waste tournament debate compute.
+
+This implements the Co-Scientist principle: candidates should be self-critiqued BEFORE competing. A hypothesis that can't articulate its own mechanism clearly will lose every debate — filter it now.
+
+## When This Runs
+
+Phase 2.6B in Stage0 pipeline. Runs AFTER first-principles generator (Phase 2.6), BEFORE tournament (Phase 2.7). Receives ALL candidates: pattern-matcher results + first-principles hypotheses.
+
+## Input
+
+- `hypotheses` — combined list from Phase 2.5C (pattern-matcher) + Phase 2.6 (first-principles)
+  - Each has: id, title, thesis, mechanism, source_phase
+- `founder_context` — from Phase 0 intent_meta
+
+## Scoring Protocol
+
+For EACH hypothesis, answer 3 questions. Score each 1-10.
+
+### Q1: MECHANISM TEST (weight: 40%)
+Can you trace the EXACT causal chain from founder's first action to revenue? Name every step.
+- 9-10: Complete chain, every step specific and verifiable
+- 7-8: Chain exists but 1-2 steps are vague
+- 4-6: General direction clear but chain has gaps
+- 1-3: No causal chain, just "market is big"
+
+### Q2: FALSIFICATION TEST (weight: 30%)
+What SPECIFIC, OBSERVABLE evidence would prove this hypothesis WRONG within 2 weeks?
+- 9-10: Named specific metric, threshold, and measurement method
+- 7-8: Metric identified but threshold or method vague
+- 4-6: General failure conditions but not testable in 2 weeks
+- 1-3: "It won't work if market is bad" — unfalsifiable
+
+### Q3: NOVELTY/EVIDENCE TEST (weight: 30%)
+For first-principles hypotheses: Is this a RESTATEMENT of an obvious idea, or does it contain a non-obvious mechanism?
+For pattern-matcher hypotheses: Does the supporting evidence actually prove THIS hypothesis specifically, or could it support any vague positive conclusion?
+- 9-10: Non-obvious insight or tightly-matched evidence
+- 7-8: Some novelty/specificity
+- 4-6: Somewhat generic
+- 1-3: Pure restatement / evidence proves nothing specific
+
+## Verdict Rules
+
+```
+aggregate = Q1 * 0.4 + Q2 * 0.3 + Q3 * 0.3
+
+aggregate < 3.0  → KILL   (drop from candidate pool)
+aggregate 3.0-5.0 → REFINE (flag for strengthening, keep in pool)  
+aggregate > 5.0  → PASS   (enter tournament as-is)
+```
+
+## Output
+
+Write to session plan directory:
+```
+plans/{session_id}/reflection-result.md
+```
+
+Format:
+```markdown
+# Reflection Result — {domain}
+
+## Summary
+- Total hypotheses scored: {N}
+- PASS (>5.0): {N} — enter tournament directly
+- REFINE (3.0-5.0): {N} — flagged for strengthening
+- KILL (<3.0): {N} — dropped
+
+## Scores
+
+### {hypothesis_id}: {title} — {VERDICT} ({aggregate}/10)
+| Dimension | Score | Reasoning |
+|-----------|-------|-----------|
+| Mechanism (40%) | {X}/10 | {1-line why} |
+| Falsification (30%) | {X}/10 | {1-line why} |
+| Novelty/Evidence (30%) | {X}/10 | {1-line why} |
+| **Aggregate** | **{X.X}/10** | **{VERDICT}** |
+
+Refinement suggestion: {if REFINE, how to strengthen. If PASS/KILL, "N/A"}
+
+(repeat for each hypothesis)
+
+## Surviving Candidates (for Tournament)
+1. {id}: {title} (score: {X.X}, source: {first_principles|pattern_matcher})
+2. ...
+```
+
+## Critical Rules
+
+1. Score EVERY hypothesis — no skips
+2. Be HARSH on mechanism scores. "Big market opportunity" with no causal chain = score 2
+3. REFINE suggestions must be actionable ("add specific customer segment" not "improve mechanism")
+4. Source attribution preserved: first-principles vs pattern-matcher tag stays on each hypothesis
+5. If ALL hypotheses killed (rare): output note "All candidates killed — pipeline falls back to pre-HDIE behavior"
+6. Max 13 hypotheses input (5 pattern-matcher + 8 first-principles). If more, keep top by source diversity

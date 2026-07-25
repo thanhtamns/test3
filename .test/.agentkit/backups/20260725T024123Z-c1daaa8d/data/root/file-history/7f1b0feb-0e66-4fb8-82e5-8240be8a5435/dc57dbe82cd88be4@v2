@@ -1,0 +1,854 @@
+"""
+Hunt Runner — glue code wiring V5 Brain engines to real DuckDuckGo + Anthropic API.
+Creates research_fn (DDG) and llm_fn (Claude Haiku) callbacks for live /hunt execution.
+"""
+
+import json
+import logging
+import os
+import time
+from pathlib import Path
+from typing import Optional
+
+from .models import AnomalyCard, FounderProfile
+from .price_delta_engine import PriceDeltaEngine
+from .forced_flow_engine import ForcedFlowEngine
+from .flow_position_engine import FlowPositionEngine
+from .anomaly_crossref import AnomalyCrossReferencer
+from ..store.anomaly_store import AnomalyStore
+from ..controller.money_flow_graph import MoneyFlowGraph
+from ..controller.intelligence_controller import IntelligenceController
+
+logger = logging.getLogger(__name__)
+
+ROOT = Path(__file__).resolve().parents[4]
+DEFAULT_PROFILE_PATH = ROOT / "kb" / "profiles" / "phamt-260507.json"
+DEFAULT_DB_PATH = ROOT / "data" / "anomalies.duckdb"
+
+_LAST_DDG_TIME = 0.0
+_DDG_DELAY_S = 1.6
+
+
+def _ddg_research(query: str) -> str:
+    """Real DuckDuckGo search returning raw snippets + page content."""
+    global _LAST_DDG_TIME
+    now = time.time()
+    if now - _LAST_DDG_TIME < _DDG_DELAY_S:
+        time.sleep(_DDG_DELAY_S - (now - _LAST_DDG_TIME))
+    _LAST_DDG_TIME = time.time()
+
+    try:
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            try:
+                from ddgs import DDGS
+            except ImportError:
+                try:
+                    from duckduckgo_search import DDGS
+                except ImportError:
+                    logger.warning("No DDG search package installed (pip install ddgs)")
+                    return ""
+            ddgs_instance = DDGS()
+            results = list(ddgs_instance.text(query, max_results=5))
+    except Exception as e:
+        logger.warning(f"DDG search failed: {e}")
+        return ""
+
+    if not results:
+        return ""
+
+    parts = []
+    for r in results[:5]:
+        title = r.get("title", "")
+        body = r.get("body", "")
+        href = r.get("href", "")
+        parts.append(f"{title}: {body} (source: {href})")
+
+    return "\n".join(parts)
+
+
+def _create_llm_fn(model: str = "claude-haiku-4-5-20251001") -> callable:
+    """Create LLM callback. Tries Anthropic API first, falls back to regex parser."""
+    api_available = False
+    try:
+        import anthropic
+        client = anthropic.Anthropic()
+        client.models.list(limit=1)
+        api_available = True
+    except Exception:
+        logger.info("Anthropic API unavailable, using regex parser for extraction")
+
+    if api_available:
+        import anthropic as _anthropic
+        _client = _anthropic.Anthropic()
+
+        def api_llm_fn(prompt: str) -> str:
+            try:
+                resp = _client.messages.create(
+                    model=model,
+                    max_tokens=500,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                text = resp.content[0].text.strip()
+                if text.startswith("```"):
+                    lines = text.split("\n")
+                    text = "\n".join(lines[1:-1]) if len(lines) > 2 else text
+                return text
+            except Exception as e:
+                logger.warning(f"LLM API call failed: {e}, falling back to regex")
+                return _regex_parse(prompt)
+
+        return api_llm_fn
+
+    return _regex_parse
+
+
+def _regex_parse(prompt: str) -> str:
+    """Regex-based extraction for price/regulation data from search snippets."""
+    import re
+    p = prompt.lower()
+
+    if "extract price data" in p or "price" in p and "json" in p:
+        return _extract_price_regex(prompt)
+    elif "extract regulatory" in p or "regulation" in p and "mandate" in p:
+        return _extract_regulation_regex(prompt)
+    elif "shipping" in p or "tariff" in p or "bridge" in p:
+        return _extract_bridge_cost_regex(prompt)
+    elif "compliance" in p or "provider" in p:
+        return _extract_provider_regex(prompt)
+    elif "entity" in p and "count" in p:
+        return _extract_impact_regex(prompt)
+    return json.dumps({"product": "unknown", "price": None})
+
+
+def _extract_price_regex(prompt: str) -> str:
+    """Extract price from DDG search snippets using regex.
+    Handles: "$3.25/kg", "3.25 to 6.50 USD/kg", "85,400 VND/kg (~3,270 USD/ton)",
+    "Rs 315 per kg", "EUR 4.20/kg", etc.
+    """
+    import re
+    text = prompt
+
+    product = ""
+    for prod in ["coffee", "pepper", "cashew", "cinnamon", "rubber", "shrimp", "pangasius", "fish"]:
+        if prod in text.lower():
+            product = prod
+            break
+
+    url = ""
+    url_match = re.search(r'source:\s*(https?://[^\s\)]+)', text)
+    if url_match:
+        url = url_match.group(1)
+
+    candidates = []
+
+    # Pattern 1: "X to Y USD/kg" range — take midpoint
+    range_matches = re.findall(
+        r'([\d,.]+)\s*(?:to|[-–])\s*([\d,.]+)\s*(USD|EUR|usd|eur|\$|€)\s*/?\s*(kg|ton|lb|mt)',
+        text, re.IGNORECASE,
+    )
+    for low_s, high_s, curr, unit in range_matches:
+        try:
+            low = float(low_s.replace(",", ""))
+            high = float(high_s.replace(",", ""))
+            price = (low + high) / 2
+            usd = _convert_to_usd(price, curr.upper())
+            unit_n = _normalize_unit(unit)
+            if unit_n == "ton":
+                usd = usd / 1000  # convert to per kg
+            candidates.append(("range_usd", usd, url))
+        except ValueError:
+            pass
+
+    # Pattern 2: parenthesized USD conversion "~3,270 USD/ton"
+    paren_matches = re.findall(
+        r'[~≈]?\s*([\d,.]+)\s*(USD|usd)\s*/?\s*(kg|ton|mt|tonne)',
+        text, re.IGNORECASE,
+    )
+    for price_s, curr, unit in paren_matches:
+        try:
+            price = float(price_s.replace(",", ""))
+            unit_n = _normalize_unit(unit)
+            if unit_n == "ton":
+                price = price / 1000
+            candidates.append(("paren_usd", price, url))
+        except ValueError:
+            pass
+
+    # Pattern 3: "$X.XX/kg" or "$X.XX per kg"
+    dollar_matches = re.findall(
+        r'\$\s*([\d,.]+)\s*(?:per|/)\s*(kg|kilogram|ton|tonne|lb|mt)',
+        text, re.IGNORECASE,
+    )
+    for price_s, unit in dollar_matches:
+        try:
+            price = float(price_s.replace(",", ""))
+            unit_n = _normalize_unit(unit)
+            if unit_n == "ton":
+                price = price / 1000
+            candidates.append(("dollar", price, url))
+        except ValueError:
+            pass
+
+    # Pattern 4: "X.XX USD/kg"
+    usd_matches = re.findall(
+        r'([\d,.]+)\s*(?:USD|usd)\s*/?\s*(?:per\s+)?(kg|ton|lb|mt)',
+        text, re.IGNORECASE,
+    )
+    for price_s, unit in usd_matches:
+        try:
+            price = float(price_s.replace(",", ""))
+            unit_n = _normalize_unit(unit)
+            if unit_n == "ton":
+                price = price / 1000
+            candidates.append(("explicit_usd", price, url))
+        except ValueError:
+            pass
+
+    # Pattern 5: "X.XX EUR/kg"
+    eur_matches = re.findall(
+        r'([\d,.]+)\s*(?:EUR|eur|€)\s*/?\s*(?:per\s+)?(kg|ton|lb|mt)',
+        text, re.IGNORECASE,
+    )
+    for price_s, unit in eur_matches:
+        try:
+            price = float(price_s.replace(",", ""))
+            usd = price * 1.08
+            unit_n = _normalize_unit(unit)
+            if unit_n == "ton":
+                usd = usd / 1000
+            candidates.append(("eur", usd, url))
+        except ValueError:
+            pass
+
+    # Pattern 6: VND prices "85,400 VND/kg" — convert to USD
+    vnd_matches = re.findall(
+        r'([\d,.]+)\s*(?:VND|vnd|dong|đ)\s*/?\s*(?:per\s+)?(kg|ton)',
+        text, re.IGNORECASE,
+    )
+    for price_s, unit in vnd_matches:
+        try:
+            price = float(price_s.replace(",", ""))
+            usd = price * 0.000039
+            unit_n = _normalize_unit(unit)
+            if unit_n == "ton":
+                usd = usd / 1000
+            candidates.append(("vnd", usd, url))
+        except ValueError:
+            pass
+
+    # Pattern 7: INR "₹315 per kg" or "Rs 315 per kg"
+    inr_matches = re.findall(
+        r'(?:₹|Rs\.?\s*)([\d,.]+)\s*(?:per\s+)?(kg|ton|lb)',
+        text, re.IGNORECASE,
+    )
+    for price_s, unit in inr_matches:
+        try:
+            price = float(price_s.replace(",", ""))
+            usd = price * 0.012
+            candidates.append(("inr", usd, url))
+        except ValueError:
+            pass
+
+    # Pattern 8: JPY "¥315 per kg" or "JPY 315"
+    jpy_matches = re.findall(
+        r'(?:¥|JPY|yen)\s*([\d,.]+)\s*(?:per\s+)?(kg|ton|lb)?',
+        text, re.IGNORECASE,
+    )
+    for price_s, *rest in jpy_matches:
+        unit = rest[0] if rest and rest[0] else "kg"
+        try:
+            price = float(price_s.replace(",", ""))
+            usd = price * 0.0065
+            unit_n = _normalize_unit(unit)
+            if unit_n == "ton":
+                usd = usd / 1000
+            candidates.append(("jpy", usd, url))
+        except ValueError:
+            pass
+
+    # Filter: price per kg should be in reasonable commodity range ($0.50-$200)
+    valid = []
+    for source, price_usd_kg, src_url in candidates:
+        if 0.50 <= price_usd_kg <= 200:
+            valid.append((source, price_usd_kg, src_url))
+
+    if valid:
+        # Prefer: paren_usd > explicit_usd > dollar > range_usd > eur > vnd > inr > jpy
+        priority = {"paren_usd": 0, "explicit_usd": 1, "dollar": 2,
+                     "range_usd": 3, "eur": 4, "vnd": 5, "inr": 6, "jpy": 7}
+        valid.sort(key=lambda x: priority.get(x[0], 99))
+        _, best_price, best_url = valid[0]
+        return json.dumps({
+            "product": product or "unknown",
+            "price": round(best_price, 2),
+            "currency": "USD",
+            "unit": "kg",
+            "source_url": best_url or url,
+        })
+
+    return json.dumps({"product": product or "unknown", "price": None})
+
+
+def _convert_to_usd(price: float, currency: str) -> float:
+    rates = {"USD": 1.0, "$": 1.0, "EUR": 1.08, "€": 1.08,
+             "VND": 0.000039, "CNY": 0.14, "JPY": 0.0065,
+             "GBP": 1.27, "INR": 0.012}
+    return price * rates.get(currency.upper(), 1.0)
+
+
+def _normalize_unit(unit: str) -> str:
+    u = unit.lower().strip()
+    if u in ("kg", "kilogram", "kilo"):
+        return "kg"
+    if u in ("ton", "tonne", "metric ton", "mt"):
+        return "ton"
+    if u in ("lb", "pound", "lbs"):
+        return "lb"
+    return "kg"
+
+
+def _extract_regulation_regex(prompt: str) -> str:
+    """Extract regulation info from DDG search snippets.
+    Handles: "EU Deforestation Regulation (EUDR)", "Regulation (EU) 2023/1115",
+    "Implementing regulation - EU - 2026/148", "Circular 31", etc.
+    """
+    import re
+    text = prompt
+
+    # Specific known regulations first (most valuable)
+    known_regs = [
+        (r'(EUDR|EU\s+Deforestation\s+Regulation)', "EUDR"),
+        (r'(CBAM|Carbon\s+Border\s+Adjustment)', "CBAM"),
+        (r'(REACH\s+Regulation)', "EU REACH Regulation"),
+        (r'(AI\s+Act)', "EU AI Act"),
+        (r'(GDPR)', "GDPR"),
+        (r'(FSMA|Food\s+Safety\s+Modernization\s+Act)', "FSMA"),
+    ]
+
+    reg_name = None
+    for pattern, label in known_regs:
+        if re.search(pattern, text, re.IGNORECASE):
+            reg_name = label
+            break
+
+    if not reg_name:
+        # Generic patterns
+        reg_patterns = [
+            r'(Regulation\s+\(EU\)\s+\d+/\d+)',
+            r'(Implementing\s+regulation\s+[-–]\s+EU\s+[-–]\s+\d+/\d+)',
+            r'((?:EU|European)\s+[\w\s]{3,30}(?:Regulation|Directive|Act))',
+            r'((?:Nghị\s+định|Thông\s+tư|Circular|Decree)\s+\d+)',
+            r'((?:US|Federal)\s+[\w\s]{3,30}(?:Act|Rule|Standard))',
+        ]
+        for pattern in reg_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                reg_name = match.group(1).strip()[:80]
+                break
+
+    if not reg_name:
+        return json.dumps({"regulation": None})
+
+    # Date extraction — prefer explicit dates, then "from DATE", then year
+    effective_date = ""
+    date_patterns = [
+        r'(?:effective|apply|applies|enter.{0,10}force|deadline)[:\s]+(?:from\s+)?(\d{1,2}\s+\w+\s+\d{4})',
+        r'(?:effective|apply|applies|enter.{0,10}force|deadline)[:\s]+(?:from\s+)?(\d{4}[-/]\d{1,2}[-/]\d{1,2})',
+        r'(\d{4}[-/]\d{1,2}[-/]\d{1,2})',
+        r'(?:from|by|starting)\s+(\d{1,2}\s+\w+\s+\d{4})',
+    ]
+    for dp in date_patterns:
+        dm = re.search(dp, text, re.IGNORECASE)
+        if dm:
+            raw_date = dm.group(1)
+            if re.match(r'\d{4}[-/]', raw_date):
+                effective_date = raw_date.replace("/", "-")
+            else:
+                try:
+                    from datetime import datetime
+                    for fmt in ("%d %B %Y", "%d %b %Y", "%B %d %Y"):
+                        try:
+                            dt = datetime.strptime(raw_date.strip(), fmt)
+                            effective_date = dt.strftime("%Y-%m-%d")
+                            break
+                        except ValueError:
+                            continue
+                except Exception:
+                    pass
+            if effective_date:
+                break
+    if not effective_date:
+        year_match = re.search(r'(?:effective|deadline|by|from)\s+(\d{4})', text, re.IGNORECASE)
+        if year_match:
+            effective_date = f"{year_match.group(1)}-01-01"
+
+    # Jurisdiction
+    jurisdiction = "global"
+    for keyword, jur in [("EU", "EU"), ("European", "EU"), ("US", "US"),
+                          ("United States", "US"), ("VN", "VN"), ("Vietnam", "VN"),
+                          ("Japan", "Japan"), ("China", "China"), ("UK", "UK")]:
+        if keyword.lower() in text.lower():
+            jurisdiction = jur
+            break
+
+    # Entity count — broader patterns
+    entity_count = 0
+    entity_patterns = [
+        r'([\d,]+)\s*(?:companies|entities|firms|businesses|importers|exporters|operators|manufacturers)',
+        r'(?:affects?|impacts?|covers?)\s+(?:about|approximately|around|over|more than)?\s*([\d,]+)\s+(?:\w+\s+)?(?:companies|entities|firms|businesses)',
+        r'(?:up to|approximately|around|about|over)\s+([\d,]+)\s+(?:\w+\s+)?(?:companies|entities|businesses)',
+    ]
+    for ep in entity_patterns:
+        em = re.search(ep, text, re.IGNORECASE)
+        if em:
+            try:
+                entity_count = int(em.group(1).replace(",", ""))
+                break
+            except ValueError:
+                pass
+    if entity_count == 0:
+        # Estimate from market context
+        estimates = {"EU": 10000, "US": 15000, "VN": 5000, "Japan": 8000, "global": 20000}
+        entity_count = estimates.get(jurisdiction, 5000)
+
+    # Compliance cost
+    compliance_cost = 0.0
+    cost_patterns = [
+        r'\$\s*([\d,.]+)\s*(?:per|/)\s*(?:company|entity|firm|business|operator)',
+        r'(?:cost|expense|fee|charge)[:\s]+\$?\s*([\d,.]+)\s*(?:per|/)',
+        r'\$\s*([\d,.]+)\s*(?:to|[-–])\s*\$?\s*([\d,.]+)',
+        r'([\d,.]+)\s*(?:USD|EUR)\s*(?:per\s+)?(?:company|entity|business)',
+    ]
+    for cp in cost_patterns:
+        cm = re.search(cp, text, re.IGNORECASE)
+        if cm:
+            try:
+                compliance_cost = float(cm.group(1).replace(",", ""))
+                break
+            except ValueError:
+                pass
+    if compliance_cost == 0:
+        compliance_cost = 5000.0
+
+    # Who must comply
+    comply_match = re.search(
+        r'(?:must comply|applies to|affects?|required for|mandatory for)\s+(.{10,80}?)(?:\.|,|;|\n)',
+        text, re.IGNORECASE,
+    )
+    who = comply_match.group(1).strip() if comply_match else ""
+    if not who:
+        # Infer from industry context in the prompt
+        industry_who = {
+            "coffee": "coffee importers and exporters",
+            "agriculture": "agricultural commodity traders",
+            "trade": "importers and exporters",
+            "commodity": "commodity trading companies",
+            "pepper": "spice importers and exporters",
+            "technology": "technology companies",
+            "finance": "financial institutions",
+            "healthcare": "healthcare providers",
+        }
+        for keyword, default_who in industry_who.items():
+            if keyword in text.lower():
+                who = default_who
+                break
+        if not who:
+            who = "affected entities"
+
+    return json.dumps({
+        "regulation": reg_name,
+        "jurisdiction": jurisdiction,
+        "effective_date": effective_date,
+        "who_must_comply": who,
+        "entity_count_estimate": entity_count,
+        "compliance_cost_per_entity": compliance_cost,
+        "penalty": "",
+        "summary": reg_name,
+    })
+
+
+def _extract_bridge_cost_regex(prompt: str) -> str:
+    """Extract shipping/tariff costs from text."""
+    import re
+    text = prompt
+
+    cost_patterns = [
+        r'\$\s*([\d,.]+)\s*/?\s*(?:per\s+)?(kg|ton|container|TEU|20ft|40ft)',
+        r'([\d,.]+)\s*(?:USD|usd)\s*/?\s*(?:per\s+)?(kg|ton|container)',
+        r'freight[:\s]+\$?\s*([\d,.]+)',
+        r'tariff[:\s]+(\d+(?:\.\d+)?)\s*%',
+    ]
+
+    for pattern in cost_patterns:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        if matches:
+            val_str = matches[0][0] if isinstance(matches[0], tuple) else matches[0]
+            unit = matches[0][1] if isinstance(matches[0], tuple) and len(matches[0]) > 1 else "kg"
+            try:
+                amount = float(val_str.replace(",", ""))
+                cost_type = "tariff" if "tariff" in text.lower() else "shipping"
+                return json.dumps({
+                    "cost_type": cost_type,
+                    "amount": amount,
+                    "currency": "USD",
+                    "per_unit": _normalize_unit(unit),
+                })
+            except ValueError:
+                continue
+
+    return json.dumps({"cost_type": "shipping", "amount": None})
+
+
+def _extract_provider_regex(prompt: str) -> str:
+    """Extract compliance provider info from text."""
+    import re
+    # Strip the prompt template to avoid matching template text like "or underserved"
+    text = prompt
+    template_end = text.find("Text:\n")
+    if template_end != -1:
+        text = text[template_end + 6:]
+
+    providers = []
+    provider_patterns = [
+        r'(?:provider|consultant|service|firm|company)[:\s]+([A-Z][\w\s&]+?)(?:,|\.|;|\n)',
+        r'(SGS|Bureau Veritas|Intertek|TUV|Deloitte|EY|KPMG|PwC|McKinsey)',
+    ]
+    for pattern in provider_patterns:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        providers.extend(m.strip() for m in matches[:5])
+
+    gap = ""
+    gap_patterns = [
+        r'(?:gap|missing|lacking|no|insufficient)[:\s]+(.{10,80}?)(?:\.|;|\n)',
+        r'(?:underserved|unmet)[:\s]+(.{10,80}?)(?:\.|;|\n)',
+    ]
+    for pattern in gap_patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            gap = match.group(1).strip()
+            break
+
+    if not gap and not providers:
+        gap = "no providers identified"
+
+    # Clean up any JSON artifacts in gap string
+    gap = gap.replace('"', '').replace('}', '').replace('{', '').strip()
+
+    return json.dumps({"providers": providers[:5], "gap": gap})
+
+
+def _extract_impact_regex(prompt: str) -> str:
+    """Extract entity count and cost per entity."""
+    import re
+    text = prompt
+
+    entity_count = 0
+    for ep in [
+        r'([\d,]+)\s*(?:companies|entities|firms|businesses|operators|importers|exporters|manufacturers)',
+        r'(?:affects?|impacts?|covers?)\s+(?:about|approximately|over|more than)?\s*([\d,]+)',
+        r'(?:up to|approximately|around|about|over)\s+([\d,]+)',
+    ]:
+        em = re.search(ep, text, re.IGNORECASE)
+        if em:
+            try:
+                entity_count = int(em.group(1).replace(",", ""))
+                if entity_count > 10:
+                    break
+            except ValueError:
+                pass
+
+    cost = 0.0
+    for cp in [
+        r'\$\s*([\d,.]+)\s*(?:per|/)\s*(?:company|entity|firm|business)',
+        r'(?:cost|fee|expense)[:\s]+\$?\s*([\d,.]+)',
+        r'\$\s*([\d,.]+)',
+    ]:
+        cm = re.search(cp, text, re.IGNORECASE)
+        if cm:
+            try:
+                val = float(cm.group(1).replace(",", ""))
+                if 100 <= val <= 10_000_000:
+                    cost = val
+                    break
+            except ValueError:
+                pass
+
+    return json.dumps({"entity_count": entity_count, "cost_per_entity": cost})
+
+
+def load_founder_profile(path: Optional[str] = None) -> FounderProfile:
+    """Load founder profile from JSON file."""
+    profile_path = Path(path) if path else DEFAULT_PROFILE_PATH
+    if not profile_path.exists():
+        logger.warning(f"Profile not found at {profile_path}, using defaults")
+        return FounderProfile()
+
+    with open(profile_path, encoding="utf-8") as f:
+        data = json.load(f)
+
+    skills = data.get("skills", [])
+    languages = []
+    lang_set = set()
+    for s in skills:
+        if s in ("Vietnamese", "English", "Mandarin", "vi", "en"):
+            if s not in lang_set:
+                lang_set.add(s)
+                languages.append(s)
+    if "Vietnamese" not in lang_set and "vi" not in lang_set:
+        languages.insert(0, "Vietnamese")
+    if "English" not in lang_set and "en" not in lang_set:
+        languages.append("English")
+
+    industries = []
+    mechanisms = data.get("masters_mechanisms", {})
+    for desc in mechanisms.values():
+        if "trade" in desc.lower():
+            industries.append("commodity trading")
+        if "coffee" in desc.lower():
+            industries.append("coffee export")
+
+    if not industries:
+        industries = ["commodity trading", "agriculture"]
+
+    expertise = []
+    if "trade_contacts_CN" in skills:
+        expertise.append("China trade contacts")
+    if "relationship_building" in skills:
+        expertise.append("relationship trading")
+
+    return FounderProfile(
+        industries=industries,
+        languages=languages,
+        location=data.get("location", "Vietnam"),
+        domain_expertise=expertise,
+        capital_range=data.get("capital_range", "$0-1000"),
+    )
+
+
+def run_hunt(
+    seed_products: Optional[list[str]] = None,
+    markets: Optional[list[str]] = None,
+    geographies: Optional[list[str]] = None,
+    industries: Optional[list[str]] = None,
+    founder_path: Optional[str] = None,
+    db_path: Optional[str] = None,
+    max_brain1_calls: int = 30,
+    max_brain2_calls: int = 30,
+    llm_model: str = "claude-haiku-4-5-20251001",
+) -> dict:
+    """Run the full V5 hunt pipeline with real DuckDuckGo + Claude API.
+
+    Returns dict with keys: cards, deltas, flows, graph_stats, budget.
+    """
+    founder = load_founder_profile(founder_path)
+    llm_fn = _create_llm_fn(llm_model)
+
+    # Step 0: Build IC for hypothesis-guided search
+    ic = IntelligenceController(
+        research_fn=_ddg_research,
+        llm_fn=llm_fn,
+    )
+
+    # Step 1: IC generates hypotheses BEFORE data collection
+    hypotheses = []
+    targeted_price_queries = []
+    targeted_flow_queries = []
+    try:
+        seeds = {
+            "products": seed_products or [],
+            "markets": markets or [],
+            "geographies": geographies or [],
+            "industries": industries or [],
+            "founder": founder.to_dict() if hasattr(founder, "to_dict") else {},
+        }
+        logger.info("=== IC: Hypothesis Generation (pre-search) ===")
+        hypotheses = ic.generate_hypotheses(seeds, llm_fn)
+        logger.info(f"IC generated {len(hypotheses)} hypotheses")
+        for h in hypotheses:
+            targeted_price_queries.extend(h.get("search_queries", []))
+            targeted_flow_queries.extend(h.get("flow_queries", []))
+    except Exception as e:
+        logger.warning(f"IC hypothesis generation failed ({e}), falling back to broad scan")
+        hypotheses = []
+
+    # Step 2: Price Delta Engine — hypothesis-guided + broad scan
+    ic_guided = len(targeted_price_queries) > 0
+    brain1_budget = max_brain1_calls
+    if ic_guided:
+        brain1_budget = max(15, max_brain1_calls - len(targeted_price_queries))
+
+    logger.info("=== BRAIN 1: Price Delta Engine ===")
+    engine1 = PriceDeltaEngine(
+        _ddg_research, llm_fn,
+        max_calls=brain1_budget, spread_threshold=30.0,
+    )
+    deltas = engine1.scan(
+        seed_products=seed_products,
+        markets=markets,
+        founder=founder,
+        targeted_queries=targeted_price_queries if ic_guided else None,
+    )
+    logger.info(f"Brain 1 found {len(deltas)} price deltas "
+                f"(used {engine1.budget.calls_used}/{engine1.budget.max_calls})"
+                f"{' [IC-guided]' if ic_guided else ''}")
+
+    # Step 3: Forced Flow Engine — hypothesis-guided + broad scan
+    brain2_budget = max_brain2_calls
+    if targeted_flow_queries:
+        brain2_budget = max(15, max_brain2_calls - len(targeted_flow_queries))
+
+    logger.info("=== BRAIN 2: Forced Flow Engine ===")
+    engine2 = ForcedFlowEngine(
+        _ddg_research, llm_fn,
+        max_calls=brain2_budget,
+    )
+    flows = engine2.scan(
+        geographies=geographies,
+        industries=industries,
+        founder=founder,
+        targeted_queries=targeted_flow_queries if targeted_flow_queries else None,
+    )
+    logger.info(f"Brain 2 found {len(flows)} forced flows "
+                f"(used {engine2.budget.calls_used}/{engine2.budget.max_calls})"
+                f"{' [IC-guided]' if targeted_flow_queries else ''}")
+
+    # Step 3.5: Flow Position Engine (Brain 4)
+    logger.info("=== BRAIN 4: Flow Position Engine ===")
+    topic = " ".join(seed_products or industries or ["commodity trading"])
+    brain4 = FlowPositionEngine(research_fn=_ddg_research, llm_fn=llm_fn, max_calls=15)
+    positions = brain4.scan(topic, founder=founder)
+    logger.info(f"Brain 4 found {len(positions)} flow positions "
+                f"(used {brain4.calls_used}/{brain4.max_calls})")
+
+    # Step 4: Update IC graph with real data
+    logger.info("=== GRAPH: Anomaly Overlay + IC Update ===")
+    graph = ic.graph
+    graph.add_anomaly_overlay(
+        [d.to_dict() for d in deltas],
+        [f.to_dict() for f in flows],
+    )
+    if hypotheses:
+        try:
+            ic.update_from_results(
+                [d.to_dict() for d in deltas],
+                [f.to_dict() for f in flows],
+            )
+            ic.judge_hypotheses()
+            logger.info(f"IC judged {len(hypotheses)} hypotheses against data")
+        except Exception as e:
+            logger.warning(f"IC update/judge failed ({e}), continuing without")
+
+    graph_stats = graph.to_dict()["stats"]
+
+    # Step 5: Anomaly Cross-Reference
+    logger.info("=== BRAIN 3: Anomaly Cross-Reference ===")
+    store_path = db_path or str(DEFAULT_DB_PATH)
+    store = AnomalyStore(store_path)
+    historical = store.load_active_cards()
+
+    xref = AnomalyCrossReferencer(historical=historical)
+    cards = xref.cross_reference(deltas, flows, founder=founder, positions=positions)
+
+    # Step 6: Persist
+    logger.info("=== PERSIST ===")
+    for card in cards:
+        store.save_card(card)
+        delta_pct = card.delta.get("spread_pct", 0.0) if card.delta else 0.0
+        store.record_history(
+            card.id, card.anomaly_score,
+            card.monthly_income, delta_pct,
+        )
+
+    budget_summary = {
+        "brain1_used": engine1.budget.calls_used,
+        "brain1_max": engine1.budget.max_calls,
+        "brain2_used": engine2.budget.calls_used,
+        "brain2_max": engine2.budget.max_calls,
+        "brain4_used": brain4.calls_used,
+        "brain4_max": brain4.max_calls,
+        "ic_hypotheses": len(hypotheses),
+        "ic_guided": ic_guided,
+        "total_used": engine1.budget.calls_used + engine2.budget.calls_used + brain4.calls_used,
+        "total_max": engine1.budget.max_calls + engine2.budget.max_calls + brain4.max_calls,
+    }
+
+    store.close()
+
+    return {
+        "cards": cards,
+        "deltas": deltas,
+        "flows": flows,
+        "positions": positions,
+        "graph_stats": graph_stats,
+        "hypotheses": hypotheses,
+        "budget": budget_summary,
+        "founder": founder,
+    }
+
+
+def format_hunt_output(result: dict) -> str:
+    """Format hunt results into readable markdown output."""
+    cards = result["cards"]
+    deltas = result["deltas"]
+    flows = result["flows"]
+    budget = result["budget"]
+
+    lines = [
+        "# /hunt V5 — Anomaly Intelligence Report",
+        "",
+        f"## Budget: {budget['total_used']}/{budget['total_max']} web calls",
+        f"- Brain 1 (Price Deltas): {budget['brain1_used']}/{budget['brain1_max']}",
+        f"- Brain 2 (Forced Flows): {budget['brain2_used']}/{budget['brain2_max']}",
+        "",
+        f"## Raw Signals: {len(deltas)} price deltas, {len(flows)} forced flows",
+        "",
+    ]
+
+    if deltas:
+        lines.append("### Price Deltas (>30% spread)")
+        for d in deltas[:10]:
+            lines.append(f"- **{d.product}** {d.market_a}->{d.market_b}: "
+                        f"${d.price_a:.2f}->${d.price_b:.2f}/kg "
+                        f"(spread {d.spread_pct:.0f}%, "
+                        f"net margin {d.net_margin_pct:.0f}%)")
+        lines.append("")
+
+    if flows:
+        lines.append("### Forced Flows (regulatory mandates)")
+        for f in flows[:10]:
+            lines.append(f"- **{f.regulation}** ({f.jurisdiction}): "
+                        f"{f.entity_count:,} entities × ${f.compliance_cost:,.0f} "
+                        f"= ${f.total_forced_spend:,.0f} forced spend")
+            if f.provider_gap:
+                lines.append(f"  Gap: {f.provider_gap}")
+        lines.append("")
+
+    lines.append(f"## Anomaly Cards: {len(cards)} opportunities ranked")
+    lines.append("")
+
+    for i, card in enumerate(cards[:10], 1):
+        rank = card.final_rank()
+        lines.extend([
+            f"### #{i}: {card.title}",
+            f"- **Type:** {card.anomaly_type} | **Position:** {card.position_type}",
+            f"- **Score:** {card.anomaly_score:.2f} | "
+            f"**Founder Fit:** {card.founder_fit:.2f} | "
+            f"**Urgency:** {card.urgency:.2f} | "
+            f"**Rank:** {rank:.4f}",
+            f"- **Margin:** ${card.margin_per_unit:.2f}/unit "
+            f"→ ${card.monthly_income:.0f}/month ({card.units_per_month} units)",
+            f"- **Action:** {card.action}",
+            f"- **Kill:** {card.kill_criteria}",
+        ])
+        if card.deadline:
+            lines.append(f"- **Deadline:** {card.deadline}")
+        if card.contacts:
+            lines.append(f"- **Contacts ({len(card.contacts)}):**")
+            for c in card.contacts[:3]:
+                lines.append(f"  - {c.get('role', '?')} via {c.get('channel', '?')}: "
+                            f"\"{c.get('script', '')}\"")
+        lines.append("")
+
+    return "\n".join(lines)

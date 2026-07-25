@@ -1,0 +1,291 @@
+{
+  "schema_version": "2.0",
+  "purpose": "Master index of training corpus. Read by SessionStart hook to auto-load training context. Read by stage0 Step 3.5 to surface relevant artifacts. Read by capture script to know where to append new knowledge.",
+  "last_updated": "2026-05-09",
+  "corpus_root": "data/training/",
+  "auto_load_on_session_start": true,
+  "applicable_activities": [
+    "channel_analysis",
+    "founder_evaluation",
+    "opportunity_discovery",
+    "market_research",
+    "business_model_validation",
+    "niche_validation",
+    "competitor_analysis",
+    "investment_analysis",
+    "stage0_mountain_hunting"
+  ],
+  "artifacts": {
+    "meta": [
+      {
+        "file": "README.md",
+        "type": "documentation",
+        "role": "master_index_human_readable",
+        "load_priority": "always_on_start"
+      },
+      {
+        "file": "knowledge-taxonomy.md",
+        "type": "documentation",
+        "role": "defines_what_gets_trained",
+        "load_priority": "always_on_start"
+      },
+      {
+        "file": "inference-engine.md",
+        "type": "documentation",
+        "role": "defines_how_knowledge_is_applied",
+        "load_priority": "always_on_start"
+      },
+      {
+        "file": "universal-analysis-protocol.md",
+        "type": "documentation",
+        "role": "protocol_for_all_analysis_activities",
+        "load_priority": "always_on_start"
+      }
+    ],
+    "domain_heuristics": [
+      {
+        "file": "domain-heuristics/vn-tiktok-finance.json",
+        "type": "domain_heuristics",
+        "domain": "vn_tiktok_finance",
+        "count": 5,
+        "id_range": "DH-TF-001 to DH-TF-005",
+        "load_trigger": "tiktok_finance_content_analysis",
+        "fire_mechanism": "keyword_match_on_domain",
+        "source": "@stockaholic5226 + @cryptowhale9119 analysis 2026-05-09"
+      },
+      {
+        "file": "domain-heuristics/vn-macro-indicators.json",
+        "type": "domain_heuristics",
+        "domain": "vn_macro_indicators",
+        "count": 5,
+        "id_range": "DH-MI-001 to DH-MI-005",
+        "load_trigger": "macro_economic_claims_detected",
+        "fire_mechanism": "keyword_match_on_domain",
+        "source": "gov data cross-ref from channel analysis 2026-05-09"
+      }
+    ],
+    "rules": [
+      {
+        "file": "extracted-rules-channel-analysis.json",
+        "type": "behavioral_rules",
+        "count": 18,
+        "id_range": "SCH-012 to SCH-029",
+        "load_trigger": "keyword_match_on_any_analysis_topic",
+        "fire_mechanism": "stage0_schema_accumulator_read_mode",
+        "mirror_of": "data/schemas/registry.json (gitignored working state)"
+      }
+    ],
+    "reflex_training": [
+      {
+        "file": "reflex-training-corpus.md",
+        "type": "reflex_patterns_human_readable",
+        "sections": 6,
+        "sources": [
+          "billionaires",
+          "vn_operators",
+          "capital_access",
+          "failure_patterns"
+        ],
+        "load_priority": "always_on_start",
+        "role": "founder_decision_reflexes_consolidated"
+      },
+      {
+        "file": "reflex-training-corpus.json",
+        "type": "reflex_patterns_machine_readable",
+        "load_trigger": "any_business_decision",
+        "fire_mechanism": "pattern_match_on_decision_context"
+      },
+      {
+        "file": "book-knowledge-reflex-patterns.json",
+        "type": "reflex_patterns_machine_readable",
+        "count": 58,
+        "id_range": "REF-HILL-001 to REF-EKER-013",
+        "source_books": [
+          "Napoleon Hill",
+          "Dale Carnegie",
+          "Start-up Nation",
+          "Fukuzawa Yukichi",
+          "T. Harv Eker"
+        ],
+        "load_trigger": "any_business_decision",
+        "fire_mechanism": "pattern_match_on_situation_context",
+        "note": "Extracted 2026-05-03 from 5 classic books - quick-fire situational responses"
+      }
+    ],
+    "mental_models": [
+      {
+        "file": "mental-models.md",
+        "type": "reasoning_frameworks_human_readable",
+        "count": 6,
+        "load_priority": "always_on_start"
+      },
+      {
+        "file": "mental-models.json",
+        "type": "reasoning_frameworks_machine_readable",
+        "count": 22,
+        "id_range": "MM-01 to MM-16, MM-MTV-01 to MM-MTV-05, MM-22",
+        "load_trigger": "any_analysis_activity",
+        "fire_mechanism": "explicit_trigger_conditions_per_model"
+      },
+      {
+        "file": "book-knowledge-mental-models.json",
+        "type": "reasoning_frameworks_machine_readable",
+        "count": 52,
+        "id_range": "MM-HILL-01 to MM-EKER-17",
+        "source_books": [
+          "Napoleon Hill",
+          "Dale Carnegie",
+          "Start-up Nation",
+          "Fukuzawa Yukichi",
+          "T. Harv Eker"
+        ],
+        "load_trigger": "any_analysis_activity",
+        "fire_mechanism": "explicit_trigger_conditions_per_model",
+        "note": "Extracted 2026-05-03 from 5 classic business/philosophy books"
+      }
+    ],
+    "verification_toolkit": [
+      {
+        "file": "verification-toolkit.md",
+        "type": "forensic_methods",
+        "tier_1_count": 4,
+        "tier_2_count": 5,
+        "tier_3_count": 4,
+        "load_priority": "on_analysis_start"
+      },
+      {
+        "file": "scripts/tier1-verify.py",
+        "type": "runnable_automation",
+        "automates": [
+          "email_forensics",
+          "wayback_check",
+          "engagement_timeline"
+        ],
+        "cli_usage": "python tier1-verify.py --website <url> --channel-url <url>",
+        "tested": true
+      }
+    ],
+    "archetypes": [
+      {
+        "file": "archetypes/ai-content-farm-educator.json",
+        "type": "content_creator_archetype",
+        "id": "ARCH-009",
+        "load_trigger": "ai_generated_content_detected",
+        "fire_mechanism": "markers_match_threshold_3_of_7",
+        "source": "@stockaholic5226 + @cryptowhale9119 analysis 2026-05-09"
+      },
+      {
+        "file": "archetypes/retreating-city-founder.json",
+        "type": "founder_archetype",
+        "id": "ARCH-001",
+        "load_trigger": "founder_biographical_markers_detected",
+        "fire_mechanism": "markers_match_threshold_5_of_9"
+      },
+      {
+        "file": "archetypes/bds-educator-realtor.json",
+        "type": "content_creator_archetype",
+        "id": "ARCH-MTV-01",
+        "load_trigger": "content_creator_financial_education_detected",
+        "fire_mechanism": "markers_match_threshold_4_of_8",
+        "source": "@machthinhvuong_realtor analysis 2026-05-07"
+      },
+      {
+        "file": "archetypes/book-founder-archetypes.json",
+        "type": "founder_archetype_collection",
+        "count": 15,
+        "anti_patterns": 5,
+        "id_range": "ARCH-HILL-001 to ARCH-EKER-002",
+        "source_books": [
+          "Napoleon Hill",
+          "Dale Carnegie",
+          "Start-up Nation",
+          "Fukuzawa Yukichi",
+          "T. Harv Eker"
+        ],
+        "load_trigger": "founder_biographical_markers_detected",
+        "fire_mechanism": "markers_match_threshold_per_archetype",
+        "note": "Extracted 2026-05-03 - includes positive archetypes and anti-patterns"
+      }
+    ],
+    "scripts": [
+      {
+        "file": "scripts/tier1-verify.py",
+        "type": "forensic_automation",
+        "role": "automated_identity_and_brand_age_verification"
+      },
+      {
+        "file": "scripts/capture-approved-inference.py",
+        "type": "learning_loop",
+        "role": "capture_user_approved_inferences_into_training_corpus"
+      }
+    ]
+  },
+  "load_order_on_session_start": [
+    "README.md",
+    "knowledge-taxonomy.md",
+    "inference-engine.md",
+    "universal-analysis-protocol.md",
+    "reflex-training-corpus.md",
+    "mental-models.md",
+    "book-knowledge-mental-models.json",
+    "book-knowledge-reflex-patterns.json",
+    "archetypes/book-founder-archetypes.json",
+    "verification-toolkit.md",
+    "INDEX.json"
+  ],
+  "stage0_integration": {
+    "step_3_5_hook": "Load entire data/training/ corpus before agent dispatch",
+    "schema_accumulator_reads": "extracted-rules-channel-analysis.json + data/schemas/registry.json",
+    "hypothesis_generator_reads": "mental-models.json + book-knowledge-mental-models.json + archetypes/*.json",
+    "reflex_pattern_reads": "reflex-training-corpus.json + book-knowledge-reflex-patterns.json",
+    "archetype_reads": "archetypes/retreating-city-founder.json + archetypes/ai-content-farm-educator.json + archetypes/book-founder-archetypes.json",
+    "domain_heuristic_reads": "domain-heuristics/vn-tiktok-finance.json + domain-heuristics/vn-macro-indicators.json",
+    "verdict_citation_required": "Cite which MM-NN models fired + which SCH-NNN rules applied + which ARCH-NNN archetype matched"
+  },
+  "learning_loop": {
+    "trigger": "User approves an inference during session",
+    "action": "Run scripts/capture-approved-inference.py --type <rule|model|method|archetype> --content <text>",
+    "outcome": "Appends to appropriate training file, updates INDEX.json counts, increments stats"
+  },
+  "stats": {
+    "total_rules": 34,
+    "total_mental_models": 22,
+    "total_reflex_patterns": 246,
+    "total_verification_methods": 13,
+    "total_archetypes": 9,
+    "total_domain_heuristics": 10,
+    "total_scripts": 3,
+    "total_documentation": 5,
+    "total_artifacts": 49,
+    "book_knowledge": {
+      "mental_models": 52,
+      "reflex_patterns": 58,
+      "archetypes": 15,
+      "anti_patterns": 5,
+      "source_books": 5,
+      "extracted_date": "2026-05-03"
+    },
+    "mmo_sync": {
+      "sources_processed": 23,
+      "reflexes_extracted": 138,
+      "failures_extracted": 41,
+      "frameworks_extracted": 5
+    },
+    "last_inference_captured": "2026-05-09T09:00:00.000000",
+    "last_extraction_source": "@stockaholic5226 + @cryptowhale9119 TikTok channel analysis",
+    "last_extraction_items": "3 rules (SCH-027 to SCH-029) + 1 mental model (MM-22) + 1 archetype (ARCH-009) + 10 domain heuristics (DH-TF-001 to DH-TF-005, DH-MI-001 to DH-MI-005)",
+    "total_analyses_using_corpus": 1,
+    "total_corpus_loads": 13,
+    "last_corpus_load": "2026-05-13T11:21:48.451Z",
+    "last_corpus_usage": "2026-05-09T11:11:56.185383+07:00",
+    "total_pattern_fires": 3
+  },
+  "durability_guarantees": [
+    "All files git-tracked in master_investments repo",
+    "Independent of ~/.claude/ user profile",
+    "Survives hardware failure via git push to remote",
+    "Portable across machines via git clone",
+    "Versioned audit trail via git history",
+    "Dual-storage mirror (schemas/predictions gitignored + training/ git-tracked mirror)"
+  ]
+}

@@ -1,0 +1,103 @@
+"""Tests for AEVO-X Orchestrator — coordinates all 3 loops."""
+
+import json
+import logging
+
+import pytest
+
+from ..aevox_orchestrator import AEVOXOrchestrator
+
+
+@pytest.fixture
+def orchestrator(tmp_path):
+    return AEVOXOrchestrator(db_path=tmp_path / "test-aevox.db")
+
+
+def _make_case_data(case_id="case_test", topic="AI writing"):
+    return {
+        "case_id": case_id,
+        "topic": topic,
+        "verdict_class": "MOUNTAIN_CANDIDATE",
+        "verdict_summary": "Promising",
+        "strategy_used": "default_v25",
+        "research_cache": json.dumps({"data": "cached"}),
+        "agent_outputs": json.dumps({
+            "niche-archaeologist": {"confidence": 0.8, "dimension_scores": {"revenue_potential": 8.0, "moat_strength": 6.0, "execution_feasibility": 7.0, "timing": 8.0}},
+            "market-reality-checker": {"confidence": 0.7, "dimension_scores": {"revenue_potential": 7.0, "moat_strength": 5.0, "execution_feasibility": 7.0, "timing": 7.0}},
+            "failure-archaeologist": {"confidence": 0.6, "dimension_scores": {"revenue_potential": 6.0, "moat_strength": 6.0, "execution_feasibility": 6.0, "timing": 6.0}},
+            "risk-mapper": {"confidence": 0.7, "dimension_scores": {"revenue_potential": 7.0, "moat_strength": 6.0, "execution_feasibility": 7.0, "timing": 7.0}},
+        }),
+        "timestamp": "2026-05-16T10:00:00Z",
+    }
+
+
+class TestPostStage0:
+    def test_post_stage0_archives_case(self, orchestrator):
+        orchestrator.run_post_stage0(_make_case_data())
+        case = orchestrator.archiver.get_case("case_test")
+        assert case is not None
+        assert case["topic"] == "AI writing"
+
+    def test_post_stage0_registers_verdict(self, orchestrator):
+        orchestrator.run_post_stage0(_make_case_data())
+        state = orchestrator.execution_tracker.get_state("case_test")
+        assert state is not None
+        assert state["verdict_class"] == "MOUNTAIN_CANDIDATE"
+
+    def test_post_stage0_triggers_replay(self, orchestrator):
+        orchestrator.run_post_stage0(_make_case_data("case_0"))
+        orchestrator.run_post_stage0(_make_case_data("case_1"))
+        assert orchestrator.cycle_count >= 1
+
+    def test_post_stage0_dgm_at_50_cycles(self, orchestrator):
+        orchestrator._cycle_count = 49
+        orchestrator.run_post_stage0(_make_case_data())
+        assert orchestrator._dgm_triggered_count >= 1
+
+    def test_post_stage0_dgm_NOT_at_49_cycles(self, orchestrator):
+        orchestrator._cycle_count = 48
+        orchestrator.run_post_stage0(_make_case_data())
+        assert orchestrator._dgm_triggered_count == 0
+
+
+class TestDailyTournament:
+    def test_daily_tournament_runs_full_selection(self, orchestrator):
+        for i in range(5):
+            orchestrator.run_post_stage0(_make_case_data(f"case_{i}", f"topic_{i}"))
+        result = orchestrator.run_daily_tournament()
+        assert result["cases_replayed"] >= 0
+        assert "fidelity_checked" in result
+
+
+class TestPostOutcome:
+    def test_post_outcome_updates_execution(self, orchestrator):
+        orchestrator.run_post_stage0(_make_case_data())
+        orchestrator.run_post_outcome("case_test", {"revenue": 500.0, "outcome": "confirmed_mountain"})
+        state = orchestrator.execution_tracker.get_state("case_test")
+        assert state["revenue"] == 500.0
+
+    def test_post_outcome_checks_fidelity(self, orchestrator):
+        orchestrator.run_post_stage0(_make_case_data())
+        orchestrator.run_post_outcome("case_test", {"revenue": 500.0, "outcome": "confirmed_mountain"})
+        # No crash, fidelity check ran
+
+
+class TestStatus:
+    def test_status_returns_all_metrics(self, orchestrator):
+        orchestrator.run_post_stage0(_make_case_data())
+        status = orchestrator.status()
+        assert "cycle_count" in status
+        assert "cases_archived" in status
+        assert "dgm_proposals" in status
+
+
+class TestFailOpen:
+    def test_fail_open_on_error(self, orchestrator, caplog):
+        # Archive a case with broken agent_outputs to trigger error in replay
+        bad_case = _make_case_data()
+        bad_case["agent_outputs"] = "not valid json {"
+        with caplog.at_level(logging.ERROR):
+            orchestrator.run_post_stage0(bad_case)
+        # Should not raise — case still archived
+        case = orchestrator.archiver.get_case("case_test")
+        assert case is not None

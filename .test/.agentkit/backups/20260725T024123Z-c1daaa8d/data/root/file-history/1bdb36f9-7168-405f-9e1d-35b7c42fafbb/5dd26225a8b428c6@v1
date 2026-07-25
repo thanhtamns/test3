@@ -1,0 +1,75 @@
+---
+status: pending
+created: 2026-05-10
+slug: knowledge-distillation-engine
+estimated_effort: 6.5 days
+target_repo: D:/code/invesments/master_investments
+---
+
+# Knowledge Distillation Engine — Plan Overview
+
+## Problem
+
+Stage0/master_investments has 1,649 Python scripts + 9 SQLite DBs + 162 persona decisions — but intelligence runs 100% on LLM at runtime. Local infra exists but sits empty (compound.db = 0 rows, confidence-caps = empty, outcomes = 0). System can't evolve because feedback loop requires personal action outcomes that don't exist yet.
+
+## Solution
+
+Use LLM as offline knowledge extraction engine: mine real decisions from books, case studies, and failure post-mortems. Convert to structured feature vectors. Build local reasoning engine that matches new opportunities against 500+ distilled decisions WITHOUT calling LLM. LLM becomes fallback for novel cases only.
+
+## Architecture
+
+```
+LLM (offline, 1-time runs)
+  |
+  | distill: books, case studies, failures
+  v
+Local Knowledge DB (SQLite, permanent)
+  - decision_vectors (500+ structured decisions)
+  - kill_signals (100+ death patterns)
+  - success_signals (100+ positive indicators)
+  - pattern_rules (50+ if-then rules)
+  |
+  v
+Local Reasoning Engine (Python, instant)
+  - pattern_match() → top-K similar decisions
+  - kill_scan() → immediate red flags
+  - score() → CENTS/ESBI/leverage scores
+  - verdict() → KILL/PASS/NEEDS_LLM
+  |
+  | only if confidence < 60%
+  v
+LLM (runtime fallback for novel cases)
+```
+
+## Phases
+
+| # | Phase | Effort | Status |
+|---|-------|--------|--------|
+| P1 | [Vectorize 162 existing decisions](phase-01-vectorize-existing-decisions.md) | 1 day | pending |
+| P2 | [Build local reasoning engine](phase-02-local-reasoning-engine.md) | 2 days | pending |
+| P3 | [Distillation run: Top 3 books](phase-03-distill-books.md) | 1 day | pending |
+| P4 | [Distillation run: Failures + Indie Hackers](phase-04-distill-failures.md) | 1 day | pending |
+| P5 | [Wire into stage0 pipeline](phase-05-wire-stage0.md) | 1 day | pending |
+| P6 | [Auto-distillation hook](phase-06-auto-distillation.md) | 0.5 day | pending |
+
+## Dependencies
+
+- P1 must complete before P2 (engine needs vectors)
+- P2 must complete before P5 (stage0 needs engine)
+- P3, P4 can run in parallel after P1
+- P6 requires P2 + P5
+
+## Success Criteria
+
+- [ ] 500+ decision vectors in local DB
+- [ ] Local engine resolves 80% of cases without LLM (confidence >= 0.6)
+- [ ] Stage0 runtime drops from 2-5 min to < 30s for matched cases
+- [ ] Token cost per case drops 5x for matched cases
+- [ ] Auto-distillation extracts >= 1 pattern per /stage0 run
+- [ ] 50% of distilled data comes from FAILURES (anti-survivorship)
+
+## Kill Criteria
+
+- If local engine accuracy < 70% vs LLM verdict on same case → redesign feature schema
+- If distillation quality audit fails > 30% of extracted decisions → tighten extraction prompts
+- If stage0 output quality degrades vs pure-LLM baseline → revert to LLM-primary

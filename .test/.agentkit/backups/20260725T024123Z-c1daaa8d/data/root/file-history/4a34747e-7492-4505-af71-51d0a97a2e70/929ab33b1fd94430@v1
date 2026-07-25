@@ -1,0 +1,126 @@
+{
+  "version": 1,
+  "description": "Tier-adjusted decision questions for stage0 local orchestrator",
+  "questions": {
+    "FIRST_500": {
+      "question_vi": "Làm sao kiếm $500 đầu tiên từ ecosystem này?",
+      "question_en": "How to earn first $500 from this ecosystem?",
+      "kill_signal": "0 ideas after 2 hours research",
+      "tiers": ["TIER_0"]
+    },
+    "TIME_TO_CASH": {
+      "question_vi": "Từ hôm nay đến ngày nhận tiền là bao lâu?",
+      "question_en": "Days from today to first payment?",
+      "kill_signal": ">90 days = too slow for TIER_0",
+      "tiers": ["TIER_0"]
+    },
+    "SKILL_MATCH": {
+      "question_vi": "Skill nào của bạn có thể cho thuê NGAY?",
+      "question_en": "What skill can you rent TODAY?",
+      "kill_signal": "No skill matches ecosystem need",
+      "tiers": ["TIER_0", "TIER_1"]
+    },
+    "NETWORK_ENTRY": {
+      "question_vi": "Bạn quen ai trong space này? (tên, vai trò)",
+      "question_en": "Who do you know in this space? (name, role)",
+      "kill_signal": "COLD network, no warm intro path",
+      "tiers": ["TIER_0", "TIER_1"]
+    },
+    "RISK_CAP": {
+      "question_vi": "Max $ bạn có thể mất mà không stress?",
+      "question_en": "Max $ you can lose without stress?",
+      "kill_signal": ">50% capital at risk",
+      "tiers": ["TIER_0", "TIER_1"]
+    },
+    "SERVICE_FLOOR": {
+      "question_vi": "Service path nào đạt $2K/mo trong 60 ngày?",
+      "question_en": "Service path to $2K/mo in 60 days?",
+      "kill_signal": "No viable service identified",
+      "tiers": ["TIER_1", "TIER_2"]
+    },
+    "PRODUCT_SEED": {
+      "question_vi": "Minimal product nào validate demand với <$1K?",
+      "question_en": "Minimal product to validate with <$1K?",
+      "kill_signal": "Requires >$2K to build",
+      "tiers": ["TIER_1"]
+    },
+    "REINVESTMENT": {
+      "question_vi": "$1 từ service fund product thế nào?",
+      "question_en": "How does $1 service fund product?",
+      "kill_signal": "No reinvestment path",
+      "tiers": ["TIER_1"]
+    },
+    "NETWORK_LEVERAGE": {
+      "question_vi": "Contact nào accelerate cả service lẫn product?",
+      "question_en": "Contacts that accelerate both service and product?",
+      "kill_signal": "No leverage contacts",
+      "tiers": ["TIER_1"]
+    },
+    "KILL_CRITERIA": {
+      "question_vi": "Signal gì để abandon trong 60 ngày?",
+      "question_en": "Signal to abandon in 60 days?",
+      "kill_signal": "Unclear kill criteria",
+      "tiers": ["TIER_1"]
+    },
+    "WINNER": {
+      "question_vi": "Ai đang thắng? Cơ chế gì?",
+      "question_en": "Who's winning? How?",
+      "kill_signal": "No winner identified",
+      "tiers": ["TIER_2", "TIER_3"]
+    },
+    "KILL": {
+      "question_vi": "Điều gì giết idea nhanh nhất trong 6 tháng?",
+      "question_en": "What kills this fastest in 6 months?",
+      "kill_signal": "Multiple critical kill factors",
+      "tiers": ["TIER_2", "TIER_3"]
+    },
+    "CUSTOMER": {
+      "question_vi": "1 người cụ thể sẽ mua = ai? (tên, chức vụ, budget)",
+      "question_en": "1 specific buyer = who? (name, title, budget)",
+      "kill_signal": "Cannot name specific person",
+      "tiers": ["TIER_2", "TIER_3"]
+    },
+    "ECONOMICS": {
+      "question_vi": "Cần bán bao nhiêu @ price nào để đạt target?",
+      "question_en": "Units × price to reach target?",
+      "kill_signal": "Math doesn't work",
+      "tiers": ["TIER_2", "TIER_3"]
+    },
+    "MOAT": {
+      "question_vi": "Sau 12 tháng sở hữu asset gì competitor không có?",
+      "question_en": "Asset after 12mo that competitor lacks?",
+      "kill_signal": "No compounding asset",
+      "tiers": ["TIER_2", "TIER_3"]
+    },
+    "ACQUISITION_TARGET": {
+      "question_vi": "Mua gì ở 2-3x revenue?",
+      "question_en": "What to buy at 2-3x revenue?",
+      "kill_signal": "No targets in price range",
+      "tiers": ["TIER_3"]
+    },
+    "INTEGRATION_COST": {
+      "question_vi": "Total cost ngoài purchase price?",
+      "question_en": "Total cost beyond purchase?",
+      "kill_signal": "Integration >50% of purchase",
+      "tiers": ["TIER_3"]
+    },
+    "OPERATOR_FIT": {
+      "question_vi": "Founder có thể operate không?",
+      "question_en": "Can founder operate this?",
+      "kill_signal": "Skills mismatch",
+      "tiers": ["TIER_3"]
+    },
+    "COMPOUNDING": {
+      "question_vi": "Asset compound thế nào?",
+      "question_en": "How does asset compound?",
+      "kill_signal": "No compounding mechanism",
+      "tiers": ["TIER_3"]
+    },
+    "EXIT_PATH": {
+      "question_vi": "Exit scenario 3-5 năm?",
+      "question_en": "3-5 year exit scenario?",
+      "kill_signal": "No clear exit",
+      "tiers": ["TIER_3"]
+    }
+  }
+}

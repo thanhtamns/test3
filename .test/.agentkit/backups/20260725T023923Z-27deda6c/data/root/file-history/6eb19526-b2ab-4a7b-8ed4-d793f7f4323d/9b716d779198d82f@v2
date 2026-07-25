@@ -1,0 +1,334 @@
+#!/usr/bin/env python3
+"""CRUD operations for cashflow positioning data (deal journal, failure journal,
+coffee meetings, weekly synthesis, dream5 targets, micro-deals, case studies).
+Operates on JSON files in master_investments/data/."""
+
+import json
+import sys
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+
+DATA_ROOT = Path(__file__).resolve().parent.parent.parent / "data"
+TEMPLATE_ROOT = Path(__file__).resolve().parent.parent / "templates"
+
+STORES = {
+    "deal": DATA_ROOT / "deals" / "deal-journal.json",
+    "failure": DATA_ROOT / "deals" / "failure-journal.json",
+    "coffee": DATA_ROOT / "relationships" / "coffee-meetings.json",
+    "synthesis": DATA_ROOT / "positioning" / "weekly-synthesis.json",
+    "dream5": DATA_ROOT / "relationships" / "dream5.json",
+    "micro-deal": DATA_ROOT / "deals" / "deal-pipeline.json",
+    "case-study": DATA_ROOT / "deals" / "case-studies.json",
+    "phase-gates": DATA_ROOT / "positioning" / "phase-gates.json",
+    "intel-product": DATA_ROOT / "positioning" / "intel-product.json",
+}
+
+
+def load_store(name: str) -> dict:
+    path = STORES[name]
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_store(name: str, data: dict) -> None:
+    path = STORES[name]
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    print(f"Saved: {path}")
+
+
+def load_template(name: str) -> dict:
+    path = TEMPLATE_ROOT / f"{name}.json"
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def gen_id(prefix: str, store_data: dict, list_key: str) -> str:
+    now = datetime.now(timezone.utc).strftime("%y%m%d")
+    items = store_data.get(list_key, [])
+    today_count = sum(1 for i in items if now in i.get("id", ""))
+    return f"{prefix}-{now}-{today_count + 1:04d}"
+
+
+def cmd_add_deal(args: dict) -> dict:
+    store = load_store("deal")
+    entry_id = gen_id("deal", store, "deals")
+    entry = {
+        "id": entry_id,
+        "type": "deal_observation",
+        "date_observed": datetime.now(timezone.utc).isoformat(),
+        **args,
+    }
+    store["deals"].append(entry)
+    store["total_deals"] = len(store["deals"])
+    save_store("deal", store)
+    return {"id": entry_id, "total": store["total_deals"]}
+
+
+def cmd_add_failure(args: dict) -> dict:
+    store = load_store("failure")
+    list_key = "failures"
+    if list_key not in store:
+        store[list_key] = []
+    entry_id = gen_id("fail", store, list_key)
+    entry = {
+        "id": entry_id,
+        "type": "failure_observation",
+        "date_observed": datetime.now(timezone.utc).isoformat(),
+        **args,
+    }
+    store[list_key].append(entry)
+    store["total_failures"] = len(store[list_key])
+    save_store("failure", store)
+    return {"id": entry_id, "total": store["total_failures"]}
+
+
+def cmd_add_coffee(args: dict) -> dict:
+    store = load_store("coffee")
+    list_key = "meetings"
+    if list_key not in store:
+        store[list_key] = []
+    entry_id = gen_id("meet", store, list_key)
+    entry = {
+        "id": entry_id,
+        "type": "coffee_meeting",
+        "date": datetime.now(timezone.utc).isoformat(),
+        **args,
+    }
+    store[list_key].append(entry)
+    store["total_meetings"] = len(store[list_key])
+    save_store("coffee", store)
+    return {"id": entry_id, "total": store["total_meetings"]}
+
+
+def cmd_add_synthesis(args: dict) -> dict:
+    store = load_store("synthesis")
+    list_key = "syntheses"
+    if list_key not in store:
+        store[list_key] = []
+    now = datetime.now(timezone.utc).strftime("%y%m%d")
+    entry_id = f"week-{now}"
+    deal_store = load_store("deal")
+    failure_store = load_store("failure")
+    entry = {
+        "id": entry_id,
+        "type": "weekly_synthesis",
+        "date": datetime.now(timezone.utc).isoformat(),
+        "week_number": len(store[list_key]) + 1,
+        "cumulative": {
+            "total_deals": deal_store.get("total_deals", 0),
+            "total_failures": failure_store.get("total_failures", 0),
+            "total_syntheses": len(store[list_key]) + 1,
+        },
+        **args,
+    }
+    store[list_key].append(entry)
+    save_store("synthesis", store)
+    return {"id": entry_id, "week": entry["week_number"], "cumulative": entry["cumulative"]}
+
+
+def cmd_add_dream5(args: dict) -> dict:
+    store = load_store("dream5")
+    list_key = "targets"
+    if list_key not in store:
+        store[list_key] = []
+    active = [t for t in store[list_key] if t.get("status") != "replaced"]
+    if len(active) >= 5:
+        return {"error": "Dream 5 already has 5 active targets. Replace one first.", "active": [t["name"] for t in active]}
+    entry_id = f"d5-{len(store[list_key]) + 1:04d}"
+    entry = {
+        "id": entry_id,
+        "type": "dream5_target",
+        "added_at": datetime.now(timezone.utc).isoformat(),
+        "status": "researching",
+        "give_first_log": [],
+        "dependency_signals": {
+            "replies_within_24h": False,
+            "forwards_info_unprompted": False,
+            "introduces_you_to_others": False,
+            "asks_your_opinion_before_decisions": False,
+        },
+        **args,
+    }
+    store[list_key].append(entry)
+    save_store("dream5", store)
+    return {"id": entry_id, "active_count": len(active) + 1}
+
+
+def cmd_dream5_give(target_id: str, give_data: dict) -> dict:
+    store = load_store("dream5")
+    for target in store.get("targets", []):
+        if target["id"] == target_id:
+            target.setdefault("give_first_log", []).append({
+                "date": datetime.now(timezone.utc).isoformat(),
+                **give_data,
+            })
+            target["last_interaction"] = datetime.now(timezone.utc).isoformat()
+            give_count = len(target["give_first_log"])
+            save_store("dream5", store)
+            return {"target": target["name"], "gives_total": give_count}
+    return {"error": f"Target {target_id} not found"}
+
+
+def cmd_add_micro_deal(args: dict) -> dict:
+    store = load_store("micro-deal")
+    list_key = "deals"
+    if list_key not in store:
+        store[list_key] = []
+    entry_id = gen_id("mdeal", store, list_key)
+    entry = {
+        "id": entry_id,
+        "type": "micro_deal",
+        "stage": "identified",
+        "timeline": {"identified_at": datetime.now(timezone.utc).isoformat()},
+        **args,
+    }
+    store[list_key].append(entry)
+    save_store("micro-deal", store)
+    return {"id": entry_id, "total": len(store[list_key])}
+
+
+def cmd_update_micro_deal(deal_id: str, updates: dict) -> dict:
+    store = load_store("micro-deal")
+    for deal in store.get("deals", []):
+        if deal["id"] == deal_id:
+            new_stage = updates.pop("stage", None)
+            if new_stage:
+                deal["stage"] = new_stage
+                deal.setdefault("timeline", {})[f"{new_stage}_at"] = datetime.now(timezone.utc).isoformat()
+            deal.update(updates)
+            save_store("micro-deal", store)
+            return {"id": deal_id, "stage": deal["stage"]}
+    return {"error": f"Deal {deal_id} not found"}
+
+
+def cmd_phase_check() -> dict:
+    gates = load_store("phase-gates")
+    deal_store = load_store("deal")
+    failure_store = load_store("failure")
+    coffee_store = load_store("coffee")
+    dream5_store = load_store("dream5")
+    pipeline_store = load_store("micro-deal")
+
+    phases = gates.get("phases", {})
+    report = {}
+
+    p1 = phases.get("phase_1_pattern_recognition", {})
+    p1_gates = p1.get("hard_gates", {})
+    deals_count = deal_store.get("total_deals", 0)
+    failures_count = failure_store.get("total_failures", 0)
+    report["phase_1"] = {
+        "name": p1.get("name", "Pattern Recognition"),
+        "status": p1.get("status", "pending"),
+        "deals_observed": f"{deals_count}/{p1_gates.get('deals_observed', {}).get('target', 50)}",
+        "failures_observed": f"{failures_count}/{p1_gates.get('failures_observed', {}).get('target', 20)}",
+        "progress_pct": round(min(100, (deals_count / 50 * 50) + (failures_count / 20 * 50))),
+    }
+
+    p2 = phases.get("phase_2_info_asymmetry", {})
+    p2_gates = p2.get("hard_gates", {})
+    meetings_count = len(coffee_store.get("meetings", []))
+    report["phase_2"] = {
+        "name": p2.get("name", "Information Asymmetry"),
+        "status": p2.get("status", "pending"),
+        "coffee_meetings": f"{meetings_count}/{p2_gates.get('coffee_meetings_done', {}).get('target', 5)}",
+        "intel_product_done": p2_gates.get("intel_product_v1_complete", False),
+        "progress_pct": round(min(100, meetings_count / 5 * 60 + (40 if p2_gates.get("intel_product_v1_complete") else 0))),
+    }
+
+    p3 = phases.get("phase_3_micro_deals", {})
+    p3_gates = p3.get("hard_gates", {})
+    closed_deals = [d for d in pipeline_store.get("deals", []) if d.get("stage") in ("closed", "paid")]
+    report["phase_3"] = {
+        "name": p3.get("name", "Proving Ground"),
+        "status": p3.get("status", "pending"),
+        "deals_closed": f"{len(closed_deals)}/{p3_gates.get('deals_closed', {}).get('target', 3)}",
+        "commission_earned": any(d.get("commission", {}).get("earned_vnd", 0) > 0 for d in closed_deals),
+        "progress_pct": round(min(100, len(closed_deals) / 3 * 100)),
+    }
+
+    targets = dream5_store.get("targets", [])
+    active_targets = [t for t in targets if t.get("status") != "replaced"]
+    responsive = [t for t in active_targets if t.get("status") in ("responsive", "collaborating")]
+    report["phase_4"] = {
+        "name": "Relationship Engineering",
+        "status": phases.get("phase_4_relationships", {}).get("status", "pending"),
+        "dream5_active": len(active_targets),
+        "dream5_responsive": len(responsive),
+        "progress_pct": round(min(100, len(responsive) / 3 * 100)) if active_targets else 0,
+    }
+
+    report["phase_5"] = {
+        "name": "Position Consolidation",
+        "status": phases.get("phase_5_consolidation", {}).get("status", "pending"),
+        "blocked_by": "Phase 1-4",
+        "progress_pct": 0,
+    }
+
+    overall = round(sum(p.get("progress_pct", 0) for p in report.values()) / 5)
+    report["overall_progress_pct"] = overall
+
+    return report
+
+
+def cmd_update_phase_gates() -> dict:
+    """Sync phase gates with actual data counts."""
+    gates = load_store("phase-gates")
+    deal_store = load_store("deal")
+    failure_store = load_store("failure")
+    coffee_store = load_store("coffee")
+    pipeline_store = load_store("micro-deal")
+    dream5_store = load_store("dream5")
+
+    phases = gates.get("phases", {})
+
+    p1 = phases.get("phase_1_pattern_recognition", {}).get("hard_gates", {})
+    if "deals_observed" in p1:
+        p1["deals_observed"]["current"] = deal_store.get("total_deals", 0)
+    if "failures_observed" in p1:
+        p1["failures_observed"]["current"] = failure_store.get("total_failures", 0)
+
+    p2 = phases.get("phase_2_info_asymmetry", {}).get("hard_gates", {})
+    if "coffee_meetings_done" in p2:
+        p2["coffee_meetings_done"]["current"] = len(coffee_store.get("meetings", []))
+
+    p3 = phases.get("phase_3_micro_deals", {}).get("hard_gates", {})
+    closed = [d for d in pipeline_store.get("deals", []) if d.get("stage") in ("closed", "paid")]
+    if "deals_closed" in p3:
+        p3["deals_closed"]["current"] = len(closed)
+
+    save_store("phase-gates", gates)
+    return {"synced": True}
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Usage: positioning-crud.py <command> [json-args]")
+        print("Commands: add-deal, add-failure, add-coffee, add-synthesis,")
+        print("          add-dream5, dream5-give, add-micro-deal, update-micro-deal,")
+        print("          phase-check, sync-gates")
+        sys.exit(1)
+
+    cmd = sys.argv[1]
+    args = json.loads(sys.argv[2]) if len(sys.argv) > 2 else {}
+
+    dispatch = {
+        "add-deal": lambda: cmd_add_deal(args),
+        "add-failure": lambda: cmd_add_failure(args),
+        "add-coffee": lambda: cmd_add_coffee(args),
+        "add-synthesis": lambda: cmd_add_synthesis(args),
+        "add-dream5": lambda: cmd_add_dream5(args),
+        "dream5-give": lambda: cmd_dream5_give(args.pop("target_id"), args),
+        "add-micro-deal": lambda: cmd_add_micro_deal(args),
+        "update-micro-deal": lambda: cmd_update_micro_deal(args.pop("deal_id"), args),
+        "phase-check": lambda: cmd_phase_check(),
+        "sync-gates": lambda: cmd_update_phase_gates(),
+    }
+
+    if cmd not in dispatch:
+        print(f"Unknown command: {cmd}")
+        sys.exit(1)
+
+    result = dispatch[cmd]()
+    print(json.dumps(result, indent=2, ensure_ascii=False))

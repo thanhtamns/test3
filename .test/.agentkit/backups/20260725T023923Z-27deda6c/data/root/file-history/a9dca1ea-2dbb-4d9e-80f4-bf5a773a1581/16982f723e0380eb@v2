@@ -1,0 +1,176 @@
+"""
+trace_logger.py — Structured step-level tracing for stage0 pipeline.
+
+Each stage0 step logs its contribution to the final verdict: direction, confidence,
+knobs used, agents fired, cost. This enables causal error attribution when a verdict
+is later found to be wrong.
+
+Usage (inside stage0 execution):
+    trace = TraceLogger(case_id="NTH-260516-abc123")
+    trace.log_step("3.5_wave1", "Wave 1 Agent Dispatch",
+        knobs_used=["wave1_base_agents", "max_web_calls_per_step"],
+        signal={"direction": "GO", "confidence": 0.72},
+        agents=["researcher", "contrarian-research-agent"])
+    # ... more steps ...
+    trace.log_verdict_composition("MOUNTAIN_CANDIDATE", {"3.5_wave1": 0.4, "6_mountain_test": 0.6})
+    trace.save()
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from dataclasses import dataclass, field, asdict
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
+
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+_DEFAULT_TRACES_DIR = _REPO_ROOT / "data" / "traces"
+
+
+@dataclass
+class StepTrace:
+    """A single step's contribution to the verdict."""
+    step: str
+    step_name: str
+    knobs_used: list[str] = field(default_factory=list)
+    signal: dict = field(default_factory=dict)
+    agents: list[str] = field(default_factory=list)
+    token_cost: int = 0
+    wall_time_ms: int = 0
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class VerdictComposition:
+    """How the final verdict was composed from step signals."""
+    final_verdict: str
+    final_confidence: float = 0.0
+    step_weights: dict = field(default_factory=dict)
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+class TraceLogger:
+    """Accumulates step traces during a stage0 run and persists them."""
+
+    # The 12 key steps we trace
+    TRACED_STEPS = [
+        "1.8_local_prescreen",
+        "2.45_premise_challenge",
+        "2.6_intent_classification",
+        "2.6.2_capital_path_routing",
+        "3_kb_lookup",
+        "3.4b_calc_dispatcher",
+        "3.5_wave1",
+        "3.5_wave2",
+        "5_hypothesis_generation",
+        "6_mountain_test",
+        "7_verdict_synthesis",
+        "7.5_gap_analysis",
+    ]
+
+    def __init__(
+        self,
+        case_id: str,
+        traces_dir: Optional[Path] = None,
+    ):
+        self.case_id = case_id
+        self.traces_dir = Path(traces_dir or _DEFAULT_TRACES_DIR)
+        self.steps: list[StepTrace] = []
+        self.verdict: Optional[VerdictComposition] = None
+        self.started_at = datetime.now(timezone.utc).isoformat()
+
+    def log_step(
+        self,
+        step: str,
+        step_name: str,
+        knobs_used: Optional[list[str]] = None,
+        signal: Optional[dict] = None,
+        agents: Optional[list[str]] = None,
+        token_cost: int = 0,
+        wall_time_ms: int = 0,
+    ) -> StepTrace:
+        """Log a single step's contribution to the verdict."""
+        entry = StepTrace(
+            step=step,
+            step_name=step_name,
+            knobs_used=knobs_used or [],
+            signal=signal or {},
+            agents=agents or [],
+            token_cost=token_cost,
+            wall_time_ms=wall_time_ms,
+        )
+        self.steps.append(entry)
+        logger.debug("Traced step %s: direction=%s conf=%s",
+                     step, signal.get("direction") if signal else "?",
+                     signal.get("confidence") if signal else "?")
+        return entry
+
+    def log_verdict_composition(
+        self,
+        final_verdict: str,
+        step_weights: Optional[dict] = None,
+        final_confidence: float = 0.0,
+    ):
+        """Log how steps combined into the final verdict."""
+        self.verdict = VerdictComposition(
+            final_verdict=final_verdict,
+            final_confidence=final_confidence,
+            step_weights=step_weights or {},
+        )
+
+    def save(self) -> Path:
+        """Write trace to data/traces/stage0-trace-{case_id}.json"""
+        self.traces_dir.mkdir(parents=True, exist_ok=True)
+        filepath = self.traces_dir / f"stage0-trace-{self.case_id}.json"
+
+        data = {
+            "case_id": self.case_id,
+            "started_at": self.started_at,
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "steps": [s.to_dict() for s in self.steps],
+            "verdict": self.verdict.to_dict() if self.verdict else None,
+            "summary": {
+                "total_steps": len(self.steps),
+                "total_token_cost": sum(s.token_cost for s in self.steps),
+                "total_wall_time_ms": sum(s.wall_time_ms for s in self.steps),
+                "agents_fired": list({a for s in self.steps for a in s.agents}),
+            },
+        }
+
+        filepath.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        logger.info("Trace saved: %s (%d steps)", filepath.name, len(self.steps))
+        return filepath
+
+    @classmethod
+    def load(cls, case_id: str, traces_dir: Optional[Path] = None) -> Optional[dict]:
+        """Load a saved trace for a completed case."""
+        traces_dir = Path(traces_dir or _DEFAULT_TRACES_DIR)
+        filepath = traces_dir / f"stage0-trace-{case_id}.json"
+        if not filepath.exists():
+            return None
+        try:
+            return json.loads(filepath.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as e:
+            logger.error("Failed to load trace %s: %s", filepath, e)
+            return None
+
+    @classmethod
+    def list_traces(cls, traces_dir: Optional[Path] = None) -> list[str]:
+        """List all case_ids with saved traces."""
+        traces_dir = Path(traces_dir or _DEFAULT_TRACES_DIR)
+        if not traces_dir.exists():
+            return []
+        return [
+            f.stem.replace("stage0-trace-", "")
+            for f in traces_dir.glob("stage0-trace-*.json")
+        ]

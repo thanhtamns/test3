@@ -1,0 +1,3320 @@
+# /stage0 — Núi Tiền Hunter (Imperative Checklist v25.5, 260518)
+
+**This file is a CHECKLIST, not prose. Every step MUST execute. NEVER skip. NEVER summarize.**
+**Detailed rationale + agent specs in `commands/stage0-spec-detail.md`. This file is the EXECUTION CONTRACT.**
+
+## ⚠ ATTENTION BUDGET PROTECTION (v25.1 — 260509)
+
+**This file is 2500+ lines. LLMs lose attention after ~900 lines, causing 70%+ step skips.**
+
+**MANDATORY:** Before executing, load `commands/stage0-checklist.md` (<200 lines) as your PRIMARY execution guide. Use THIS file (stage0.md) as REFERENCE for step details only when needed. The checklist has every step in 1-2 lines with the critical commands.
+
+**QUALITY GATE (enforced by stage0-post-audit.cjs):**
+- ≥8 Wave 1 agents MUST be spawned as Task calls
+- ≥4 Wave 2 agents MUST be spawned as Task calls
+- calc-dispatcher MUST run for revenue claims
+- Verdict class MUST be valid (KILL/SIDE_HUSTLE/SIDE_HUSTLE_WITH_STAIRCASE/MOUNTAIN_CANDIDATE/INSUFFICIENT_SIGNAL)
+- persist-verdict.py will REJECT cases with agents_fired < 8
+
+**After completing, run quality score:** `python scripts/stage0-quality-score.py --verdict-file <path>`
+
+---
+
+## Failure mode warning (read before executing)
+
+Prior /stage0 runs bypassed this pipeline by treating spec as suggestion. **The Stop hook
+`stage0-tool-call-audit.cjs` will BLOCK any /stage0 output that does not include calls to
+persist-verdict.py, persist-knowledge.py, AND verify-persistence.py.** You CANNOT write a
+/stage0 verdict without those tool calls. Do not try.
+
+---
+
+## Trigger
+
+```
+/stage0                           # interactive: capture profile + ask topic
+/stage0 <topic>                   # use saved profile, fresh research on topic
+/stage0 --kb-list                 # show all KB cases
+/stage0 --resume <case_id> --replies <p>  # resume after pulse check
+/stage0 --full <topic>            # EXPLORATION mode: output ALL industries (no limit)
+/stage0 --breadth <topic>         # BREADTH mode: 10-12 category-level models (no instance research)
+/stage0 --global <topic>          # Force global scope (skip Vietnam-specific queries)
+/stage0 <topic> --teach           # TEACHING MODE: Socratic probes + real cases + insights
+/stage0 <topic> --teach --batch   # Teaching content without interactive pauses
+/stage0 <topic> --voice operator  # Mentor-style output: zero tables/bullets, conversational scripts
+/stage0 <topic> --voice analyst   # Default report format (tables, scores, tags)
+```
+
+**Flag behaviors:**
+- `--full`: Forces EXPLORATION mode + outputs ALL discovered industries (no "Top 5" limit)
+- `--breadth`: Category-level scan (10-12 models). NO instance research. Fast. Use when exploring broadly before drilling deep.
+- `--global`: Skip Vietnam/SEA-specific queries, scan global markets only
+- `--full --global`: Both — maximum scope, all industries, all geographies
+- `--teach`: Transforms Stage0 from analyst to mentor. Injects Socratic probes at Mountain Test, cites real Operator Experiences as case studies, generates cross-framework insights via Synthesis Engine. Interactive by default (pauses for user reflection).
+- `--teach --batch`: Teaching content included but no interactive pauses (for autonomous runs)
+- `--voice operator`: Transform verdict from analyst report to mentor-style guidance. Zero bullet lists, zero tables, zero technical headers. Write as mentor across coffee table. Scripts as dialogue. Numbers embedded naturally. Default: `analyst`
+- `--voice analyst`: Explicit default — standard report format with tables, scores, tags
+
+## Mountain definition (LOCKED v22)
+
+**Mountain = ≥$10K/mo NET to 1 founder, repeatable ≤12 months, ≥1 compounding component.**
+Anything else = SIDE_HUSTLE. Do not blur this line.
+
+---
+
+## EXECUTION CHECKLIST (every step is mandatory)
+
+### Step 0 — CWD validate
+CWD MUST end in `master_investments`. Hook `stage0-cwd-validator.cjs` enforces. If you got here, you passed.
+
+### Step 0.1 — Action gate (BLOCKING if overdue)
+Check `data/actions/` for unresolved ACTION-*.json files. Logic in `hooks/action-gate.cjs`.
+- If any action with `due_by < now`: **HARD BLOCK** — display pending actions, refuse to proceed.
+- If any action with `due_by >= now`: **SOFT WARNING** — show pending, allow `--skip-gate` to override.
+- If 0 pending: pass through silently.
+- Skip entirely if user passed `--skip-gate` flag (log: "skipping feeds the analysis loop").
+
+### Step 0.5 — Load runtime assertions (BLOCKING — Phase 1 bias-fix)
+
+Runtime assertions injected at SessionStart by `stage0-learned-rules-injector.cjs` hook. These are P0 learned rules that MUST enforce at every decision point. Without this step, /stage0 ignores its own learned rules (root cause of 2026-04-13 platform-rev-share-leakage false-negative).
+
+```bash
+# Find session assertions file (written at SessionStart)
+ls -t /tmp/stage0-runtime-assertions-*.json 2>/dev/null | head -1
+# Windows: dir %TEMP%\stage0-runtime-assertions-*.json /b /o-d | head -1
+```
+
+Read the JSON. Extract `p0_rules` array. Inject into EVERY downstream agent prompt (Steps 3.5 Wave 1, Step 3.5 Wave 2, Step 5 hypothesis gen, Step 6 Mountain Test, Step 7 verdict synthesis) as:
+
+```
+## RUNTIME_ASSERTIONS (P0 learned rules — BLOCKING at decision points)
+<p0 rules list>
+
+## ENFORCEMENT TARGETS
+- [POWER-LAW-MEDIAN-WARNING] → every revenue claim MUST include P10/P50/P90 (not median alone)
+- [CONFABULATION-BAN] → every numeric claim MUST have named+dated+URL source or [?] tag
+- [FAILURE-ARCHAEOLOGY-MANDATORY] → failure search BEFORE supporting evidence
+- [TOOL-EXHAUSTION] → before "not feasible" verdict, exhaust ≥4 distinct tool paths
+- [GMV-INCOME-DIVISION] → creator economy: GMV × commission ÷ active_count = individual share
+- [FOUNDER-REALITY-GATE] → audit founder constraints before recommending doors
+```
+
+If assertions file missing → emit warning "⚠ RUNTIME_ASSERTIONS unavailable — hook did not run at SessionStart", proceed in degraded mode with `[DEGRADED_NO_ASSERTIONS]` tag on downstream claims. Do NOT hard-abort.
+
+### Step 0.6 — Load mechanism knobs + init trace (MANDATORY)
+
+Load tunable mechanism knobs and initialize the trace logger for this case. Knobs control thresholds used in downstream steps (mountain test, confidence gates, agent counts). Trace records step-level signals for causal error attribution when a verdict is later found wrong.
+
+```bash
+# Snapshot current knob values — inject into downstream steps that use thresholds
+PYTHONPATH=".claude/lib" .claude/skills/.venv/Scripts/python.exe \
+  -m intelligence.mechanism.trace_cli snapshot-knobs
+```
+
+Store the JSON output as `MECHANISM_KNOBS`. Use these values instead of hardcoded constants:
+- `mountain_threshold_monthly` → Step 6 Mountain Test ($X/mo threshold)
+- `mountain_timeline_months` → Step 6 Mountain Test (timeline)
+- `confidence_gate_minimum` → Step 6.45 confidence floor
+- `agents_fired_minimum` → Quality self-check minimum agents
+- `wave1_base_agent_count` → Step 3.5 Wave 1 agent count
+- `wave2_min_agents` → Step 3.8 Wave 2 minimum
+
+The case_id (generated at Step 2 or from topic) is used for ALL subsequent `trace_cli log-step` calls. Example trace call (run AFTER each traced step completes):
+
+```bash
+PYTHONPATH=".claude/lib" .claude/skills/.venv/Scripts/python.exe \
+  -m intelligence.mechanism.trace_cli log-step \
+  --case-id <CASE_ID> --step <STEP_ID> --step-name "<STEP_NAME>" \
+  --direction <GO|KILL|NEUTRAL> --confidence <0.0-1.0> \
+  --agents "<comma-separated-agent-names>" \
+  --knobs "<comma-separated-knob-ids-used>"
+```
+
+**TRACED STEPS** (log after EACH of these completes):
+| Step ID | After Which Step | Key Args |
+|---------|-----------------|----------|
+| `1.8_local_prescreen` | Step 1.8 | direction from prescreen verdict, knobs: `local_kill_confidence` |
+| `2.45_premise_challenge` | Step 2.45 | direction: GO if vehicle OK, KILL if mismatch |
+| `2.6_intent_classification` | Step 2.6 | direction: GO, confidence from classifier |
+| `3_kb_lookup` | Step 3 | direction: GO/NEUTRAL, knobs: `kb_retrieval_timeout_ms` |
+| `3.5_wave1` | Step 3.5 | direction from consensus, agents list, knobs: `wave1_base_agent_count,agents_fired_minimum` |
+| `3.5_wave2` | Step 3.8 | direction from consensus, agents list, knobs: `wave2_min_agents` |
+| `5_hypothesis_generation` | Step 5 | direction: GO (hypotheses generated) |
+| `6_mountain_test` | Step 6 | direction from mountain verdict, knobs: `mountain_threshold_monthly,mountain_timeline_months` |
+| `7_verdict_synthesis` | Step 7 | direction from final verdict, confidence from Step 6.45, knobs: `confidence_gate_minimum` |
+
+**LOG VERDICT** (run ONCE after Step 7, before Step 8):
+```bash
+PYTHONPATH=".claude/lib" .claude/skills/.venv/Scripts/python.exe \
+  -m intelligence.mechanism.trace_cli log-verdict \
+  --case-id <CASE_ID> --verdict <KILL|SIDE_HUSTLE|MOUNTAIN_CANDIDATE|INSUFFICIENT_SIGNAL> \
+  --confidence <final_confidence_from_6.45>
+```
+
+If trace CLI fails → emit `[DEGRADED_NO_TRACE]`, continue. Trace is observational, never blocks the pipeline.
+
+Plan ref: `plans/260413-1002-stage0-bias-fix/phase-01-foundation-learned-rules-and-classifier.md`
+
+### Step 1 — Profile load (BLOCKING)
+
+```bash
+# If kb/profiles/ has profile and user confirms, use it. Else AskUserQuestion to capture.
+ls .claude/skills/business/transaction-layer/nui-hunter/kb/profiles/
+# Read most recent profile JSON. NEVER hard-code defaults. NEVER assume location.
+```
+
+If 0 profiles → run `python scripts/profile-capture.py` interactively. If user says "use phamt-260411" → load that.
+
+After loading profile, check for `founder_strength` field. If absent (old profile captured before Phase 6), run detector inline:
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/founder-strength-detector.py \
+  --profile-file <profile_path> > /tmp/founder-strength-<profile_id>.json
+```
+Parse: `{primary, secondary, confidence, routing}`. Inject into ALL downstream agent prompts as:
+```
+## FOUNDER_STRENGTH (Phase 6 enrichment)
+Primary: <primary> | Secondary: <secondary> | Confidence: <confidence>
+Routing: <routing list>
+```
+If confidence <0.6 → emit `[LOW_STRENGTH_CONFIDENCE]` tag; do not hard-block.
+
+### Step 1.5 — SRE Initialization (Phase 4 — Unified Experience Layer)
+
+After profile load + topic known, initialize the Situation Reasoning Engine.
+
+**Purpose:** System THINKS with accumulated knowledge. Each session goes DEEPER, not wider.
+
+**Option A — Unified SRE (recommended):**
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/money-intelligence/situation-reasoning-engine.py \
+  --user "<profile_hash>" --topic "<topic>"
+```
+
+**Option B — Depth tracker only (legacy):**
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/money-intelligence/depth-tracker-runner.py \
+  --user "<profile_hash>" --topic "<topic>"
+```
+
+**Parse output fields:**
+
+| Field | Usage |
+|-------|-------|
+| `depth_level` | Current depth (1-5) |
+| `sessions_count` | How many times this topic discussed |
+| `focus` | What to focus on at this depth |
+| `include` | What to include at this depth |
+| `exclude` | What to SKIP (already covered) |
+| `accumulated_context` | What we learned previously |
+| `key_insights` | Insights from prior sessions |
+| `blocked_by` | Blockers to address |
+| `injection_block` | Pre-formatted markdown for agent injection |
+
+**Depth Levels:**
+
+| Level | Focus | Sessions |
+|-------|-------|----------|
+| 1 | Surface exploration | 1-2 |
+| 2 | Mechanism understanding (WHY) | 3-4 |
+| 3 | Edge cases and failure modes | 5-6 |
+| 4 | Counter-patterns and alternatives | 7-8 |
+| 5 | Novel synthesis (user-specific) | 9+ |
+
+**Injection — prepend to ALL agent prompts:**
+```
+<depth injection_block>
+```
+
+**At END of /stage0 (after verdict), increment session:**
+
+**Option A — Unified SRE (recommended):**
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/money-intelligence/situation-reasoning-engine.py \
+  --user "<profile_hash>" --topic "<topic>" --increment \
+  --insights '["<key insight 1>", "<key insight 2>"]' \
+  --blockers '["<blocker if any>"]'
+```
+
+**Option B — Depth tracker only (legacy):**
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/money-intelligence/depth-tracker-runner.py \
+  --user "<profile_hash>" --topic "<topic>" --increment \
+  --insights '["<key insight 1>", "<key insight 2>"]' \
+  --blockers '["<blocker if any>"]'
+```
+
+**First encounter (depth 1):** Establish foundation. Don't go deep yet.
+**Repeat sessions (depth 2+):** Skip basics, go deeper based on `exclude` list.
+
+**SRE Reference:**
+- Unified orchestrator: `.claude/skills/business/money-intelligence/situation-reasoning-engine.py`
+- Components: InvisibleAdvisor (prototypes), DepthTracker (sessions), FrameworkAdvisor (personas)
+- Philosophy: System THINKS with knowledge, doesn't CITE it
+
+### Step 1.7 — Positioning context load (NON-BLOCKING)
+
+Load founder's deal observation data from the positioning framework (deal journal, failure journal, phase gates). This feeds pattern recognition into opportunity scoring.
+
+```bash
+python execution/scripts/positioning-context-generator.py "<topic>"
+```
+
+**Parse output:**
+- `has_positioning_data`: true/false — whether founder has any observations logged
+- `injection_block`: markdown block to prepend to downstream agent prompts
+- `topic_matches`: deals from journal matching this topic (for pattern-match scoring)
+- `summary`: deal count, failure count, synthesis count, phase status
+
+**Injection — prepend to ALL agent prompts (alongside SRE block):**
+```
+<positioning_context injection_block>
+```
+
+**If `has_positioning_data == false`:** Inject degraded block noting Phase 1 not started. Tag `[DEGRADED_NO_POSITIONING]`. Do NOT hard-block — stage0 runs without positioning data, but verdict should note the gap.
+
+**If `topic_matches` exist:** Include matched deals in Step 7 verdict under `## Positioning Context` section. This shows whether the founder has observed similar deals succeed/fail before.
+
+**Integration with Step 7 verdict (FOUNDER_SPECIFIC mode):**
+
+After `## Risk Factors`, add:
+```
+## Positioning Context
+- Pattern recognition depth: {deals_observed} deals / {failures_logged} failures
+- Topic matches in deal journal: {count} ({list if any})
+- Phase status: {current phase}
+- Cashflow stream: {chosen or "not yet chosen"}
+```
+
+**Integration with Step 8 case JSON:**
+Add field `positioning_data` with summary + topic_matches to case JSON.
+
+### Step 1.8 — Local Knowledge Pre-Screen (Knowledge Distillation Engine)
+
+Run local reasoning engine against topic BEFORE LLM pipeline. Zero API cost, < 100ms.
+
+```bash
+python .claude/scripts/knowledge-distillation/topic-to-features.py --topic "<topic>"
+# Pipe features into engine:
+python .claude/lib/intelligence/knowledge-distillation/local-reasoning-engine.py --features '<output_json>'
+```
+
+**Parse output:**
+- If `verdict=KILL` AND `confidence>=0.8`: Tag `[LOCAL_KILL]`. Short-circuit to Step 8 verdict. Include `evidence` array as kill justification. Saves 2-4 min + $0.5-2.
+- If `verdict!=KILL` AND `confidence>=0.6`: Inject into ALL downstream agent prompts: `## LOCAL KNOWLEDGE PRE-SCREEN\nSimilar historical decisions: <top 3 evidence entries>\nLocal score: <score>/1.0`
+- If `verdict=NEEDS_LLM` OR `confidence<0.6`: Tag `[LOCAL_LOW_CONFIDENCE]`. Proceed normally — full LLM pipeline.
+
+**Note:** With 162 vectors (mostly successes), engine will mostly return NEEDS_LLM for new topics. P3/P4 add 300+ failure cases to improve kill detection. This step becomes MORE useful over time.
+
+### Step 2 — Receive topic
+- Topic = first arg, or AskUserQuestion if missing.
+- Do NOT pre-narrow. Do NOT substitute prior session examples.
+
+### Step 2.45 — Premise Challenge (BLOCKING — v25.1 260509)
+
+Before disambiguating branches, challenge the VEHICLE ASSUMPTION in the query. Most founders lock onto a vehicle (mobile app, SaaS, dropshipping) without checking if it's the right vehicle for their target.
+
+**Execution:**
+1. Extract the VEHICLE from topic (e.g., "mobile app", "SaaS", "e-commerce")
+2. Extract the TARGET (e.g., "$800K/mo", "$10K/mo")
+3. Run premise challenge search:
+   - WebSearch: `"<vehicle> success rate" OR "<vehicle> failure rate" founder 2025 2026`
+   - WebSearch: `"$<target range>/month" bootstrapped founder what business type`
+   - WebSearch: `alternatives to <vehicle> for <target> revenue`
+4. Compare vehicle success rate against target percentile:
+   - If target is P99 for this vehicle AND other vehicles have P90 at same level → flag "vehicle mismatch"
+   - E.g., $800K/mo is P99 for mobile apps but P50 for B2B enterprise SaaS — wrong vehicle
+5. Output premise challenge result:
+
+```
+## PREMISE CHALLENGE (v25.1)
+Vehicle: <vehicle>
+Target: <target>
+Vehicle success rate at target: P<XX> (top <XX>%)
+Alternative vehicles where target is easier:
+- <alt1>: target is P<XX> (top <XX>%)
+- <alt2>: target is P<XX> (top <XX>%)
+Premise verdict: CONFIRMED | CHALLENGED | MISMATCH
+
+If MISMATCH:
+  Add branch: "Is <vehicle> the right vehicle? Consider <alt1>, <alt2>"
+  This branch MUST appear in Step 2.5 disambiguation.
+```
+
+**Skip condition:** Topic is specific niche analysis (not a revenue target) or target is < $5K/mo (most vehicles work at low scale).
+
+### Step 2.5 — Topic disambiguation (BLOCKING)
+
+After capturing topic (and premise challenge), BEFORE any research:
+
+1. **Echo interpretation**: State back to user in 1-2 sentences what you understood as the research topic.
+2. **If Step 2.45 returned MISMATCH**: add vehicle-challenge branch to branch list automatically.
+3. **Branch detection**: If topic contains ≥2 independent questions OR strategic framing ("how to X at scale", "map all Y", "khai thác toàn diện"), decompose:
+   - Branch A: [specific interpretation 1]
+   - Branch B: [specific interpretation 2]  
+   - Branch C: [specific interpretation 3]
+3. **User confirms**: AskUserQuestion — "Branches detected. Which to analyze? (A/B/C/all-parallel-depth-1/refine)"
+4. If user says "all" → run highest-potential branch first, note others for follow-up runs
+5. If user confirms single branch → proceed with that as topic
+
+**Skip condition:** Topic is already narrow and unambiguous (specific product name, specific niche, specific URL-only query). In that case, echo interpretation but skip branch detection.
+
+#### Step 2.5 — Branch Options (Phase 7 addition)
+
+When ≥2 branches detected, offer user:
+- **(A) / (B) / (C) / (D)** — single branch, full depth (existing behavior)
+- **(all-parallel-depth-1)** — ALL branches, each with depth-1 agent dispatch
+- **(refine)** — user rewrites topic
+
+**all-parallel-depth-1 execution:**
+
+For each detected branch:
+- Spawn 3 parallel Task agents: 1 researcher, 1 contrarian, 1 case-study
+- Depth-1 means: 1 WebSearch round per agent, 1 synthesis pass, no deep-drill
+- Total cap: 4 branches × 3 agents = 12 Task calls max
+- Wall time cap: ≤10 minutes
+
+**Aggregation in Step 7 verdict (multi-branch mode):**
+
+Output one section per branch + cross-branch synthesis:
+```
+## Branch A — [short label]
+- Top finding | Top archetype recommended | Short track action
+
+## Branch B — [...]
+## Branch C — [...]
+## Branch D — [...]
+
+## Cross-branch synthesis
+- Which branch has highest founder-fit?
+- Which branch should be primary focus?
+- Parallel opportunity: which 2 branches can run concurrently?
+```
+
+### Step 2.55 — Query-Mode Detection (BLOCKING — Zero-Bias Gate)
+
+Detect if query is EXPLORATION or FOUNDER_SPECIFIC **BEFORE** any profiling or founder-context injection.
+
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/query-mode-detector.py \
+  "<topic>" > /tmp/stage0-query-mode-<case_id>.json
+```
+
+Parse JSON output:
+
+| mode | meaning | downstream effect |
+|------|---------|-------------------|
+| `EXPLORATION` | Market scan, industry comparison | **SKIP** Step 1 (profile), Step 2.6.2 (capital-path) |
+| `FOUNDER_SPECIFIC` | Personal recommendation | Normal flow with profile injection |
+
+**If EXPLORATION mode (`fires_founder_filter == false`):**
+- Do NOT inject `FOUNDER_CONTEXT` into any agent prompts
+- Do NOT inject `ROUTING_CONTEXT` (capital tier)
+- **SKIP archetype scanners entirely** — use industry-discovery-agent (Step 3.1) instead
+- Present results by INDUSTRY CATEGORY, not founder-fit score
+- Tag output with `[EXPLORATION_MODE]`
+
+**If FOUNDER_SPECIFIC mode (`fires_founder_filter == true`):**
+- Normal stage0 flow with profile injection
+
+**Ambiguous handling:** If `confidence < 0.5` and both modes scored > 0, ask user:
+```
+Query mode unclear. Is this:
+[E] Market exploration — show all industries equally
+[F] Personal recommendation — filter by your profile
+```
+
+### Step 2.56 — OUTPUT CAP RULE (BLOCKING)
+
+**DEFAULT mode (no flags):** Output MAX 3 business models. Each model MUST have instance-level depth (specific product, buyers, suppliers, price spread, first message). Quality over quantity.
+
+**`--breadth` flag:** Output 10-12 category-level models WITHOUT instance research. Fast category scan. No buyers/suppliers/prices required. Output note: "Use `/stage0 <specific model>` for full instance-depth on any model above."
+
+**`--full` flag:** EXPLORATION mode (unchanged — all industries, no limit).
+
+**Model selection logic (DEFAULT mode only):**
+After Wave 1+2 agents complete (Step 3.5-6.5), BEFORE instance research (Step 6.7):
+1. Rank all discovered models by: (a) founder-fit score, (b) margin potential, (c) accessibility from $0-500
+2. SELECT top 3 models for instance research
+3. DISCARD remaining models (do not include in output — they were explored but cut)
+4. Tag selected 3 with `[SELECTED_FOR_INSTANCE_RESEARCH]`
+5. If user query names a SPECIFIC model (e.g., "factoring broker Vietnam"), select ONLY that model (output = 1 model, max depth)
+
+**Enforcement:** If final verdict contains >3 models in DEFAULT mode → BLOCKING violation. Rewrite: pick best 3, drop rest.
+
+Plan ref: `plans/260426-0928-stage0-zero-bias-overhaul/phase-01-query-mode-detector.md`
+
+### Step 2.6 — Query-intent classification (BLOCKING — Phase 1 bias-fix, Fix #1)
+
+Classify the topic into one of 5 intent classes. Classifier output drives Step 3.5 Wave 1 addendum agents. Without this step, Wave 1 fires same 8 agents regardless of topic — producing operator-layer queries analyzed by white-hat researcher mix (root cause of 2026-04-13 bias).
+
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/query-intent-classifier.py \
+  "<topic>" > /tmp/stage0-intent-class-<case_id>.json
+```
+
+Parse the JSON output. 5 classes + unknown fallback:
+
+| intent_class | meaning | Triggers |
+|---|---|---|
+| `marketplace_layer` | Platform rev-share, marketplace fees, SaaS economics | WAVE1_BASE only (no addendum) |
+| `operator_layer` | Multi-account, farm, content-at-scale, VN/CN/MMO | +4 grey-hat/operator agents, FIRES forum preflight (Phase 2) |
+| `jurisdiction_question` | Entity, banking, payments, tax, offshore | +4 opsec/tax/legal agents |
+| `power_law_hunt` | "Hidden mountain", top-decile, P99, uncrowded | +4 archaeologist/Taleb/Naval agents, FIRES forum preflight |
+| `grey_zone_adjacent` | KYC bypass, sockpuppet, fraud-adjacent | +1 ethics agent, FIRES fraud disclaimer (Phase 4) |
+| `unknown` | No keyword match or confidence <0.35 | WAVE1_BASE only, no addendum |
+
+**Key fields consumed by downstream steps:**
+- `intent_class` → drives Step 3.5 WAVE1_ADDENDUM lookup
+- `confidence` → feeds Step 6 deterministic confidence calc
+- `addendum_agents` → list of agent names to spawn IN ADDITION to WAVE1_BASE
+- `fires_forum_preflight` → gates Phase 2 forum-preflight hook (when implemented)
+- `fires_fraud_disclaimer` → gates Phase 4 fraud disclaimer verdict section (when implemented)
+- `matched_keywords` → audit trail, log to calibration on miss
+
+**Logging misses for dictionary curation:**
+
+If `intent_class == "unknown"` AND topic looks like it should match one of the 5 classes → append to `data/calibration/classifier-misses.jsonl`:
+```json
+{"ts": "<iso>", "topic": "<topic>", "expected_class": "<best_guess>", "actual": "unknown", "confidence": <0-1>, "suggested_keywords": ["<new_kw_1>"]}
+```
+
+Monthly review of misses → expand `INTENT_RULES` keyword dicts in classifier.
+
+Plan ref: `plans/260413-1002-stage0-bias-fix/phase-01-foundation-learned-rules-and-classifier.md`
+
+### Step 2.6.1 — Voice mode detection
+
+Parse `--voice` flag from trigger. Default: `analyst`.
+
+```
+voice_mode = "operator" if "--voice operator" in trigger else "analyst"
+```
+
+If `voice_mode == "operator"`:
+- ALL downstream headers become conversational (no technical names)
+- ALL tables → narrative prose
+- ALL [K]/[T]/[?] zone tags dropped from output (still computed internally)
+- Scripts rendered as dialogue: 'Say this: "..."'
+- Side-door paths rendered as story sequence
+- Hard cap: ≤2000 words total verdict
+- Zero bullet lists. Zero tables. Zero markdown headers with technical names.
+
+Store `voice_mode` in case JSON for persist-verdict.
+
+### Step 2.6.2 — Capital-Path Routing (BLOCKING — Local Orchestrator)
+
+Run local orchestrator to classify founder into capital tier and select entry strategies BEFORE any LLM analysis. This step ensures all downstream analysis respects founder's actual starting position.
+
+**Root cause fixed:** Prior /stage0 analyzed $1K founder as enterprise investor, recommending $15K-30K product builds with $10K/mo targets. TIER_0 founders need SERVICE_ENTRY path with $500-2K/mo targets.
+
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/stage0-local-orchestrator.py \
+  --profile-dir .claude/skills/business/transaction-layer/nui-hunter/kb/profiles/ \
+  --topic "<topic from Step 2>" \
+  --ecosystem-keywords "<top 3 keywords from topic>"
+```
+
+Parse the JSON output. Inject into ALL downstream agent prompts:
+
+```
+## ROUTING_CONTEXT (from local orchestrator — BLOCKING)
+Capital Tier: <tier>
+Track: <track>
+Target Range: $<low>-$<high>/mo
+Timeline: <low>-<high> days
+Constraints: <constraints>
+Entry Strategies: <ranked strategies>
+Decision Questions: <tier-specific DQs>
+
+## LADDER_RESEARCH (non-Google sources — MANDATORY FIRST, fires in orchestrator)
+Status: <ok|partial|empty|error>
+Routes: <routes_attempted>
+Drill Sources (<count>):
+<for each drill_source in ladder_research.drill_sources>
+  - [<route>] <name>: <url> (<signals> signals)
+</for each>
+
+ENFORCEMENT:
+- If TIER_0 or TIER_1: Use ONLY decision questions from routing_context, NOT standard WINNER/KILL/CUSTOMER/ECONOMICS/MOAT
+- Respect all constraints (no_product_dev, no_paid_ads, etc.)
+- Analysis must target track-appropriate outcome (MICRO_DEPLOY, ASSET_BUILDER, LEVERAGE_SPRINT, HYBRID, PRODUCT, ACQUISITION)
+- Target range from routing_context, NOT hardcoded $10K/mo
+- Drill sources from LADDER_RESEARCH MUST be used in Wave 1 analysis — do NOT re-search Google for covered topics
+- If ladder status = error/empty, log [LADDER_DEGRADED] tag on claims
+
+WAVE 2 ROUTING (Fix #2 2026-04-19):
+- Forum sources (mmo4me, voz, BHW, V2EX) → deep-comment-miner seed URLs
+- Registry sources (masothue, congan) → ground-truth-fetcher registry_check_urls
+- Code sources (GitHub, npm) → dedicated drill agent
+- Archive sources (Wayback) → dedicated drill agent
+- Wave 2 agents MUST consume drill_sources, NOT re-Google
+```
+
+**4 Capital Tiers (TIER_0 uses dual-axis routing: capital × leverage_access_score):**
+| Tier | Capital | Track | Target Range | Notes |
+|------|---------|-------|--------------|-------|
+| TIER_0 | $0-1K | MICRO_DEPLOY | $500-2K/mo | leverage_score 0-3: deploy micro-assets, sleep test required |
+| TIER_0 | $0-1K | ASSET_BUILDER | $1K-5K/mo | leverage_score 4-6: build asset while deploying capital |
+| TIER_0 | $0-1K | LEVERAGE_SPRINT | $2K-10K/mo | leverage_score 7-10: ship product in 7 days |
+| TIER_1 | $1K-5K | HYBRID | $2K-5K/mo | |
+| TIER_2 | $5K-20K | PRODUCT | $5K-10K/mo | |
+| TIER_3 | $20K+ | ACQUISITION | $10K-50K/mo | |
+
+**Track aliases (backward compat):** SERVICE_ENTRY = MICRO_DEPLOY, CASHFLOW_SEED = MICRO_DEPLOY, LEVERAGE_ENTRY = ASSET_BUILDER
+
+**TIER_0/1 capital deployment fields (v25.5):**
+When classifier returns TIER_0 or TIER_1, routing_context includes:
+- `deployment_budget`: total $ available to deploy into micro-assets
+- `asset_slots`: number of parallel micro-asset slots (min 3 for TIER_0)
+- `per_slot_budget`: deployment_budget / asset_slots
+- `sleep_test_required`: true (all TIER_0 subtracks)
+- `max_founder_hours_post_setup`: hours/week allowed after setup (≤5 for TIER_0)
+- `kill_days`: days before kill decision (30 for TIER_0)
+
+**Degraded mode:** If orchestrator fails → emit `[DEGRADED_NO_ROUTING]` warning, proceed with TIER_2 defaults.
+
+Plan ref: `plans/260419-0828-stage0-capital-path-upgrade/phase-03-integration.md`
+
+### Step 2.65 — Decision Question Generator
+
+Generate DECISION questions (not info questions) BEFORE any scanning begins. Each question targets a GO/NO-GO decision point.
+
+**Agent:** `decision-question-generator` (sonnet, no web calls)
+
+**Input:** topic + intent_class (from Step 2.6) + founder_context (from Step 1) + **routing_context (from Step 2.6.2)**
+
+**ROUTING_CONTEXT Integration (Phase: capital-path-upgrade):**
+
+IF `routing_context.tier` IN [TIER_0, TIER_1]:
+- Use ONLY questions from `routing_context.decision_questions`
+- Do NOT generate standard WINNER/KILL/CUSTOMER/ECONOMICS/MOAT
+- Questions focus on capital deployment, ROI targets, asset portfolio, kill criteria
+
+IF `routing_context.tier` IN [TIER_2, TIER_3]:
+- Use standard questions BUT include SERVICE_FLOOR as fallback
+- Respect `routing_context.target_range` (not hardcoded $10K/mo)
+
+IF `routing_context` missing (DEGRADED mode):
+- Use standard questions with `[DEGRADED_NO_ROUTING]` tag
+
+**TIER_0 Question Types (v25.5 capital deployment — 12 questions):**
+| Code | Purpose |
+|------|---------|
+| DEPLOY_BUDGET | How much can you LOSE without affecting life? (= deployment budget) |
+| RISK_CAPITAL | What % willing to lose in 30 days on failed assets? |
+| ASSET_SCAN | What micro-assets (<$200) generate revenue WITHOUT you after setup? |
+| ROI_TARGET | Target ROI: $X deployed → $Y/mo passive. What Y/X ratio? |
+| P90_MECHANISM | What do top 10% earners do differently? (power law) |
+| ARBITRAGE_WINDOW | How long until this commoditizes? (timing) |
+| COMPOUND_ASSET | What asset compounds AFTER you stop working? (leverage) |
+| STAIR_STEP_PATH | Which labor → asset → leverage sequence? (Rob Walling) |
+| SURVIVORSHIP_DELTA | What separates survivors from failures? (mechanism) |
+| BRIDGE_CAPITAL | How to bootstrap from $0 to fund the REAL opportunity? (TIER_0 only) |
+| LEVERAGE | After 12 months, what do you OWN that can be sold without you? |
+| KILL_CRITERIA | Signal to abandon in 30 days? |
+
+**Deprecated (v25.5):** FIRST_500, TIME_TO_CASH moved to DEPRECATED_QUESTIONS in DQ generator. Still accessible for backward compat but no longer generated.
+
+**TIER_2/TIER_3 Question Types (standard + SERVICE_FLOOR):**
+| Code | Purpose |
+|------|---------|
+| WINNER | Who's winning? How? (mechanism, not just names) |
+| KILL | What kills this fastest in 6 months? |
+| CUSTOMER | 1 specific buyer = who? (name, title, budget) |
+| ECONOMICS | Math to target_range (units × price, conversion rate) |
+| MOAT | Asset after 12 months that competitor lacks? |
+| LEVERAGE | After 12 months, what do you OWN that can be sold without you? |
+| SERVICE_FLOOR | Service path to $2K/mo in 60 days? (fallback) |
+
+**Execution:**
+```bash
+Task(subagent_type="decision-question-generator", prompt="
+Topic: <topic>
+Intent class: <intent_class from Step 2.6>
+Founder context: <founder_context from Step 1>
+
+Generate 5-7 DECISION questions per agent spec.
+All 6 mandatory types MUST appear: WINNER, KILL, CUSTOMER, ECONOMICS, MOAT, LEVERAGE.
+Output decision_questions JSON.
+")
+```
+
+**Persistence:**
+```bash
+echo '<decision_questions JSON from agent>' > /tmp/stage0-decision-questions-<case_id>.json
+```
+
+**Output schema:**
+```json
+{
+  "decision_questions": [
+    {
+      "id": "DQ1",
+      "type": "WINNER",
+      "question": "Ai đang [topic] thành công nhất? Họ thắng bằng cơ chế gì?",
+      "why_matters": "...",
+      "good_answer_looks_like": "...",
+      "bad_answer_looks_like": "...",
+      "search_hints": ["...", "..."]
+    }
+  ],
+  "question_count": 5,
+  "generated_at": "<ISO-8601>",
+  "topic": "<original topic>"
+}
+```
+
+**Display to user:**
+```
+╔══════════════════════════════════════════════════════════════════╗
+║  DECISION QUESTIONS GENERATED                                     ║
+╠══════════════════════════════════════════════════════════════════╣
+║  DQ1 [WINNER]:    Ai đang [topic] thành công nhất?               ║
+║  DQ2 [KILL]:      Điều gì giết [topic] nhanh nhất?               ║
+║  DQ3 [CUSTOMER]:  1 người cụ thể sẽ mua = ai?                    ║
+║  DQ4 [ECONOMICS]: Cần bán bao nhiêu để đạt $10K/mo?              ║
+║  DQ5 [MOAT]:      Sau 12 tháng sở hữu asset gì?                  ║
+╚══════════════════════════════════════════════════════════════════╝
+```
+
+**Quality gate:** If any mandatory type missing → regenerate (max 2 attempts).
+
+**Fallback:** If decision-question-generator fails after 2 attempts:
+- Log `[DECISION_QUESTIONS_FAILED]` warning
+- Fall back to legacy `question-generator` agent
+- Proceed to Step 2.66 with legacy question_bank format
+
+Plan ref: `plans/260418-1747-stage0-decision-questions/phase-01-decision-question-generator.md`
+
+### Step 2.66 — Question Deep Analysis (Parallel)
+
+Deep research on EACH decision question from Step 2.65. Run in parallel (1 agent instance per question).
+
+**Agent:** `question-deep-analyzer` (sonnet, with web calls)
+
+**Execution:** Spawn 5-7 parallel Task agents (one per question):
+```bash
+# For each question in decision_questions:
+Task(subagent_type="question-deep-analyzer", prompt="
+Question: <question object from Step 2.65>
+Topic: <topic>
+Founder context: <founder_context from Step 1>
+Available data: <data from prior steps if any>
+
+Research this ONE question deeply. Return structured findings with confidence zones.
+")
+```
+
+**Parallel execution rules:**
+- Max 5 concurrent instances (batch if >5 questions)
+- Timeout: 60s per question
+- If timeout: return partial with confidence 0.3, zone [?]
+
+**Output per question:** (aggregated into `question_analyses[]`)
+```json
+{
+  "question_id": "DQ1",
+  "question_type": "WINNER",
+  "question_text": "...",
+  "findings": [
+    {"claim": "...", "evidence": "...", "confidence": 0.72, "zone": "T", "source_url": "..."}
+  ],
+  "mechanism_identified": {"found": true, "mechanism": "...", "reason": "...", "confidence": 0.72},
+  "implication_for_founder": "...",
+  "recommendation": "...",
+  "confidence_overall": 0.72,
+  "zone_overall": "T",
+  "sources": [{"url": "...", "type": "...", "accessed": "..."}]
+}
+```
+
+**Display to user:** (streamed as each analysis completes)
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DQ1: WINNER MECHANISM — Analyzing... ✓ (45s)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FINDINGS:
+• [Finding 1] [T]
+• [Finding 2] [K]
+
+MECHANISM: [identified mechanism]
+IMPLICATION: [what this means for founder]
+RECOMMENDATION: [suggested action]
+
+CONFIDENCE: 0.72 [T]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+**Persistence:**
+```bash
+echo '<question_analyses JSON array>' > /tmp/stage0-question-analyses-<case_id>.json
+```
+
+**Fallback:** If Step 2.65 failed → skip Step 2.66, proceed to Step 2.7 with `[NO_DECISION_QUESTIONS]` tag.
+
+Plan ref: `plans/260418-1747-stage0-decision-questions/phase-02-question-deep-analyzer.md`
+
+### Step 2.67 — User Validation Gate (BLOCKING)
+
+After all decision questions analyzed, present summary to user for validation BEFORE continuing.
+
+**Display:**
+```
+╔══════════════════════════════════════════════════════════════════╗
+║  DECISION QUESTIONS ANALYSIS COMPLETE                            ║
+╠══════════════════════════════════════════════════════════════════╣
+║                                                                  ║
+║  DQ1 [WINNER]:    Analyzed ✓  Confidence: 0.72 [T]              ║
+║  DQ2 [KILL]:      Analyzed ✓  Confidence: 0.68 [T]              ║
+║  DQ3 [CUSTOMER]:  Analyzed ✓  Confidence: 0.55 [?]              ║
+║  DQ4 [ECONOMICS]: Analyzed ✓  Confidence: 0.81 [K]              ║
+║  DQ5 [MOAT]:      Analyzed ✓  Confidence: 0.60 [T]              ║
+║                                                                  ║
+║  Overall Confidence: 0.67 [T]                                   ║
+║                                                                  ║
+╠══════════════════════════════════════════════════════════════════╣
+║  OPTIONS:                                                        ║
+║  [C] Continue to Stage0 Wave 1 analysis                         ║
+║  [A] Add question: _______________                              ║
+║  [R] Re-analyze question #___                                   ║
+║  [D] Drill deeper into question #___                            ║
+║  [X] Exit — questions answered, no further analysis needed      ║
+║                                                                  ║
+╚══════════════════════════════════════════════════════════════════╝
+```
+
+**Gate Logic:**
+```python
+if user_choice == "C":
+    # Inject question findings into downstream context
+    inject_decision_questions_context(question_analyses)
+    proceed_to_step_27()  # URL processing or Step 3
+
+elif user_choice == "A":
+    new_question = parse_user_question(user_input)
+    run_decision_question_generator(add_question=new_question)
+    run_question_deep_analyzer(new_question)
+    return_to_step_267()
+
+elif user_choice == "R":
+    question_id = parse_question_id(user_input)
+    run_question_deep_analyzer(question_id, force_refresh=True)
+    return_to_step_267()
+
+elif user_choice == "D":
+    question_id = parse_question_id(user_input)
+    spawn_drill_agent(question_id)  # Dedicated deep-dive with more queries
+    return_to_step_267()
+
+elif user_choice == "X":
+    # User satisfied — skip rest of Stage0
+    output_questions_only_verdict()
+    exit_stage0()
+```
+
+**Context injection for downstream agents:**
+```
+## DECISION_QUESTIONS_ANALYSIS
+
+5 questions analyzed. Key findings:
+- WINNER: [mechanism identified] — confidence [X]
+- KILL: [top risk identified] — confidence [X]
+- CUSTOMER: [specific buyer profile] — confidence [X]
+- ECONOMICS: [math to $10K/mo] — confidence [X]
+- MOAT: [asset after 12mo] — confidence [X]
+
+Use these findings as GROUNDED PRIORS for your analysis.
+```
+
+**Inject into:** Wave 1 agents, Wave 2 agents, Mountain Test, Verdict synthesis.
+
+Plan ref: `plans/260418-1747-stage0-decision-questions/phase-03-stage0-integration.md`
+
+### Step 2.7 — User URL processing (if URLs in input)
+
+For each URL in user input, apply platform-specific extraction BEFORE agent dispatch:
+
+**TikTok (@handle or /video/ or /photo/):**
+1. `yt-dlp --flat-playlist --dump-json "https://tiktok.com/@handle"` → all post metadata
+2. `yt-dlp --write-info-json --skip-download "<post_url>"` → per-post metadata
+3. WebFetch `https://www.tikwm.com/api/?url=<post_url>&hd=1` → full data + photo slides
+4. If photo post → download slide URLs from tikwm, analyze with ai-multimodal skill
+5. Rate limit: ≥1.6s between tikwm calls
+
+**YouTube:**
+1. `yt-dlp --write-info-json --write-comments --skip-download "<url>"` → metadata + comments
+
+**Reddit:**
+1. WebFetch `<url>.json` → full comment tree (free, no auth)
+
+**Other/generic:**
+1. WebFetch (direct HTML)
+2. If JS-rendered (empty body) → method_chain_fetcher.py or agent-browser skill
+3. Follow 301/302 redirects (at least 2 hops)
+
+**Minimum extraction per URL:** title + description + engagement metrics + ≥1 content sample.
+**If all paths fail:** log "content layer unavailable after N tool paths: [list]" — do NOT silently skip.
+
+Store extracted content as `URL_CONTENT` block. Inject into deep-comment-miner and full-coverage-ingest prompts.
+
+### Step 2.7.5 — Forum preflight (BLOCKING — Phase 2 bias-fix Fix #2)
+
+Fires BEFORE Wave 1 when `fires_forum_preflight == true` from Step 2.6 classifier output. This enforces the `[FORUM-LAYER-PRIORITY]` learned rule (2026-04-11 ugblackmmo audit) that was previously decorative — topics tagged operator_layer / grey_zone_adjacent / power_law_hunt MUST get forum-layer intel before Wave 1 dispatches.
+
+**Skip condition:** `fires_forum_preflight == false` (jurisdiction_question / marketplace_layer / unknown) → proceed to Step 2.8.
+
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/forum-preflight.py \
+  "<topic>" \
+  --intent-class <intent_class_from_step_2.6> \
+  > /tmp/stage0-forum-preflight-<case_id>.json
+```
+
+Parse the JSON. Possible `status` values:
+
+| status | meaning | downstream action |
+|---|---|---|
+| `ok` | ladder probed + drill sources found | inject `FORUM_PREFLIGHT_DATA` into ALL Wave 1 agent prompts |
+| `skipped` | intent_class doesn't trigger | proceed silently |
+| `timeout` | 90s hard cap hit | degrade with `[FORUM_PREFLIGHT_TIMEOUT]` tag, proceed to Wave 1 |
+| `error` \| `parse_error` | ladder/subprocess failure | degrade with error tag, proceed to Wave 1 |
+
+**On `ok`:** inject into Wave 1 agent prompts (and Step 3.6 LADDER_SOURCES block):
+
+```
+## FORUM_PREFLIGHT_DATA (from forum-preflight.py — route: <route>)
+Cache status: <hit|miss> | Elapsed: <sec> | Drill sources: <count>
+Top drill-recommended sources (ranked by signal density):
+- <name> [<signals> signals]: <url>
+- ...
+
+Wave 1 agents MUST interpret these forum-layer signals. Do NOT re-probe.
+deep-comment-miner (#7) MUST add these URLs to its seed list.
+underground-mmo-intel (if fired) MUST prioritize deep-drilling these sources.
+```
+
+**On degraded states:** tag downstream claims with the degrade_tag from forum-preflight output. Do NOT hard-abort — v25 parity preserved (Wave 1 runs without forum enrichment).
+
+**Budget note:** 90s hard timeout is deliberate — ladder rate-limits 1.5s/host × ~15 sources ≈ 25s typical, 90s = 3× headroom. Cache-first via ladder-runner internal TTL (vn_greyhat_mmo = 6h).
+
+Plan ref: `plans/260413-1002-stage0-bias-fix/phase-02-intel-forum-preflight-and-survivorship.md`
+
+### Step 2.8 — Claim Expansion (BLOCKING — runs after URL extraction)
+
+IF Step 2.7 produced URL_CONTENT:
+
+1. Spawn `claim-expansion-engine` agent via Task tool:
+   - Input: URL_CONTENT + COMPUTED_DATA (if any) + user profile
+   - Returns: claim_set JSON with verified/disputed/unverifiable verdicts per claim
+
+2. Parse claim_set:
+   - If ALL P0 claims = DISPUTED → note "Strong KILL signal" for Step 6
+   - If ≥1 P0 claim = VERIFIED → proceed with heightened scrutiny
+
+3. Inject into ALL downstream agent prompts as:
+   ```
+   ## CLAIM_SET (from claim-expansion-engine — use as GROUNDED PRIORS)
+   P0: <n> verified, <n> disputed | P1: <n> verified, <n> disputed
+   Decision input: <1 sentence from claim_set.decision_input>
+   <full claim_set JSON>
+   ```
+
+4. hypothesis-generator (P02) receives claim_set:
+   - 5 base dimensions (revenue/moat/timing/founder/market) PLUS
+   - 1 hypothesis per VERIFIED P0 claim (test scalability)
+   - 1 counter-hypothesis per DISPUTED P0 claim (test why it fails)
+
+IF Step 2.7 did NOT produce URL_CONTENT → skip Step 2.8, proceed to Step 3.
+
+### Step 2.9 — Deterministic Pre-Decomposition (BLOCKING)
+
+Before ANY agent analysis, run the decomposition engine with LIVE web research to produce pre-verified micro-facts:
+
+```bash
+.claude/skills/.venv/Scripts/python.exe .claude/lib/intelligence/decomposition/stage0_live_bridge.py \
+  --query "<TOPIC from Step 2>" \
+  --max-queries 20 \
+  --mode full
+```
+
+**CRITICAL: This uses REAL web search (DuckDuckGo), not noop.** Each micro-query fires an actual
+search, producing verified facts that CONSTRAIN all downstream LLM analysis. LLM cannot contradict
+pre-verified facts without explicit justification.
+
+**Parse output:**
+- `facts[]` = pre-verified micro-facts with `fact_id` (FACT-001 through FACT-N)
+- `founder_context` = founder capabilities from SQLite DB (capital, skills, network, etc.)
+- If 0 facts → tag `[LOW-CONFIDENCE: no pre-verified facts]`, proceed without blocking
+
+**Fact injection:** ALL Wave 1 and Wave 2 agent prompts MUST include:
+```
+## PRE-VERIFIED FACTS (cite as [FACT-XXX]):
+[FACT-001] <fact text> (confidence: X.XX, dimension: Y)
+[FACT-002] ...
+```
+
+Agents MUST cite these facts when making claims. Uncited factual claims = flagged hallucination.
+
+### Step 3 — KB-first lookup (semantic, P1 wiring)
+
+**EXPLORATION MODE SKIP GATE:**
+If Step 2.55 returned `mode == "EXPLORATION"`:
+- **SKIP this step entirely** — EXPLORATION mode requires fresh research, not cached knowledge
+- Log: `[KB_SKIPPED: EXPLORATION_MODE — fresh research only]`
+- Proceed directly to Step 3.1 (Industry Discovery)
+
+**FOUNDER_SPECIFIC MODE ONLY:**
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/kb-query.py \
+  "<topic>" --profile <profile-path> --limit 10
+```
+
+Read the JSON output. Parse `band_counts` and `results`. Each result has `band` ∈ {STRONG_PRIOR, WEAK_PRIOR, EXPLORATORY}. Use as priors in Step 5.
+
+**Rationale for EXPLORATION skip:** KB-first lookup biases toward cached knowledge. EXPLORATION mode is explicitly requesting industry-neutral discovery. Using KB priors would anchor results toward previously analyzed topics, defeating the purpose of exploration.
+
+### Step 3.4 — Data Intelligence Dispatch (PARALLEL with Step 3.5)
+
+Run data-intelligence-router to identify relevant data scripts, then execute top 2-3:
+
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/data-intelligence/scripts/data-intelligence-router.py \
+  "<topic>"
+```
+
+Read JSON output → execute each `recommended_scripts[].full_path` with `suggested_params`.
+Store all script outputs as `COMPUTED_DATA` section. Inject into Step 3.5 agent prompts as structured context.
+
+Scripts available: comtrade-mirror-gap, edgar-insight-finder, job-velocity-tracker, supply-chain-mapper, vn-business-monitor, trademark-factory-matcher, trend-signal-detector, financial-benchmarker.
+
+If router returns 0 scripts → skip (topic doesn't match any data domain). If scripts error → degrade with warning, do not block.
+
+### Step 3.4b — Calc-Dispatcher Auto-Route (Fix #3 2026-04-19 — PARALLEL with Step 3.5)
+
+For ANY topic with revenue/income/earnings keywords, auto-dispatch calculation engines BEFORE Wave 1:
+
+**Trigger keywords:** `$`, `usd`, `revenue`, `income`, `earn`, `kiếm`, `thu nhập`, `mrr`, `arr`, `profit`, `margin`
+
+**Auto-dispatch rules:**
+
+| Condition | Calc Type | Example Params |
+|-----------|-----------|----------------|
+| Revenue topic + creator/platform context | `power-law-sizer` | `{"gmv_usd": <est_market>, "commission_rate": 0.03, "active_count": <est_participants>, "alpha": 1.16}` |
+| Revenue topic + service/freelance context | `survival` | `{"day": 365, "channel": "freelance", "revenue": <target>}` |
+| Any revenue projection claim | `monte-carlo` | `{"base": <median>, "optimistic": <p90>, "pessimistic": <p10>}` |
+
+**Execution:**
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/calculation-engines/scripts/calc-dispatcher.py \
+  --type power-law-sizer \
+  --params '{"gmv_usd": <est>, "commission_rate": 0.03, "active_count": <est>, "alpha": 1.16}'
+```
+
+**Injection — prepend to ALL agent prompts:**
+```
+## CALC_DATA (from calc-dispatcher — use these numbers, do NOT estimate)
+Power-law distribution:
+  P10: $<p10>/mo (bottom 10% earn this or less)
+  P50: $<p50>/mo (median)
+  P90: $<p90>/mo (top 10%)
+  P99: $<p99>/mo (top 1%)
+  Mode: $<mode>/mo (most common outcome)
+Survival probability:
+  Day 90: <pct>% | Day 180: <pct>% | Day 365: <pct>%
+
+ENFORCEMENT:
+- NEVER cite median alone — always include P10/P90/P99
+- Use P10 as risk floor, P90 as opportunity ceiling
+- If mode ≈ $0, state "majority earn near zero" BEFORE quoting P90
+```
+
+**If no revenue keywords detected:** skip this step.
+
+### Step 3.4c — Early Constraint Detection (Fix #5 2026-04-19 — BEFORE Wave 1)
+
+Detect constraints from `routing_context` and run constraint-inversion debate EARLY — before hypothesis generation, not after KILL verdict. This operationalizes CLAUDE.md "NEVER conclude not feasible, ALWAYS find a way" at the START of analysis.
+
+**Trigger:** If `routing_context.constraints` contains ANY of:
+- `no_product_dev` (capital too low for product)
+- `no_paid_ads` (no ad budget)
+- `cash_first` (runway pressure)
+- `bridge_needed` (need bridge capital before real opportunity)
+
+**Execution:**
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/constraint-inversion-debate.py \
+  --rejection-reason "early_constraint_<constraint_name>" \
+  --topic "<topic>" \
+  --claim "Founder has constraint: <constraint_name>" \
+  --founder-profile '<profile JSON>' \
+  --early-mode \
+  > /tmp/stage0-early-inversion-<case_id>.json
+```
+
+**Parse output:**
+- If `alternative_paths` array has ≥1 entry with `feasibility_score ≥ 5` → inject into Wave 1 agent prompts as:
+  ```
+  ## EARLY_CONSTRAINT_INVERSIONS (from constraint-inversion-debate)
+  Detected constraints: <list>
+  Alternative paths explored BEFORE analysis:
+  - Path 1: <description> (feasibility: <score>/10)
+  - Path 2: <description> (feasibility: <score>/10)
+  
+  Wave 1 agents: explore these alternative paths, NOT just the constrained path.
+  ```
+- If `alternative_paths` empty OR all `feasibility_score < 5` → inject warning:
+  ```
+  ## CONSTRAINT_WARNING
+  Constraints <list> detected. No high-feasibility alternatives found in early inversion.
+  Analysis may result in REJECTED/KILL — but Step 6.4 will re-run full constraint-inversion debate.
+  ```
+
+**Why early:** Step 6.4 fires after REJECTED verdict is locked — too late to inform Wave 1/2 research direction. Early detection allows Wave 1 agents to explore alternative paths proactively.
+
+### Step 3.4d — Operator Mastery Engine Dispatch (PARALLEL with Step 3.5, MANDATORY ALWAYS)
+
+**Trigger:** ALWAYS fires for ALL queries. 5-Layer Operator thinking is fundamental to business analysis — NOT optional, NOT conditional. Every business decision has timing, position, network, cognitive, and deal-structure dimensions.
+
+Run the 5-Layer Operator Mastery computational engines to produce deep mechanism-based cashflow analysis. These engines replace textbook formulas (CCC = DIO + DSO - DPO) with operator-level thinking ("WHO pays WHEN? What happens in between?").
+
+**Execution — run ALL 5 layers via single operator dispatch:**
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/money-intelligence/money-intelligence-runner.py \
+  --engine operator \
+  --input '{
+    "runway_days": <from profile or 60 default>,
+    "receivable_days": <30 default for service>,
+    "payable_days": <15 default for credit card>,
+    "amount": <monthly revenue target from routing_context>,
+    "stress": <0.5 default, 0.8 if runway <30d>
+  }'
+```
+
+**Parse 5-layer output. Each layer returns:**
+
+| Layer | Key Output | Verdict Section |
+|-------|------------|-----------------|
+| L1 Timing | `invoice_timing.optimal_day`, `desperation_signals`, `days_saved` | "Invoice Tuesday 10AM → 26d saved" |
+| L2 Reflexivity | `position.position_strength`, `spiral_risk`, `death_spiral_weeks` | "Position strength: -0.095 (neutral)" |
+| L3 Network | `hub_score.hub_score`, `hub_type`, `rent_potential` | "Hub score: 61/100 (dominant)" |
+| L4 Cognitive | `runway_bucket.bucket`, `cognitive_capacity`, `pre_commitments` | "Crisis mode → 20% capacity → NO solo decisions" |
+| L5 Deal | `recommendation.structure`, `zero_capital.feasibility`, `deal_chain.net_profit` | "$0→$23,250 via 2-deal chain" |
+
+**Injection — prepend to ALL agent prompts AND include in verdict:**
+```
+## OPERATOR_MASTERY (from 5-Layer Operator engines — use these, do NOT estimate)
+
+TIMING (L1):
+  Invoice Day: <optimal_day> <optimal_hour> → <days_saved> days faster payment
+  Desperation Signals: <list of 6 universal indicators>
+  Float Value: $<annual_value>/year per $<amount>
+
+REFLEXIVITY (L2):
+  Position Strength: <position_strength> (<interpretation>)
+  Spiral Risk: <spiral_risk> (death spiral in <death_spiral_weeks> weeks if triggered)
+  Perception Gap: <perception_gap> (visible: <visible>, hidden: <hidden>)
+
+NETWORK (L3):
+  Hub Score: <hub_score>/100 (<viability_label>)
+  Best Hub Type: <hub_type> (<capital_required>, <time_to_position> months)
+  Rent Potential: <rent_potential_low>-<rent_potential_high>% of transaction value
+
+COGNITIVE (L4):
+  Runway Bucket: <bucket> (<runway_days> days)
+  Cognitive Capacity: <cognitive_capacity>% (<quality_decline>% decision decline)
+  Pre-commitments: <pre_commitments list>
+  CRITICAL: If capacity <50% → tag all revenue projections [STRESS_DEGRADED]
+
+DEAL (L5):
+  Zero-Capital Feasibility: <feasibility>/10
+  Recommended Structure: <structure> (<mechanism>)
+  Deal Chain: $<starting_capital>→$<net_profit> via <chain_steps> steps
+  CCC: <ccc_days> days (<ccc_interpretation>)
+
+ENFORCEMENT:
+- Wave 1/2 agents MUST interpret these computed mechanics, NOT re-derive
+- If runway <30d → Layer 4 rules override: "NO solo decisions" applies to verdict
+- If hub_score >60 → explore hub positioning, not just service revenue
+- If deal_chain profit >$1K → include as Short Track action
+```
+
+**Fallback:** If money-intelligence-runner.py fails → tag claims with `[OPERATOR_MASTERY_DEGRADED]`. Do NOT hard-abort. Proceed with textbook formulas but warn "mechanism thinking unavailable."
+
+**5-Layer Reference:**
+- Full docs: `.claude/skills/business/money-intelligence/operator_engines/`
+- Agent definition: `.claude/agents/core/cashflow/operator-mastery-brain.md` (V2 narrative-enhanced)
+- Narrative templates: `.claude/skills/business/money-intelligence/operator_engines/operator_narrative_templates.md`
+- Test validation: `plans/reports/test-260420-1143-5-layer-operator-mastery-validation.md`
+
+**V2 OUTPUT RULE:** Engine outputs MUST be transformed via narrative templates. Never output raw JSON tables — always convert to mechanism-explained prose with embedded numbers. See operator_narrative_templates.md for patterns.
+
+### Step 3.4e — Experience Brain Dispatch (PARALLEL with Step 3.4d, MANDATORY ALWAYS)
+
+**Trigger:** ALWAYS fires for ALL queries. Experience Brain provides practical pattern-matching and action sequences that complement operator calculations. Every founder situation matches trainable prototypes.
+
+The Experience Brain provides **PRACTICAL** outputs that complement the Operator Engine's calculations:
+- **Pattern recognition**: What situation TYPE is this? (10 pre-trained prototypes)
+- **Expert response sequence**: Day 1/3/7 specific actions with stop conditions
+- **Reflex chain**: Trained auto-response (like muscle memory)
+- **Novice mistakes**: What NOT to do (kills founders)
+- **Tracking ID**: For outcome recording and calibration
+
+**Execution:**
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/money-intelligence/experience-brain-runner.py \
+  --situation '{
+    "capital": <from profile>,
+    "runway_days": <from profile or 60 default>,
+    "skills": <from profile>,
+    "network_size": <from profile>,
+    "payment_terms": "<Net-30 default>",
+    "description": "<topic + context>"
+  }'
+```
+
+**Parse output fields (SRE Phase 1 — invisible mode, no attribution):**
+
+| Field | Usage in Verdict |
+|-------|------------------|
+| `immediate` | First action to take NOW |
+| `day_1` | Specific action for Day 1 |
+| `day_3` | Specific action for Day 3 |
+| `day_7` | Specific action for Day 7 |
+| `stop_when` | When to pivot/kill |
+| `thinking` | Core insight (internalized, no attribution) |
+| `avoid` | What NOT to do (array) |
+| `confidence` | Pattern match confidence |
+| `tracking_id` | For outcome recording |
+| `injection_block` | Pre-formatted markdown for verdict (use directly) |
+
+**Injection — prepend to ALL agent prompts AND include in verdict:**
+
+**IMPORTANT (SRE Phase 1):** Use `--mode invisible` (default). Output is PURE ADVICE without attribution.
+System THINKS with accumulated knowledge, doesn't QUOTE sources like "Marc Rich pattern".
+
+```
+## PRACTICAL INTELLIGENCE
+
+**Immediate:** <immediate>
+
+**Action sequence:**
+- Day 1: <day_1>
+- Day 3: <day_3>
+- Day 7: <day_7>
+- Stop when: <stop_when>
+
+**Core insight:** <thinking>
+
+**Avoid:**
+  - <avoid[0]>
+  - <avoid[1]>
+  - <avoid[2]>
+  - <avoid[3]>
+
+TRACKING: <tracking_id>
+After 7 days: /log-outcome --tracking-id <tracking_id> --code S|P|F|N
+
+ENFORCEMENT:
+- Wave 1/2 agents MUST use these ACTION sequences directly
+- Verdict Short Track MUST include Day 1 action
+- If confidence <0.5, tag `[LOW_CONFIDENCE]`
+- Tracking ID MUST appear in verdict
+```
+
+**Note:** The `injection_block` field in runner output contains pre-formatted markdown.
+Use it directly instead of manually formatting.
+
+**Fallback:** If experience-brain-runner.py fails → tag claims with `[EXPERIENCE_BRAIN_DEGRADED]`. Do NOT hard-abort. Proceed with Operator Engine only but warn "practical action sequence unavailable."
+
+**Experience Brain Reference:**
+- Core module: `.claude/skills/business/money-intelligence/experience_layer/`
+- Prototypes: `.claude/skills/business/money-intelligence/experience_layer/data/prototypes.json` (10 patterns)
+- Reflex chains: `.claude/skills/business/money-intelligence/experience_layer/data/reflex_chains.json` (10 trained responses)
+- Test validation: `plans/reports/experience-layer-260420-1815-cashflow-test.md`
+
+**Integration with Operator Engine:** Experience Brain + Operator Engine = Complete cashflow intelligence:
+- Operator Engine = CALCULATIONS (CCC, float, hub score, deal structure)
+- Experience Brain = ACTIONS (Day 1/3/7 sequence, stop conditions, mistakes to avoid)
+
+Both MUST fire for cashflow queries. Neither alone is sufficient.
+
+### Step 3.4f — Vicarious Knowledge Dispatch (PARALLEL with Step 3.4d/3.4e, ALWAYS fires)
+
+**Trigger:** ALWAYS fires — provides operator wisdom from external sources when user decision data is insufficient (<30 recorded decisions).
+
+The Vicarious Knowledge Base provides battle-tested patterns from real operators:
+- **Negotiation**: Chris Voss FBI tactics, Harvard PON, body language
+- **Cash Flow**: Profit First, Uri Levine (Waze), presale, crisis management
+- **Pricing**: Alex Hormozi $100M Offers, premium positioning
+- **Network Position**: Marc Rich (Iran-SA, OPM, floating storage)
+- **Failure**: CB Insights, Startup Genome, platform dependency
+
+**Execution:**
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/money-intelligence/vicarious-knowledge-runner.py \
+  --context '{
+    "tags": ["<from topic/profile analysis>"],
+    "category": "<negotiation|cash_flow|pricing|network|failure|timing|portfolio|offer>",
+    "situation_keywords": ["<extracted from topic>"]
+  }'
+```
+
+**Context tag detection (auto-extract from topic + profile):**
+
+| Signal in topic/situation | Tags to add |
+|---------------------------|-------------|
+| Emotional words (upset, angry, frustrated, cancel, threaten) | emotions, empathy, fbi |
+| Crisis words (crisis, urgent, emergency, deadline, running out) | crisis, speed |
+| Offer/pricing words (offer, discount, value, package, bundle) | pricing, offer_design, value |
+| Sales words (lead, follow, response, call, convert) | sales, follow_up, speed |
+| Leverage indicators (power_relative < 0, runway < 60d, high_stakes > $10K) | leverage, urgency, high_stakes |
+| Prepay/payment terms | prepayment, cash_flow |
+
+**Parse output. Inject into ALL agent prompts:**
+```
+## VICARIOUS_KNOWLEDGE (operator patterns — use as GROUNDED PRIORS when user data insufficient)
+
+KB Status: {kb_stats.total_patterns} patterns | {kb_stats.unique_sources} sources | avg confidence {kb_stats.avg_confidence}
+
+TOP PATTERNS MATCHED:
+<for each insight in insights[:3]>
+  [{insight.category}] {insight.name}:
+    Situation: {insight.situation}
+    Action: {insight.action}
+    Outcome: {insight.outcome}
+    Numbers: {insight.specific_numbers}
+    Source: {insight.source} (confidence: {insight.confidence})
+</for each>
+
+RECOMMENDATIONS:
+<for each rec in recommendations[:5]>
+  - {rec}
+</for each>
+
+FAILURE WARNINGS (from operator experience):
+<for each warn in failure_warnings[:2]>
+  ⚠ {warn.pattern}: {warn.failure_rate}% failure rate — {warn.situation}
+</for each>
+
+ENFORCEMENT:
+- When situation involves emotions/conflict → apply Chris Voss labeling + mirroring
+- When pricing decision → check Hormozi 3x rule (3x most expensive, 32x cheapest)
+- When cash crisis → Levine 30-day action rule + 12-18mo runway target
+- When platform dependency → check failure patterns (94% MCN collapse rate)
+- Pattern numbers are SPECIFIC — use them, don't generalize
+```
+
+**Fallback:** If vicarious-knowledge-runner.py fails → tag claims with `[VICARIOUS_DEGRADED]`. Do NOT hard-abort. Proceed without but warn "operator pattern matching unavailable."
+
+**Reference:**
+- Core module: `.claude/skills/business/money-intelligence/ground_truth/vicarious_knowledge.py`
+- Pattern count: 55 patterns, 108 tags, 34 sources, 0.87 avg confidence
+- Memory: `memory/project_ground_truth_v16.md`
+
+### Step 3.1 — Industry Discovery (EXPLORATION mode ONLY — BLOCKING)
+
+**Skip condition:** If `mode == "FOUNDER_SPECIFIC"` from Step 2.55 → skip this step entirely, proceed to Step 3.5.0.
+
+**If `mode == "EXPLORATION"`:**
+
+**⚠️ ANTI-PATTERN WARNING:**
+- DO NOT run WebSearch directly for industry discovery
+- DO NOT run 6 searches, then 5 more, then 3 more ad-hoc
+- DO NOT bypass industry-discovery-agent spawn
+- MUST spawn Task with `subagent_type="industry-discovery-agent"`
+
+**Reason:** Direct WebSearch bypasses the 20-query requirement and produces incomplete results (test showed 14 searches → 12 industries vs required 20+).
+
+**MANDATORY:** Spawn `industry-discovery-agent` as a TASK. The agent runs all 20 WebSearches per its spec.
+
+```bash
+Task(subagent_type="industry-discovery-agent", prompt="
+[EXPLORATION_MODE: fresh industry discovery, no archetypes]
+
+Query: <original topic from Step 2>
+
+Execute 20 WebSearch queries to discover industries (GLOBAL + REGIONAL scope):
+
+**GLOBAL SCOPE (10 queries — industry-neutral, no geography bias):**
+1. highest profit margin industries small business 2025
+2. industries with recurring revenue business models worldwide
+3. industries with low barriers to entry high demand global
+4. industries with large cash flow transactions B2B
+5. fastest growing industries global 2025 2026
+6. fragmented industries no dominant player opportunity
+7. industries benefiting from digital transformation 2025
+8. industries with aging workforce succession opportunity
+9. highest revenue industries SME small business
+10. industries with strong unit economics solo founder
+
+**REGIONAL SCOPE (10 queries — Southeast Asia, Vietnam, cross-border):**
+11. top industries GDP contribution Vietnam 2025
+12. fastest growing industries Southeast Asia 2026
+13. export industries Vietnam growth 2025 2026
+14. service industries scalable revenue Vietnam
+15. cross-border trade opportunities ASEAN 2025
+16. industries government spending growth Vietnam
+17. B2B service industries Southeast Asia demand
+18. manufacturing industries Vietnam FDI opportunity
+19. agriculture export industries ASEAN high margin
+20. logistics cold chain industries Vietnam growth
+
+Return discovered_industries JSON with ≥20 industries, ≥10 categories, ≥3 geographic regions.
+DO NOT load archetype-registry.json.
+DO NOT filter by founder profile.
+")
+```
+
+**Persistence:**
+```bash
+# Save output to file for downstream consumption
+echo '<discovered_industries JSON>' > /tmp/stage0-discovered-industries-<case_id>.json
+```
+
+**Validation:**
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/industry-discovery-validator.py \
+  /tmp/stage0-discovered-industries-<case_id>.json
+```
+
+**Validation BLOCKING gate:**
+- If validation fails → retry industry-discovery-agent with `force_complete=true` flag
+- Max 2 retries. If still failing → proceed with `[DISCOVERY_INCOMPLETE]` tag
+- DO NOT proceed to Step 3.2 until validation passes or max retries exhausted
+
+**Failure mode detection:**
+- If discovered_industries count < 15: likely agent didn't run all 20 queries
+- If categories count < 8: likely queries too narrow or deduplication too aggressive
+- If regions count < 3: likely skipped global queries
+
+Plan ref: `plans/260426-0956-stage0-exploration-deep-scan/phase-01-industry-discovery-agent.md`
+
+### Step 3.2 — Industry Validation (EXPLORATION mode ONLY — PARALLEL)
+
+**Skip condition:** If `mode == "FOUNDER_SPECIFIC"` from Step 2.55 → skip this step entirely.
+
+**If `mode == "EXPLORATION"`:**
+
+For EACH industry in `/tmp/stage0-discovered-industries-<case_id>.json` (NO LIMIT — validate ALL discovered), spawn `generic-industry-validator` in PARALLEL:
+
+```bash
+# For each industry (parallel spawn, single message with multiple Task calls):
+Task(subagent_type="generic-industry-validator", prompt="
+[EXPLORATION_MODE: validate discovered industry with equal depth]
+
+Industry: <industry.name>
+Category: <industry.category>
+Market size hint: <industry.market_size_usd>
+Source: <industry.source_urls[0]>
+
+Execute EXACTLY 5 WebSearches:
+1. '<industry> market size Vietnam 2025 USD'
+2. '<industry> profit margin typical range business'
+3. '<industry> barriers to entry new business startup'
+4. '<industry> top companies Vietnam market leaders'
+5. '<industry> revenue model cash flow business type'
+
+Return validation JSON with: market_size_usd, profit_margin_pct, barriers_level, key_players, cash_flow_type.
+DO NOT add extra searches. DO NOT skip any search.
+")
+```
+
+**Persistence:**
+```bash
+# Each validator writes to separate file
+echo '<validation JSON>' > /tmp/stage0-industry-validation-<industry_slug>-<case_id>.json
+```
+
+**Equal Depth Check:**
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/equal-depth-checker.py \
+  /tmp/
+```
+
+If variance > 2 fields → tag output with `[EQUAL_DEPTH: WARNING]`.
+If all equal → tag output with `[EQUAL_DEPTH: PASS]`.
+
+Plan ref: `plans/260426-0956-stage0-exploration-deep-scan/phase-03-equal-depth-validation.md`
+
+### Step 3.5.0 — Cognitive retrieval (PARALLEL with Step 3.5)
+
+**EXPLORATION MODE BEHAVIOR:**
+If Step 2.55 returned `mode == "EXPLORATION"`:
+- **RUN with limited scope** — retrieve only general business schemas (MM-*), NOT topic-specific archetypes
+- Log: `[COGNITIVE_EXPLORATION: general schemas only, no topic archetypes]`
+- This prevents pre-loaded archetypes from biasing industry discovery
+
+**FOUNDER_SPECIFIC MODE (default):**
+```bash
+data/cognitive/.venv/Scripts/python.exe \
+  data/cognitive/scripts/retrieve/cognitive_retrieve.py \
+  --query "<topic>" --mode auto --top-k 20 --json \
+  > /tmp/cognitive-context-<case_id>.json
+```
+
+Read retrieved rules (SCH-NNN), models (MM-NN), archetypes (ARCH-NNN), cases. Cite in Step 7.
+
+### Step 3.5 — 14-agent parallel dispatch (BLOCKING, degrade-with-warn)
+
+**EXPLORATION MODE GATE (Step 2.55 output):**
+
+Read `/tmp/stage0-query-mode-<case_id>.json`. If `mode == "EXPLORATION"`:
+- Do NOT prepend `FOUNDER_CONTEXT` to agent prompts
+- Do NOT prepend `ROUTING_CONTEXT` to agent prompts
+- **SKIP archetype scanners entirely** — use `discovered_industries` from Step 3.1
+- Tag every agent prompt with: `[EXPLORATION_MODE: industry-neutral scan, no founder-fit filtering]`
+- Inject discovered industries:
+  ```
+  ## DISCOVERED_INDUSTRIES (from fresh WebSearch, NOT archetypes)
+  <paste discovered_industries JSON from /tmp/stage0-discovered-industries-<case_id>.json>
+  
+  Analyze THESE industries. Do NOT reference archetype-registry.json.
+  ```
+
+If `mode == "FOUNDER_SPECIFIC"` (default prior behavior):
+- Prepend `FOUNDER_CONTEXT` and `ROUTING_CONTEXT` as normal
+- Apply `capital_fit` filter from archetype-registry.json
+
+**DATA AUGMENTATION:** Prepend to EVERY agent prompt:
+
+1. If `/tmp/stage0-question-bank-<case_id>.json` exists (Step 2.65 succeeded):
+```
+## QUESTION_BANK (V16 — structural questions to address)
+<paste question_bank JSON from file>
+
+Use search_hints to inform your research queries.
+Flag when your findings ANSWER one of these questions.
+```
+If file missing → skip QUESTION_BANK injection, log `[NO_QUESTION_BANK]`.
+
+2. If Step 3.4 returned COMPUTED_DATA:
+```
+## COMPUTED_DATA (from data scripts — use these numbers, do NOT re-search)
+<paste JSON outputs from Step 3.4 scripts>
+```
+Agents MUST interpret computed data, not re-run WebSearch for the same information.
+
+3. If `/tmp/cognitive-context-<case_id>.json` exists (Step 3.5.0 succeeded):
+```
+## COGNITIVE_CONTEXT (retrieved knowledge — cite when applicable)
+Schemas: <list SCH-NNN IDs with one-line descriptions>
+Mental Models: <list MM-NN IDs with one-line descriptions>
+Archetypes: <list ARCH-NNN IDs with one-line descriptions>
+Cases: <list relevant case IDs>
+
+When your analysis matches a schema/model/archetype, cite it: "[applies: SCH-042]"
+```
+If file missing OR contains `"error"` key → skip COGNITIVE_CONTEXT injection, log `[NO_COGNITIVE: <reason>]`. Fallback reasons:
+- `model_not_found`: ONNX infrastructure issue, non-blocking
+- `empty_results`: no relevant retrievals, normal for novel topics
+- `timeout`: retrieval >30s, skip and proceed
+
+4. If Step 3.4c returned early constraint inversions with `alternative_paths`:
+```
+## EARLY_CONSTRAINT_INVERSIONS (pre-computed bypass paths)
+<paste injection_for_wave1 from early-inversion output>
+```
+If missing → skip (constraints will be handled in Step 6.4 if REJECTED).
+
+5. **INSTANCE-FIRST INSTRUCTION (MANDATORY for DEFAULT mode, skip for --breadth):**
+```
+## INSTANCE-FIRST RULE (v26)
+Your output will feed into instance research (Step 6.7) that drills categories into SPECIFIC executable instances.
+To help downstream instance researchers:
+- Name SPECIFIC sub-niches, not broad categories (BAD: "export sourcing"; GOOD: "Vietnamese cashew W320 to Thai snack manufacturers")
+- Name SPECIFIC companies you encounter during research (real names, real URLs)
+- Name SPECIFIC price points with sources (not "2-10%" but "$2,400/ton FOB HCM per Alibaba listing <url>")
+- The final verdict will contain MAX 3 models, each with real buyers, real suppliers, real prices, and a copy-paste first message
+- Your job: provide the RAW MATERIAL (specific names, prices, contacts) that instance research can verify and deepen
+```
+
+6. **DEPLOYMENT_CONTEXT (v25.5 — TIER_0/TIER_1 only, skip for TIER_2/TIER_3):**
+If `routing_context.tier` IN [TIER_0, TIER_1]:
+```
+## DEPLOYMENT CONTEXT (v25.5 — Capital Thinking)
+
+PARADIGM: You are searching for ASSETS TO DEPLOY CAPITAL INTO, not JOBS FOR THE FOUNDER.
+
+Founder has $<deployment_budget> to deploy across <asset_slots> micro-asset slots.
+Each slot budget: $<per_slot_budget>.
+Kill criterion: <kill_days> days, no revenue → kill asset, reallocate capital to survivors.
+Sleep test REQUIRED: asset must generate revenue WITHOUT founder after setup phase.
+Max founder hours post-setup: <max_founder_hours_post_setup>h/week.
+
+SEARCH FOR:
+- "bought [domain/template/tool] for $X, now earns $Y/mo passive"
+- "micro SaaS sold acquire.com under $1000"
+- "passive income $500 invested results"
+- "digital asset portfolio small budget"
+- "expired domain redirect income"
+- "template marketplace passive earnings"
+- "newsletter monetization from zero"
+
+DO NOT SEARCH FOR:
+- "zero capital business" (returns freelance job lists)
+- "make money online" (returns SEO spam)
+- "side hustle ideas" (returns labor models)
+- "freelance for beginners" (labor, not capital)
+
+OUTPUT PER MODEL:
+- deploy_cost: $X (actual $ to deploy)
+- setup_hours: N hours (one-time setup, then hands-off)
+- expected_monthly_passive: $Y/mo (P10/P50/P90)
+- roi_pct: (expected_monthly_passive / deploy_cost) * 100
+- payback_days: deploy_cost / (expected_monthly_passive / 30)
+- founder_hours_post_setup: N hours/week (must be <2h for TIER_0)
+- kill_trigger: what signal means "kill this asset at day 30"
+- compound_mechanism: how does this asset feed other assets
+```
+If `routing_context.tier` NOT in [TIER_0, TIER_1] → skip DEPLOYMENT_CONTEXT entirely.
+
+Spawn agents in 2 waves. Wave 1 = independent agents. Wave 2 = agents needing Wave 1 output.
+
+**Wave 1 — WAVE1_BASE + WAVE1_ADDENDUM[intent_class] (parallel, single message):**
+
+WAVE1_BASE (always fires, 8 agents):
+1. schema-accumulator (mode=read)
+2. persona-loader
+3. contrarian-research-agent
+4. market-reality-checker
+5. failure-archaeologist
+6. competitive-intelligence-engine
+8. topic-spider
+11. knowledge-graph-curator (mode=read, P05)
+
+WAVE1_CONDITIONAL (fire when structural_analysis.structure_score >= 3 OR multi-entity keywords in query):
+15. position-analyzer — input: topic + structural_analysis from Step -8. Advisory only, NOT counted toward ≥10/14 success threshold. If structural modules unavailable or score < 3 → skip.
+
+WAVE1_ADDENDUM[intent_class] (fire IN ADDITION to BASE based on Step 2.6 classifier output):
+
+| intent_class | Addendum agents |
+|---|---|
+| `marketplace_layer` | (none — BASE sufficient) |
+| `operator_layer` | underground-mmo-intel, grey-hat-seo-specialist, contrarian-research-agent, first-dollar-hunter |
+| `jurisdiction_question` | opsec-risk-manager, multi-stream-tax-optimizer, legal-shield-architect, payment-diversification-architect |
+| `power_law_hunt` | niche-archaeologist, failure-archaeologist, nassim-taleb, naval-ravikant |
+| `grey_zone_adjacent` | deal-ethics-navigator |
+| `unknown` | (none — BASE sufficient, v25 parity fallback) |
+
+Read `/tmp/stage0-intent-class-<case_id>.json` → parse `addendum_agents` array → dedupe against BASE (some agents appear in both, e.g. contrarian-research-agent) → spawn all unique agents in ONE Task tool-call message.
+
+Dedup notes:
+- `contrarian-research-agent` in BASE already — if in addendum, skip (no double-fire)
+- `failure-archaeologist` in BASE already — same
+- Net-new addendum agents per class: operator=3, jurisdiction=4, power_law=2 (niche-arch + Taleb + Naval, failure-arch deduped), grey_zone=1
+
+**Rationale:** Prior v25 fired same 8 agents regardless of topic. Operator/jurisdiction/grey-zone queries got white-hat researcher mix → false-negative verdicts (H1 TikTok Shop, H2 YouTube faceless on 2026-04-13). Addendum surfaces domain-appropriate intel without bloating BASE.
+
+**Fallback:** If classifier output file missing OR `intent_class == "unknown"` → fire WAVE1_BASE only. Log `[CLASSIFIER_FALLBACK]` to downstream claims. v25 parity preserved.
+
+Plan ref: `plans/260413-1002-stage0-bias-fix/phase-01-foundation-learned-rules-and-classifier.md`
+
+**WAVE 1 receipt (Phase 7 enforcement — write after Wave 1 returns):**
+
+```bash
+# Write receipt so stage0-wave2-enforcement.cjs knows Wave 1 ran
+echo '{"case_id":"<case_id>","wave":1,"agents_fired":<N>,"timestamp":<unix_ts>}' \
+  > /tmp/stage0-wave1-receipt-<case_id>.json
+```
+
+Replace `<N>` with the count of agents that returned a response. This receipt is required for the Wave 2 enforcement Stop hook. Write it BEFORE spawning Wave 2.
+
+**After Wave 1 returns and receipt is written, spawn Wave 2 in single message (6 agents, parallel):**
+7. deep-comment-miner — input: seed URLs from topic-spider (#8) + user-provided URLs + ladder drill sources
+9. ground-truth-fetcher (P00) — input: founder name/handle from topic + Wave 1 findings
+10. full-coverage-ingest (P01) — input: all seed URLs from topic-spider + WebSearch discovery
+12. persona-insider-loader (P07) — input: 3 persona IDs from persona-loader (#2) + topic keywords
+13. financial-triangulator (P03) — input: Q1 evidence URL from Wave 1 + claimed revenue range
+14. hypothesis-generator (P02) — input: all Wave 1 signals + ground-truth + full-coverage data
+
+**Why 2 waves:** topic-spider harvests URLs that deep-comment-miner needs. persona-loader identifies personas that persona-insider-loader needs. financial-triangulator needs Q1 evidence from Wave 1. Single-wave dispatch caused these agents to run with empty inputs.
+
+### Step 3.8 — WAVE 2 receipt (Phase 7 enforcement — write after Wave 2 returns)
+
+After all Wave 2 agents return, write receipt immediately:
+
+```bash
+echo '{"case_id":"<case_id>","wave":2,"agents_fired":<N>,"timestamp":<unix_ts>}' \
+  > /tmp/stage0-wave2-receipt-<case_id>.json
+```
+
+Replace `<N>` with the count of Wave 2 agents that returned. This receipt gates the `stage0-wave2-enforcement.cjs` Stop hook: without it, any verdict with confidence <0.8 and non-exempt verdict class will be blocked.
+
+**Wave 2 BLOCKING enforcement (Fix 2 — 2026-04-19):**
+
+IF `intent_class` ∈ {`operator_layer`, `power_law_hunt`, `grey_zone_adjacent`}:
+  → Wave 2 is MANDATORY. CANNOT skip for "context budget" reasons.
+  → These topics require deep forum mining, ground-truth verification, and financial triangulation.
+  → If Wave 2 skipped for these classes → verdict = `ANALYSIS_INCOMPLETE`, CANNOT proceed to Step 6.
+
+IF `intent_class` ∈ {`marketplace_layer`, `jurisdiction_question`, `unknown`}:
+  → Wave 2 MAY be skipped with degraded confidence.
+
+**If Wave 2 was intentionally skipped** (context budget, degraded mode, AND intent_class NOT in blocking list): do NOT write the receipt. Instead:
+- Set `agent_response_rate` cap to 0.65 per Step 6.45 formula
+- Expect confidence to drop below 0.8 → downgrade verdict to `EXPLORATION_ONGOING`
+
+After Wave 2 returns, run preflight:
+```bash
+node .claude/commands/stage0-lib/preflight-check.cjs <comma-separated-agent-names>
+```
+
+If `<10 agents responded` → tag every downstream claim with `[DEGRADED]`. NEVER hard-abort.
+
+### Step 3.9 — Framework Advisor (SRE Phase 3 — PARALLEL with Step 3.6)
+
+**Purpose:** Transform persona framework outputs into pure advice. System APPLIES frameworks, doesn't CITE them.
+No "Naval says" or "according to Taleb" — just intelligent analysis.
+
+**Trigger:** Fires when Wave 1 addendum included persona agents (nassim-taleb, naval-ravikant, charlie-munger, alex-hormozi, etc.)
+
+**Collect persona outputs from Wave 1:**
+
+Extract framework-based outputs from these agent types if they ran:
+- `nassim-taleb` → antifragility assessment
+- `naval-ravikant` → leverage classification
+- `charlie-munger` → inversion/mental models
+- `alex-hormozi` → offer/value equation
+- `mj-demarco` → CENTS framework
+- `chris-voss` → negotiation tactics
+- `robert-kiyosaki` → ESBI quadrant
+
+**Transform via Framework Advisor:**
+
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/money-intelligence/framework-advisor-runner.py \
+  --batch '[
+    {"persona": "naval-ravikant", "output": "<naval agent output>"},
+    {"persona": "nassim-taleb", "output": "<taleb agent output>"}
+  ]' \
+  --situation '{"topic": "<topic>", "capital": <capital>, "skills": ["<skill1>"]}' \
+  --tracking-id "<case_id>"
+```
+
+**Parse output fields:**
+
+| Field | Usage |
+|-------|-------|
+| `situation_type` | Classified situation (negotiation, arbitrage, leverage, etc.) |
+| `leverage_assessment` | Current leverage level (code/media/capital/labor) |
+| `fragility_assessment` | Fragile/robust/antifragile status |
+| `opportunity_score` | 0-1 score for opportunity quality |
+| `primary_insight` | Main takeaway (INTERNALIZED, no attribution) |
+| `action_sequence` | Ordered action steps |
+| `warning_list` | What to avoid |
+| `failure_modes` | From inversion analysis |
+| `hidden_assumptions` | Assumptions to validate |
+| `injection_block` | Pre-formatted markdown for verdict |
+
+**Injection — prepend to Step 6 Mountain Test + Step 7 verdict:**
+
+```
+## FRAMEWORK ANALYSIS
+
+<injection_block from framework-advisor output>
+```
+
+**IMPORTANT (SRE Phase 3):** Use default mode (invisible). Output is PURE ANALYSIS without attribution.
+System THINKS with frameworks, doesn't CITE them.
+- NO "Naval's leverage hierarchy"
+- NO "Taleb would say"
+- NO "According to Munger"
+- YES: Direct leverage/fragility/inversion analysis as system's own thinking
+
+**Skip condition:** If no persona agents ran in Wave 1 (intent_class = marketplace_layer, unknown) → skip this step. Not all queries need framework analysis.
+
+**Fallback:** If framework-advisor-runner.py fails → tag claims with `[FRAMEWORK_DEGRADED]`. Proceed without. Framework analysis is enrichment, not blocking.
+
+**Reference:**
+- Core module: `.claude/skills/business/money-intelligence/experience_layer/framework_advisor.py`
+- CLI runner: `.claude/skills/business/money-intelligence/framework-advisor-runner.py`
+- Related: InvisibleAdvisor (prototypes), DepthTracker (progressive deepening)
+
+### Step 3.6 — Non-Google Research Ladder Consumption (MANDATORY)
+
+**NOTE (Fix #2 2026-04-19):** Ladder already ran in Step 2.6.2 via `stage0-local-orchestrator.py`. DO NOT re-run ladder-runner.py. Read from `routing_context.ladder_research` instead.
+
+**IF `routing_context.ladder_research.status == "ok"` AND `drill_source_count >= 1`:**
+
+Ladder output is already in routing_context from Step 2.6.2. Extract and route to Wave 2 agents:
+
+**Consumption (MANDATORY — fixes the "decorative ladder" bug):**
+
+Parse `routing_context.ladder_research.drill_sources`. Route each source to the appropriate Wave 2 agent:
+
+| Source type | Route to | How |
+|---|---|---|
+| Forum (mmo4me, voz, BHW, V2EX) | deep-comment-miner (#7) | Append to seed URL list |
+| Business registry (masothue, congan.gov.vn) | ground-truth-fetcher (#9) | Append to registry_check_urls |
+| Trade data (Comtrade, ImportYeti) | topic-spider (#8) augmentation | Merge with existing platform list |
+| Code/tech (GitHub, npm, PyPI) | Dedicated drill Task agent | Spawn 1 agent per source |
+| News/archive (DanTri, Wayback) | Dedicated drill Task agent | Spawn 1 agent per source (Wave 1 agents can't receive ladder output in parallel) |
+| Court/legal (congan.gov.vn, caselaw) | Dedicated drill Task agent | Spawn 1 agent per source |
+
+Inject ladder summary into ALL Wave 2 agent prompts as:
+```
+## LADDER_SOURCES (drill-recommended, signals ≥3)
+<paste drill_recommended_sources URLs + signal counts>
+```
+
+If ladder-runner.py fails → degrade with warning, proceed without. Tag claims with `[NO_LADDER]`.
+
+**Hook guard note:** No hook fires ladder-runner.py automatically. Stage0 owns its own Step 3.6 dispatch. This step is the single source of truth for ladder execution.
+
+### Step 4 — Research synthesis
+Read all 14 agent outputs. Aggregate per-agent findings. Track contradictions explicitly. NO summary collapse.
+
+### Step 4.5 — Survivorship inversion (CONDITIONAL — Phase 2 bias-fix Fix #7)
+
+After Step 4 aggregation, scan Wave 1 + Wave 2 outputs for failure-rate claims (patterns: `X% fail`, `failure rate N%`, `Y of every 10 die`, `80% never reach $Z`, `bankruptcy rate`, `closure rate`). If any agent cited failure rate ≥20% as a kill signal → spawn `survivorship-inverter` agent via Task tool with:
+
+```
+Input payload to survivorship-inverter:
+- topic: <verbatim>
+- failure_rate_claim: <specific claim text + citing agent>
+- cited_failures: <array of failure cases from Wave 1 agents>
+- founder_profile: <full profile JSON from Step 1>
+- runtime_assertions: <from /tmp/stage0-runtime-assertions-*.json>
+```
+
+Survivorship-inverter returns one of:
+
+- `STATUS: OK` with ≥3 top-decile survivor cases (name + URL + revenue + mechanism delta) + founder-fit gate verdict
+- `STATUS: INSUFFICIENT_GROUND` — failure claim itself is unverified, no survivor analysis done
+- `STATUS: INSUFFICIENT_DATA` — cannot find 3 verifiable survivors after honest search
+
+**Consumption in Step 6 Mountain Test:**
+
+- If `STATUS: OK` AND `founder-fit gate == APPLICABLE` AND `mechanism delta found` → Step 6 must NOT reject solely on failure-rate grounds. The base rate does not apply to THIS founder IF they execute the delta. Downgrade rejection reason to `FREELANCER_TRAP_UNLESS_DELTA_EXECUTED` or similar conditional.
+- If `STATUS: OK` AND `founder-fit gate == BLOCKED` → preserve rejection. Mechanism delta exists but this founder cannot execute it. Document the specific gap (skills/capital/audience/language).
+- If `STATUS: INSUFFICIENT_DATA` → tag verdict with `[SURVIVOR_DATA_GAP]`, do NOT downgrade on-faith. User must run targeted research.
+- If `STATUS: INSUFFICIENT_GROUND` → the failure claim was never solid. Step 5 hypothesis-generator MUST re-examine the kill signal before trusting it.
+
+**Skip conditions:**
+
+- No failure-rate claim ≥20% in Wave 1 outputs → Step 4.5 skips (no base-rate kill vector)
+- Failure rate claim is already power-law-sized (P10/P50/P90 all present) → Step 4.5 skips (power law already handled)
+- `intent_class == marketplace_layer` AND claim is about white-hat marketplace (already-legitimate zone) → skip
+
+**Why this fires here (not in Step 6):** By the time Step 6 runs deterministic rules, the kill decision is locked by Wave 1 base-rate citations. Step 4.5 must intervene BEFORE Step 5 hypothesis generation so the hypothesis-generator factors in the survivor mechanism as a testable variable.
+
+Plan ref: `plans/260413-1002-stage0-bias-fix/phase-02-intel-forum-preflight-and-survivorship.md` | Learned rule violated in 2026-04-13 verdict: `[POWER-LAW-MEDIAN-WARNING]`
+
+### Step 5 — Hypothesis generator (5 distinct, parallel stress test)
+
+Generate 5 falsifiable hypotheses. For each:
+- Cite which MM-NN model fired (from cognitive retrieval)
+- Cite priors from kb-query results (with band tag)
+- Stress-test in parallel
+- If any 2 contradict → spawn `contradiction-resolver` agent (max depth 2)
+- Min 1 survivor required → else verdict = INSUFFICIENT_SIGNAL, jump to Step 7
+
+**Step 5 ROI hypothesis format (v25.5 — TIER_0/TIER_1 only):**
+
+When `routing_context.tier` IN [TIER_0, TIER_1], each hypothesis MUST use this format:
+```
+### Hypothesis N: [Asset Name]
+- Deploy: $X
+- Setup: Nh one-time
+- Expected: $Y/mo passive (P10=$A P50=$B P90=$C)
+- ROI: Z%/mo
+- Payback: D days
+- Sleep: YES/PARTIAL
+- Kill@30d: [specific trigger]
+- Compound: [how profit feeds next asset]
+```
+Standard hypothesis format still applies for TIER_2/TIER_3.
+
+**Step 5 revenue claim enforcement (Phase 3 bias-fix Fix #4 — BLOCKING):**
+
+Per `[POWER-LAW-MEDIAN-WARNING]` P0 runtime assertion: every hypothesis containing a revenue/income claim MUST output P10/P50/P90/P99 via calc-dispatcher power-law-sizer. Median-only or mean-only claims are a BLOCKING runtime assertion violation.
+
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/calculation-engines/scripts/calc-dispatcher.py \
+  --type power-law-sizer \
+  --params '{"gmv_usd": <total market $>, "commission_rate": <0-1>, "active_count": <participants>, "alpha": 1.16}'
+```
+
+Consumption rules:
+- **P10** → risk floor / kill criterion (if P10 < founder survival threshold → flag risk)
+- **P50** → median reference only, NEVER used alone as kill signal
+- **P90** → opportunity ceiling / sizing criterion (this is what the founder targets)
+- **mode_usd** → most common outcome (usually 0 in zero-inflation regime — cite explicitly)
+- **median_vs_p90_ratio** → power-law severity (>3 = extreme, >1.5 = moderate, else mild)
+- **warn_if_mode_low** → if true, state "majority earn near zero" BEFORE quoting P90
+
+If a hypothesis has NO revenue claim (e.g., pure moat/IP/compounding thesis), Step 5 enforcement does not apply. Tag as `[NO_REVENUE_CLAIM]`.
+
+If power-law-sizer returns `error` → proceed with hypothesis but tag `[POWER_LAW_UNCOMPUTED]` + document why (missing gmv/count/etc). Do not fake percentiles.
+
+Plan ref: `plans/260413-1002-stage0-bias-fix/phase-03-reasoning-constraint-inversion-p90-stair-step.md`
+
+**Step 5 money-flow tagging (Phase 6 — BLOCKING):**
+
+For EACH of the 5 hypotheses, tag money-flow type via:
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/money-flow-tagger.py \
+  --claim "<hypothesis revenue mechanism in 1 sentence>"
+```
+
+Parse `{flow_type, confidence}`. Attach `money_flow_type` to hypothesis. If confidence <0.4 → tag `[FLOW_TYPE_UNCLEAR]` and request clarification from hypothesis-generator.
+
+**Diversity check (BLOCKING — fires after all 5 hypotheses tagged):**
+
+Count distinct `flow_type` values across 5 hypotheses. If all 5 share the same flow_type:
+- BLOCK batch. Do NOT proceed to Step 6.
+- Instruct hypothesis-generator: "All 5 hypotheses are `<type>`. Regenerate: replace ≥2 hypotheses with different money-flow types. Reference: `.claude/agents/core/knowledge/money-mechanics-reference.md` routing matrix."
+- Re-run tagging on regenerated batch. Max 2 regeneration attempts; if still homogeneous after 2 → proceed with `[FLOW_DIVERSITY_DEGRADED]` tag on verdict.
+
+**Archetype injection (when FOUNDER_STRENGTH detected in Step 1):**
+
+If `founder_strength.primary == "Operations Master"` AND no hypothesis maps to `#2 service-at-scale` OR `#4 rent` → spawn `operator-archetype-specialist` agent via Task tool with founder profile + intent_class. Merge its top-1 archetype recommendation as an additional hypothesis (H6) before Step 6.
+
+Reference: `.claude/agents/core/knowledge/money-mechanics-reference.md` anti-bias checklist.
+
+### Step 6 — Mountain Test v25 (DETERMINISTIC, no LLM judgment)
+
+```
+Q1: Is there a real founder URL proving ≥$10K/mo NET? (yes/no, MUST cite URL)
+Q2: KG cohort confirms (cross-check via knowledge-graph-curator P05)? (yes/no)
+Q3-LINDY: Business model age ≥50 years? (yes/no, CITE model type + age)
+    Examples: commodity_trade=5000y, export_import=3000y, service_arbitrage=3000y,
+              wholesale=2000y, professional_service=200y, franchise=150y, saas=50y
+    Lookup: archetype-registry.json → lindy_category + model_age_years
+    If model_age_years < 10 → LINDY_WARNING: "Short-lived model, platform-dependent risk"
+Q4-SLEEP: Revenue continues when founder does zero work for 30 days? (YES/NO/PARTIAL)
+    YES: recurring subscription, royalties, automated systems, passive income
+    PARTIAL: some revenue continues but requires periodic maintenance (<5h/week)
+    NO: revenue stops when founder stops working
+Q5-LEVERAGE: Primary leverage type (Naval hierarchy):
+    CODE: software product, SaaS, automation tool
+    MEDIA: content library, audience, brand asset
+    CAPITAL: investment returns, lending, portfolio income
+    LABOR: service delivery, consulting, freelancing, agency work
+    HYBRID: labor phase with explicit code/media transition path
+    Classification source: archetype-registry.json → leverage_class field
+    If not in registry: classify from business model description
+Compounding: ≥1 of {data, relationship, distribution-lock, IP, rare skill}? (yes/no)
+Asymmetry ratio: upside / realistic downside (calculated, not hand-waved)
+Asymmetry downside source:
+  IF financial-triangulator returned `burn_math` → use burn_math data
+  ELSE → use estimated formula: (profile.capital * 0.5) + (12 * profile.monthly_living_cost) tagged [ESTIMATED]
+  [ESTIMATED] asymmetry cannot trigger AUTO-KILL alone
+MM-03 Triangulation Gate (CONDITIONAL):
+  IF financial-triangulator returned `triangulated_range_max_usd`:
+    → Use that number. If < $5,000 → force Q1=no (triggers KILL via deterministic rules).
+  ELSE IF financial-triangulator was DEGRADED (never ran or errored):
+    → MM-03 = INCONCLUSIVE. Cannot auto-kill on LLM guess.
+    → Flag: "⚠ MM-03 skipped: financial-triangulator did not run. Revenue floor unverified."
+    → Other kill grounds (Q1=no, regulation, etc.) still valid independently.
+MM-04 Munger 10-Condition Inversion: list 10 ways this fails
+```
+
+Verdict deterministic rules:
+- Q1=no → KILL or INSUFFICIENT_SIGNAL
+- Q4=NO + Q5=LABOR → SIDE_HUSTLE (HARD CAP — labor without sleep = job, not business)
+- Q4=NO + Q5=HYBRID → SIDE_HUSTLE_WITH_STAIRCASE (labor phase acknowledged, transition path required)
+- Q4=PARTIAL → apply -0.10 confidence penalty, proceed with Q1-Q3 logic
+- Q1=yes + Q2=no → SIDE_HUSTLE
+- Q1=yes + Q2=yes + Q3-LINDY=yes + Compounding=yes + Q4∈{YES,PARTIAL} → MOUNTAIN_CANDIDATE (LINDY-VERIFIED)
+- Q1=yes + Q2=yes + Q3-LINDY=no + Compounding=yes + Q4∈{YES,PARTIAL} → MOUNTAIN_CANDIDATE (LINDY_WARNING: short-lived model)
+- Q1=yes + Q2=yes + Compounding=no → SIDE_HUSTLE
+
+Lindy scoring impact:
+- Q3-LINDY=yes (model_age ≥50y) → +0.15 confidence bonus, prioritize in recommendations
+- Q3-LINDY=no (model_age <10y) → -0.10 confidence penalty, add LINDY_WARNING to verdict
+- Q3-LINDY=no (model_age 10-50y) → neutral, no modifier
+
+### Step 6.3 — Stair-step detection (Phase 3 bias-fix Fix #5 — BEFORE final kill)
+
+Before applying any KILL verdict that cites `ENTREPRENEUR-NOT-FREELANCER` or labor-phase grounds, run stair-step detector. If hypothesis has labor phase AND a compounding asset specified for M6 with evidence URL and ≥$100/mo revenue, the hard rule is suspended (legitimate bootstrap path per Rob Walling stair-step).
+
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/stair-step-detector.py \
+  --hypothesis '<hypothesis JSON>'
+```
+
+Output interpretation:
+- `bypass_approved: true` → do NOT apply ENTREPRENEUR-NOT-FREELANCER kill. Proceed with non-labor kill grounds only (if any)
+- `bypass_approved: false` with `warn: FREELANCER_TRAP_SUSPECTED` → apply kill as planned
+- `bypass_approved: false` with `warn: NON_COMPOUNDING_ASSET` | `ASSET_REVENUE_TOO_LOW` | `NO_EVIDENCE_URL` → apply kill + document specific failure
+- `bypass_approved: null` (no labor phase) → rule not applicable, proceed normally
+
+Attach detector output to verdict case JSON under `stair_step_check` key.
+
+### Step 6.4 — Constraint-inversion debate (Phase 3 bias-fix Fix #3 — BEFORE final kill)
+
+Before locking any REJECTED verdict, if the rejection reason matches a trigger list (capital_cage, entrepreneur_not_freelancer, jurisdiction_block, median_income_too_low, failure_rate_too_high, platform_dependency_too_high, market_too_saturated, time_horizon_too_long, tax_or_regulatory_friction), spawn a 3-persona constraint-inversion debate.
+
+Generate prompts:
+
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/constraint-inversion-debate.py \
+  --rejection-reason <trigger_reason_slug> \
+  --topic "<topic>" \
+  --claim "<specific claim being rejected>" \
+  --founder-profile '<profile JSON>' \
+  > /tmp/stage0-inversion-<case_id>.json
+```
+
+Parse output. If `fires == true`:
+1. Spawn 3 Task agents in PARALLEL (single message) using `personas[].target_agent` as `subagent_type` and `personas[].prompt` as prompt body
+2. Collect all 3 outputs, parse each as JSON
+3. Apply aggregation rules from output:
+   - **Downgrade REJECTED → CONDITIONAL** if: ANY persona `feasibility_score ≥ 7` AND `fraud_path_detected == false` AND ≥1 `founder_fit` dimension true
+   - **Upgrade to HARD_KILL** if: ALL personas `feasibility_score < 4`
+   - **Preserve REJECTED + attach debate trail** if: scores in 4-6 range (uncertain zone)
+4. Attach debate trail to verdict case JSON under `constraint_inversion_debate` key
+
+**Fraud boundary:** if any persona returns `fraud_path_detected == true`, that specific path is EXCLUDED from downgrade consideration. Other persona paths still count. If all 3 paths require fraud → trigger Phase 4 Fix #9 fraud disclaimer.
+
+**CLAUDE.md Execution Mindset enforcement:** this step operationalizes "NEVER conclude not feasible, ALWAYS find a way" at the runtime layer. If constraint-inversion-debate returns `fires == false` (rejection reason not in trigger list), document why that rejection is structural (math, regulation, identity) and preserve it.
+
+Plan ref: `plans/260413-1002-stage0-bias-fix/phase-03-reasoning-constraint-inversion-p90-stair-step.md`
+
+### Step 6.45 — Confidence calculation (Phase 4 bias-fix Fix #6 precondition — BLOCKING)
+
+Compute `case.confidence` field from measurable signals. This is the field persist-verdict.py gates against at Step 9. Missing this field → Step 9 blocks with `ValueError`.
+
+Formula:
+```
+conf = min(
+  agent_response_rate,           # (Wave 1 + Wave 2 agents that returned) / total dispatched
+  triangulation_confidence,      # MM-03 financial-triangulator status: passed=1.0, inconclusive=0.5, degraded=0.2
+  1 - (contradiction_count * 0.1) # penalty per unresolved contradiction from Step 5
+)
+```
+
+Special cases:
+- If Wave 2 was skipped (context budget) → agent_response_rate capped at 0.65 (Phase 1 degrade-mode penalty)
+- If `[DEGRADED]` tags appear on any claim → multiply conf by 0.85
+- If constraint-inversion debate downgraded REJECTED → CONDITIONAL → use debate aggregate feasibility / 10 as conf floor
+- If stair-step bypass approved → conf remains unchanged (bypass is orthogonal to confidence)
+
+Write to `/tmp/case-<case_id>.json` as top-level `confidence` field. Value must be in [0.0, 1.0].
+
+**MANDATORY:** Also write `agents_fired` field to case JSON = total count of Wave 1 + Wave 2 agents that returned a response. persist-verdict.py will REJECT cases with agents_fired < 8 for non-exempt verdicts (v25.1 gate).
+
+**Gate enforcement at Step 9:** persist-verdict.py refuses non-exempt verdicts below 0.70 AND with agents_fired < 8. Exempt classes: `KILL / HARD_KILL / INSUFFICIENT_SIGNAL / EXPLORATION_ONGOING / SIDE_HUSTLE / TEST`. Non-exempt: `MOUNTAIN / PROVISIONAL_MOUNTAIN / MOUNTAIN_CANDIDATE`.
+
+**If gate would block:** two options:
+1. Run Wave 2 agents to raise response rate + resolve triangulation (if skipped)
+2. Downgrade verdict_class to `EXPLORATION_ONGOING` with honest reason "confidence {conf} below ship threshold 0.70, continuing investigation"
+
+Do NOT use `--force-low-conf` flag except in test runs. It logs a permanent WARN to stderr.
+
+Plan ref: `plans/260413-1002-stage0-bias-fix/phase-04-gates-framing-confidence-parallel-tracks-fraud.md`
+
+### Step 6.5 — Pulse check gate
+- If verdict = MOUNTAIN_CANDIDATE → cap at PROVISIONAL_MOUNTAIN until pulse data arrives
+- Print blocking message: "Send pulse to ≥5 real buyers. Resume with --replies <path> after 48h. Or --skip-pulse to cap at PROVISIONAL_MOUNTAIN."
+
+### Step 6.7 — Instance Research (v26, PARALLEL, MANDATORY for non-KILL verdicts)
+
+**Trigger:** Mountain Test completed AND verdict NOT in {KILL, HARD_KILL, INSUFFICIENT_SIGNAL}.
+**Skip:** If verdict is KILL/HARD_KILL/INSUFFICIENT_SIGNAL → skip (no models to instantiate).
+**Skip:** If `--breadth` flag was passed → skip (category-level output only).
+
+**Purpose:** Turn generic business model CATEGORIES into SPECIFIC executable INSTANCES with real companies, real prices, real contacts, and a ready-to-send first message. This is the #1 quality differentiator — without this step, stage0 output is consultant-level generic advice instead of operator-level intelligence.
+
+**Model selection (MAX 3):**
+From Step 5 hypotheses that survived Mountain Test, select TOP 3 by:
+1. Founder-fit score (from profile constraints)
+2. Asymmetry ratio (from Step 6)
+3. Lindy score (from Step 6 Q3-LINDY)
+
+If fewer than 3 hypotheses survived → output only what survived (don't pad with weak options).
+
+**Execution:**
+For each of the 3 surviving models, build instance-research prompt:
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/instance-research-prompt-builder.py \
+  --category "<model_category_name>" \
+  --sub-hint "<any sub-niche hints from Wave 1/2>" \
+  --profile "<profile_path>" \
+  --geo "<founder_geo>"
+```
+
+Spawn 3 Task agents IN PARALLEL (single message with 3 Agent tool calls):
+- subagent_type: `customer-finder`
+- prompt: output from prompt-builder above
+- Each agent has access to WebSearch + WebFetch for real company/price research
+
+**Collect + validate:**
+Parse each agent output as JSON. Validate against `nui-hunter/kb/schema-instance-model.json`:
+- Required fields: `sub_niche_name`, `specific_product`, `specific_buyers` (≥1), `specific_suppliers` (≥1), `price_spread`, `first_action_message`, `competitor_count_exact_niche`
+- If any field missing → attempt 1 retry with specific missing-field instruction
+- If still missing after retry → tag model with `instance_completeness: "PARTIAL"` and proceed
+- NEVER fabricate data to fill gaps — use `[NOT_FOUND]` for unfillable fields
+
+**Inject into verdict:**
+Store validated instance data in case JSON as `instance_models` array (required by persist-verdict.py instance gate).
+Pass instance data to Step 7 verdict synthesis — synthesis MUST use instance details directly, NOT abstract back to categories.
+
+**Anti-abstraction rule (BLOCKING):**
+If Instance Research returned specific company names, prices, and contacts — Step 7 MUST use them directly in the verdict output. Do NOT replace "Tong Garden Co Ltd, procurement@tonggarden.co.th" with "foreign buyers." The verdict must be MORE specific than agent outputs, never LESS.
+
+### Step 6.8 — Alternative generation (when verdict ≠ MOUNTAIN)
+
+When verdict = KILL, SIDE_HUSTLE, or INSUFFICIENT_SIGNAL:
+
+1. **Role scan**: Enumerate ALL value-chain roles for the topic ecosystem:
+   Platform / Infrastructure / Tooling / Content / Service / Training / Data / Arbitrage
+   For each: 1-line viability assessment for THIS founder's profile.
+
+2. **Spawn opportunity-scanner agent** via Task tool:
+   - Input: topic + profile + kill reasons + role scan
+   - Must return per alternative: founder URL, revenue evidence, replication path
+   - Each alternative must pass mini Mountain Test:
+     a. Real founder URL with revenue evidence? (yes/no)
+     b. Founder-profile fit — does THIS founder have skills? (yes/no)
+     c. Revenue mechanism clear and specific? (yes/no)
+     d. Compounding component identified? (yes/no)
+
+3. **Precedent verification**: Each cited precedent must be:
+   - Same CATEGORY as the alternative (HeadshotPro ≠ MMO tooling)
+   - Revenue-verified (not just "company exists")
+
+4. **Kill criteria per alternative**: Specific, testable, time-bound.
+   - Bad: "If TAM < $1M" (unmeasurable)
+   - Good: "If 0/20 VOZ users convert to paid after 30-day free trial"
+
+### Step 6.8.4 — Wound Extraction (Pre-Approach Intelligence)
+
+**Trigger:** Same as Step 6.8.5 (verdict IN {KILL, HARD_KILL} AND kill_mechanisms intersects relationship barriers).
+
+**Purpose:** Research target's pain points, vulnerabilities, and anxiety triggers BEFORE designing approach. "Bạn không có vị trí mà họ cần nếu không hiểu vấn đề của họ."
+
+**Execution:**
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/wound-extractor.py \
+  --case-file /tmp/case-<case_id>.json \
+  --profile-file <profile_path>
+```
+
+**Output:** wound_map JSON — stored in case data, injected into ALL Step 6.8.5 agent prompts.
+
+**BLOCKING for Step 6.8.5:** Side-door agents NEED wound context to design approaches around actual pain points, not generic value offers.
+
+**Fallback:** If wound-extractor.py fails → proceed with Step 6.8.5 without wound context, emit `⚠ WOUND_EXTRACTION_DEGRADED`.
+
+### Step 6.8.5 — Side-Door Path Scanner (Power Network Analysis)
+
+**Trigger:** verdict IN {KILL, HARD_KILL} AND kill_mechanisms intersects
+{network_barrier, capital_barrier, track_record_gap, entry_window_closed,
+no_precedent, credential_gap, network_gap}
+
+**Skip if:** Kill reasons are purely mathematical (median_income_too_low),
+regulatory (jurisdiction_block), or structural (market_too_saturated). These
+cannot be bypassed via relationships.
+
+**Execution:**
+
+1. Run trigger check:
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/side-door-trigger.py \
+  --verdict-file /tmp/case-<case_id>.json \
+  --profile-file <profile_path>
+```
+
+2. If `fires == true`: Spawn 8 agents via Task tool (SINGLE message, parallel):
+   - **power-cartographer** — map power structure + wound terrain
+   - **gate-broker** — design introduction chains with timing from wound analysis
+   - **tay-trang-positioner** — reframe founder assets matching target pain points
+   - **proximity-engineer** — find real events, manufactured proximity opportunities
+   - **ego-leverage-specialist** — psychological profiling using wound map
+   - **patron-acquisition-strategist** — multi-month escalation with compound objectives
+   - **chameleon-communicator** — persona-specific scripts per chain link
+   - **value-fabricator** — pre-approach value creation plays
+
+   Use prompts from trigger script output (`agents[].prompt`).
+   ALL agents receive: wound_map context, compound objective rule, persona instruction, voice instruction.
+
+3. Collect outputs. Synthesize into 1-3 side-door paths. Each path MUST have:
+   - Specific chain: Person A (role) → Person B (role) → TARGET (with archetype per link)
+   - Script per encounter (exact words, not categories)
+   - Value exchange per link (what founder gives BEFORE asking)
+   - Timeline in weeks (not months)
+   - Kill criterion (if X doesn't happen by week Y, abandon this path)
+   - Probability estimate (honest — most paths are 10-30%)
+   - Persona per chain link (different founder-persona for each person)
+   - Hidden objectives (≥2 objectives per action, not just surface goal)
+   - Information reveal sequence (what to share when, what to never reveal)
+
+4. Inject into verdict under `## Side-Door Paths` section.
+
+**Quality gate:** Each path must name specific ROLE types (not "investors" but
+"CTO of portfolio company X" or "Association president of Y"). Generic paths
+("network at events") are REJECTED by anti-orthodox gate (Step 7.1).
+
+**Post-synthesis validation:**
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/compound-objective-validator.py \
+  --actions-text "<synthesized_output>"
+```
+If compound_density < 2.0 → rewrite actions to add hidden objectives.
+
+**Fallback:** If side-door-trigger.py fails or agents timeout → proceed with normal verdict,
+emit `⚠ SIDE_DOOR_DEGRADED: power-network analysis unavailable`. Do NOT hard-abort.
+
+### Step 6.9 — Teaching Integration (CONDITIONAL — only when --teach flag active)
+
+**Skip if:** `--teach` flag NOT present in trigger. Proceed directly to Step 7.
+
+**Purpose:** Transform Stage0 from analyst to mentor. After Mountain Test findings, inject teaching moments that develop founder's business thinking.
+
+**Execution:**
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/teaching-mode/scripts/teaching-integration.py \
+  --findings '/tmp/stage0-mountain-test-<case_id>.json' \
+  --profile '<profile_path>' \
+  --mode interactive
+```
+
+**Teaching moment structure (per major finding):**
+
+```
+╔══════════════════════════════════════════════════════════════════╗
+║  📚 TEACHING MOMENT — <concept_name>                             ║
+╠══════════════════════════════════════════════════════════════════╣
+║  FINDING: <mountain_test_finding>                                ║
+║                                                                  ║
+║  PROBE: <socratic_question>                                      ║
+║  (Think before continuing — this develops your intuition)        ║
+║                                                                  ║
+║  CHALLENGE CASE: [<exp_id>] <experience_title>                   ║
+║  <experience_story_excerpt>                                      ║
+║  Framework violated: <framework_tag>                             ║
+║                                                                  ║
+║  SYNTHESIZE: <cross_framework_insight>                           ║
+║  (When <framework_a> meets <framework_b>, this emerges...)       ║
+╚══════════════════════════════════════════════════════════════════╝
+```
+
+**Interactive mode (default):**
+- After displaying PROBE, pause with: `[Your reflection: ___ | 'skip' to continue]`
+- Capture user answer in `/tmp/stage0-teaching-answers-<case_id>.json`
+- Continue to next teaching moment or Step 7
+
+**Batch mode (`--teach --batch`):**
+- Display all teaching content without pauses
+- No user interaction required
+
+**Teaching content sources:**
+- **PROBE questions**: Generated from `socratic-engine.py` based on finding keywords
+- **CHALLENGE cases**: Retrieved from `experience-manager.py --relevant "<finding_keywords>"`
+- **SYNTHESIZE insights**: Generated from `synthesis-engine.py --observation "<finding>" --frameworks "<detected_frameworks>"`
+
+**Injection into Step 7 verdict:**
+When `--teach` active, verdict MUST include `## Teaching Summary` section with:
+- Concepts covered during analysis
+- User's reflection quality (if interactive)
+- Recommended follow-up lessons from curricula
+- Emergent insight generated
+
+**Fallback:** If teaching-integration.py fails → proceed with normal verdict, emit `⚠ TEACHING_DEGRADED: teaching content unavailable`. Do NOT hard-abort.
+
+### Step 6.9 — Synthesis Citation Rule (MANDATORY)
+
+When writing the final verdict synthesis (Step 7):
+1. Every factual claim (numbers, percentages, comparisons, absolutes) MUST cite a `[FACT-XXX]` from Step 2.9 pre-decomposition
+2. Claims without citations MUST be prefixed with `[UNCITED]` tag
+3. If >30% of claims are `[UNCITED]`, flag verdict as `LOW-CONFIDENCE: insufficient fact grounding`
+4. LLM reasoning/opinions do NOT need citations — only factual claims
+
+### Step 7 — Verdict synthesis (≤1500 words, Phase 4 bias-fix Fixes #8 + #9)
+
+Output a single markdown verdict. **Template differs by mode:**
+
+---
+
+#### EXPLORATION MODE VERDICT TEMPLATE (when Step 2.55 mode == "EXPLORATION")
+
+**CRITICAL: Show ALL discovered industries, not "Top 5".**
+
+```
+# /stage0 Verdict — <topic>
+
+## VERDICT: EXPLORATION_COMPLETE | EXPLORATION_ONGOING
+**Mode:** EXPLORATION (no founder filtering — industry-neutral scan)
+**Confidence:** <0.0-1.0 from Step 6.45>
+**Industries Discovered:** <total count> | **Categories Covered:** <count>/15
+
+---
+
+## ALL DISCOVERED INDUSTRIES (ranked by cash flow evidence)
+
+Display EVERY industry from `/tmp/stage0-discovered-industries-<case_id>.json`.
+Do NOT limit to "Top 5". Show ALL 15-30+ industries with equal depth.
+
+### TIER 1: VERIFIED LARGE CASH FLOW (evidence score ≥8)
+
+| # | Industry | Market Size | Growth | Margin | Cash Flow Type | Entry Barrier | Source |
+|---|----------|-------------|--------|--------|----------------|---------------|--------|
+| 1 | <name> | $<size> | <rate>% | <margin>% | <type> | <level> | <url> |
+| 2 | ... | ... | ... | ... | ... | ... | ... |
+(continue for ALL Tier 1 industries)
+
+### TIER 2: STRONG DEMAND, MODERATE EVIDENCE (evidence score 5-7)
+
+| # | Industry | Market Size | Growth | Margin | Cash Flow Type | Entry Barrier | Source |
+|---|----------|-------------|--------|--------|----------------|---------------|--------|
+(continue for ALL Tier 2 industries)
+
+### TIER 3: EMERGING SIGNALS, NEEDS VALIDATION (evidence score <5)
+
+| # | Industry | Market Size | Growth | Margin | Cash Flow Type | Entry Barrier | Source |
+|---|----------|-------------|--------|--------|----------------|---------------|--------|
+(continue for ALL Tier 3 industries)
+
+---
+
+## VERIFICATION METHODS (how to test demand)
+
+| Method | Signal Strength | Cost | Timeline | GO Benchmark |
+|--------|-----------------|------|----------|--------------|
+| Pre-sale/Deposit | Strongest | $0 | 1 day | Any payment |
+| Smoke Test Landing | Strong | $50-150 | 1 week | ≥25% signup |
+| Concierge MVP | Strong | $0-500 | 2-4 weeks | 1 paying + reorder |
+| B2B Cold Outreach | Medium | $0-100 | 2 weeks | 1 meeting booked |
+| Forum Research | Medium | $0 | 1-3 days | 3+ posts same need |
+| Crowdfunding | Medium | $0 | 3-6 mo prep | Funded |
+
+---
+
+## CATEGORY COVERAGE (target: ≥8 categories)
+
+| Category | Industries Found | Coverage |
+|----------|------------------|----------|
+| healthcare | <count> | ✅/❌ |
+| education | <count> | ✅/❌ |
+| finance | <count> | ✅/❌ |
+| manufacturing | <count> | ✅/❌ |
+| logistics | <count> | ✅/❌ |
+| agriculture | <count> | ✅/❌ |
+| retail/ecommerce | <count> | ✅/❌ |
+| professional_services | <count> | ✅/❌ |
+| construction | <count> | ✅/❌ |
+| energy | <count> | ✅/❌ |
+| tourism | <count> | ✅/❌ |
+| technology | <count> | ✅/❌ |
+| real_estate | <count> | ✅/❌ |
+| media | <count> | ✅/❌ |
+| telecommunications | <count> | ✅/❌ |
+
+---
+
+## GEOGRAPHIC SCOPE
+
+| Region | Industries Covered | Key Markets |
+|--------|-------------------|-------------|
+| Vietnam | <count> | <list> |
+| Southeast Asia | <count> | <list> |
+| Global/Cross-border | <count> | <list> |
+
+---
+
+## NEXT ACTIONS
+
+Pick 1-3 industries from Tier 1 → Run deep /stage0:
+
+/stage0 <industry 1 specific query>
+/stage0 <industry 2 specific query>
+/stage0 <industry 3 specific query>
+
+---
+
+## Risk Factors (anti-confirmation findings)
+- <findings from failure-archaeologist>
+- <findings from market-reality-checker>
+
+## Brain Information Flow Audit
+(same as FOUNDER_SPECIFIC mode)
+
+## Sources
+- <list all URLs with domain + title>
+```
+
+**EXPLORATION mode enforcement:**
+- MUST show ALL industries, not top N
+- MUST include geographic scope section
+- MUST NOT include Mountain Test (no specific opportunity to test)
+- MUST NOT include Short/Medium/Long tracks (no founder context)
+- Verdict class: `EXPLORATION_COMPLETE` (if confidence ≥0.7) or `EXPLORATION_ONGOING` (if <0.7)
+
+---
+
+#### FOUNDER_SPECIFIC MODE VERDICT TEMPLATE (when Step 2.55 mode == "FOUNDER_SPECIFIC")
+
+Output a single markdown verdict. Required structure:
+
+```
+# /stage0 Verdict — <topic>
+
+## VERDICT: <MOUNTAIN | PROVISIONAL_MOUNTAIN | SIDE_HUSTLE | INSUFFICIENT_SIGNAL | KILL | EXPLORATION_ONGOING>
+**Confidence:** <0.0-1.0 from Step 6.45>
+
+## Mountain Test v22
+- Q1 founder URL: <URL or "no evidence">
+- Q2 KG cohort: <hit or miss>
+- Compounding: <type>
+- P10/P50/P90/P99: <from power-law-sizer — NEVER cite median alone>
+- Asymmetry ratio: <calculated>
+- Stair-step check: <bypass_approved | FREELANCER_TRAP | N/A>
+- Constraint-inversion debate: <downgraded | preserved | not_fired>
+
+## Operator Mastery (5-Layer Cashflow Mechanics — from Step 3.4d)
+
+Display computed outputs from 5-Layer Operator engines with NARRATIVE REASONING, not just tables.
+Step 3.4d ALWAYS fires — this section is MANDATORY for every verdict.
+
+**OUTPUT FORMAT: NARRATIVE with embedded numbers, NOT table of metrics.**
+
+### L1 TIMING ARBITRAGE
+{timing_narrative} — Example: "Friday invoice = 44 days waiting. Switch to Tuesday 10AM = 26 days faster (39% improvement). At $10K/invoice and 12% opportunity cost: $85/invoice/year perpetual float. Invoice 50 clients = $4,250/year from TIMING ALONE."
+
+### L2 REFLEXIVITY CONTROL
+{position_narrative} — Example: "Position looks neutral (score: -0.095) but urgency differential (+2) is carrying you. The moment counterparty senses YOU need this more than they do, that +2 evaporates. Then it's death spiral territory: 3-8 weeks to crisis. ACTION: Never reveal runway status. Project confidence."
+
+### L3 NETWORK POSITION
+{network_narrative} — Example: "Hub score 61/100 = dominant position. You can extract 3-8% rent on transactions flowing through. At $100K/mo flow = $3-8K/mo positioning value. BUT: stickiness score (5/10) is weak. They WILL try to cut you out. Build API integration NOW."
+
+### L4 COGNITIVE DEFENSE
+{cognitive_narrative} — Example: "25 days runway = CRISIS bucket. Research shows 45% decision quality decline at this level. Your prefrontal cortex is LITERALLY impaired by cortisol. STOP making solo decisions. Pre-commit NOW: 'If runway <14d, I will [action].' Your stressed self cannot be trusted."
+
+### L5 DEAL STRUCTURE
+{deal_narrative} — Example: "Customer Prepay is your ONLY option — every other structure requires capital you don't have. Annual prepay at 15% discount = customer pays $85K Day 0 for $100K service over 12 months. That $85K is YOUR working capital — zero interest, no bank, no investors."
+
+### CROSS-LAYER SYNTHESIS
+{synthesis_with_reasoning_chain} — Example:
+"Because cognitive capacity is 24% (L4) + position is weak (L2) + runway is crisis-mode:
+1. DO NOT NEGOTIATE TODAY if avoidable
+2. If must negotiate: Demand prepay (L5) — it's survival, not preference
+3. Hide runway at all costs (L2 perception management)
+4. THEN optimize timing (L1) — secondary to survival"
+
+### KEY METRICS (computed)
+**CCC:** {ccc_days} days — {ccc_mechanism_explanation}
+**Perpetual Float:** ${float_value}/year at ${monthly_revenue}/mo
+**Absorbing Barrier:** ${barrier} (NEVER drop below — game over if breached)
+
+**Enforcement:** If L4 cognitive capacity <50%, tag verdict with `[STRESS_DEGRADED]` and mandate: "NO solo decisions. External advisor sign-off required."
+
+**Anti-Pattern Check:** If output contains table-only format without narrative explanations, REWRITE with mechanism reasoning.
+
+## Practical Intelligence (from Step 3.4e)
+
+Display practical outputs from Experience Brain. This section translates calculations into ACTIONS.
+Step 3.4e ALWAYS fires — this section is MANDATORY for every verdict.
+
+**NOTE (SRE Phase 1):** NO attribution. System THINKS with knowledge, doesn't QUOTE it.
+Use the `injection_block` from runner output directly, or format as below.
+
+**Immediate:** {immediate}
+
+**Action Sequence:**
+| Day | Action |
+|-----|--------|
+| Day 1 | {day_1} |
+| Day 3 | {day_3} |
+| Day 7 | {day_7} |
+| Stop when | {stop_when} |
+
+**Core Insight:**
+> {thinking}
+
+**Avoid (these kill founders):**
+1. {avoid[0]}
+2. {avoid[1]}
+3. {avoid[2]}
+4. {avoid[3]}
+
+**Outcome Tracking:**
+- Tracking ID: `{tracking_id}`
+- After 7 days: `/log-outcome --tracking-id {tracking_id} --code S|P|F|N --amount <$> --notes "<what>"`
+- Codes: S=Success, P=Partial, F=Failure, N=Not followed
+
+**Enforcement:** Short Track MUST use Day 1 action from Experience Brain. Do NOT generate new actions when Experience Brain provides them.
+
+## INSTANCE-LEVEL MODELS (MAX 3 — from Step 6.7 Instance Research)
+
+**⚠️ ANTI-ABSTRACTION RULE: Each model below MUST name specific companies, prices, contacts from instance research. NEVER abstract back to category names. If instance research returned "[NOT_FOUND]" for a field, show it as "[NOT_FOUND]" — do NOT replace with generic descriptions.**
+
+### Model 1: <specific_product from instance research — NOT category name>
+
+**Sub-niche:** <sub_niche_name — e.g., "Vietnamese cashew W320 → Thai snack manufacturers">
+**Why this niche:** <why_this_niche from instance research>
+
+**Buyers (verified):**
+| Name/Company | Contact | Evidence They Buy | Source |
+|---|---|---|---|
+| <name> | <contact_method> | <why_they_buy> | <source_url> |
+
+**Suppliers (verified):**
+| Name | Location | Price | Contact | Source |
+|---|---|---|---|---|
+| <name> | <location> | <price with unit/terms> | <contact_method> | <source_url> |
+
+**Price Spread:**
+- Buy: <buy_price> | Sell: <sell_price> | Logistics: <logistics_cost>
+- **Net margin: <margin_pct>% (<margin_absolute>/unit)**
+- Source: <source_url> | Verified: <date>
+
+**First Action Message (copy-paste ready):**
+> <first_action_message — full text, personalized to first buyer above>
+
+**Competitors in this exact sub-niche:** <count> — <names>
+**Your differentiation:** <differentiation angle>
+**Kill criterion:** <specific kill criterion for this sub-niche>
+
+**Leverage Assessment:**
+- **Sleep Test (Q4):** YES / NO / PARTIAL
+- **Leverage Class (Q5):** CODE / MEDIA / CAPITAL / LABOR / HYBRID
+- **Asset at M12:** <specific transferable asset — codebase, content library, subscriber list, dataset, process IP. If "nothing" or "client relationships" → model is a job>
+- **Staircase Path:** <if LABOR/HYBRID: month-by-month transition to higher leverage. If CODE/MEDIA/CAPITAL: "N/A — native leverage">
+
+---
+
+### Model 2: <specific_product>
+(same structure as Model 1)
+
+---
+
+### Model 3: <specific_product>
+(same structure as Model 1)
+
+---
+
+## Leverage Summary (MANDATORY — Mountain Test v25)
+
+| Model | Sleep Test (Q4) | Leverage (Q5) | Asset at M12 | Verdict Impact |
+|-------|----------------|---------------|-------------|---------------|
+| Model 1 | YES/NO/PARTIAL | CODE/MEDIA/CAPITAL/LABOR/HYBRID | <description> | <verdict class> |
+| Model 2 | ... | ... | ... | ... |
+| Model 3 | ... | ... | ... | ... |
+
+**ENFORCEMENT:** Any model with Q4=NO + Q5=LABOR → SIDE_HUSTLE (HARD CAP). No override. Labor without sleep = job, not business. Jobs have income ceilings tied to founder hours.
+
+## Deployment Portfolio (v25.5 — TIER_0/TIER_1 only, skip for TIER_2/TIER_3)
+
+| # | Asset | Deploy | Setup | P50/mo | ROI% | Payback | Sleep | Kill@30d |
+|---|-------|--------|-------|--------|------|---------|-------|----------|
+| 1 | <asset_name> | $X | Nh | $Y | Z% | Dd | YES/PARTIAL | <trigger> |
+| 2 | ... | ... | ... | ... | ... | ... | ... | ... |
+| 3 | ... | ... | ... | ... | ... | ... | ... | ... |
+
+**Portfolio Strategy:**
+- Total deployed: $X across N assets
+- Expected portfolio P50: $Y/mo
+- Expected survivors at 30d: N/M (based on base rates)
+- Reallocation plan: dead asset capital → top survivor
+
+**30-Day Review Protocol:**
+- Day 30: kill assets with $0 revenue
+- Day 60: double down on survivors
+- Day 90: evaluate portfolio ROI vs opportunity cost
+
+---
+
+## Short track — cash path <90d (MANDATORY — Phase 4 Fix #8)
+<≥1 action with specific kill criterion. N/A only if no cash path exists — state why.>
+
+## Medium track — asset path 3-12mo (MANDATORY)
+<≥1 action building compounding asset. N/A only if explicit reason.>
+
+## Long track — moat path >12mo (MANDATORY)
+<≥1 action building defensibility. N/A only if explicit reason.>
+
+## Knowledge fired during this analysis
+- MM-NN: <how it fired>
+- SCH-NNN: <which prior matched>
+- ARCH-NNN: <archetype match>
+- KG entities: <retrieved cohort case_ids>
+
+## Research tiers fired
+- <list every probed/drilled/skipped source per LADDER-CITATION rule>
+- Forum preflight: <status from Step 2.7.5>
+- Ladder drill: <routes + drill counts>
+
+## Tool exhaustion log (MANDATORY per TOOL-EXHAUSTION rule)
+For each source that returned error/blocked:
+- Source: <name>
+- Tool paths tried: <list 1-8 methods attempted>
+- Final status: <error code or success after method N>
+IF any source has <4 tool paths tried AND verdict cites "blocked" or "unavailable" → BLOCKING violation.
+
+## Risk factors
+- <anti-confirmation findings>
+- <survivorship inversion findings from Step 4.5 if fired>
+
+## Positioning Context (from Step 1.7)
+- Pattern recognition depth: <deals_observed> deals / <failures_logged> failures
+- Topic matches in deal journal: <count> (<list deal IDs + outcomes if any>)
+- Phase status: <current active phase>
+- Cashflow stream: <chosen stream or "not yet chosen — recommend /observe to start Phase 1">
+<If topic_matches exist, note: "Founder has observed N similar deals. Outcomes: X succeeded, Y failed. Pattern: Z">
+<If has_positioning_data == false, note: "⚠ No positioning data — Phase 1 not started. Pattern recognition unavailable for this verdict.">
+
+## Side-Door Paths (when Step 6.8.5 fired)
+
+Display ONLY when Step 6.8.5 fired (relationship-barrier KILL). Omit entirely otherwise.
+
+**voice_mode == "analyst" format:**
+
+| Path | Chain | Timeline | Probability | Kill Criterion |
+|------|-------|----------|-------------|----------------|
+| <name> | Founder → <Role A> → <Role B> → TARGET | <N> weeks | <X>% | <criterion> |
+
+Per path details:
+- **Script for <Role A>:** "<exact words>"
+- **Value exchange:** <what founder gives first>
+- **Script for TARGET (via intro):** "<exact words>"
+- **Fallback if no reply:** <specific next action>
+
+**voice_mode == "operator" format:**
+
+The front door is locked — {why, 1 sentence}. But there's a side door.
+
+{side_door as story: Who to find → how to find → what to say →
+what they'll say back → what to do next. Sequence of encounters.}
+
+Here's what you say when you meet {role}: "{exact script, 2-3 sentences}"
+
+If they say no: {specific fallback — not "explore alternatives" but
+"go to person B and say..."}
+
+## Top 3 sources
+- <verbatim quotes with URLs>
+```
+
+---
+
+#### OPERATOR VOICE TEMPLATE (when Step 2.6.1 voice_mode == "operator")
+
+**REPLACES the FOUNDER_SPECIFIC template above.** Same data, different rendering.
+All computed data (Mountain Test, P10/P50/P90, Operator Mastery, etc.) is preserved
+but embedded in conversational narrative. ZERO bullet lists. ZERO tables. ZERO
+technical headers. Write as mentor at a coffee shop telling you exactly what to do.
+
+**RULES (HARD — violation = rewrite):**
+- Zero bullet lists. Zero tables. Zero headers with technical names.
+- Use "you" directly. Write in second person.
+- Embed numbers naturally: "that's about $3K/mo if you land 3 clients"
+- Scripts as dialogue: 'Say this: "..."'
+- Kill criteria in plain language: "If nobody replies after 15 messages, stop."
+- NO zone tags [K]/[T]/[?] in output (still computed internally)
+- NO confidence scores in headers. NO technical metadata visible.
+- Hard cap: ≤2000 words.
+
+**TEMPLATE:**
+
+```
+{situation — 2-3 sentences. What founder wants. Landscape. Verdict woven in naturally.
+No header. Just start talking.}
+
+{the_move — Write as encounter sequence. "First, find X. When you meet them..."
+Not "Step 1: Find X." Tell the story of what happens, person by person.}
+
+{if side-door paths exist:
+Write each path as private advice. "Có một cách..." or "There's a way in..."
+Who to find → what they need → what you say → what they'll respond → what to do next.
+Scripts as dialogue: 'Nói: "..."' / 'Say: "..."'
+Hidden objectives embedded naturally: "While you're there, observe..."
+Persona switching noted casually: "With this person, you're the builder. With the next, you're the student."
+Info asymmetry as warnings: "Don't let them know you know about..." }
+
+{timeline — embedded naturally. "Mất 2 tuần đầu để..." / "By week 3, you should..."}
+
+{math — conversational. "Tính ra khoảng..." / "The numbers work out to..."}
+
+{risks — as warnings. "Coi chừng..." / "The thing that kills this: ..."
+"Nếu sau 2 tuần mà..., bỏ. Chuyển path khác."}
+
+{sources — URLs only, one per line, at end}
+```
+
+**Section conversion rules (analyst → operator):**
+
+| Analyst Section | Operator Conversion |
+|---|---|
+| Mountain Test (Q1/Q2/scores) | Embed in situation: "The evidence says..." |
+| P10/P50/P90 | "Most people make $X. Top 10% hit $Y." |
+| Operator Mastery L1-L5 | Pick 1-2 most relevant, embed in narrative |
+| Practical Intelligence | Merge into "the_move" |
+| Short/Medium/Long track | Merge into timeline |
+| Knowledge/Research/Tool logs | Drop (internal metadata — still persisted in case JSON) |
+| Risk factors | 1-2 sentence narrative |
+| Brain Information Flow Audit | Drop from output (still logged internally) |
+| Positioning Context | Embed if relevant: "You've seen N similar deals..." |
+| Sources | Keep as URL list |
+
+**Anti-pattern check:** If operator voice output contains ANY of: `##`, `- [ ]`, `| ... |`,
+`**Score:**`, `[K]`, `[T]`, `[?]`, `BLOCKING`, `MANDATORY` → REWRITE. These are
+analyst artifacts leaking into operator voice.
+
+---
+
+**Conditional section — --teach mode only (Teaching Integration):**
+
+If `--teach` flag was present in trigger, verdict MUST include:
+
+```
+## 📚 Teaching Summary (from Step 6.9)
+
+### Concepts Explored This Analysis
+- <list concepts from teaching-integration.py output>
+
+### Your Reflections
+<if interactive mode: list user answers with quality assessment>
+<if batch mode: "(Non-interactive run — reflections not captured)">
+
+### Cross-Framework Insights Generated
+<synthesis insights from teaching moments>
+
+### Recommended Follow-up Lessons
+- `/teach <track> --lesson <N>` — <lesson_name>
+- ...
+
+### Learning Progress
+- Teaching moments completed: <N>
+- New frameworks encountered: <list>
+- Next skill to develop: <recommendation based on gaps>
+```
+
+**Enforcement:** When `--teach` active, omitting `## 📚 Teaching Summary` is a BLOCKING violation. This section is what transforms Stage0 from analyst to mentor.
+
+---
+
+**Conditional section — grey_zone_adjacent only (Phase 4 Fix #9):**
+
+If Step 2.6 classifier returned `intent_class == grey_zone_adjacent`, the verdict MUST include:
+
+```
+## Legal Boundary Disclaimer
+
+This query touches grey-zone adjacent territory. This system covers the **legitimate
+operator zone** (specific: X, Y, Z from analysis) but does **NOT** render advice on:
+
+- **Identity fraud / synthetic-identity KYC bypass at scale** — violates platform TOS
+  + CFAA §1030 (US) / VN Cybersecurity Law 2018 Article 8
+- **Coordinated inauthentic behavior** (>10 accounts with deceptive monetization
+  intent) — violates platform TOS + potential wire fraud exposure
+- **Tax evasion** — distinct from legitimate jurisdiction arbitrage (Delaware C-Corp,
+  HK Ltd, Estonia OÜ are fine; hiding income from enforcement is not)
+
+This is not safety theater — it reflects enforceable regulation. Legitimate-zone
+findings above remain fully actionable. For fraud-zone topics, consult licensed
+legal counsel in relevant jurisdictions.
+```
+
+**Enforcement:** The Stop hook `stage0-parallel-tracks-check.cjs` will BLOCK any /stage0 verdict missing the 3 tracks OR missing the disclaimer on grey_zone topics. Hook regex checks `## Short track`, `## Medium track`, `## Long track`, and (conditional) `## Legal Boundary Disclaimer`.
+
+**Empty track handling:** If a track genuinely has no viable action, write `N/A — <specific reason>` (e.g., "N/A — long moat requires audience which founder lacks; medium track builds this first"). DO NOT omit the header — hook expects all 3 section markers.
+
+Plan ref: `plans/260413-1002-stage0-bias-fix/phase-04-gates-framing-confidence-parallel-tracks-fraud.md`
+
+### Step 7.05 — Voice Quality Check (Output Human-Voice Gate)
+
+**Purpose:** Ensure verdict output reads like human mentor advice, not AI report. Detect and flag LLM-format artifacts (headers, bullets, tables, framework names, meta-language).
+
+**Execution:**
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/output-voice-enforcer.py \
+  --verdict-text "<verdict_draft>" \
+  --voice <voice_mode>
+```
+
+**Thresholds:**
+- Operator voice: score ≥70 → PASS. Score <70 → REWRITE verdict.
+- Analyst voice: score ≥40 → PASS. Score <40 → FLAG (allow but warn).
+
+**Key artifacts banned in operator voice:**
+- Markdown headers (`##`), bullet lists (`- `), tables (`| |`)
+- Framework names (CENTS, Mountain Test, Wound Map, Compound Objective)
+- Meta-language ("Let me explain", "In summary", "Here's the analysis")
+- System artifact names (stage0, Step X.Y, quality gate, pipeline)
+- Technical scores (Score: X, Rating: Y, Confidence: Z)
+
+**Fallback:** If script fails → proceed, emit `⚠ VOICE_CHECK_DEGRADED`.
+
+### Step 7.1 — Anti-Orthodox Quality Gate
+
+**Purpose:** Reject generic advice that any AI or career blog would produce.
+Every recommendation must pass the "would a stranger with zero context and
+ChatGPT produce this same advice?" test.
+
+**Execution:**
+
+1. Extract all actionable recommendations from verdict draft (tracks, alternatives,
+   side-door paths — everything that tells the founder to DO something).
+
+2. For each recommendation, apply 3 tests:
+
+   **Test A — Orthodoxy Pattern:** Does it match generic advice patterns?
+   - "attend events" / "build network" / "create content" / "cold email"
+   - "volunteer" / "take a course" / "read books" / "get certified"
+   - If ≥2 pattern matches AND <2 specificity signals → ORTHODOX
+
+   **Test B — Specificity:** Does it name:
+   - A specific person, company, or platform? (not "investors" but "CTO of Sendo")
+   - A specific script? (not "communicate value" but '"Say this: ..."')
+   - A specific action with measurable outcome?
+   - If NO to all 3 → ORTHODOX
+
+   **Test C — Side-Door Check:** Is this a front-door or side-door approach?
+   - Front door: apply, submit, cold outreach, compete with other applicants
+   - Side door: indirect chain, manufactured proximity, value-before-ask
+   - If FRONT DOOR and side-door alternatives exist → ORTHODOX (prefer side-door)
+
+3. For ORTHODOX recommendations:
+   a. Attempt rewrite: inject power-network thinking (chain, script, target)
+   b. If rewrite produces specific chain with ≥1 named role + script → KEEP rewrite
+   c. If rewrite still generic → REMOVE, note "[removed: orthodox —
+      available via basic Google search]"
+
+4. Log: total recs checked, orthodox flagged, rewritten, removed.
+
+**Exception:** If ALL recommendations are flagged orthodox, keep top 2 most specific
+ones with "[ORTHODOX — upgrade with specific targets]" tag rather than outputting nothing.
+
+**Quality gate integration:** Post-audit checks `orthodox_removed_count`. If >50% removed
+→ emit warning "Side-door thinking underutilized — consider re-running with Step 6.8.5."
+
+**Optional script validation (dry-run):**
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/anti-orthodox-gate.py \
+  --verdict-file /tmp/verdict-<case_id>.md
+```
+
+### Step 7.5 — Red-team gate
+Spawn `post-synthesis-red-team` agent with full verdict JSON. Returns 16-dim score.
+- gap score ≤3.0 → PASS, proceed to Step 8
+- gap score >3.0 and <7.0 → PASS_WITH_FLAGS, append audit section, proceed
+- gap score ≥7.0 → BLOCK, regenerate Step 7
+(Lower gap score = fewer gaps = better. Aligns with gap_auditor.py semantics.)
+
+### Step 8 — Build case JSON
+
+Build `/tmp/case-<case_id>.json` with required fields:
+- case_id (format: `stage0-<YYMMDD>-<topic-slug>`)
+- title_en, title_vn, domain, topic
+- verdict, verdict_class, confidence (0-1)
+- founder_profile_fit (load from profile)
+- knowledge_fired (list of MM/SCH/ARCH ids)
+- new_artifacts (list of {type, id, name, description, evidence_count})
+- source_urls (≥3 verifiable)
+- mountain_test_v2 (Q1/Q2/compounding/ratio results)
+- pulse_replies (only if MOUNTAIN, else null)
+- instance_models (array of instance-level model objects from Step 6.7 — required for non-KILL verdicts, validated by persist-verdict.py instance gate. Each model must match schema-instance-model.json: sub_niche_name, specific_product, specific_buyers, specific_suppliers, price_spread, first_action_message, competitor_count_exact_niche)
+
+### Step 8.5 — Instance Specificity Self-Check (BLOCKING for DEFAULT mode)
+
+**Skip:** If `--breadth` flag or EXPLORATION mode → skip.
+
+Before persisting, verify the verdict passes instance specificity requirements:
+
+1. Count instance models in verdict: MUST be 1-3 (not 0, not >3)
+2. Per model, check:
+   - Has specific product name (not category) — ≥10 chars
+   - Has ≥1 named buyer with contact method
+   - Has ≥1 named supplier with price (includes unit like $/ton, $/kg, $/unit)
+   - Has price spread with source URL
+   - Has first action message ≥50 chars
+   - Has competitor count in exact sub-niche
+3. Run quality scorer to get instance_specificity dimension:
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/stage0-quality-score.py \
+  --verdict-file /tmp/verdict-<case_id>.md
+```
+4. If `instance_specificity.score` ≤ 5 → **BLOCKING**: Rewrite verdict with more specific instance data from Step 6.7 outputs
+5. If `instance_specificity.score` 6-10 → WARNING: proceed but tag `[INSTANCE_PARTIAL]`
+6. If `instance_specificity.score` > 10 → PASS
+
+**Anti-abstraction final check:** Scan verdict for these generic patterns:
+- "foreign buyers" / "various suppliers" / "potential customers" → FAIL (must name companies)
+- "2-10%" / "X-Y%" without source → FAIL (must have exact price + URL)
+- Category names without sub-niche qualifier → FAIL
+
+### Step 9 — Persist verdict (MANDATORY tool call — Stop hook BLOCKS without this)
+
+```bash
+# Write the verdict markdown to /tmp first
+# Then call atomic 3-store writer
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/persist-verdict.py \
+  --case /tmp/case-<case_id>.json \
+  --verdict-md /tmp/verdict-<case_id>.md
+```
+
+Check JSON receipt. `memory_appended == true` MUST be present. If false → fail loud.
+
+### Step 9.5 — Persist knowledge (MANDATORY tool call — Stop hook BLOCKS without this)
+
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/persist-knowledge.py \
+  --case /tmp/case-<case_id>.json
+```
+
+Receipt MUST show: entities_appended ≥1, kg_index_updated=true, calibration_delayed_appended=true.
+
+### Step 9.6 — Verify + auto-evolve (MANDATORY tool calls — Stop hook BLOCKS without these)
+
+```bash
+# Block-gate verification
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/verify-persistence.py \
+  --case-id <case_id> --json
+
+# Auto-evolve scan
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/auto-evolve.py
+```
+
+If verify-persistence overall_pass=false → STOP, do NOT show user the verdict, investigate which check failed (C1-C6).
+
+If auto-evolve fires `MODEL_OVERCONFIDENT` → surface alert to user: "Brain calibration drift detected. Next 10 verdicts will auto-downgrade."
+
+### Step 9.65 — Archive case for replay (non-blocking)
+
+Archive full research payload for Loop 1 deterministic replay. Non-blocking — failure here does NOT halt verdict output.
+
+```bash
+.claude/skills/.venv/Scripts/python.exe -c "
+import json, sys
+sys.path.insert(0, '.claude/lib/intelligence/evolution')
+from case_archiver import CaseArchiver
+case = json.load(open('/tmp/case-<case_id>.json'))
+archiver = CaseArchiver()
+archiver.archive_case(case)
+print(f'✓ Archived {case[\"case_id\"]} to replay-archive.db')
+"
+```
+
+If this step errors, log warning and continue — verdict display is higher priority.
+
+### Step 9.7 — Print Brain Information Flow Audit (MANDATORY in user-facing output)
+
+Append to verdict markdown before showing user:
+
+```
+## Brain Information Flow Audit
+- DATA:     <N>/8 data scripts routed | <M> executed ✅ | computed data points: <count>
+- OPERATOR: 5-layer mastery <fired|skipped> | L1-5 outputs: <count> ✅ | CCC: <ccc_days>d
+- EXPERIENCE: brain <fired|skipped> | confidence: <confidence>% | tracking: <id>
+- PERCEIVE: 14/14 agents fired ✅ | cognitive retrieval active ✅ | claim expansion: <N> claims, <P0_count> P0 (<verified>V/<disputed>D)
+- PROCESS:  5 hypotheses ✅ | contradiction-resolver fired ✅ | red-team gate <score> ✅
+- DEVELOP:  persist-verdict ✅ | persist-knowledge ✅ | verify 6/6 ✅ | brier delayed ✅
+- VICARIOUS: {patterns_matched} patterns matched | top: {insights[0].name if insights else 'none'} | warnings: {len(failure_warnings)}
+- POSITIONING: {deals_observed} deals observed | {failures_logged} failures | phase: {current_phase} | topic matches: {match_count}
+- EVOLUTION: brier_30d=<x> | drift_alerts_7d=<n> | auto-evolve fired: <YES|NO>
+```
+
+If ANY layer has ❌, print explicit reason. NEVER fake GREEN.
+
+**VICARIOUS layer note:** Always fires. Display "X patterns matched | top: <pattern_name> | warnings: Y". If no patterns matched, display "0 patterns matched | no context tags detected".
+
+**POSITIONING layer note:** Always fires (Step 1.7). Display "X deals observed | Y failures | phase: Z | topic matches: N". If no positioning data, display "0 deals | Phase 1 not started".
+
+**OPERATOR layer note:** If Step 3.4d fired (cashflow-related query), display "5-layer mastery fired | L1-5 outputs: 5 ✅ | CCC: Xd". If skipped (not cashflow query), display "5-layer mastery skipped (not cashflow query)".
+
+**EXPERIENCE layer note:** If Step 3.4e fired (cashflow-related query), display "brain fired | confidence: <confidence>% | tracking: <id>". If skipped, display "brain skipped (not cashflow query)". Tracking ID is MANDATORY for outcome recording. NOTE: No prototype name displayed (SRE Phase 1 — invisible mode).
+
+### Step 9.8 — Execution action creation (MOUNTAIN/CONDITIONAL_GO/PROVISIONAL_MOUNTAIN only)
+
+If verdict_class is positive (MOUNTAIN, CONDITIONAL_GO, PROVISIONAL_MOUNTAIN, SIDE_HUSTLE_PLUS):
+1. Extract first concrete action from verdict context (kill_criteria inverse or stair_step first step)
+2. Action MUST contain a NUMBER (e.g., "5 cold emails", "3 LinkedIn DMs", "1 post")
+3. Action MUST be ≤$50 cost, ≤2h time
+4. Write `data/actions/ACTION-<case_id>.json` with schema from `/action` command
+5. Display to user: "🎯 First action (due 3 days): <action>. Report: /action resolve <id> completed '<result>'"
+
+If verdict is KILL/FLOOR/negative: skip this step (no action needed for rejected opportunities).
+
+### Step 10 — Display verdict and end cleanly (MANDATORY OUTPUT)
+
+**CRITICAL: You MUST display the full verdict markdown to the user before stopping.**
+
+After Step 9.7 completes successfully:
+
+1. **OUTPUT THE FULL VERDICT MARKDOWN** — Print the entire content of `/tmp/verdict-<case_id>.md` directly to the user. Do NOT summarize. Do NOT say "verdict saved to file". The user must SEE the verdict in their terminal/conversation.
+
+2. **Include these sections in display (minimum)**:
+   - `# /stage0 Verdict — <topic>` header
+   - `## VERDICT:` with class + confidence
+   - `## Mountain Test v22` results
+   - `## Operator Mastery` (if cashflow query)
+   - `## Short/Medium/Long track` actions
+   - `## Brain Information Flow Audit`
+
+3. **Stop.** Do NOT chain into other commands. User reads verdict, decides, executes.
+
+**Anti-pattern (BANNED):** Saying "Verdict saved to verdicts/..." without displaying the actual verdict content. The user should NOT need to open a file to see results.
+
+When pulse responses arrive, user runs:
+```
+/log-outcome --stage0-case-id <case_id> --observed <0|1>
+```
+
+**Compound learning reminder (Phase 8):** After 30-60 days, run `/log-outcome --case-id <case_id> --observed <0|1>` to verify this verdict. Logged outcomes feed the weekly brain refresh (bias calibration, Bayesian prior updates, archetype mining). Without outcome verification, brain evolution stalls. Every logged outcome makes the next verdict more accurate.
+
+### Step 12 — Business Model Blueprint (CONDITIONAL — runs BEFORE execution layer)
+
+**Trigger conditions:**
+- verdict_class == MOUNTAIN → **BLOCKING** (must complete before Step 11)
+- verdict_class == SIDE_HUSTLE_PLUS → **OPTIONAL** (ask user: "Generate cashflow blueprint? [Y/n]")
+- verdict_class IN {KILL, HARD_KILL, INSUFFICIENT_SIGNAL, SIDE_HUSTLE, EXPLORATION_ONGOING} → **SKIP**
+
+**Purpose:** Wire verdict to 4 cashflow reasoning agents to produce actionable business model with specific money flows, dates, and kill triggers. Fixes the gap where /stage0 produces scores but not execution blueprints.
+
+**Execution:**
+
+Activate `/blueprint <case_id>` skill (`.claude/skills/business/blueprint-synthesizer/SKILL.md`).
+
+This spawns 4 agents sequentially:
+1. **cash-operator-brain** → day-by-day cash position for 30 days (Level 3-4 operator thinking)
+2. **operator-mastery-brain** → CCC calculation, timing arbitrage, float analysis
+3. **zero-to-cash-architect** → step-by-step from founder's capital ($100-500) to first revenue
+4. **money-game-modeler** → negotiation strategy (if opportunity involves counterparty deals)
+
+**Output:** 5-section blueprint displayed inline + saved to `data/blueprints/BP-<case_id>.md`:
+1. Money Flow Mechanism (who pays whom, when, how much)
+2. Cash Position Timeline (30-day with specific balances)
+3. Unit Economics (with calculation shown)
+4. Execution Playbook (daily actions for 30 days)
+5. Kill/Scale Triggers (hard thresholds, specific dates)
+
+**Quality gate:** Every section must contain specific $ amounts and dates. No generic language. Reasoning-enforcement rules apply.
+
+**After blueprint:** Offer `/deal new "<opportunity>" --type <type> --capital <X> --blueprint-ref data/blueprints/BP-<case_id>.md` to commit to execution tracking.
+
+**Active deal gate:** If founder has ≥3 active deals (check `data/deals/`), show warning: "3/3 deal slots used. Kill or complete a deal before adding new ones. Run `/deal status` to review."
+
+### Step 11 — Execution Layer (OPTIONAL — user-triggered or auto for MOUNTAIN)
+
+**Trigger conditions:**
+- User explicitly runs `/execute <case_id>` after seeing verdict
+- OR verdict_class == MOUNTAIN AND user confirms execution intent
+- OR user says "execute", "proceed", "start", "let's go" after verdict display
+
+**Skip condition:** If verdict_class IN {KILL, HARD_KILL, INSUFFICIENT_SIGNAL} → skip Step 11 entirely.
+
+**Purpose:** Wire verdict Short/Medium/Long tracks to ALL trained knowledge for converting opportunity → first profitable order.
+
+**Execution:**
+
+Spawn `execution-orchestrator` agent via Task tool:
+
+```bash
+Task(subagent_type="execution-orchestrator", prompt="
+EXECUTION LAYER ACTIVATION
+
+## Source Verdict
+Case ID: <case_id>
+Verdict Class: <verdict_class>
+Confidence: <confidence>
+
+## Tracks to Execute
+Short Track: <short_track from verdict>
+Medium Track: <medium_track from verdict>
+Long Track: <long_track from verdict>
+
+## Founder Profile
+<profile from Step 1>
+
+## Pre-computed Data (if available)
+Operator Mastery: <L1-L5 outputs from Step 3.4d>
+Experience Brain: <Day 1/3/7 sequence from Step 3.4e>
+Vicarious Patterns: <matched patterns from Step 3.4f>
+
+## Execute Sub-steps:
+11.1 Lead Qualification Layer — spawn customer-finder, regional-buyer-psychologist
+11.2 Outreach Sequence Layer — spawn dan-kennedy, credibility-builder, activate cold-outreach-templates
+11.3 Negotiation Strategy Layer — spawn chris-voss, deal-situation-reader, deal-* agents
+11.4 Closing Mechanics Layer — activate 15 closing techniques from sales-closing/SKILL.md
+11.5 Payment Terms Layer — load payment-terms-by-market.yaml (Mark Tôn verified)
+11.6 Day-by-Day Playbook — activate 5-8 personas from competence matrix
+11.7 Progress Tracking — create daily standup template
+
+## Output Requirements:
+- 12-week execution playbook with kill criteria per week
+- ≥10 qualified leads with fit scores
+- Platform-specific outreach sequences
+- Chris Voss negotiation scripts
+- Buyer-type-mapped closing technique
+- Market-specific payment terms
+- Daily standup template for tracking
+")
+```
+
+**Agent spec:** `.claude/agents/core/execution/execution-orchestrator.md`
+
+**Knowledge activated:**
+| Source | Location | Activation |
+|--------|----------|------------|
+| 7 deal-* agents | agent-roster.yaml step_3_negotiation | 11.3 |
+| 15 closing techniques | sales-closing/SKILL.md | 11.4 |
+| 7 pricing mechanics | negotiation/SKILL.md | 11.3 |
+| 44+ personas | agent-roster.yaml step_5_persona_council | 11.6 |
+| Payment terms | knowledge/payment-terms-by-market.yaml | 11.5 |
+| Cold outreach | cold-outreach-templates/ | 11.2 |
+| Experience Brain | Step 3.4e outputs | Short Track |
+| Operator Mastery | Step 3.4d outputs | Payment timing |
+
+**Output: Execution Playbook**
+
+```markdown
+# Execution Playbook — <topic>
+
+## Source Verdict
+Case ID: <case_id> | Class: <class> | Confidence: <conf>
+
+## Qualified Leads (from 11.1)
+| # | Name | Contact | Pain Point | Fit Score | Segment |
+|---|------|---------|------------|-----------|---------|
+...
+
+## Outreach Sequences (from 11.2)
+### Email Sequence
+- Day 0: <subject + body>
+- Day 3: <follow up>
+- Day 7: <follow up>
+- Day 14: <final follow up>
+
+### LinkedIn Sequence
+...
+
+## Negotiation Playbook (from 11.3)
+- Opening Move: <accusation audit>
+- Labels: <list>
+- Calibrated Questions: <list>
+- Anchor Price: $X
+- Walk-away Point: $Y
+- Concession Sequence: <list>
+
+## Closing Strategy (from 11.4)
+- Buyer Type: <type>
+- Primary Technique: <technique>
+- Backup Technique: <technique>
+- Objection Responses: <map>
+
+## Payment Terms (from 11.5)
+- Target Market: <market>
+- Deposit Required: <X%>
+- Balance Terms: <terms>
+- Walk-away Triggers: <list>
+
+## 12-Week Timeline (from 11.6)
+| Week | Phase | Actions | Kill Criterion | Persona Guide |
+|------|-------|---------|----------------|---------------|
+| 1 | Supplier | Confirm capability | Cannot meet spec | Kuok |
+| 2 | Leads | 20 qualified leads | <5 fit >7 | Chet Holmes |
+| 3 | Samples | Prepare + catalog | Quality rejected | Hormozi |
+| 4 | Outreach | 20 emails sent | 0 response 14d | Dan Kennedy |
+| 5 | Follow-up | Day 3/7/14 | 0 meetings | Chris Voss |
+| 6 | Samples | Ship + track | Negative feedback | Quality first |
+| 7 | Quote | PI + 30-50% deposit | All reject | Mark Tôn rules |
+| 8 | Negotiate | Voss tactics | Below walk-away | Voss + deal-* |
+| 9 | Close | Collect deposit | No deposit | Hard close |
+| 10 | Production | QC + timeline | QC failure | Control |
+| 11 | Ship | Balance collection | No balance | Document |
+| 12 | **PROFIT** | First order complete | — | **SUCCESS** |
+
+## Daily Standup Template (from 11.7)
+Run daily: `/standup <case_id>`
+Track: leads contacted, responses, meetings, samples, quotes, deposits
+
+## Personas Activated
+- <persona>: <contribution>
+...
+
+## Kill Criteria Summary
+| Week | If This Happens | Action |
+|------|-----------------|--------|
+| 2 | <5 qualified leads | Pivot niche or channel |
+| 4 | 0 responses | Rewrite copy, new list |
+| 7 | All reject terms | Lower price or walk |
+| 9 | No deposit | Hard close or next buyer |
+```
+
+**Persistence:**
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/execution/persist-playbook.py \
+  --case-id <case_id> \
+  --playbook /tmp/playbook-<case_id>.md
+```
+
+Save to: `execution/playbooks/playbook-<case_id>.md`
+
+**Post-execution tracking:**
+- User runs `/standup <case_id>` daily to log progress
+- Kill criteria auto-checked against logged progress
+- `/log-outcome` fires when order completes or kill criterion triggers
+
+---
+
+## Forbidden behaviors
+
+| ❌ NEVER | ✅ INSTEAD |
+|---|---|
+| Skip Step 9/9.5/9.6 tool calls | Stop hook will BLOCK and force regenerate |
+| Output commodity tier-list / generic advice | Follow Mountain Test v22 deterministic gate |
+| Save markdown ad-hoc to verdicts/ | Use persist-verdict.py atomic write |
+| Write KG entities by hand | Use persist-knowledge.py |
+| Mark MOUNTAIN without `pulse_replies` | Use PROVISIONAL_MOUNTAIN, gate at 6.5 |
+| Hard-code geography/niche/supplier | Capture in profile each session |
+| 1-shot forward narrative per candidate | 5 hypotheses + contradiction-resolver |
+| Output P50/P90 without audited financials | Give RANGES with confidence intervals + provenance |
+| Use sum scores (X/50, etc.) | Use Q1/Q2/ratio/compounding binary test |
+| Skip "Knowledge fired" section | It is REQUIRED in Step 7 verdict |
+| Output textbook CCC formula | Use 5-Layer Operator engines from Step 3.4d |
+| Say "improve cash flow" generically | Output specific: "Invoice Tuesday 10AM → 26d faster" |
+| Skip cognitive capacity check | If runway <30d, cognitive layer MUST fire with pre-commitments |
+| Output table-only Operator Mastery | V2: MUST include mechanism NARRATIVE with embedded numbers |
+| Write "CCC = -52 days, EXCELLENT" | Write "CCC -52 means customer pays Day 0, you pay Day 52. Perpetual float value: $X/year." |
+| Output scores without WHY | Every metric needs mechanism: "Hub score 61 = 3-8% rent at $100K/mo = $3-8K/mo value" |
+| End with "Verdict saved to file X" without displaying content | OUTPUT full verdict markdown directly to user — user must SEE the verdict |
+| Summarize verdict instead of displaying full content | Display FULL verdict — all sections (header, Mountain Test, Tracks, Audit) |
+| Skip Experience Brain for cashflow queries | MUST fire Step 3.4e for TIER_0/TIER_1 founders or cashflow topics |
+| Output "contact people" without Day 1/3/7 sequence | Use Experience Brain expert_response sequence with specific days |
+| Generate Short Track actions when Experience Brain provides them | Short Track = Day 1 action from Experience Brain |
+| Skip novice_mistakes section | MUST include 4 novice mistakes from Experience Brain to prevent founder death |
+| Omit tracking_id from verdict | MUST include tracking_id for outcome recording and calibration |
+| Ignore vicarious patterns for negotiation/pricing | MUST apply Voss/Hormozi patterns when detected |
+| Give generic negotiation advice | Use specific tactics: Labeling, Mirroring, Accusation Audit |
+| Say "improve pricing" without numbers | Use Hormozi 3x rule: 3x most expensive competitor, 32x cheapest |
+| Skip Step 11 when user requests execution | Spawn execution-orchestrator with full context |
+| Generate execution actions without personas | Activate 5-8 personas from competence matrix |
+| Give payment terms without market context | Load payment-terms-by-market.yaml for specific market |
+| Skip closing technique selection | Map buyer type → 15 techniques from sales-closing/SKILL.md |
+| Miss negotiation agents | Spawn chris-voss + deal-* agents for negotiation layer |
+| Create playbook without kill criteria | Every week MUST have specific kill criterion |
+
+---
+
+## Acceptance test (does this command work?)
+
+A /stage0 run MUST produce ALL of these or it failed:
+1. `/tmp/case-<id>.json` exists with full schema
+2. `/tmp/verdict-<id>.md` exists ≥500 bytes
+3. `kb/cases/<id>.json` exists (post-Step 9)
+4. `verdicts/verdict-<date>-<slug>.md` exists (post-Step 9)
+5. New row in `kb/memory.jsonl` with case_id (post-Step 9)
+6. New entries in `data/kg/entities.jsonl` (post-Step 9.5)
+7. New entry in `data/kg/index.json` (post-Step 9.5)
+8. New entry in `data/calibration/brier-scores.jsonl` with `path: delayed_pending` (post-Step 9.5)
+9. New `case_ingestion` event in `data/cognitive/custom/consolidation-log.jsonl`
+10. verify-persistence.py output `overall_pass: true` (6/6) (post-Step 9.6)
+11. Verdict markdown contains `## Knowledge fired during this analysis` section
+12. Verdict markdown contains `## Brain Information Flow Audit` section
+13. IF cashflow query (Step 3.4d fired): Verdict contains `## Operator Mastery` section with L1-L5 NARRATIVE sections
+14. IF cashflow query: Operator Mastery section shows MECHANISM NARRATIVE with embedded numbers, not table-only format
+15. IF cashflow query: Each layer has "This means..." or "Because..." mechanism explanation, not just metric values
+16. IF cashflow query: Cross-layer synthesis includes reasoning chain (e.g., "Because L4 capacity is X, therefore L5 action is Y")
+17. Verdict markdown was OUTPUT TO USER (not just saved to file) — user can see full verdict in conversation
+18. Output includes VERDICT header + Mountain Test + Tracks + Brain Audit (minimum visible sections)
+19. IF cashflow query (Step 3.4e fired): Verdict contains `## Practical Intelligence` section
+20. IF cashflow query: Practical Intelligence shows Day 1/3/7 action sequence (no attribution, pure advice)
+21. IF cashflow query: Practical Intelligence includes avoid list (4 items)
+22. IF cashflow query: Practical Intelligence includes tracking_id for outcome recording
+23. IF cashflow query: Short Track action = Day 1 action from Practical Intelligence (not newly generated)
+24. IF cashflow query: Practical Intelligence "Core insight" is present (internalized thinking, no quotes)
+25. Brain Information Flow Audit includes VICARIOUS layer status (patterns matched count)
+26. IF negotiation/pricing/cashflow context detected: Vicarious patterns injected into agent prompts
+
+**Step 12 Blueprint Tests (when triggered):**
+27. IF verdict_class == MOUNTAIN: Step 12 blueprint generated (BLOCKING)
+28. IF verdict_class == SIDE_HUSTLE_PLUS: Step 12 blueprint offered (user can skip)
+29. IF Step 12 generated: Blueprint contains all 5 sections (Money Flow, Cash Position, Unit Economics, Playbook, Triggers)
+30. IF Step 12 generated: Blueprint saved to `data/blueprints/BP-<case_id>.md`
+31. IF Step 12 generated: All 5 sections contain specific $ amounts and dates (no generic language)
+32. IF Step 12 generated: `/deal new` offered after blueprint display
+
+**Step 11 Execution Layer Tests (when triggered):**
+33. IF Step 11 triggered: execution-orchestrator agent spawned with full context
+34. IF Step 11 triggered: Playbook contains ≥10 qualified leads with fit scores
+35. IF Step 11 triggered: Playbook contains platform-specific outreach sequences
+36. IF Step 11 triggered: Playbook contains Chris Voss negotiation scripts (labels, calibrated questions)
+37. IF Step 11 triggered: Playbook contains buyer-type-mapped closing technique from 15 options
+38. IF Step 11 triggered: Playbook contains market-specific payment terms from payment-terms-by-market.yaml
+39. IF Step 11 triggered: Playbook contains 12-week timeline with kill criteria per week
+40. IF Step 11 triggered: Playbook contains ≥5 activated personas with contributions
+41. IF Step 11 triggered: Playbook saved to execution/playbooks/playbook-<case_id>.md
+
+If ANY missing → run failed → Stop hook BLOCKS → regenerate.
+
+---
+
+## Quality Score (v25.1 — run after every /stage0)
+
+After persisting verdict, run quality scorer to quantify output quality:
+
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/stage0-quality-score.py \
+  --verdict-file <verdict_md_path>
+```
+
+Output: JSON with score 0-100 (A=90+, B=75+, C=60+, D=45+, F=<45).
+Dimensions: agent_dispatch (20), computation (20), evidence (20), verdict_validity (20), pipeline_completeness (20).
+
+**Quality gate:** If score < 45 (grade F), warn user: "Output quality is F-grade. Consider re-running with full pipeline."
+
+## Compact Checklist
+
+For attention budget protection, use `commands/stage0-checklist.md` as primary execution guide. This file = detail reference.
+
+## Reference
+
+- Detailed spec (legacy 846-line prose): `commands/stage0-spec-detail.md`
+- Plan: `plans/260412-0854-brain-harness-empirical-fix/plan.md`
+- Audit: `plans/260412-0854-brain-harness-empirical-fix/audit-empirical.md`
+- Tool-call audit hook: `.claude/hooks/stage0-tool-call-audit.cjs`
+- Persistence scripts: `nui-hunter/scripts/{persist-verdict,persist-knowledge,verify-persistence,auto-evolve,brain-dashboard}.py`
+
+**Blueprint Layer (Step 12):**
+- Blueprint synthesizer: `.claude/skills/business/blueprint-synthesizer/SKILL.md`
+- Blueprint command: `.claude/commands/blueprint.md`
+- Blueprint output: `data/blueprints/BP-<case_id>.md`
+- Deal tracker: `.claude/skills/business/deal-tracker/SKILL.md`
+
+**Execution Layer (Step 11):**
+- Execution orchestrator: `.claude/agents/core/execution/execution-orchestrator.md`
+- Payment terms: `.claude/skills/business/knowledge/payment-terms-by-market.yaml`
+- Agent roster (negotiation): `.claude/skills/business/agent-roster.yaml` → step_3_negotiation
+- Sales closing: `.claude/skills/business/sales-closing/SKILL.md`
+- Negotiation mechanics: `.claude/skills/business/negotiation/SKILL.md`
+- Execution scripts: `.claude/skills/business/execution/`
+- Plan: `plans/260504-1045-stage0-execution-layer-v1/plan.md`

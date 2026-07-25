@@ -1,0 +1,364 @@
+//! Self-contained HTML dashboard template for codeflow Phase 6.
+//!
+//! Renders a single HTML file with Chart.js (CDN) charts and embedded JSON data.
+
+use anyhow::Result;
+
+use crate::core::exporter::{ExportStats, ModelCostSummary};
+use crate::core::provenance::ProvenanceRecord;
+
+/// Render the full dashboard HTML string.
+pub fn render(
+    provenance: &[ProvenanceRecord],
+    costs: &[ModelCostSummary],
+    stats: &ExportStats,
+) -> Result<String> {
+    let data_json = build_data_json(provenance, costs, stats)?;
+    // Escape </script> sequences to prevent XSS via JSON injection in HTML context
+    let data_json = data_json.replace("</", "<\\/");
+    let recent_rows = build_provenance_rows(provenance, 20);
+    let top_cost_rows = build_top_cost_rows(provenance, costs, 10);
+
+    let html = format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RTK Codeflow Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; padding: 24px; }}
+  h1 {{ font-size: 1.6rem; font-weight: 700; margin-bottom: 4px; color: #f8fafc; }}
+  .subtitle {{ color: #94a3b8; font-size: 0.85rem; margin-bottom: 24px; }}
+  .stats-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 32px; }}
+  .stat-card {{ background: #1e293b; border-radius: 10px; padding: 16px 20px; border: 1px solid #334155; }}
+  .stat-label {{ font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }}
+  .stat-value {{ font-size: 1.8rem; font-weight: 700; color: #38bdf8; margin-top: 4px; }}
+  .charts-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 32px; }}
+  .chart-card {{ background: #1e293b; border-radius: 10px; padding: 20px; border: 1px solid #334155; }}
+  .chart-card h2 {{ font-size: 0.95rem; color: #cbd5e1; margin-bottom: 16px; font-weight: 600; }}
+  .chart-container {{ position: relative; height: 220px; }}
+  .ai-bar-wrap {{ background: #0f172a; border-radius: 8px; height: 32px; margin-top: 8px; overflow: hidden; }}
+  .ai-bar-fill {{ height: 100%; background: linear-gradient(90deg, #38bdf8, #818cf8); border-radius: 8px; transition: width 0.4s; display: flex; align-items: center; padding-left: 8px; font-size: 0.8rem; font-weight: 700; color: #fff; white-space: nowrap; }}
+  table {{ width: 100%; border-collapse: collapse; font-size: 0.82rem; }}
+  th {{ background: #1e293b; color: #94a3b8; text-align: left; padding: 8px 12px; border-bottom: 1px solid #334155; font-weight: 500; }}
+  td {{ padding: 7px 12px; border-bottom: 1px solid #1e293b; color: #cbd5e1; }}
+  tr:last-child td {{ border-bottom: none; }}
+  tr:hover td {{ background: #1e293b55; }}
+  .table-card {{ background: #1e293b; border-radius: 10px; padding: 20px; border: 1px solid #334155; margin-bottom: 24px; }}
+  .table-card h2 {{ font-size: 0.95rem; color: #cbd5e1; margin-bottom: 14px; font-weight: 600; }}
+  .badge {{ display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 600; }}
+  .badge-ai {{ background: #1d4ed820; color: #60a5fa; }}
+  .badge-human {{ background: #16a34a20; color: #4ade80; }}
+  .badge-mixed {{ background: #ca8a0420; color: #fbbf24; }}
+  .empty {{ color: #475569; font-style: italic; padding: 16px; text-align: center; }}
+  @media (max-width: 700px) {{ .charts-grid {{ grid-template-columns: 1fr; }} }}
+</style>
+</head>
+<body>
+<h1>RTK Codeflow Dashboard</h1>
+<p class="subtitle">Generated {generated_at} &mdash; Range: {date_from} &rarr; {date_to}</p>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-label">Total Files Tracked</div>
+    <div class="stat-value" id="stat-files">{total_files}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Total AI Cost</div>
+    <div class="stat-value" id="stat-cost">${total_cost_usd:.4}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">AI Code %</div>
+    <div class="stat-value" id="stat-ai-pct">{ai_pct:.1}%</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Top Model</div>
+    <div class="stat-value" style="font-size:1rem;margin-top:8px" id="stat-model">{top_model}</div>
+  </div>
+</div>
+
+<div class="charts-grid">
+  <div class="chart-card">
+    <h2>Cost Per Day</h2>
+    <div class="chart-container"><canvas id="costDayChart"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <h2>Model Usage (by cost)</h2>
+    <div class="chart-container"><canvas id="modelPieChart"></canvas></div>
+  </div>
+</div>
+
+<div class="chart-card" style="margin-bottom:24px">
+  <h2>AI Code Percentage</h2>
+  <div class="ai-bar-wrap">
+    <div class="ai-bar-fill" id="ai-bar" style="width:{ai_pct:.1}%">{ai_pct:.1}%</div>
+  </div>
+</div>
+
+<div class="table-card">
+  <h2>Recent Provenance (last 20)</h2>
+  <table>
+    <thead><tr><th>File</th><th>Model</th><th>Contributor</th><th>Developer</th><th>Timestamp</th></tr></thead>
+    <tbody id="prov-table">
+{recent_rows}
+    </tbody>
+  </table>
+</div>
+
+<div class="table-card">
+  <h2>Top Cost Files</h2>
+  <table>
+    <thead><tr><th>Model</th><th>Total Cost (USD)</th><th>Total Tokens</th></tr></thead>
+    <tbody id="cost-table">
+{top_cost_rows}
+    </tbody>
+  </table>
+</div>
+
+<script>
+const DATA = {data_json};
+
+// Cost per day line chart
+(function() {{
+  const days = DATA.cost_by_day || [];
+  if (!days.length) return;
+  const ctx = document.getElementById('costDayChart').getContext('2d');
+  new Chart(ctx, {{
+    type: 'line',
+    data: {{
+      labels: days.map(d => d.date),
+      datasets: [{{
+        label: 'Cost (USD)',
+        data: days.map(d => d.cost),
+        borderColor: '#38bdf8',
+        backgroundColor: 'rgba(56,189,248,0.12)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 3,
+      }}]
+    }},
+    options: {{
+      responsive: true, maintainAspectRatio: false,
+      plugins: {{ legend: {{ labels: {{ color: '#94a3b8' }} }} }},
+      scales: {{
+        x: {{ ticks: {{ color: '#64748b' }}, grid: {{ color: '#1e293b' }} }},
+        y: {{ ticks: {{ color: '#64748b' }}, grid: {{ color: '#1e293b' }}, beginAtZero: true }}
+      }}
+    }}
+  }});
+}})();
+
+// Model pie chart
+(function() {{
+  const models = DATA.cost_by_model || [];
+  if (!models.length) return;
+  const COLORS = ['#38bdf8','#818cf8','#34d399','#fbbf24','#f87171','#a78bfa','#fb923c'];
+  const ctx = document.getElementById('modelPieChart').getContext('2d');
+  new Chart(ctx, {{
+    type: 'pie',
+    data: {{
+      labels: models.map(m => m.model_id),
+      datasets: [{{
+        data: models.map(m => m.total_usd),
+        backgroundColor: models.map((_, i) => COLORS[i % COLORS.length]),
+        borderWidth: 1,
+        borderColor: '#0f172a',
+      }}]
+    }},
+    options: {{
+      responsive: true, maintainAspectRatio: false,
+      plugins: {{ legend: {{ position: 'right', labels: {{ color: '#94a3b8', boxWidth: 12 }} }} }}
+    }}
+  }});
+}})();
+</script>
+</body>
+</html>"#,
+        generated_at = chrono::Utc::now().format("%Y-%m-%d %H:%M UTC"),
+        date_from = stats.date_range.0,
+        date_to = stats.date_range.1,
+        total_files = stats.total_files,
+        total_cost_usd = stats.total_cost_usd,
+        ai_pct = stats.ai_pct,
+        top_model = html_escape(&stats.top_model),
+        recent_rows = recent_rows,
+        top_cost_rows = top_cost_rows,
+        data_json = data_json,
+    );
+
+    Ok(html)
+}
+
+// ── Data builders ─────────────────────────────────────────────────────────────
+
+fn build_data_json(
+    provenance: &[ProvenanceRecord],
+    costs: &[ModelCostSummary],
+    stats: &ExportStats,
+) -> Result<String> {
+    // Aggregate cost by day from provenance timestamps
+    let mut day_map: std::collections::BTreeMap<String, f64> = std::collections::BTreeMap::new();
+    // We don't have per-record cost, so we spread total cost evenly across days for the line chart.
+    // This is a best-effort approximation; accurate per-day cost requires joining cost_records.
+    for r in provenance {
+        let day = r.timestamp.get(..10).unwrap_or("unknown").to_string();
+        day_map.entry(day).or_insert(0.0);
+    }
+    // If we have cost summaries but no day breakdown, add total cost to the most recent day.
+    if !costs.is_empty() && !day_map.is_empty() {
+        let last_day = day_map.keys().last().cloned().unwrap_or_default();
+        *day_map.entry(last_day).or_insert(0.0) += stats.total_cost_usd;
+    }
+
+    let cost_by_day: Vec<serde_json::Value> = day_map
+        .into_iter()
+        .map(|(date, cost)| serde_json::json!({"date": date, "cost": cost}))
+        .collect();
+
+    let payload = serde_json::json!({
+        "stats": stats,
+        "cost_by_model": costs,
+        "cost_by_day": cost_by_day,
+    });
+
+    serde_json::to_string(&payload).map_err(|e| anyhow::anyhow!("JSON serialize: {}", e))
+}
+
+fn build_provenance_rows(provenance: &[ProvenanceRecord], limit: usize) -> String {
+    let recent: Vec<_> = provenance.iter().rev().take(limit).collect();
+    if recent.is_empty() {
+        return r#"      <tr><td colspan="5" class="empty">No provenance records in this range.</td></tr>"#
+            .to_string();
+    }
+    recent
+        .iter()
+        .map(|r| {
+            let badge_class = match r.contributor_type {
+                crate::core::provenance::ContributorType::Ai => "badge-ai",
+                crate::core::provenance::ContributorType::Human => "badge-human",
+                _ => "badge-mixed",
+            };
+            format!(
+                "      <tr><td>{}</td><td>{}</td><td><span class=\"badge {}\">{}</span></td><td>{}</td><td>{}</td></tr>",
+                html_escape(&r.file_path),
+                html_escape(&r.model_id),
+                badge_class,
+                r.contributor_type.as_str(),
+                html_escape(&r.developer_id),
+                html_escape(r.timestamp.get(..19).unwrap_or(&r.timestamp)),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn build_top_cost_rows(
+    _provenance: &[ProvenanceRecord],
+    costs: &[ModelCostSummary],
+    limit: usize,
+) -> String {
+    let top: Vec<_> = costs.iter().take(limit).collect();
+    if top.is_empty() {
+        return r#"      <tr><td colspan="3" class="empty">No cost data available.</td></tr>"#
+            .to_string();
+    }
+    top.iter()
+        .map(|c| {
+            format!(
+                "      <tr><td>{}</td><td>${:.6}</td><td>{}</td></tr>",
+                html_escape(&c.model_id),
+                c.total_usd,
+                c.total_tokens,
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::provenance::{ContributorType, ProvenanceRecord};
+
+    fn make_record(file: &str) -> ProvenanceRecord {
+        ProvenanceRecord {
+            id: Some(1),
+            model_id: "claude-opus-4".to_string(),
+            model_version: "".to_string(),
+            prompt_hash: "ph".to_string(),
+            code_hash: "ch".to_string(),
+            file_path: file.to_string(),
+            start_line: 1,
+            end_line: 10,
+            contributor_type: ContributorType::Ai,
+            attestation_sig: "sig".to_string(),
+            timestamp: "2025-02-01T12:00:00Z".to_string(),
+            developer_id: "alice".to_string(),
+            session_id: "s1".to_string(),
+        }
+    }
+
+    fn make_cost(model: &str, usd: f64) -> ModelCostSummary {
+        ModelCostSummary {
+            model_id: model.to_string(),
+            total_usd: usd,
+            total_tokens: 500,
+        }
+    }
+
+    fn make_stats() -> ExportStats {
+        ExportStats {
+            total_files: 1,
+            total_cost_usd: 0.25,
+            ai_pct: 100.0,
+            top_model: "claude-opus-4".to_string(),
+            date_range: ("2025-01-01T00:00:00Z".to_string(), "2025-03-01T00:00:00Z".to_string()),
+        }
+    }
+
+    #[test]
+    fn render_produces_valid_html_doctype() {
+        let html = render(&[make_record("src/main.rs")], &[make_cost("claude-opus-4", 0.25)], &make_stats()).unwrap();
+        assert!(html.starts_with("<!DOCTYPE html>"));
+    }
+
+    #[test]
+    fn render_includes_chartjs_cdn() {
+        let html = render(&[], &[], &make_stats()).unwrap();
+        assert!(html.contains("cdn.jsdelivr.net/npm/chart.js"));
+    }
+
+    #[test]
+    fn render_injects_data_variable() {
+        let html = render(&[], &[], &make_stats()).unwrap();
+        assert!(html.contains("const DATA ="));
+    }
+
+    #[test]
+    fn render_escapes_html_in_file_paths() {
+        let mut r = make_record("<script>alert(1)</script>.rs");
+        r.contributor_type = ContributorType::Ai;
+        let html = render(&[r], &[], &make_stats()).unwrap();
+        assert!(!html.contains("<script>alert(1)</script>.rs"));
+        assert!(html.contains("&lt;script&gt;"));
+    }
+
+    #[test]
+    fn render_empty_data_has_empty_message() {
+        let html = render(&[], &[], &make_stats()).unwrap();
+        assert!(html.contains("No provenance records in this range"));
+        assert!(html.contains("No cost data available"));
+    }
+}

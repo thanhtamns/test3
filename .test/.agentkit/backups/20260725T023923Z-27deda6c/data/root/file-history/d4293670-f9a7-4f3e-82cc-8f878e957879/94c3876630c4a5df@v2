@@ -1,0 +1,82 @@
+use serde_json::{json, Value};
+
+use super::provenance::ProvenanceRecord;
+
+pub fn to_agent_trace(record: &ProvenanceRecord) -> Value {
+    json!({
+        "version": "0.1.0",
+        "type": "code_generation",
+        "agent": {
+            "model_id": record.model_id,
+            "model_version": record.model_version,
+        },
+        "artifact": {
+            "file_path": record.file_path,
+            "start_line": record.start_line,
+            "end_line": record.end_line,
+            "content_hash": record.code_hash,
+            "contributor_type": record.contributor_type.as_str(),
+        },
+        "attestation": {
+            "algorithm": "ed25519",
+            "signature": record.attestation_sig,
+        },
+        "metadata": {
+            "session_id": record.session_id,
+            "developer_id": record.developer_id,
+            "timestamp": record.timestamp,
+            "prompt_hash": record.prompt_hash,
+        }
+    })
+}
+
+pub fn export_agent_trace(records: &[ProvenanceRecord]) -> String {
+    let traces: Vec<Value> = records.iter().map(to_agent_trace).collect();
+    let doc = json!({
+        "agent_trace_version": "0.1.0",
+        "generator": "codeflow",
+        "traces": traces,
+    });
+    serde_json::to_string_pretty(&doc).unwrap_or_else(|_| "{}".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::provenance::{ContributorType, ProvenanceRecord};
+
+    fn sample() -> ProvenanceRecord {
+        ProvenanceRecord {
+            id: Some(1),
+            model_id: "claude-sonnet-4-20250514".to_string(),
+            model_version: "1.0".to_string(),
+            prompt_hash: "phash".to_string(),
+            code_hash: "chash".to_string(),
+            file_path: "src/main.rs".to_string(),
+            start_line: 5,
+            end_line: 15,
+            contributor_type: ContributorType::Ai,
+            attestation_sig: "sig123".to_string(),
+            timestamp: "2026-06-07T00:00:00Z".to_string(),
+            developer_id: "dev1".to_string(),
+            session_id: "sess1".to_string(),
+        }
+    }
+
+    #[test]
+    fn to_agent_trace_structure() {
+        let trace = to_agent_trace(&sample());
+        assert_eq!(trace["version"], "0.1.0");
+        assert_eq!(trace["artifact"]["file_path"], "src/main.rs");
+        assert_eq!(trace["attestation"]["algorithm"], "ed25519");
+    }
+
+    #[test]
+    fn export_multiple_records() {
+        let records = vec![sample(), sample()];
+        let output = export_agent_trace(&records);
+        let parsed: Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(parsed["traces"].as_array().unwrap().len(), 2);
+        assert_eq!(parsed["agent_trace_version"], "0.1.0");
+    }
+}

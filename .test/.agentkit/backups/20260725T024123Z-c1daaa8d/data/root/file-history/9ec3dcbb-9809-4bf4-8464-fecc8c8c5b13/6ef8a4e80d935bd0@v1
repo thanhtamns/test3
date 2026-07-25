@@ -1,0 +1,286 @@
+#!/usr/bin/env python3
+"""
+Pipeline Orchestrator - Unified Auto-Evolution Pipeline
+
+Runs the full pipeline and outputs structured instructions for Claude Code
+to invoke personas and generate synthesis.
+
+Usage:
+    python pipeline-orchestrator.py --tiktok-dump channel.json
+    python pipeline-orchestrator.py --youtube-dump channel.json
+    python pipeline-orchestrator.py --text "content to analyze"
+
+Output: JSON with extraction results + persona prompts + synthesis instructions
+"""
+
+import argparse
+import json
+import sys
+import io
+import subprocess
+from pathlib import Path
+from typing import Dict, List, Any
+from datetime import datetime
+
+# Fix Windows console encoding
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+DATA_DIR = SCRIPT_DIR.parent / "data"
+
+
+def run_content_extractor(input_file: str, input_type: str = "tiktok") -> Dict:
+    """Run content-intelligence-extractor and return results."""
+    cmd = [
+        sys.executable,
+        str(SCRIPT_DIR / "content-intelligence-extractor.py"),
+        f"--{input_type}-dump" if input_type in ["tiktok", "youtube"] else "--file",
+        input_file,
+        "--json"
+    ]
+
+    result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8')
+    if result.returncode != 0:
+        return {"error": result.stderr, "stage": "extraction"}
+
+    return json.loads(result.stdout)
+
+
+def run_persona_analyzer(intel_data: Dict) -> Dict:
+    """Run parallel-persona-analyzer and return results."""
+    # Save intel to temp file
+    temp_file = SCRIPT_DIR / ".temp_intel.json"
+    temp_file.write_text(json.dumps(intel_data, ensure_ascii=False), encoding='utf-8')
+
+    cmd = [
+        sys.executable,
+        str(SCRIPT_DIR / "parallel-persona-analyzer.py"),
+        "--input", str(temp_file),
+        "--json"
+    ]
+
+    result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8')
+    temp_file.unlink(missing_ok=True)
+
+    if result.returncode != 0:
+        return {"error": result.stderr, "stage": "persona_analysis"}
+
+    return json.loads(result.stdout)
+
+
+def generate_claude_instructions(
+    intel: Dict,
+    persona_prompts: Dict,
+    observation_summary: str
+) -> Dict:
+    """
+    Generate structured instructions for Claude Code to invoke personas.
+
+    This bridges the Python pipeline to Claude Code's Agent tool.
+    """
+    personas = intel.get("selected_personas", [])
+    analyses = persona_prompts.get("persona_analyses", {})
+
+    # Framework-specific analysis questions
+    framework_questions = {
+        "robert-kiyosaki": [
+            "ESBI: Which quadrant does this content/creator operate in?",
+            "Asset vs Liability: Is this teaching asset creation or selling liability?",
+            "Cash Flow: Does this explain actual cash flow mechanics?",
+            "Financial Intelligence: Rate the depth of financial education (1-10)"
+        ],
+        "mj-demarco": [
+            "CENTS Score: Rate Control/Entry/Need/Time/Scale (1-10 each)",
+            "Fastlane Test: Is this Fastlane, Slowlane, or Sidewalk advice?",
+            "Anti-Guru Test: Does creator make money FROM or ABOUT this?",
+            "Process vs Event: Does content teach process or promise events?"
+        ],
+        "naval-ravikant": [
+            "Leverage Type: Code/Media/Capital/Labor - which applies?",
+            "Permissionless: Can this be done without gatekeepers?",
+            "Specific Knowledge: What unique knowledge is being taught?",
+            "Accountability: Does creator have skin in the game?"
+        ],
+        "charlie-munger": [
+            "Inversion: What would make following this advice fail?",
+            "Mental Models: Which cognitive biases are present?",
+            "Circle of Competence: Is creator within their expertise?",
+            "Incentive Analysis: What are creator's hidden incentives?"
+        ],
+        "nassim-taleb": [
+            "Skin in Game: Does creator bear downside risk?",
+            "Fragility: Is the advice fragile, robust, or antifragile?",
+            "Black Swan: What rare events would invalidate this?",
+            "Lindy Effect: Has this advice survived time?"
+        ]
+    }
+
+    instructions = {
+        "pipeline_version": "v1.0",
+        "timestamp": datetime.now().isoformat(),
+        "source": intel.get("source", "unknown"),
+        "extraction_summary": {
+            "video_count": intel.get("video_count", 0),
+            "topic_domains": intel.get("topic_domains", []),
+            "content_patterns": intel.get("content_patterns", {}),
+            "cta_percentage": intel.get("content_patterns", {}).get("cta_percentage", 0)
+        },
+        "selected_personas": personas,
+        "observation_for_analysis": observation_summary[:2000],
+
+        # Instructions for Claude Code to execute
+        "claude_execution_instructions": {
+            "step_1_invoke_personas": [
+                {
+                    "persona": p,
+                    "framework": analyses.get(p, {}).get("primary_framework", "Unknown"),
+                    "questions": framework_questions.get(p, analyses.get(p, {}).get("key_questions", [])),
+                    "prompt_template": f"As {p}, analyze this content using your {analyses.get(p, {}).get('primary_framework', 'core')} framework. Content summary: {{observation}}. Answer: (1) Assessment, (2) Strengths, (3) Gaps, (4) Recommendation, (5) Confidence 0-1"
+                }
+                for p in personas
+            ],
+            "step_2_collect_responses": {
+                "format": "structured_json",
+                "required_fields": ["assessment", "strengths", "gaps", "recommendation", "confidence"]
+            },
+            "step_3_synthesize": {
+                "find_agreements": "Identify where 3+ personas agree",
+                "find_divergences": "Identify where personas recommend opposite paths",
+                "find_gaps": "Identify what NO persona addressed",
+                "generate_emergent": "Combine frameworks to create new insights"
+            }
+        },
+
+        # Pre-computed synthesis hints
+        "synthesis_hints": {
+            "expected_framework_intersections": [
+                {
+                    "personas": ["robert-kiyosaki", "naval-ravikant"],
+                    "synthesis_axis": "ESBI quadrant + Leverage hierarchy",
+                    "question": "Which ESBI quadrant + which leverage type = optimal path?"
+                },
+                {
+                    "personas": ["mj-demarco", "robert-kiyosaki"],
+                    "synthesis_axis": "CENTS validation + Asset creation",
+                    "question": "Does CENTS score predict successful asset creation?"
+                },
+                {
+                    "personas": ["mj-demarco", "naval-ravikant"],
+                    "synthesis_axis": "Anti-guru test + Accountability",
+                    "question": "Does content pass both anti-guru AND accountability tests?"
+                }
+            ],
+            "red_flags_to_check": [
+                "High CTA% + Low mechanism coverage = funnel, not education",
+                "Passive income talk + No asset mechanics = motivation porn",
+                "Billionaire name-drops + No framework extraction = authority theft"
+            ]
+        }
+    }
+
+    return instructions
+
+
+def format_for_brainstorm_skill(instructions: Dict) -> str:
+    """Format instructions as markdown for brainstorm skill integration."""
+    output = []
+    output.append("## Auto-Evolution Pipeline Results\n")
+
+    # Extraction summary
+    ext = instructions["extraction_summary"]
+    output.append(f"**Source:** {instructions['source']}")
+    output.append(f"**Videos:** {ext['video_count']}")
+    output.append(f"**Topics:** {', '.join(ext['topic_domains'][:5])}...")
+    output.append(f"**CTA%:** {ext['cta_percentage']:.1%}")
+    output.append(f"**Motivation Ratio:** {ext['content_patterns'].get('motivation_ratio', 0):.1%}")
+    output.append("")
+
+    # Selected personas
+    output.append("### Auto-Selected Personas")
+    for p in instructions["selected_personas"]:
+        output.append(f"- **{p}**")
+    output.append("")
+
+    # Execution instructions
+    output.append("### Required Persona Analyses")
+    output.append("")
+    for item in instructions["claude_execution_instructions"]["step_1_invoke_personas"]:
+        output.append(f"#### {item['persona']} ({item['framework']})")
+        output.append("Questions to answer:")
+        for q in item["questions"]:
+            output.append(f"- {q}")
+        output.append("")
+
+    # Synthesis hints
+    output.append("### Synthesis Requirements")
+    for hint in instructions["synthesis_hints"]["expected_framework_intersections"]:
+        output.append(f"- **{hint['synthesis_axis']}:** {hint['question']}")
+    output.append("")
+
+    # Red flags
+    output.append("### Red Flags to Check")
+    for flag in instructions["synthesis_hints"]["red_flags_to_check"]:
+        output.append(f"- {flag}")
+
+    return "\n".join(output)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Auto-Evolution Pipeline Orchestrator")
+    parser.add_argument("--tiktok-dump", help="TikTok JSONL dump file")
+    parser.add_argument("--youtube-dump", help="YouTube JSONL dump file")
+    parser.add_argument("--text", help="Direct text content")
+    parser.add_argument("--output", help="Output file path")
+    parser.add_argument("--json", action="store_true", help="JSON output")
+    parser.add_argument("--markdown", action="store_true", help="Markdown output for skill")
+    args = parser.parse_args()
+
+    # Determine input type
+    if args.tiktok_dump:
+        intel = run_content_extractor(args.tiktok_dump, "tiktok")
+    elif args.youtube_dump:
+        intel = run_content_extractor(args.youtube_dump, "youtube")
+    elif args.text:
+        # For text input, create minimal structure
+        intel = {
+            "source": "direct_text",
+            "content": args.text,
+            "topic_domains": ["general"],
+            "selected_personas": ["naval-ravikant", "mj-demarco", "charlie-munger"],
+            "content_patterns": {"cta_percentage": 0, "motivation_ratio": 0.5}
+        }
+    else:
+        parser.print_help()
+        return
+
+    if "error" in intel:
+        print(json.dumps(intel, indent=2), file=sys.stderr)
+        sys.exit(1)
+
+    # Run persona analyzer to get prompts
+    persona_prompts = run_persona_analyzer(intel)
+
+    if "error" in persona_prompts:
+        print(json.dumps(persona_prompts, indent=2), file=sys.stderr)
+        sys.exit(1)
+
+    # Generate instructions for Claude Code
+    observation = persona_prompts.get("observation_summary", "")
+    instructions = generate_claude_instructions(intel, persona_prompts, observation)
+
+    # Output
+    if args.markdown:
+        output = format_for_brainstorm_skill(instructions)
+    else:
+        output = json.dumps(instructions, indent=2, ensure_ascii=False)
+
+    if args.output:
+        Path(args.output).write_text(output, encoding='utf-8')
+        print(f"Output saved to: {args.output}")
+    else:
+        print(output)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""
+Stage0 Live Bridge — replaces noop_search with real web research.
+Called by stage0 Step 2.9 to produce pre-verified micro-facts.
+
+Usage:
+  python stage0_live_bridge.py --query "TOPIC" [--max-queries 20] [--mode decompose|full]
+
+Modes:
+  decompose: Run decomposition + research only (fast, ~30s)
+  full: Run decomposition + research + technique analysis + strategy (slower, ~60s)
+"""
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(ROOT / ".claude" / "lib"))
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--query", required=True)
+    parser.add_argument("--max-queries", type=int, default=20)
+    parser.add_argument("--mode", choices=["decompose", "full"], default="full")
+    parser.add_argument("--delay", type=float, default=1.5)
+    args = parser.parse_args()
+
+    from intelligence.decomposition.web_research_bridge import create_research_fn
+    from intelligence.decomposition.stage0_bridge import Stage0Bridge
+
+    research_fn = create_research_fn(delay_s=args.delay)
+    bridge = Stage0Bridge(research_fn=research_fn)
+
+    case = {"query": args.query}
+    case = bridge.pre_decompose(case)
+
+    if args.mode == "full":
+        case = bridge.pre_analyze(case)
+
+    output = {
+        "facts": case.get("pre_decomposition_facts", []),
+        "meta": case.get("pre_decomposition_meta", {}),
+        "founder_context": case.get("founder_context", {}),
+    }
+
+    if args.mode == "full":
+        output["technique_results"] = case.get("technique_results", {})
+        output["strategy"] = case.get("strategy", {})
+
+    print(json.dumps(output, indent=2, ensure_ascii=False, default=str))
+
+
+if __name__ == "__main__":
+    main()

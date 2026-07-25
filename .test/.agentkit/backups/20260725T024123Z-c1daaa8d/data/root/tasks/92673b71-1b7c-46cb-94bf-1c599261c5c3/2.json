@@ -1,0 +1,22 @@
+{
+  "id": "2",
+  "subject": "Phase 2: Cloud MVP (Go Ingest + ClickHouse + React Dashboard)",
+  "description": "Build cloud backend: Go ingest API, NATS JetStream, ClickHouse with MVs + row policies, React/Next.js dashboard (8 pages), WorkOS auth, Rust sync daemon, Stripe billing. See phase-02-cloud-mvp-go-ingest-clickhouse-react-dashboard.md",
+  "activeForm": "Building Cloud MVP",
+  "status": "pending",
+  "blocks": [
+    "3",
+    "4",
+    "5"
+  ],
+  "blockedBy": [
+    "1"
+  ],
+  "metadata": {
+    "phase": 2,
+    "effort": "6 weeks",
+    "priority": "P1",
+    "planDir": "plans/260603-codeflow-ai-cost-intelligence-engine",
+    "phaseFile": "phase-02-cloud-mvp-go-ingest-clickhouse-react-dashboard.md"
+  }
+}

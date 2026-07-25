@@ -1,0 +1,13 @@
+{
+  "current_stair": 0,
+  "entered_at": "2026-05-30",
+  "target_mrr_usd": 50000,
+  "stairs": [
+    {"stair": 0, "range": "$0/mo", "strategy": "validate"},
+    {"stair": 1, "range": "$1-3K/mo", "strategy": "cash bridge"},
+    {"stair": 2, "range": "$3-10K/mo", "strategy": "product revenue"},
+    {"stair": 3, "range": "$10-30K/mo", "strategy": "scale"},
+    {"stair": 4, "range": "$30-50K/mo", "strategy": "diversify"},
+    {"stair": 5, "range": "$50-100K/mo", "strategy": "empire"}
+  ]
+}

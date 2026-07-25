@@ -1,0 +1,139 @@
+# /stage0 Compact Checklist (v26 — doanh-nhan upgrade)
+
+**RULE:** Execute EVERY step. Check off mentally as you go. If a step fails, tag [DEGRADED] and continue.
+**DETAIL:** Full spec in `commands/stage0.md`. This file = execution contract.
+**MOUNTAIN:** >=\$10K/mo NET to 1 founder, repeatable <=12mo, >=1 compounding component. Else = SIDE_HUSTLE.
+
+---
+
+## PRE-FLIGHT
+- [ ] **Step 0:** CWD validate — must end in `master_investments` (hook enforces)
+- [ ] **Step 0.1:** Action gate — check `data/actions/` for unresolved actions. If any OVERDUE: HARD BLOCK (display pending actions, refuse to proceed). If any PENDING (not overdue): SOFT WARNING (show actions, allow `--skip-gate` override). If 0 pending: pass. See `hooks/action-gate.cjs` for logic.
+- [ ] **Step 0.5:** Load runtime assertions — read `/tmp/stage0-runtime-assertions-*.json`, inject `p0_rules` into ALL downstream prompts. Missing = [DEGRADED_NO_ASSERTIONS]
+- [ ] **Step 0.6:** Load mechanism knobs + init trace — `PYTHONPATH=".claude/lib" python -m intelligence.mechanism.trace_cli snapshot-knobs` → store as MECHANISM_KNOBS. Use knob values (not hardcoded) for mountain test, confidence gate, agent counts. After EACH traced step (1.8, 2.45, 2.6, 3, 3.5, 3.8, 5, 6, 7): `trace_cli log-step --case-id <ID> --step <STEP_ID> ...`. After Step 7: `trace_cli log-verdict`. Missing = [DEGRADED_NO_TRACE]
+- [ ] **Step 1:** Profile load (BLOCKING) — `ls kb/profiles/`, load or capture. Run `founder-strength-detector.py` if `founder_strength` absent
+- [ ] **Step 1.5:** SRE init — `situation-reasoning-engine.py --user --topic` → parse depth_level, injection_block. Prepend to ALL agent prompts
+- [ ] **Step 1.7:** Positioning context — `python execution/scripts/positioning-context-generator.py "<topic>"` → parse injection_block. Prepend to ALL agent prompts. Shows deal journal stats, pattern matches, phase progress. Missing = [DEGRADED_NO_POSITIONING]
+- [ ] **Step 1.8:** Local Knowledge Pre-Screen — `topic-to-features.py --topic` → `local-reasoning-engine.py --features`. If KILL+conf>=0.8: short-circuit. If conf>=0.6: inject context. If NEEDS_LLM: proceed normally.
+- [ ] **Step 1.9:** SBE Evaluation (ADDITIVE) — `sbe_orchestrator.py --topic "{topic}" --features '{features}'`. If SHORT_CIRCUIT (KILL, conf>=0.85): skip to verdict, use SBE trace. If verdict+evidence: inject constrained_prompt into Wave 1 agents + enriched_features into calc-dispatcher. If FAIL: log [DEGRADED_NO_SBE], continue existing pipeline. Path: `.claude/lib/intelligence/strategic-brain/integration/sbe_orchestrator.py`
+
+## TOPIC PROCESSING
+- [ ] **Step 2:** Receive topic — first arg or AskUser. Do NOT pre-narrow
+- [ ] **Step 2.45:** Premise challenge (BLOCKING, v25.1) — challenge vehicle assumption. WebSearch vehicle success rate vs target. If target is P99 for vehicle but P50 for alternatives → MISMATCH → add vehicle-challenge branch
+- [ ] **Step 2.5:** Topic disambiguation (BLOCKING) — echo interpretation, detect branches (>=2 independent Qs + premise challenge), AskUser confirm. Offer: single branch / all-parallel-depth-1 / refine
+- [ ] **Step 2.55:** Query-mode detection (BLOCKING) — `query-mode-detector.py "<topic>"` → EXPLORATION or FOUNDER_SPECIFIC. EXPLORATION skips profile/routing injection + uses industry-discovery instead of archetypes
+- [ ] **Step 2.6:** Intent classification (BLOCKING) — `query-intent-classifier.py "<topic>"` → intent_class (marketplace_layer|operator_layer|jurisdiction_question|power_law_hunt|grey_zone_adjacent|unknown). Drives Wave 1 addendum agents + forum preflight
+- [ ] **Step 2.6.1:** Voice mode detection — parse `--voice` flag. Default: `analyst`. If `operator`: zero tables/bullets/tags, mentor-style narrative, ≤2000 words. Store in case JSON
+- [ ] **Step 2.6.2:** Capital-path routing (BLOCKING, FOUNDER_SPECIFIC only) — `stage0-local-orchestrator.py` → ROUTING_CONTEXT (tier, track, target range, constraints, ladder_research). Tracks: MICRO_DEPLOY/ASSET_BUILDER/LEVERAGE_SPRINT (TIER_0), HYBRID (TIER_1). TIER_0/1 include deployment_budget, asset_slots, per_slot_budget. Inject into ALL downstream + DEPLOYMENT_CONTEXT block for Wave 1
+- [ ] **Step 2.6.2b:** Money flow mapping (MANDATORY, v26) — Map the LARGEST money stream this topic sits within. Identify 4-7 value chain nodes (position, margin, barrier, trust). Find BOTTLENECK node. Determine founder entry node + compound path. Output → `/tmp/stage0-money-flow-<case_id>.json`. Inject MONEY_FLOW block into ALL downstream. If <3 nodes → [SHALLOW_MONEY_FLOW]
+- [ ] **Step 2.6.2c:** Capital trajectory (v26) — Replace static TIER cage. Calculate target_usd needed for entry node, design path[] milestones to accumulate it in target_days. Output → `/tmp/stage0-capital-trajectory-<case_id>.json`. Append to ROUTING_CONTEXT. Do NOT cap recommendations at current capital
+- [ ] **Step 2.6.2d:** Thesis link check (v26) — Load existing cases' thesis_links from KB. If topic matches existing thesis → load related cases as PRIORS. If new thesis → create thesis_id. Output → `/tmp/stage0-thesis-<case_id>.json`. Inject THESIS_CONTEXT into downstream. Verdict MUST include thesis_links in case JSON
+- [ ] **Step 2.6.3:** Portfolio computation (TIER_0/TIER_1 only) — `portfolio-optimizer.py` → PORTFOLIO_CONTEXT (winning assets, P10/P50/P90, labor comparison). Skip for TIER_2/3. Inject into Wave 1, Wave 2, Step 5, Step 6, Step 7
+- [ ] **Step 2.65:** Decision questions — spawn `decision-question-generator` Task → 6-12 DQs per tier type. TIER_0=12 (DEPLOY_BUDGET, ROI_TARGET, ASSET_SCAN, LEVERAGE, KILL_CRITERIA, etc.), TIER_1=14, TIER_2=9, TIER_3=6. Deprecated: FIRST_500, TIME_TO_CASH
+- [ ] **Step 2.66:** Question deep analysis — spawn 5-7 parallel `question-deep-analyzer` Tasks (1 per DQ, 60s timeout each)
+- [ ] **Step 2.67:** User validation gate (BLOCKING) — present DQ results, user chooses C(continue)/A(add)/R(re-analyze)/D(drill)/X(exit)
+- [ ] **Step 2.7:** URL processing (if URLs in input) — TikTok: yt-dlp+tikwm; YouTube: yt-dlp; Reddit: .json; Other: WebFetch. Store as URL_CONTENT
+- [ ] **Step 2.7.5:** Forum preflight (if `fires_forum_preflight==true`) — `forum-preflight.py "<topic>"` → inject FORUM_PREFLIGHT_DATA into Wave 1
+- [ ] **Step 2.8:** Claim expansion (if URL_CONTENT exists) — spawn `claim-expansion-engine` Task → claim_set. Inject as GROUNDED PRIORS
+
+## INTELLIGENCE GATHERING (Steps 3.4-3.5.0 run PARALLEL)
+- [ ] **Step 3:** KB-first lookup (FOUNDER_SPECIFIC only) — `kb-query.py "<topic>"` → priors. EXPLORATION skips
+- [ ] **Step 3.1:** Industry discovery (EXPLORATION only, BLOCKING) — spawn `industry-discovery-agent` Task (20 WebSearches). Validate with `industry-discovery-validator.py`
+- [ ] **Step 3.2:** Industry validation (EXPLORATION only) — spawn `generic-industry-validator` Tasks in parallel (5 WebSearches each, ALL industries)
+- [ ] **Step 3.4:** Data intelligence — `data-intelligence-router.py "<topic>"` → execute top 2-3 recommended scripts → COMPUTED_DATA
+- [ ] **Step 3.4b:** Calc-dispatcher (if revenue keywords) — `calc-dispatcher.py` for power-law-sizer/survival/monte-carlo → P10/P50/P90/P99. NEVER cite median alone
+- [ ] **Step 3.4c:** Early constraint detection (if routing constraints exist) — `constraint-inversion-debate.py --early-mode` → alternative paths for Wave 1
+- [ ] **Step 3.4d:** Operator mastery (MANDATORY ALWAYS) — `money-intelligence-runner.py --engine operator` → 5 layers: Timing/Reflexivity/Network/Cognitive/Deal. Inject ALL agent prompts + verdict
+- [ ] **Step 3.4e:** Experience brain (MANDATORY ALWAYS) — `experience-brain-runner.py` → Day 1/3/7 sequence, avoid list, tracking_id. Short Track = Day 1 action
+- [ ] **Step 3.4f:** Vicarious knowledge (MANDATORY ALWAYS) — `vicarious-knowledge-runner.py` → operator patterns (Voss/Hormozi/Levine). Inject ALL agent prompts
+- [ ] **Step 3.5.0:** Cognitive retrieval — `cognitive_retrieve.py --query "<topic>"` → SCH-NNN, MM-NN, ARCH-NNN. EXPLORATION = general schemas only
+- [ ] **Step 3.5:** WAVE 1 (BLOCKING) — spawn 8 BASE + addendum agents as parallel Tasks in SINGLE message:
+      BASE: schema-accumulator, persona-loader, contrarian-research-agent, market-reality-checker, failure-archaeologist, competitive-intelligence-engine, topic-spider, knowledge-graph-curator
+      ADDENDUM by intent_class: operator=+3, jurisdiction=+4, power_law=+2, grey_zone=+1, other=+0
+      Prepend: QUESTION_BANK + COMPUTED_DATA + COGNITIVE_CONTEXT + EARLY_INVERSIONS + OPERATOR/EXPERIENCE/VICARIOUS data
+      Write wave1-receipt JSON after return
+- [ ] **Step 3.6:** Ladder consumption — route `routing_context.ladder_research.drill_sources` to Wave 2 agents (forums→deep-comment-miner, registries→ground-truth-fetcher, etc.)
+- [ ] **Step 3.8:** WAVE 2 (BLOCKING for operator/power_law/grey_zone) — spawn 6 agents as parallel Tasks:
+      deep-comment-miner, ground-truth-fetcher, full-coverage-ingest, persona-insider-loader, financial-triangulator, hypothesis-generator
+      Write wave2-receipt JSON. Run `preflight-check.cjs`. <10 agents = [DEGRADED]
+- [ ] **Step 3.9:** Framework advisor (if persona agents ran) — `framework-advisor-runner.py` → pure analysis, NO attribution
+
+## SYNTHESIS
+- [ ] **Step 4:** Research synthesis — aggregate all 14 agent outputs, track contradictions. NO summary collapse
+- [ ] **Step 4.5:** Survivorship inversion (if failure rate >=20% cited) — spawn `survivorship-inverter` Task → OK/INSUFFICIENT_GROUND/INSUFFICIENT_DATA
+
+## HYPOTHESIS & TEST
+- [ ] **Step 5:** Generate 5 hypotheses — each with P10/P50/P90 via calc-dispatcher + money-flow tag via `money-flow-tagger.py`. Diversity check: if all same flow_type, regenerate (max 2x)
+- [ ] **Step 6:** Mountain Test v26 (DETERMINISTIC) — Q1(founder URL)/Q2(KG cohort)/Q3-LINDY(model age>=50y)/Q4-SLEEP(revenue without founder)/Q5-LEVERAGE(Naval hierarchy)/Q6-ROI(>=20%/mo for TIER_0/1)/Q7-PORTFOLIO(>=3 assets for TIER_0/1)/Q8-PORTFOLIO-OPTIMAL(model ROI vs computed portfolio P50, TIER_0/1 only)/Compounding/Asymmetry/MM-03(triangulator)/MM-04(10 failure modes)
+      Verdicts ONLY: KILL | SIDE_HUSTLE | SIDE_HUSTLE_WITH_STAIRCASE | MOUNTAIN_CANDIDATE | DEPLOY_CANDIDATE | INSUFFICIENT_SIGNAL
+      HARD CAP: Q4=NO + Q5=LABOR → SIDE_HUSTLE (no override). Q4=NO + Q5=HYBRID → SIDE_HUSTLE_WITH_STAIRCASE. Q4=YES + Q6>=20% + Q7=YES → DEPLOY_CANDIDATE (TIER_0/1)
+- [ ] **Step 6.3:** Stair-step detection — `stair-step-detector.py` before KILL on labor/freelancer grounds. bypass_approved=true suspends ENTREPRENEUR-NOT-FREELANCER kill
+- [ ] **Step 6.4:** Constraint-inversion debate — `constraint-inversion-debate.py` before REJECTED lock. 3-persona debate. ANY feasibility>=7 → downgrade REJECTED→CONDITIONAL
+- [ ] **Step 6.45:** Confidence calc — `conf = min(agent_response_rate, triangulation_confidence, 1-contradictions*0.1)`. Non-exempt verdicts need >=0.70
+- [ ] **Step 6.5:** Pulse check gate — MOUNTAIN_CANDIDATE → cap at PROVISIONAL_MOUNTAIN until buyer pulse
+- [ ] **Step 6.8:** Alternative generation (if verdict != MOUNTAIN) — role scan all value-chain positions + spawn opportunity-scanner
+- [ ] **Step 6.8.4:** Wound extraction (if KILL + relationship barrier) — `wound-extractor.py` → wound_map injected into 6.8.5
+- [ ] **Step 6.8.5:** Side-door scan (if KILL + relationship barrier) — `side-door-trigger.py` → if fires: spawn 8 power-network agents parallel (power-cartographer, gate-broker, tay-trang-positioner, proximity-engineer, ego-leverage-specialist, patron-acquisition-strategist, chameleon-communicator, value-fabricator) → synthesize 1-3 paths with chains/scripts/timelines. Skip if kill is math/regulatory only
+- [ ] **Step 6.9:** Teaching integration (only if --teach flag) — `teaching-integration.py`, Socratic probes + real cases
+
+## VERDICT OUTPUT
+- [ ] **Step 7:** Verdict synthesis (<=1500 words analyst, <=2000 words operator) — EXPLORATION: ALL industries by tier. FOUNDER_SPECIFIC + analyst: Mountain Test + Operator Mastery (narrative!) + Practical Intelligence + tracks + metadata. FOUNDER_SPECIFIC + operator: mentor-style narrative, zero tables/bullets, scripts as dialogue. Include: Knowledge fired, Research tiers, Tool exhaustion log, Risk factors, **Positioning Context (from Step 1.7)**, Sources
+- [ ] **Step 7.05:** Voice quality check — `output-voice-enforcer.py` → score ≥70 (operator) / ≥40 (analyst)
+- [ ] **Step 7.1:** Anti-orthodox gate — each recommendation checked: orthodoxy pattern (≥2 hits + <2 specificity = ORTHODOX), specificity (named person/company/script?), side-door check (front-door + alternative exists = ORTHODOX). Orthodox → rewrite with chain/script or remove. Log counts
+- [ ] **Step 7.5:** Red-team gate — spawn `post-synthesis-red-team`. gap<=3.0=PASS, 3-7=PASS_WITH_FLAGS, >=7=BLOCK+regenerate
+
+## PERSIST & VERIFY
+- [ ] **Step 8:** Build case JSON — `/tmp/case-<case_id>.json` with all required fields
+- [ ] **Step 9:** `persist-verdict.py` — atomic write case + verdict + memory.jsonl. Stop hook BLOCKS without this
+- [ ] **Step 9.5:** `persist-knowledge.py` — entities + kg index + calibration. Stop hook BLOCKS without this
+- [ ] **Step 9.6:** `verify-persistence.py` (6/6 checks) + `auto-evolve.py`. Stop hook BLOCKS without this
+- [ ] **Step 9.65:** Archive case to replay-archive.db (non-blocking — log warning on failure, don't halt)
+- [ ] **Step 9.7:** Print Brain Information Flow Audit — DATA/OPERATOR/EXPERIENCE/PERCEIVE/PROCESS/DEVELOP/VICARIOUS/POSITIONING/EVOLUTION layers. Never fake green
+- [ ] **Step 9.8:** Execution action creation (MOUNTAIN/CONDITIONAL_GO/PROVISIONAL_MOUNTAIN only) — extract first concrete action from verdict (must contain a NUMBER: "5 emails", "3 calls", "1 post"). Write `data/actions/ACTION-<case_id>.json`. Action must be ≤$50, ≤2h. Display: "🎯 First action (due 3 days): <action>. Report: /action resolve <id> completed '<result>'"
+- [ ] **Step 10:** Display full verdict to user + SRE increment. Do NOT just say "saved to file". STOP. No chaining
+- [ ] **Step 12:** Blueprint (MOUNTAIN=BLOCKING, SIDE_HUSTLE_PLUS=optional) — `/blueprint <case_id>` → 4 agents → 5-section blueprint
+- [ ] **Step 11:** Execution layer (user-triggered or MOUNTAIN+confirm) — spawn `execution-orchestrator` → 12-week playbook
+
+## QUALITY SELF-CHECK (before submitting verdict)
+- [ ] >=8 Wave 1 agents spawned as Tasks?
+- [ ] >=4 Wave 2 agents spawned as Tasks (MANDATORY for operator/power_law/grey_zone)?
+- [ ] Steps 3.4d + 3.4e + 3.4f ALL ran (MANDATORY ALWAYS)?
+- [ ] calc-dispatcher ran for revenue claims?
+- [ ] Verdict class is valid (KILL/SIDE_HUSTLE/SIDE_HUSTLE_WITH_STAIRCASE/MOUNTAIN_CANDIDATE/DEPLOY_CANDIDATE/INSUFFICIENT_SIGNAL/EXPLORATION_COMPLETE/EXPLORATION_ONGOING)?
+- [ ] Q4-SLEEP answered for every model (YES/NO/PARTIAL)?
+- [ ] **v26:** money_flow mapped with >=3 nodes + bottleneck identified?
+- [ ] **v26:** capital_trajectory designed (not just static TIER)?
+- [ ] **v26:** thesis_links filled — parent_thesis + related_cases?
+- [ ] **v26:** case JSON includes money_flow, thesis_links, capital_trajectory fields?
+- [ ] Q5-LEVERAGE classified for every model (CODE/MEDIA/CAPITAL/LABOR/HYBRID)?
+- [ ] Leverage Summary table present in verdict output?
+- [ ] Labor models (Q4=NO + Q5=LABOR) capped at SIDE_HUSTLE?
+- [ ] Confidence computed via formula (Step 6.45), not hand-assigned?
+- [ ] P10/P50/P90 present for ALL revenue claims (never median alone)?
+- [ ] Every numeric claim has [K]/[T]/[?] zone tag?
+- [ ] Operator Mastery section has NARRATIVE reasoning (not table-only)?
+- [ ] Practical Intelligence has Day 1/3/7 + tracking_id?
+- [ ] Short/Medium/Long track headers ALL present (even if N/A)?
+- [ ] Brain Information Flow Audit section present with all 8 layers?
+- [ ] persist-verdict.py + persist-knowledge.py + verify-persistence.py ALL called?
+- [ ] Full verdict OUTPUT to user (not just "saved to file")?
+- [ ] Grey_zone: Legal Boundary Disclaimer present (if intent_class=grey_zone_adjacent)?
+- [ ] Teaching Summary present (if --teach flag)?
+- [ ] Premise challenge ran (Step 2.45) — vehicle assumption tested?
+- [ ] `agents_fired` field set in case JSON for persist-verdict gate?
+- [ ] Wound extraction ran for relationship KILLs? (Step 6.8.4)
+- [ ] Compound density ≥2.0? (every action has ≥2 objectives)
+- [ ] Persona matrix generated per chain link? (different persona per person)
+- [ ] Voice quality score ≥70 (operator) / ≥40 (analyst)?
+- [ ] Side-door fired on relationship KILL? (Step 6.8.5 — if applicable)
+- [ ] Anti-orthodox gate ran? (Step 7.1 — orthodox recs rewritten/removed?)
+- [ ] Voice mode correct? (analyst default, operator if --voice operator)
+- [ ] ROI% calculated for every TIER_0/1 model? (deploy_cost, payback_days, founder_hours_post_setup)
+- [ ] Deployment Portfolio section present for TIER_0/1 verdicts?
+- [ ] Kill criteria per asset (30-day) specified for TIER_0/1?
+- [ ] Portfolio context present in verdict (TIER_0/1)? (PORTFOLIO COMPARISON section with P10/P50/P90)
+- [ ] Search queries from Search Rewriter (not generic "business ideas")?
+- [ ] Quality score: `stage0-quality-score.py --verdict-file <path>` → grade ≥C (95+)?
+- [ ] Mechanism knobs loaded at Step 0.6 (not hardcoded thresholds)?
+- [ ] Trace logged for ≥5 traced steps (trace_cli log-step)?
+- [ ] Verdict trace logged (trace_cli log-verdict) before Step 8?

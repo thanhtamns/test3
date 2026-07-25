@@ -1,0 +1,400 @@
+"""
+Multi-LLM Client Configuration for Knowledge Extraction Pipeline.
+Supports Claude, GPT-4, and Gemini with rate limiting and consensus scoring.
+"""
+
+import asyncio
+import os
+import time
+from dataclasses import dataclass, field
+from typing import Any, Optional
+from abc import ABC, abstractmethod
+import json
+
+# Confidence thresholds
+CONFIDENCE_THRESHOLDS = {
+    "auto_approve": 0.80,
+    "review": 0.60,
+    "reject": 0.60
+}
+
+# Model weights for consensus scoring
+MODEL_WEIGHTS = {
+    "claude": 0.40,
+    "gpt": 0.35,
+    "gemini": 0.25,
+    "ollama_local": 0.50,  # highest weight when local-first mode is active
+}
+
+# Local-first mode: set env KE_LOCAL_FIRST=1 to use Ollama as primary.
+LOCAL_FIRST_MODE = os.getenv("KE_LOCAL_FIRST", "0") == "1"
+LOCAL_CONFIDENCE_FALLBACK = 0.60  # below this, fall back to cloud
+
+
+@dataclass
+class RateLimiter:
+    """Token bucket rate limiter."""
+    requests_per_minute: int
+    _tokens: float = field(init=False)
+    _last_update: float = field(init=False)
+    _lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
+
+    def __post_init__(self):
+        self._tokens = float(self.requests_per_minute)
+        self._last_update = time.monotonic()
+
+    async def acquire(self):
+        async with self._lock:
+            now = time.monotonic()
+            elapsed = now - self._last_update
+            self._tokens = min(
+                self.requests_per_minute,
+                self._tokens + elapsed * (self.requests_per_minute / 60.0)
+            )
+            self._last_update = now
+
+            if self._tokens < 1:
+                wait_time = (1 - self._tokens) * (60.0 / self.requests_per_minute)
+                await asyncio.sleep(wait_time)
+                self._tokens = 0
+            else:
+                self._tokens -= 1
+
+
+@dataclass
+class LLMConfig:
+    """Configuration for an LLM provider."""
+    name: str
+    model: str
+    api_key_env: str
+    max_tokens: int = 4096
+    rate_limit_rpm: int = 60
+    weight: float = 0.33
+    timeout: int = 120
+
+    @property
+    def api_key(self) -> Optional[str]:
+        return os.getenv(self.api_key_env)
+
+
+class BaseLLMClient(ABC):
+    """Abstract base class for LLM clients."""
+
+    def __init__(self, config: LLMConfig):
+        self.config = config
+        self.rate_limiter = RateLimiter(config.rate_limit_rpm)
+
+    @abstractmethod
+    async def extract(self, prompt: str, source_text: str) -> dict[str, Any]:
+        """Extract knowledge from source text using structured prompt."""
+        pass
+
+    async def _call_with_retry(self, func, max_retries: int = 3) -> Any:
+        """Call function with exponential backoff retry."""
+        for attempt in range(max_retries):
+            try:
+                await self.rate_limiter.acquire()
+                return await func()
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    raise
+                wait = 2 ** attempt
+                await asyncio.sleep(wait)
+
+
+class ClaudeClient(BaseLLMClient):
+    """Anthropic Claude client via provider interface."""
+
+    async def extract(self, prompt: str, source_text: str) -> dict[str, Any]:
+        try:
+            import sys
+            from pathlib import Path
+            sys.path.insert(0, str(Path(__file__).resolve().parents[5] / ".claude" / "lib"))
+            from llm.factory import create_provider
+        except ImportError:
+            return {"error": "llm provider not available", "entries": []}
+
+        async def call():
+            provider = create_provider("claude")
+            full_prompt = f"{prompt}\n\n---\nSOURCE TEXT:\n{source_text}"
+            result = await asyncio.to_thread(
+                provider.complete, full_prompt, max_tokens=self.config.max_tokens
+            )
+            return self._parse_response(result.content)
+
+        return await self._call_with_retry(call)
+
+    def _parse_response(self, text: str) -> dict[str, Any]:
+        try:
+            # Try to extract JSON from response
+            start = text.find('[')
+            end = text.rfind(']') + 1
+            if start != -1 and end > start:
+                return {"entries": json.loads(text[start:end]), "raw": text}
+            return {"entries": [], "raw": text}
+        except json.JSONDecodeError:
+            return {"entries": [], "raw": text, "parse_error": True}
+
+
+class GPTClient(BaseLLMClient):
+    """OpenAI GPT client."""
+
+    async def extract(self, prompt: str, source_text: str) -> dict[str, Any]:
+        try:
+            from openai import AsyncOpenAI
+        except ImportError:
+            return {"error": "openai not installed", "entries": []}
+
+        if not self.config.api_key:
+            return {"error": "OPENAI_API_KEY not set", "entries": []}
+
+        client = AsyncOpenAI(api_key=self.config.api_key)
+
+        async def call():
+            response = await client.chat.completions.create(
+                model=self.config.model,
+                max_tokens=self.config.max_tokens,
+                messages=[{
+                    "role": "user",
+                    "content": f"{prompt}\n\n---\nSOURCE TEXT:\n{source_text}"
+                }],
+                response_format={"type": "json_object"}
+            )
+            return self._parse_response(response.choices[0].message.content)
+
+        return await self._call_with_retry(call)
+
+    def _parse_response(self, text: str) -> dict[str, Any]:
+        try:
+            data = json.loads(text)
+            entries = data.get("entries", data.get("knowledge_entries", []))
+            return {"entries": entries, "raw": text}
+        except json.JSONDecodeError:
+            return {"entries": [], "raw": text, "parse_error": True}
+
+
+class GeminiClient(BaseLLMClient):
+    """Google Gemini client."""
+
+    async def extract(self, prompt: str, source_text: str) -> dict[str, Any]:
+        try:
+            import google.generativeai as genai
+        except ImportError:
+            return {"error": "google-generativeai not installed", "entries": []}
+
+        if not self.config.api_key:
+            return {"error": "GOOGLE_API_KEY not set", "entries": []}
+
+        genai.configure(api_key=self.config.api_key)
+        model = genai.GenerativeModel(self.config.model)
+
+        async def call():
+            response = await asyncio.to_thread(
+                model.generate_content,
+                f"{prompt}\n\n---\nSOURCE TEXT:\n{source_text}"
+            )
+            return self._parse_response(response.text)
+
+        return await self._call_with_retry(call)
+
+    def _parse_response(self, text: str) -> dict[str, Any]:
+        try:
+            start = text.find('[')
+            end = text.rfind(']') + 1
+            if start != -1 and end > start:
+                return {"entries": json.loads(text[start:end]), "raw": text}
+            return {"entries": [], "raw": text}
+        except json.JSONDecodeError:
+            return {"entries": [], "raw": text, "parse_error": True}
+
+
+class OllamaClient(BaseLLMClient):
+    """Local Ollama client. Primary when KE_LOCAL_FIRST=1."""
+
+    DEFAULT_ENDPOINT = "http://localhost:11434/api/chat"
+
+    async def extract(self, prompt: str, source_text: str) -> dict[str, Any]:
+        try:
+            import httpx
+        except ImportError:
+            try:
+                import urllib.request  # fallback - sync, wrapped in to_thread
+                import urllib.error
+            except ImportError:
+                return {"error": "httpx/urllib not available", "entries": []}
+
+        endpoint = os.getenv("OLLAMA_ENDPOINT", self.DEFAULT_ENDPOINT)
+
+        async def call():
+            payload = {
+                "model": self.config.model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": f"{prompt}\n\n---\nSOURCE TEXT:\n{source_text}",
+                    }
+                ],
+                "stream": False,
+                "format": "json",
+                "options": {"temperature": 0.2, "num_predict": self.config.max_tokens},
+            }
+            try:
+                import httpx
+                async with httpx.AsyncClient(timeout=self.config.timeout) as client:
+                    r = await client.post(endpoint, json=payload)
+                    r.raise_for_status()
+                    data = r.json()
+                    text = data.get("message", {}).get("content", "")
+                    return self._parse_response(text)
+            except ImportError:
+                # urllib fallback
+                import urllib.request
+                import json as _json
+                req = urllib.request.Request(
+                    endpoint,
+                    data=_json.dumps(payload).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                )
+
+                def _sync_call():
+                    with urllib.request.urlopen(req, timeout=self.config.timeout) as r:
+                        return _json.loads(r.read().decode("utf-8"))
+
+                data = await asyncio.to_thread(_sync_call)
+                text = data.get("message", {}).get("content", "")
+                return self._parse_response(text)
+
+        return await self._call_with_retry(call)
+
+    def _parse_response(self, text: str) -> dict[str, Any]:
+        try:
+            # Ollama JSON mode returns a JSON string; may be wrapped in an object
+            if not text:
+                return {"entries": [], "raw": text}
+            # Try bare array first
+            start = text.find("[")
+            end = text.rfind("]") + 1
+            if start != -1 and end > start:
+                return {"entries": json.loads(text[start:end]), "raw": text}
+            # Otherwise parse as object with 'entries'
+            obj = json.loads(text)
+            entries = obj.get("entries", obj.get("knowledge_entries", []))
+            return {"entries": entries, "raw": text}
+        except json.JSONDecodeError:
+            return {"entries": [], "raw": text, "parse_error": True}
+
+
+def _load_local_model_name() -> str:
+    """Read persisted local_llm_choice.json; fall back to qwen 7B."""
+    try:
+        choice_path = os.path.join(os.path.dirname(__file__), "local_llm_choice.json")
+        if os.path.exists(choice_path):
+            with open(choice_path, "r", encoding="utf-8") as f:
+                return json.load(f).get("model", "qwen2.5:7b-instruct-q4_K_M")
+    except Exception:
+        pass
+    return "qwen2.5:7b-instruct-q4_K_M"
+
+
+# Default configurations
+LLM_CONFIGS = {
+    "claude": LLMConfig(
+        name="claude",
+        model="claude-sonnet-4-20250514",
+        api_key_env="ANTHROPIC_API_KEY",
+        weight=MODEL_WEIGHTS["claude"],
+        rate_limit_rpm=50
+    ),
+    "gpt": LLMConfig(
+        name="gpt",
+        model="gpt-4-turbo",
+        api_key_env="OPENAI_API_KEY",
+        weight=MODEL_WEIGHTS["gpt"],
+        rate_limit_rpm=60
+    ),
+    "gemini": LLMConfig(
+        name="gemini",
+        model="gemini-2.5-flash",
+        api_key_env="GOOGLE_API_KEY",
+        weight=MODEL_WEIGHTS["gemini"],
+        rate_limit_rpm=60
+    ),
+    "ollama_local": LLMConfig(
+        name="ollama_local",
+        model=_load_local_model_name(),
+        api_key_env="UNUSED",
+        weight=MODEL_WEIGHTS["ollama_local"],
+        rate_limit_rpm=600,  # local, no quota
+        timeout=600,
+    ),
+}
+
+
+def create_client(name: str) -> BaseLLMClient:
+    """Factory function to create LLM client by name."""
+    config = LLM_CONFIGS.get(name)
+    if not config:
+        raise ValueError(f"Unknown LLM: {name}")
+
+    clients = {
+        "claude": ClaudeClient,
+        "gpt": GPTClient,
+        "gemini": GeminiClient,
+        "ollama_local": OllamaClient,
+    }
+    return clients[name](config)
+
+
+def calculate_consensus(
+    claude_entries: list,
+    gpt_entries: list,
+    gemini_entries: list
+) -> tuple[list[dict], float]:
+    """
+    Calculate consensus across 3 models.
+    Returns entries that appear in at least 2 models with consensus score.
+    """
+    # Normalize entries for comparison
+    def normalize(entry: dict) -> str:
+        statement = entry.get("statement", entry.get("content", {}).get("statement", ""))
+        return statement.lower().strip()[:100]
+
+    claude_normalized = {normalize(e): e for e in claude_entries}
+    gpt_normalized = {normalize(e): e for e in gpt_entries}
+    gemini_normalized = {normalize(e): e for e in gemini_entries}
+
+    all_keys = set(claude_normalized) | set(gpt_normalized) | set(gemini_normalized)
+    consensus_entries = []
+
+    for key in all_keys:
+        if not key:
+            continue
+
+        votes = []
+        if key in claude_normalized:
+            votes.append(("claude", claude_normalized[key]))
+        if key in gpt_normalized:
+            votes.append(("gpt", gpt_normalized[key]))
+        if key in gemini_normalized:
+            votes.append(("gemini", gemini_normalized[key]))
+
+        if len(votes) >= 2:  # 2-of-3 consensus
+            # Use highest-weight model's entry as base
+            votes.sort(key=lambda x: MODEL_WEIGHTS[x[0]], reverse=True)
+            entry = votes[0][1].copy()
+
+            # Calculate weighted consensus score
+            score = sum(MODEL_WEIGHTS[v[0]] for v in votes)
+            entry["model_consensus"] = round(score, 2)
+            entry["claude_agreed"] = key in claude_normalized
+            entry["gpt_agreed"] = key in gpt_normalized
+            entry["gemini_agreed"] = key in gemini_normalized
+
+            consensus_entries.append(entry)
+
+    avg_consensus = (
+        sum(e["model_consensus"] for e in consensus_entries) / len(consensus_entries)
+        if consensus_entries else 0
+    )
+
+    return consensus_entries, round(avg_consensus, 2)

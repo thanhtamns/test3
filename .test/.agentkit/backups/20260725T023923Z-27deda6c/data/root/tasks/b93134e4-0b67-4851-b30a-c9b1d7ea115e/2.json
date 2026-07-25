@@ -1,0 +1,19 @@
+{
+  "id": "2",
+  "subject": "Phase 2: Seed Script Docker",
+  "description": "Create Dockerfile.seed for cmd/seed/main.go, make API URL configurable via env var, add seed service to cloud/docker-compose.yml with profiles. See plans/260605-investor-demo-stack/phase-02-seed-script-docker.md",
+  "activeForm": "Dockerizing seed script",
+  "status": "pending",
+  "blocks": [
+    "3",
+    "5"
+  ],
+  "blockedBy": [],
+  "metadata": {
+    "phase": 2,
+    "planDir": "plans/260605-investor-demo-stack",
+    "phaseFile": "phase-02-seed-script-docker.md",
+    "priority": "P1",
+    "effort": "30min"
+  }
+}

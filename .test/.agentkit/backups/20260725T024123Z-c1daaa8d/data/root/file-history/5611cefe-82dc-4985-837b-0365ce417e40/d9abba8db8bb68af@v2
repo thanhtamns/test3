@@ -1,0 +1,218 @@
+#!/usr/bin/env python3
+"""
+MTDE Decomposer — generates prioritized micro-questions from topic + features + principles.
+Deduplicates, prioritizes by weight × alignment × info gap, caps at budget.
+"""
+
+import json
+import re
+from dataclasses import dataclass, field
+from difflib import SequenceMatcher
+from pathlib import Path
+from typing import Optional
+
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+TEMPLATES_PATH = DATA_DIR / "dimension-templates.json"
+
+
+@dataclass
+class MicroQuestion:
+    text: str
+    source: str  # "principle" | "dimension"
+    priority: float
+    target_fields: list = field(default_factory=list)
+    dimension: str = ""
+    batch_group: int = 0
+
+    def to_dict(self):
+        return {
+            "text": self.text,
+            "source": self.source,
+            "priority": round(self.priority, 2),
+            "target_fields": self.target_fields,
+            "dimension": self.dimension,
+            "batch_group": self.batch_group,
+        }
+
+
+class MTDEDecomposer:
+    def __init__(self, templates_path: Optional[Path] = None):
+        path = templates_path or TEMPLATES_PATH
+        with open(path, "r", encoding="utf-8") as f:
+            self.templates = json.load(f)
+        self.similarity_threshold = 0.75
+
+    def decompose(
+        self,
+        topic: str,
+        features: dict,
+        principle_questions: Optional[list] = None,
+        budget: int = 200,
+    ) -> list:
+        questions = []
+        variables = self._extract_variables(topic, features)
+
+        if principle_questions:
+            for q in principle_questions:
+                text = self._fill_template(q, variables)
+                questions.append(MicroQuestion(
+                    text=text,
+                    source="principle",
+                    priority=10.0,
+                    target_fields=self._infer_target_fields(q),
+                    dimension=self._infer_dimension(q),
+                ))
+
+        for dim in self.templates["dimensions"]:
+            info_gap_multiplier = self._calc_info_gap(dim, features)
+            for q_template in dim["questions"]:
+                text = self._fill_template(q_template, variables)
+                if not text or text == q_template:
+                    continue
+                questions.append(MicroQuestion(
+                    text=text,
+                    source="dimension",
+                    priority=dim["weight"] * info_gap_multiplier,
+                    target_fields=dim["required_fields"],
+                    dimension=dim["id"],
+                ))
+
+        questions = self._deduplicate(questions)
+        questions.sort(key=lambda q: q.priority, reverse=True)
+        questions = questions[:budget]
+
+        self._assign_batches(questions, batch_size=10)
+        return questions
+
+    def _extract_variables(self, topic: str, features: dict) -> dict:
+        variables = {
+            "opportunity": topic,
+            "niche": topic,
+            "year": "2026",
+        }
+
+        words = topic.lower().split()
+        variables["business_type"] = topic
+        variables["country"] = features.get("country", "Vietnam")
+
+        industry = features.get("industry", "")
+        if industry:
+            variables["business_type"] = industry
+            variables["niche"] = f"{industry} {topic}"
+
+        return variables
+
+    def _fill_template(self, template: str, variables: dict) -> str:
+        result = template
+        for key, val in variables.items():
+            result = result.replace(f"{{{key}}}", str(val))
+
+        unfilled = re.findall(r'\{(\w+)\}', result)
+        for var in unfilled:
+            result = result.replace(f"{{{var}}}", variables.get("opportunity", ""))
+
+        return result
+
+    def _calc_info_gap(self, dimension: dict, features: dict) -> float:
+        required = dimension.get("required_fields", [])
+        if not required:
+            return 1.0
+
+        missing = 0
+        for field_name in required:
+            val = features.get(field_name)
+            if val is None or val == "unknown":
+                missing += 1
+
+        return 1.0 + (missing / len(required))
+
+    def _infer_target_fields(self, question_text: str) -> list:
+        field_hints = {
+            "how many": ["competition_count"],
+            "competitors": ["competition_count"],
+            "revenue": ["tam_usd"],
+            "first sale": ["time_to_first_revenue_days"],
+            "time to": ["time_to_first_revenue_days"],
+            "moat": ["replication_time_months"],
+            "barrier": ["barrier_score"],
+            "switch": ["switching_cost_dollars"],
+        }
+        fields = []
+        lower = question_text.lower()
+        for hint, target in field_hints.items():
+            if hint in lower:
+                fields.extend(target)
+        return list(set(fields))
+
+    def _infer_dimension(self, question_text: str) -> str:
+        dim_hints = {
+            "competitor": "DIM-01",
+            "market size": "DIM-02",
+            "revenue": "DIM-03",
+            "moat": "DIM-04",
+            "leverage": "DIM-05",
+            "upside": "DIM-06",
+            "information": "DIM-07",
+            "regulation": "DIM-08",
+            "language": "DIM-09",
+            "skill": "DIM-10",
+            "timing": "DIM-11",
+            "fail": "DIM-12",
+            "tutorial": "DIM-13",
+            "chokepoint": "DIM-14",
+            "exit": "DIM-15",
+        }
+        lower = question_text.lower()
+        for hint, dim_id in dim_hints.items():
+            if hint in lower:
+                return dim_id
+        return "DIM-01"
+
+    def _deduplicate(self, questions: list) -> list:
+        unique = []
+        seen_texts = []
+        for q in questions:
+            is_dup = False
+            for seen in seen_texts:
+                if self._similarity(q.text, seen) > self.similarity_threshold:
+                    is_dup = True
+                    break
+            if not is_dup:
+                unique.append(q)
+                seen_texts.append(q.text)
+        return unique
+
+    def _similarity(self, a: str, b: str) -> float:
+        return SequenceMatcher(None, a.lower(), b.lower()).ratio()
+
+    def _assign_batches(self, questions: list, batch_size: int = 10):
+        for i, q in enumerate(questions):
+            q.batch_group = i // batch_size
+
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="MTDE Decomposer")
+    parser.add_argument("--topic", type=str, required=True)
+    parser.add_argument("--features", type=str, default="{}")
+    parser.add_argument("--budget", type=int, default=200)
+    parser.add_argument("--principle-questions", type=str, default="[]")
+    args = parser.parse_args()
+
+    features = json.loads(args.features)
+    principle_qs = json.loads(args.principle_questions)
+
+    decomposer = MTDEDecomposer()
+    questions = decomposer.decompose(args.topic, features, principle_qs, args.budget)
+
+    output = {
+        "topic": args.topic,
+        "total_questions": len(questions),
+        "questions": [q.to_dict() for q in questions],
+    }
+    print(json.dumps(output, indent=2))
+
+
+if __name__ == "__main__":
+    main()

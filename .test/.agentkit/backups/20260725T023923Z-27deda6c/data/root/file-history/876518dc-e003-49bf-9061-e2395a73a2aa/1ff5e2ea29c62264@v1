@@ -1,0 +1,32 @@
+---
+title: "E2E Local Test — Demo-Ready Validation"
+description: ""
+status: pending
+priority: P2
+branch: "master"
+tags: []
+blockedBy: []
+blocks: []
+created: "2026-06-04T15:44:01.386Z"
+createdBy: "ck:plan"
+source: skill
+---
+
+# E2E Local Test — Demo-Ready Validation
+
+## Overview
+
+<!-- Brief description -->
+
+## Phases
+
+| Phase | Name | Status |
+|-------|------|--------|
+| 1 | [Rebuild Docker Stack](./phase-01-rebuild-docker-stack.md) | Pending |
+| 2 | [Seed and Dashboard](./phase-02-seed-and-dashboard.md) | Pending |
+| 3 | [CLI Benchmark Script](./phase-03-cli-benchmark-script.md) | Pending |
+| 4 | [Live Session and Quality Scorecard](./phase-04-live-session-and-quality-scorecard.md) | Pending |
+
+## Dependencies
+
+<!-- Cross-plan dependencies -->

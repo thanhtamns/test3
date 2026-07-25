@@ -1,0 +1,132 @@
+---
+phase: 2
+title: "Tournament Core (Debate + Elo Scoring + Diversity)"
+status: pending
+priority: P1
+effort: "5h"
+dependencies: [1]
+---
+
+# Phase 2: Tournament Core (Debate + Elo Scoring + Diversity)
+
+## Overview
+
+Implement the tournament-protocol.md agent protocol and Python Elo scorer. The tournament agent harvests hypotheses from evidence vault + pattern matcher output, runs round-robin pairwise LLM-judged debates, computes Elo rankings, and enforces diversity. Includes proximity/diversity check (merged from original Phase 4).
+
+## Requirements
+
+- Functional: Tournament agent extracts 3-15 OpportunityHypothesis from evidence vault + pattern matcher
+- Functional: Round-robin pairwise debates with structured JSON scoring on 5 criteria
+- Functional: Elo rankings computed after all debates
+- Functional: Diversity enforcement ensures top-5 spans 3+ business model clusters
+- Non-functional: Each debate is a single LLM reasoning step (not multi-turn)
+- Non-functional: Round-robin for all pairs (no Swiss — simpler, proven correct for N≤15)
+- Non-functional: Marginal debates (< 5% score gap) retried once for consistency
+
+## Architecture
+
+### Tournament Flow (inside tournament-executor agent)
+
+```
+1. READ evidence vault + pattern matcher top_5 + founder context
+2. HARVEST: Extract distinct opportunities into OpportunityHypothesis list
+   - Sources: pattern matcher archetypes, evidence vault opportunity mentions,
+     contrarian angles, circuit designer cash flow positions
+   - De-duplicate by business model + market overlap
+   - Cap at 10 hypotheses (if >10, pre-filter by keyword relevance score)
+3. CLUSTER: Assign business_model_type via keyword matching
+   - SaaS, Service, Commerce, Content, Arbitrage, Infrastructure
+   - Assign customer_segment: B2B, B2C, B2B2C
+4. DEBATE: Round-robin all pairs
+   - For each pair: run debate prompt, get JSON scores
+   - If score gap < 5%: retry once (tie-break)
+   - Record DebateResult with scores + key_argument
+5. RANK: Compute Elo ratings from all debate results
+   - Call Python elo_engine.py for math
+   - Sort by final Elo rating
+6. DIVERSITY CHECK: Ensure top-5 spans 3+ clusters
+   - If homogeneous: promote highest-ranked from underrepresented cluster
+   - Demoted hypothesis moves to "honorable mention" (not killed)
+7. OUTPUT: Write tournament-result.md with:
+   - Ranked hypotheses with Elo + debate highlights
+   - Diversity report
+   - Debate count + retry count
+```
+
+### Round-Robin Math
+
+| N hypotheses | Pairs (N choose 2) | Estimated LLM calls | Wall time (~3s each) |
+|-------------|--------------------|--------------------|---------------------|
+| 3 | 3 | 3-4 | ~12s |
+| 5 | 10 | 10-12 | ~36s |
+| 8 | 28 | 28-34 | ~100s |
+| 10 | 45 | 45-54 | ~162s |
+
+**Hard cap: N=10.** If harvest produces >10 hypotheses, pre-filter by keyword relevance score (highest-matching hypotheses kept). For most analyses, N=5-8 is typical → 10-34 calls → 36-100s. Acceptable within the +2-3 min budget.
+
+### Diversity Enforcement (Keyword-Based)
+
+```python
+BUSINESS_MODEL_KEYWORDS = {
+    "SaaS": ["subscription", "platform", "software", "tool", "app", "API"],
+    "Service": ["consulting", "agency", "freelance", "done-for-you", "coaching"],
+    "Commerce": ["sell", "product", "ecommerce", "dropship", "FBA", "export"],
+    "Content": ["course", "ebook", "newsletter", "media", "youtube", "community"],
+    "Arbitrage": ["arbitrage", "flip", "spread", "middleman", "broker", "resell"],
+    "Infrastructure": ["API", "data", "hosting", "picks-and-shovels", "tooling"],
+}
+```
+
+Cluster assignment: scan thesis text, assign highest-matching cluster. If ambiguous (0 or 2+ matches), agent classifies via single LLM call (fallback).
+
+After ranking, check if top-5 spans >= 3 clusters. If not, promote highest-ranked hypothesis from underrepresented cluster into top-5, demoting the lowest-ranked same-cluster entry. Demoted is NOT killed — just reranked.
+
+## Related Code Files
+
+- Create: `.claude/agents/core/intelligence/tournament-protocol.md` (full protocol)
+- Create: `.claude/lib/intelligence/tournament/models.py`
+- Create: `.claude/lib/intelligence/tournament/elo_engine.py`
+- Read: `.claude/agents/core/intelligence/evidence-vault-protocol.md` — structural pattern
+- Read: `.claude/agents/core/intelligence/reasoning-chain-protocol.md` — structural pattern
+- Read: `.claude/skills/business/startup/SKILL.md:194-208` — Phase 2.5C output format (pattern matcher)
+
+## Implementation Steps
+
+1. Create `tournament/models.py`:
+   - `OpportunityHypothesis` (standalone, per Phase 1 design)
+   - `DebateResult`: pair_id, scores_a, scores_b, total_a, total_b, winner, key_argument, is_retry
+   - `TournamentResult`: hypotheses (ranked), debates (list), diversity_report, debate_count, retry_count
+   - All with `to_dict()` and `from_dict()` for JSON serialization
+2. Create `tournament/elo_engine.py`:
+   - `expected_score(ra, rb) -> float`
+   - `elo_update(ra, rb, winner, k=32) -> tuple[float, float]`
+   - `compute_rankings(hypotheses, debates) -> list[OpportunityHypothesis]` — process all debates, return sorted by Elo
+3. Write `tournament-protocol.md`:
+   - Header: agent name, model recommendation (opus for quality), timeout
+   - Input specification: evidence_vault_path, pattern_matcher_top5, founder_context
+   - Step-by-step protocol: harvest → cluster → debate → rank → diversity → output
+   - Debate prompt template (from Phase 1 design)
+   - Output specification: tournament-result.md format
+   - Error handling: if LLM returns malformed JSON, retry once with stricter prompt; if still malformed, log and score as DRAW (max 1 retry per debate for malformed JSON, separate from marginal-score retry)
+4. Add cluster assignment logic to protocol:
+   - Keyword matching as primary
+   - Single LLM classification call as fallback for ambiguous cases
+5. Add diversity enforcement logic:
+   - Count clusters in top-5
+   - Promotion/demotion if < 3 clusters
+
+## Success Criteria
+
+- [ ] Tournament protocol is self-contained markdown following evidence-vault-protocol.md pattern
+- [ ] OpportunityHypothesis has zero imports from money_flow_graph
+- [ ] Elo engine unit tests pass with known chess scenarios
+- [ ] Debate prompt template produces valid JSON (manual test with sample hypotheses)
+- [ ] Diversity enforcement correctly promotes underrepresented clusters in test scenarios
+- [ ] Round-robin generates correct number of pairs for N=3,5,8,10
+
+## Risk Assessment
+
+- **Risk:** 45 debates for N=10 (hard cap) may exceed tournament-executor agent's context window
+  - Mitigation: Protocol instructs batched processing — debate 10 pairs, summarize, debate next 10
+- **Risk:** LLM judge inconsistency (same pair, different outcome across retries)
+  - Mitigation: temperature=0, structured JSON output, retry only marginal cases (< 5% gap)

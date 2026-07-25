@@ -1,0 +1,40 @@
+package api
+
+import (
+	"net/http"
+	"os"
+	"strings"
+)
+
+func withCORS(next http.Handler) http.Handler {
+	allowedOrigin := os.Getenv("CORS_ORIGIN")
+	if allowedOrigin == "" {
+		allowedOrigin = "http://localhost:3000"
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		if origin != "" && originAllowed(origin, allowedOrigin) {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Encoding, Authorization, X-Tenant-ID")
+			w.Header().Set("Access-Control-Max-Age", "3600")
+		}
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func originAllowed(origin, allowed string) bool {
+	for _, a := range strings.Split(allowed, ",") {
+		if strings.TrimSpace(a) == origin {
+			return true
+		}
+	}
+	return false
+}

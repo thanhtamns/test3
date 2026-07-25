@@ -1,0 +1,1006 @@
+[
+  {
+    "id": "PROTO-PAYMENT-SQUEEZE",
+    "name": "Payment Timing Squeeze",
+    "description": "Customer delays payment while your costs continue",
+    "category": "cash_crisis",
+    "frequency": "23% of cash flow deaths",
+    "recognition_cues": [
+      {
+        "cue": "Customer mentions cash flow issues",
+        "weight": 0.8,
+        "category": "behavior",
+        "must_have": false
+      },
+      {
+        "cue": "Payment excuse changes each follow-up",
+        "weight": 0.9,
+        "category": "behavior",
+        "must_have": false
+      },
+      {
+        "cue": "Customer still spending on other things",
+        "weight": 0.7,
+        "category": "behavior",
+        "must_have": false
+      },
+      {
+        "cue": "Your runway less than 60 days",
+        "weight": 0.6,
+        "category": "financial",
+        "must_have": false
+      }
+    ],
+    "expert_response": {
+      "immediate_action": "Stop all non-essential work for this customer",
+      "day_1_action": "Call (not email) with specific payment deadline",
+      "day_3_action": "If no payment, written notice of work pause",
+      "day_7_action": "Escalate to legal notice if amount exceeds $5K",
+      "mental_simulation": "If I keep working, they'll keep delaying. If I stop, they'll prioritize or I cut losses early.",
+      "stop_condition": "Payment received OR relationship terminated"
+    },
+    "novice_mistakes": [
+      "Keep working hoping payment comes",
+      "Accept new excuses each time",
+      "Wait for customer to sort out their issues",
+      "Send polite email reminders instead of calling"
+    ],
+    "linked_decision_points": [],
+    "success_rate_if_followed": 0.78,
+    "death_rate_if_ignored": 0.45,
+    "sample_size": 47,
+    "confidence": 0.82,
+    "tags": [
+      "cash_flow",
+      "collections",
+      "customer"
+    ]
+  },
+  {
+    "id": "PROTO-ZERO-CAPITAL-SERVICE",
+    "name": "Zero Capital Service Launch",
+    "description": "$0 capital but have valuable service skill",
+    "category": "opportunity",
+    "frequency": "Most common bootstrap pattern",
+    "recognition_cues": [
+      {
+        "cue": "Have marketable skill but no capital",
+        "weight": 0.9,
+        "category": "financial",
+        "must_have": true
+      },
+      {
+        "cue": "Service can be delivered remotely",
+        "weight": 0.7,
+        "category": "structural",
+        "must_have": false
+      },
+      {
+        "cue": "Know potential customers personally",
+        "weight": 0.6,
+        "category": "market",
+        "must_have": false
+      },
+      {
+        "cue": "Can start part-time while employed",
+        "weight": 0.5,
+        "category": "timing",
+        "must_have": false
+      }
+    ],
+    "expert_response": {
+      "immediate_action": "List 10 people who need your skill and can pay",
+      "day_1_action": "Contact top 3 with specific offer and price",
+      "day_3_action": "Follow up with remaining 7, ask for referrals",
+      "day_7_action": "First paying client or pivot offer based on feedback",
+      "mental_simulation": "If I wait to be ready, I never start. If I reach out now, worst case is learning what they actually need.",
+      "stop_condition": "First paying client OR 20 rejections with clear feedback"
+    },
+    "novice_mistakes": [
+      "Build website before having any clients",
+      "Wait until you have perfect portfolio",
+      "Undercharge to seem competitive",
+      "Avoid reaching out to people you know"
+    ],
+    "linked_decision_points": [],
+    "success_rate_if_followed": 0.65,
+    "death_rate_if_ignored": 0.0,
+    "sample_size": 120,
+    "confidence": 0.75,
+    "tags": [
+      "bootstrap",
+      "service",
+      "zero_capital"
+    ]
+  },
+  {
+    "id": "PROTO-CUSTOMER-CONCENTRATION",
+    "name": "Customer Concentration Risk",
+    "description": "One customer represents more than 40% of revenue",
+    "category": "risk",
+    "frequency": "35% of small business failures cite this",
+    "recognition_cues": [
+      {
+        "cue": "Single customer over 40% of revenue",
+        "weight": 0.95,
+        "category": "financial",
+        "must_have": true
+      },
+      {
+        "cue": "Customer knows they are your biggest",
+        "weight": 0.7,
+        "category": "counterparty",
+        "must_have": false
+      },
+      {
+        "cue": "No active pipeline for new customers",
+        "weight": 0.8,
+        "category": "structural",
+        "must_have": false
+      },
+      {
+        "cue": "Customer makes demands knowing your dependence",
+        "weight": 0.6,
+        "category": "behavior",
+        "must_have": false
+      }
+    ],
+    "expert_response": {
+      "immediate_action": "Calculate exact runway if this customer leaves tomorrow",
+      "day_1_action": "Identify 5 potential customers in different industries",
+      "day_3_action": "Reach out to 3 potential customers with offers",
+      "day_7_action": "Establish recurring prospecting time (2hr/week minimum)",
+      "mental_simulation": "If I don't diversify now while things are good, I'll be desperate when they leave. Desperate = bad deals.",
+      "stop_condition": "No single customer exceeds 30% of revenue"
+    },
+    "novice_mistakes": [
+      "Assume loyal customer will never leave",
+      "Focus all energy on keeping big customer happy",
+      "Ignore prospecting because too busy with current work",
+      "Accept worse terms to keep the relationship"
+    ],
+    "linked_decision_points": [],
+    "success_rate_if_followed": 0.72,
+    "death_rate_if_ignored": 0.55,
+    "sample_size": 83,
+    "confidence": 0.8,
+    "tags": [
+      "risk",
+      "diversification",
+      "customer"
+    ]
+  },
+  {
+    "id": "PROTO-GROWTH-KILLS-CASH",
+    "name": "Growth Killing Cash",
+    "description": "Revenue growing but cash declining - classic growth trap",
+    "category": "cash_crisis",
+    "frequency": "18% of profitable businesses fail this way",
+    "recognition_cues": [
+      {
+        "cue": "Revenue increasing month over month",
+        "weight": 0.8,
+        "category": "financial",
+        "must_have": true
+      },
+      {
+        "cue": "Bank balance decreasing despite profits",
+        "weight": 0.9,
+        "category": "financial",
+        "must_have": true
+      },
+      {
+        "cue": "Hiring or inventory purchases increasing",
+        "weight": 0.7,
+        "category": "structural",
+        "must_have": false
+      },
+      {
+        "cue": "Payment terms longer than your payables",
+        "weight": 0.8,
+        "category": "timing",
+        "must_have": false
+      }
+    ],
+    "expert_response": {
+      "immediate_action": "Calculate Cash Conversion Cycle (DIO + DSO - DPO)",
+      "day_1_action": "Identify which growth activities consume most cash",
+      "day_3_action": "Negotiate faster payment terms OR slower vendor terms",
+      "day_7_action": "Implement deposit/milestone structure for new deals",
+      "mental_simulation": "If I keep growing at this rate, I'll be profitable but bankrupt. Slow growth beats dead company.",
+      "stop_condition": "CCC is negative OR growth rate matches cash generation"
+    },
+    "novice_mistakes": [
+      "Celebrate revenue growth without watching cash",
+      "Hire before revenue is collected",
+      "Offer generous payment terms to win deals",
+      "Ignore working capital requirements"
+    ],
+    "linked_decision_points": [],
+    "success_rate_if_followed": 0.81,
+    "death_rate_if_ignored": 0.62,
+    "sample_size": 57,
+    "confidence": 0.87,
+    "tags": [
+      "cash_flow",
+      "growth",
+      "working_capital"
+    ]
+  },
+  {
+    "id": "PROTO-NET30-TRAP",
+    "name": "Net-30 Death Trap",
+    "description": "Offering Net-30 terms when runway is under 60 days",
+    "category": "cash_crisis",
+    "frequency": "Hidden killer - often not recognized until too late",
+    "recognition_cues": [
+      {
+        "cue": "Offering Net-30 payment terms",
+        "weight": 0.7,
+        "category": "structural",
+        "must_have": true
+      },
+      {
+        "cue": "Runway less than 60 days",
+        "weight": 0.9,
+        "category": "financial",
+        "must_have": true
+      },
+      {
+        "cue": "Customers actually pay Net-45 or later",
+        "weight": 0.8,
+        "category": "behavior",
+        "must_have": false
+      },
+      {
+        "cue": "Vendor terms are Net-15 or COD",
+        "weight": 0.7,
+        "category": "timing",
+        "must_have": false
+      }
+    ],
+    "expert_response": {
+      "immediate_action": "List all outstanding receivables with actual age",
+      "day_1_action": "Call every invoice over 25 days with payment request",
+      "day_3_action": "Implement 50% upfront for all new projects",
+      "day_7_action": "Renegotiate vendor terms to Net-30 minimum",
+      "mental_simulation": "Every Net-30 invoice is a 30-day interest-free loan to my customer funded by my survival.",
+      "stop_condition": "DSO under 20 days OR runway over 90 days"
+    },
+    "novice_mistakes": [
+      "Offer Net-30 because competitors do",
+      "Don't track actual payment days vs terms",
+      "Feel awkward asking for deposits",
+      "Prioritize winning deal over payment terms"
+    ],
+    "linked_decision_points": [],
+    "success_rate_if_followed": 0.76,
+    "death_rate_if_ignored": 0.58,
+    "sample_size": 41,
+    "confidence": 0.79,
+    "tags": [
+      "cash_flow",
+      "payment_terms",
+      "runway"
+    ]
+  },
+  {
+    "id": "PROTO-POSITION-ARBITRAGE",
+    "name": "Position Arbitrage Opportunity",
+    "description": "Two parties need each other but aren't connected - Marc Rich pattern",
+    "category": "opportunity",
+    "frequency": "Rare but extremely high value when found",
+    "recognition_cues": [
+      {
+        "cue": "Party A has supply Party B needs",
+        "weight": 0.9,
+        "category": "market",
+        "must_have": true
+      },
+      {
+        "cue": "Neither party knows the other exists or is willing",
+        "weight": 0.8,
+        "category": "structural",
+        "must_have": true
+      },
+      {
+        "cue": "You have relationship or access to both",
+        "weight": 0.7,
+        "category": "counterparty",
+        "must_have": false
+      },
+      {
+        "cue": "Large players avoiding due to perceived risk",
+        "weight": 0.6,
+        "category": "behavior",
+        "must_have": false
+      }
+    ],
+    "expert_response": {
+      "immediate_action": "Map exactly what each party needs and offers",
+      "day_1_action": "Verify you can secure supply before approaching buyer",
+      "day_3_action": "Lock supply with minimal commitment (option, not purchase)",
+      "day_7_action": "Present to buyer with supply already secured",
+      "mental_simulation": "If I approach buyer first, they might go direct. If I lock supply first, I control the deal.",
+      "stop_condition": "Deal closed OR both parties connected without you"
+    },
+    "novice_mistakes": [
+      "Approach buyer before securing supply",
+      "Share too much information about the other party",
+      "Undervalue the connection premium",
+      "Try to maintain position after first deal instead of extracting value"
+    ],
+    "linked_decision_points": [],
+    "success_rate_if_followed": 0.85,
+    "death_rate_if_ignored": 0.0,
+    "sample_size": 24,
+    "confidence": 0.9,
+    "tags": [
+      "arbitrage",
+      "positioning",
+      "marc_rich"
+    ]
+  },
+  {
+    "id": "PROTO-FLOAT-OPPORTUNITY",
+    "name": "Float Opportunity",
+    "description": "Can collect payment before paying suppliers - negative CCC",
+    "category": "opportunity",
+    "frequency": "Amazon, insurance companies, prepaid services",
+    "recognition_cues": [
+      {
+        "cue": "Customers willing to prepay or pay upfront",
+        "weight": 0.9,
+        "category": "behavior",
+        "must_have": true
+      },
+      {
+        "cue": "Supplier payment can be delayed without penalty",
+        "weight": 0.8,
+        "category": "timing",
+        "must_have": false
+      },
+      {
+        "cue": "Service or product delivered after payment",
+        "weight": 0.7,
+        "category": "structural",
+        "must_have": false
+      },
+      {
+        "cue": "Subscription or recurring revenue model",
+        "weight": 0.6,
+        "category": "structural",
+        "must_have": false
+      }
+    ],
+    "expert_response": {
+      "immediate_action": "Calculate current CCC and identify longest delays",
+      "day_1_action": "Test 10% discount for upfront annual payment",
+      "day_3_action": "Negotiate extended terms with top 3 vendors",
+      "day_7_action": "Calculate free cash generated by negative CCC",
+      "mental_simulation": "If customers pay me before I pay suppliers, their money works for me. Growth funds itself.",
+      "stop_condition": "CCC is negative OR identified why float is impossible"
+    },
+    "novice_mistakes": [
+      "Assume all businesses have positive CCC",
+      "Don't negotiate vendor terms because afraid to ask",
+      "Offer payment terms to win customers",
+      "Miss float opportunity in service businesses"
+    ],
+    "linked_decision_points": [],
+    "success_rate_if_followed": 0.7,
+    "death_rate_if_ignored": 0.0,
+    "sample_size": 38,
+    "confidence": 0.75,
+    "tags": [
+      "float",
+      "cash_flow",
+      "working_capital"
+    ]
+  },
+  {
+    "id": "PROTO-DESPERATION-LEVERAGE",
+    "name": "Counterparty Desperation Leverage",
+    "description": "Counterparty has urgency you can exploit for better terms",
+    "category": "negotiation",
+    "frequency": "Present in 30% of B2B negotiations",
+    "recognition_cues": [
+      {
+        "cue": "Counterparty contacts you multiple times quickly",
+        "weight": 0.8,
+        "category": "behavior",
+        "must_have": false
+      },
+      {
+        "cue": "Deadline mentioned or implied",
+        "weight": 0.9,
+        "category": "timing",
+        "must_have": false
+      },
+      {
+        "cue": "Counterparty shares problems unprompted",
+        "weight": 0.7,
+        "category": "behavior",
+        "must_have": false
+      },
+      {
+        "cue": "Alternative options are limited or slow",
+        "weight": 0.8,
+        "category": "market",
+        "must_have": false
+      }
+    ],
+    "expert_response": {
+      "immediate_action": "Slow down your response time (controlled delay)",
+      "day_1_action": "Ask questions to understand depth of urgency",
+      "day_3_action": "Present premium option first with faster delivery",
+      "day_7_action": "Hold firm on terms - their urgency is your leverage",
+      "mental_simulation": "If I match their urgency, I lose leverage. If I stay calm, they reveal how much they need this.",
+      "stop_condition": "Deal closed at your terms OR urgency was manufactured"
+    },
+    "novice_mistakes": [
+      "Match counterparty urgency",
+      "Offer discount to close quickly",
+      "Miss desperation signals",
+      "Feel bad about leveraging their situation"
+    ],
+    "linked_decision_points": [],
+    "success_rate_if_followed": 0.82,
+    "death_rate_if_ignored": 0.0,
+    "sample_size": 67,
+    "confidence": 0.84,
+    "tags": [
+      "negotiation",
+      "leverage",
+      "timing"
+    ]
+  },
+  {
+    "id": "PROTO-INFORMATION-ASYMMETRY",
+    "name": "Information Asymmetry Advantage",
+    "description": "You know something relevant that the market or counterparty doesn't",
+    "category": "opportunity",
+    "frequency": "Core of most trading and advisory businesses",
+    "recognition_cues": [
+      {
+        "cue": "You have insider or early access to information",
+        "weight": 0.9,
+        "category": "structural",
+        "must_have": true
+      },
+      {
+        "cue": "Information would change counterparty behavior if known",
+        "weight": 0.8,
+        "category": "market",
+        "must_have": false
+      },
+      {
+        "cue": "Window exists before information becomes public",
+        "weight": 0.7,
+        "category": "timing",
+        "must_have": false
+      },
+      {
+        "cue": "Legal and ethical to act on this information",
+        "weight": 1.0,
+        "category": "structural",
+        "must_have": true
+      }
+    ],
+    "expert_response": {
+      "immediate_action": "Verify information accuracy and legal use",
+      "day_1_action": "Calculate window before information spreads",
+      "day_3_action": "Position before information becomes common knowledge",
+      "day_7_action": "Execute and begin exit planning",
+      "mental_simulation": "If this information is valuable and legal, acting on it is just good business. Waiting = losing edge.",
+      "stop_condition": "Position taken OR information now public"
+    },
+    "novice_mistakes": [
+      "Share information freely for relationship building",
+      "Wait for more confirmation before acting",
+      "Undervalue proprietary information",
+      "Assume others already know what you know"
+    ],
+    "linked_decision_points": [],
+    "success_rate_if_followed": 0.78,
+    "death_rate_if_ignored": 0.0,
+    "sample_size": 45,
+    "confidence": 0.8,
+    "tags": [
+      "information",
+      "timing",
+      "edge"
+    ]
+  },
+  {
+    "id": "PROTO-TRUST-FRICTION",
+    "name": "Trust Friction Barrier",
+    "description": "Deal blocked by trust gap, not value gap",
+    "category": "negotiation",
+    "frequency": "Hidden blocker in 40% of stalled deals",
+    "recognition_cues": [
+      {
+        "cue": "Counterparty agrees on value but won't commit",
+        "weight": 0.9,
+        "category": "behavior",
+        "must_have": false
+      },
+      {
+        "cue": "Requests for references or proof increase",
+        "weight": 0.8,
+        "category": "behavior",
+        "must_have": false
+      },
+      {
+        "cue": "New objections appear after old ones addressed",
+        "weight": 0.7,
+        "category": "behavior",
+        "must_have": false
+      },
+      {
+        "cue": "Decision delayed repeatedly without clear reason",
+        "weight": 0.8,
+        "category": "timing",
+        "must_have": false
+      }
+    ],
+    "expert_response": {
+      "immediate_action": "Stop selling value - ask what would make them feel safe",
+      "day_1_action": "Offer risk reversal (guarantee, pilot, escrow)",
+      "day_3_action": "Provide social proof specific to their concern",
+      "day_7_action": "If still blocked, ask directly what's really holding them back",
+      "mental_simulation": "If they see value but won't buy, they don't trust delivery. I must reduce their risk, not increase their excitement.",
+      "stop_condition": "Trust concern identified and addressed OR deal killed"
+    },
+    "novice_mistakes": [
+      "Keep pitching value when value isn't the problem",
+      "Get frustrated with hesitant buyer",
+      "Lower price (treats wrong problem)",
+      "Miss trust signals and blame product"
+    ],
+    "linked_decision_points": [],
+    "success_rate_if_followed": 0.68,
+    "death_rate_if_ignored": 0.0,
+    "sample_size": 89,
+    "confidence": 0.76,
+    "tags": [
+      "trust",
+      "negotiation",
+      "objection_handling"
+    ]
+  },
+  {
+    "id": "PROTO-SURVIVAL-7DAY",
+    "name": "7-Day Survival Mode",
+    "description": "Runway under 7 days - pure survival, ego suspended",
+    "category": "cash_crisis",
+    "frequency": "Critical - 100% death rate if not addressed",
+    "recognition_cues": [
+      {
+        "cue": "Runway under 7 days",
+        "weight": 1.0,
+        "category": "financial",
+        "must_have": true
+      },
+      {
+        "cue": "Bills due this week",
+        "weight": 0.9,
+        "category": "timing",
+        "must_have": false
+      },
+      {
+        "cue": "No confirmed incoming payments",
+        "weight": 0.8,
+        "category": "financial",
+        "must_have": false
+      },
+      {
+        "cue": "Already cut non-essentials",
+        "weight": 0.7,
+        "category": "behavior",
+        "must_have": false
+      }
+    ],
+    "expert_response": {
+      "immediate_action": "List ALL assets (including embarrassing ones) - everything has value. Hour 1: Post 3 items at 50% market price. Hour 4: Contact network for gigs. Hour 8: Apply to 5 same-day platforms.",
+      "day_1_action": "Call ALL outstanding invoices - demand payment. Follow up on all posts and gig applications.",
+      "day_3_action": "Negotiate bill delays with scripts: 'Can we delay 14 days? I can pay X now and Y later.'",
+      "day_7_action": "Assess runway extension. If still critical, escalate to Tier 2 asset sales.",
+      "mental_simulation": "Pride has a $0 survival value. Any legal income > $0 income. I can rebuild reputation later if I survive.",
+      "stop_condition": "Runway extended to 14+ days"
+    },
+    "novice_mistakes": [
+      "Wait for 'right' opportunity instead of any opportunity",
+      "Refuse work below perceived status",
+      "Keep paying non-essential subscriptions",
+      "Hide situation from network who could help",
+      "Make desperate decisions without advisor"
+    ],
+    "linked_decision_points": [],
+    "success_rate_if_followed": 0.72,
+    "death_rate_if_ignored": 0.95,
+    "sample_size": 34,
+    "confidence": 0.85,
+    "tags": [
+      "survival",
+      "emergency",
+      "runway"
+    ]
+  },
+  {
+    "id": "PROTO-ZERO-CREDIBILITY-FIRST-CUSTOMER",
+    "name": "Zero Credibility First Customer",
+    "description": "Need first paying customer with zero track record, zero portfolio, zero testimonials",
+    "category": "bootstrap",
+    "frequency": "Universal starting point for service businesses",
+    "recognition_cues": [
+      {
+        "cue": "Have marketable skill but no proof",
+        "weight": 0.9,
+        "category": "structural",
+        "must_have": true
+      },
+      {
+        "cue": "No portfolio or case studies",
+        "weight": 0.8,
+        "category": "structural",
+        "must_have": false
+      },
+      {
+        "cue": "No testimonials or references",
+        "weight": 0.8,
+        "category": "structural",
+        "must_have": false
+      },
+      {
+        "cue": "Fear of reaching out without credentials",
+        "weight": 0.7,
+        "category": "behavior",
+        "must_have": false
+      }
+    ],
+    "expert_response": {
+      "immediate_action": "Accept you will undercharge first client for LEARNING + TESTIMONIAL, not profit",
+      "day_1_action": "Message 10 people in network with specific problem you solve - not selling yet, just asking if they know anyone",
+      "day_3_action": "Offer free audit/consultation to 3 warmest leads. Propose paid pilot at 50% rate.",
+      "day_7_action": "Deliver exceptional value, ask for testimonial DURING delivery. Then outreach: 'just helped [client type] with [result]'",
+      "mental_simulation": "First customer buys ME experience and proof, not profit. I am paying THEM to let me build credibility.",
+      "stop_condition": "First paying customer complete with testimonial"
+    },
+    "novice_mistakes": [
+      "Wait to 'feel ready' before reaching out",
+      "Build website/portfolio before having clients",
+      "Price at market rate with no proof",
+      "Skip the testimonial ask - lose the asset",
+      "Target strangers instead of warm network"
+    ],
+    "linked_decision_points": [],
+    "success_rate_if_followed": 0.68,
+    "death_rate_if_ignored": 0.0,
+    "sample_size": 156,
+    "confidence": 0.82,
+    "tags": [
+      "bootstrap",
+      "credibility",
+      "first_customer"
+    ]
+  },
+  {
+    "id": "PROTO-HIDE-DESPERATION",
+    "name": "Desperation Camouflage",
+    "description": "Negotiating from weak position without revealing weakness",
+    "category": "negotiation",
+    "frequency": "Critical skill for all bootstrap founders",
+    "recognition_cues": [
+      {
+        "cue": "Need this deal more than counterparty knows",
+        "weight": 0.9,
+        "category": "structural",
+        "must_have": true
+      },
+      {
+        "cue": "Counterparty could extract value if they knew your position",
+        "weight": 0.8,
+        "category": "counterparty",
+        "must_have": false
+      },
+      {
+        "cue": "Feeling pressure to close quickly",
+        "weight": 0.7,
+        "category": "behavior",
+        "must_have": false
+      },
+      {
+        "cue": "Tempted to offer discount to secure deal",
+        "weight": 0.6,
+        "category": "behavior",
+        "must_have": false
+      }
+    ],
+    "expert_response": {
+      "immediate_action": "Create artificial scarcity: 'I have limited availability next month'. Never respond within 30 mins.",
+      "day_1_action": "Quote full price THEN discuss terms - never open with discount. Have 'upcoming commitments' ready.",
+      "day_3_action": "Hold firm on terms. If they push, be willing to walk away (or appear willing). Desperation shows in grip.",
+      "day_7_action": "Close at your terms or gracefully exit. Never accept worse terms just to close.",
+      "mental_simulation": "If they sense I need this, they will squeeze. If they sense I have options, they will close.",
+      "stop_condition": "Deal closed at acceptable terms OR walked away with dignity intact"
+    },
+    "novice_mistakes": [
+      "Respond to inquiries immediately",
+      "Offer discount before asked",
+      "Share that 'things are slow right now'",
+      "Accept any terms to get the deal",
+      "Let timeline urgency show in communication"
+    ],
+    "linked_decision_points": [],
+    "success_rate_if_followed": 0.75,
+    "death_rate_if_ignored": 0.35,
+    "sample_size": 78,
+    "confidence": 0.8,
+    "tags": [
+      "negotiation",
+      "positioning",
+      "survival"
+    ]
+  },
+  {
+    "id": "PROTO-SKILL-TO-CASH-72H",
+    "name": "Skill to Cash in 72 Hours",
+    "description": "Convert any marketable skill to first payment within 72 hours",
+    "category": "bootstrap",
+    "frequency": "Core bootstrap pattern",
+    "recognition_cues": [
+      {
+        "cue": "Have skill others pay for",
+        "weight": 0.9,
+        "category": "structural",
+        "must_have": true
+      },
+      {
+        "cue": "Need cash within days not weeks",
+        "weight": 0.8,
+        "category": "timing",
+        "must_have": false
+      },
+      {
+        "cue": "Willing to start small",
+        "weight": 0.7,
+        "category": "behavior",
+        "must_have": false
+      },
+      {
+        "cue": "Have internet access",
+        "weight": 0.6,
+        "category": "structural",
+        "must_have": false
+      }
+    ],
+    "expert_response": {
+      "immediate_action": "Hour 0-4: Post on 3 platforms (FB, Upwork, Fiverr) with specific small service at low price. Hour 4-8: DM 10 network contacts.",
+      "day_1_action": "Reply to every relevant job posting. Volume matters. Follow up on all conversations from day 0.",
+      "day_3_action": "Close first deal with easy payment (PayPal, Venmo, bank transfer). No complex invoicing. Deliver fast.",
+      "day_7_action": "First payment received → immediately repeat process with testimonial as leverage.",
+      "mental_simulation": "First dollar matters more than first perfect client. Momentum builds confidence. Start ugly, refine later.",
+      "stop_condition": "First payment received"
+    },
+    "novice_mistakes": [
+      "Spend day 1 building website",
+      "Wait for 'perfect' opportunity",
+      "Quote too high for speed",
+      "Refuse small jobs",
+      "Overcomplicate payment process"
+    ],
+    "linked_decision_points": [],
+    "success_rate_if_followed": 0.62,
+    "death_rate_if_ignored": 0.0,
+    "sample_size": 89,
+    "confidence": 0.78,
+    "tags": [
+      "bootstrap",
+      "speed",
+      "first_dollar"
+    ]
+  },
+  {
+    "id": "PROTO-BARTER-CHAIN",
+    "name": "Barter Chain Bootstrap",
+    "description": "When cash is impossible, trade value for value to build position",
+    "category": "bootstrap",
+    "frequency": "Underused but powerful in early stage",
+    "recognition_cues": [
+      {
+        "cue": "Have skill but target market has no budget",
+        "weight": 0.8,
+        "category": "market",
+        "must_have": false
+      },
+      {
+        "cue": "Target has something you need (access, assets, services)",
+        "weight": 0.9,
+        "category": "structural",
+        "must_have": true
+      },
+      {
+        "cue": "Your skill has clear value to them",
+        "weight": 0.8,
+        "category": "market",
+        "must_have": false
+      },
+      {
+        "cue": "Cash deal unlikely in near term",
+        "weight": 0.7,
+        "category": "timing",
+        "must_have": false
+      }
+    ],
+    "expert_response": {
+      "immediate_action": "List what you need that others could provide (office space, equipment, services, introductions)",
+      "day_1_action": "Identify 5 people who have what you need + could use your skill",
+      "day_3_action": "Propose explicit trade: 'I'll do X for you, you give me Y access'. Document as portfolio work.",
+      "day_7_action": "Chain barters: use new asset/access to barter for next thing you need. Repeat cycle.",
+      "mental_simulation": "Barter is not 'less than' cash - it's getting what I need without cash. Value is value.",
+      "stop_condition": "Barter chain creates asset that generates cash OR direct cash deal found"
+    },
+    "novice_mistakes": [
+      "Only think in cash terms",
+      "Undervalue what you can offer in trade",
+      "Don't document barter work",
+      "Trade for nice-to-haves instead of needs",
+      "Feel embarrassed to propose trades"
+    ],
+    "linked_decision_points": [],
+    "success_rate_if_followed": 0.58,
+    "death_rate_if_ignored": 0.0,
+    "sample_size": 45,
+    "confidence": 0.72,
+    "tags": [
+      "bootstrap",
+      "barter",
+      "creative_finance"
+    ]
+  },
+  {
+    "id": "PROTO-BASE-PAT-CROSS-CROWD-X-NONE",
+    "name": "Base Rate: crowd_x_none",
+    "description": "crowd_x_none: 36% success rate (n=11)",
+    "category": "base_rate",
+    "frequency": "36% success in 11 cases",
+    "recognition_cues": [],
+    "expert_response": {
+      "immediate_action": "Check base rate: 36% success for this combo",
+      "mental_simulation": "Historical: 36%. Adjust for specifics.",
+      "stop_condition": "Reference only"
+    },
+    "novice_mistakes": [
+      "Ignoring base rates",
+      "Assuming special without evidence"
+    ],
+    "success_rate_if_followed": 0.364,
+    "sample_size": 11,
+    "confidence": 0.62,
+    "tags": [
+      "base_rate",
+      "extracted"
+    ]
+  },
+  {
+    "id": "PROTO-BASE-PAT-CROSS-SUPPLY-CHAIN-X-DISTRIBUTION",
+    "name": "Base Rate: supply_chain_x_distribution",
+    "description": "supply_chain_x_distribution: 40% success rate (n=5)",
+    "category": "base_rate",
+    "frequency": "40% success in 5 cases",
+    "recognition_cues": [],
+    "expert_response": {
+      "immediate_action": "Check base rate: 40% success for this combo",
+      "mental_simulation": "Historical: 40%. Adjust for specifics.",
+      "stop_condition": "Reference only"
+    },
+    "novice_mistakes": [
+      "Ignoring base rates",
+      "Assuming special without evidence"
+    ],
+    "success_rate_if_followed": 0.4,
+    "sample_size": 5,
+    "confidence": 0.5,
+    "tags": [
+      "base_rate",
+      "extracted"
+    ]
+  },
+  {
+    "id": "PROTO-BASE-PAT-CROSS-INFRASTRUCTURE-X-DISTRIBUTION",
+    "name": "Base Rate: infrastructure_x_distribution",
+    "description": "infrastructure_x_distribution: 75% success rate (n=8)",
+    "category": "base_rate",
+    "frequency": "75% success in 8 cases",
+    "recognition_cues": [],
+    "expert_response": {
+      "immediate_action": "Check base rate: 75% success for this combo",
+      "mental_simulation": "Historical: 75%. Adjust for specifics.",
+      "stop_condition": "Reference only"
+    },
+    "novice_mistakes": [
+      "Ignoring base rates",
+      "Assuming special without evidence"
+    ],
+    "success_rate_if_followed": 0.75,
+    "sample_size": 8,
+    "confidence": 0.56,
+    "tags": [
+      "base_rate",
+      "extracted"
+    ]
+  },
+  {
+    "id": "PROTO-BASE-PAT-CROSS-DATA-INTELLIGENCE-X-DATA",
+    "name": "Base Rate: data_intelligence_x_data",
+    "description": "data_intelligence_x_data: 100% success rate (n=5)",
+    "category": "base_rate",
+    "frequency": "100% success in 5 cases",
+    "recognition_cues": [],
+    "expert_response": {
+      "immediate_action": "Check base rate: 100% success for this combo",
+      "mental_simulation": "Historical: 100%. Adjust for specifics.",
+      "stop_condition": "Reference only"
+    },
+    "novice_mistakes": [
+      "Ignoring base rates",
+      "Assuming special without evidence"
+    ],
+    "success_rate_if_followed": 1.0,
+    "sample_size": 5,
+    "confidence": 0.5,
+    "tags": [
+      "base_rate",
+      "extracted"
+    ]
+  },
+  {
+    "id": "PROTO-BASE-PAT-CROSS-CROWD-X-CODE",
+    "name": "Base Rate: crowd_x_code",
+    "description": "crowd_x_code: 0% success rate (n=9)",
+    "category": "base_rate",
+    "frequency": "0% success in 9 cases",
+    "recognition_cues": [],
+    "expert_response": {
+      "immediate_action": "Check base rate: 0% success for this combo",
+      "mental_simulation": "Historical: 0%. Adjust for specifics.",
+      "stop_condition": "Reference only"
+    },
+    "novice_mistakes": [
+      "Ignoring base rates",
+      "Assuming special without evidence"
+    ],
+    "success_rate_if_followed": 0.0,
+    "sample_size": 9,
+    "confidence": 0.5800000000000001,
+    "tags": [
+      "base_rate",
+      "extracted"
+    ]
+  },
+  {
+    "id": "PROTO-BASE-PAT-CROSS-INFRASTRUCTURE-X-CODE",
+    "name": "Base Rate: infrastructure_x_code",
+    "description": "infrastructure_x_code: 67% success rate (n=18)",
+    "category": "base_rate",
+    "frequency": "67% success in 18 cases",
+    "recognition_cues": [],
+    "expert_response": {
+      "immediate_action": "Check base rate: 67% success for this combo",
+      "mental_simulation": "Historical: 67%. Adjust for specifics.",
+      "stop_condition": "Reference only"
+    },
+    "novice_mistakes": [
+      "Ignoring base rates",
+      "Assuming special without evidence"
+    ],
+    "success_rate_if_followed": 0.667,
+    "sample_size": 18,
+    "confidence": 0.76,
+    "tags": [
+      "base_rate",
+      "extracted"
+    ]
+  }
+]

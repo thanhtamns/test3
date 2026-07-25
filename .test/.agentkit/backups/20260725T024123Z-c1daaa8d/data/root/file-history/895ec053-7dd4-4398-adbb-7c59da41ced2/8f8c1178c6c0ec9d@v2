@@ -1,0 +1,76 @@
+---
+phase: 05
+status: complete
+priority: medium
+solution: S-3
+depends_on: phase-04
+---
+
+# Phase 05: Persona Debate Integration
+
+## Overview
+Create prompt generator for spawning 3 persona agents in parallel, each producing independent analysis, then merging disagreements into the adversarial pipeline.
+
+## Files to Create
+- `D:/code/invesments/master_investments/.claude/lib/intelligence/decomposition/persona_debate.py`
+- `D:/code/invesments/master_investments/.claude/lib/intelligence/decomposition/tests/test_persona_debate.py`
+
+## Implementation Steps
+
+### persona_debate.py (~150 lines)
+
+1. `PersonaDebate` class:
+   - `__init__(query: str, query_type: str, thinkrunner_output: dict)`
+   - `select_personas(n=3) -> list[PersonaConfig]`
+   - `generate_persona_prompts() -> list[tuple[str, str]]` — returns (persona_name, prompt)
+   - `generate_merge_prompt(persona_outputs: dict[str, str]) -> str`
+
+2. `PERSONA_SELECTION` mapping (query_type → persona list):
+   ```python
+   {
+       "power_infiltration": ["charlie-munger", "peter-thiel", "robert-kuok"],
+       "wealth_strategy": ["naval-ravikant", "charlie-munger", "li-ka-shing"],
+       "market_entry": ["alex-hormozi", "pieter-levels", "nassim-taleb"],
+       "deal_analysis": ["warren-buffett", "charlie-munger", "marc-rich"],
+       "career_path": ["naval-ravikant", "peter-thiel", "felix-dennis"],
+       "custom": ["charlie-munger", "nassim-taleb", "naval-ravikant"],
+   }
+   ```
+
+3. `generate_persona_prompts()`:
+   - For each selected persona:
+     - Load persona agent file from `.claude/agents/personas/{category}/{name}.md` (first 100 lines for identity)
+     - Embed ThinkRunner dimension scores (compressed: name + score only)
+     - Embed query
+     - Instruction: "Analyze this opportunity through YOUR specific lens. Max 300 words. Must include: (1) your verdict GO/CAUTION/KILL, (2) what you see that others miss, (3) what kills this."
+   - Returns list of (persona_name, complete_prompt)
+
+4. `generate_merge_prompt(persona_outputs)`:
+   - Embeds all 3 persona outputs
+   - Instructions:
+     - "Where do 2+ personas AGREE → high confidence finding"
+     - "Where personas DISAGREE → state both sides, don't resolve"
+     - "What did NO persona address → blind spot"
+     - "Max 200 words synthesis"
+   - Returns prompt for merge step
+
+5. Integration with adversarial_orchestrator:
+   - Persona debate output feeds into analyst_prompt as "expert perspectives" section
+   - Analyst uses persona insights as INPUT, not the other way around
+
+### CLI entry point:
+```bash
+python persona_debate.py \
+  --query "penetrate VN VC" \
+  --query-type power_infiltration \
+  --thinkrunner path/to/output.json \
+  --stage select|prompt|merge \
+  --persona-outputs path/to/outputs.json
+```
+
+## Success Criteria
+- [ ] Auto-selects 3 relevant personas per query type
+- [ ] Generated prompts include persona identity + compressed ThinkRunner data
+- [ ] Merge prompt correctly identifies agreements/disagreements
+- [ ] Each prompt < 4000 tokens (persona agents get smaller context)
+- [ ] Tests verify persona selection and prompt structure

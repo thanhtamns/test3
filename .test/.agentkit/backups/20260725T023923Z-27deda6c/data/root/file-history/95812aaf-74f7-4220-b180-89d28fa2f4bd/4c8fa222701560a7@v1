@@ -1,0 +1,83 @@
+---
+status: pending
+created: 2026-05-10
+slug: deterministic-spine-architecture
+estimated_days: 2-3
+files_modified: ~8
+new_files: ~3
+---
+
+# Deterministic Spine Architecture
+
+## Problem
+System has ~60% deterministic infrastructure but 100% of "peak intelligence" = LLM reasoning. Decomposition engine exists (decomposer, micro-query generator, fact assembler, template evolver, gap analyzer, stage0 bridge) but is NOT wired into stage0 main flow. stage0.md has ZERO references to decomposition.
+
+## Key Discovery
+More exists than initially thought:
+- `template_evolver.py` — already tracks per-template metrics + evolves weights (10% cap)
+- `dimension_registry.py` — already has `benchmark_comparison` in QUESTION_TYPE_DIMENSIONS
+- `query_classifier.py` — already extracts person names, ages, roles, industries
+- `stage0_bridge.py` — already has `pre_decompose()` + `pre_analyze()` methods
+- `founder-profile.json` — exists but metaphysics-only, no skills/capital/network
+
+## What's Actually Missing (revised from brainstorm)
+
+| # | Gap | Size |
+|---|-----|------|
+| 1 | stage0.md doesn't invoke decomposition at all | ~30 lines added to stage0.md |
+| 2 | Founder Capabilities DB (skills, capital, network, credentials) | New file: `founder_capabilities.py` ~100 lines |
+| 3 | Synthesis Constraint (force LLM to cite FACT-IDs) | ~20 lines in stage0.md + new validator |
+| 4 | Brier scores → dimension weight feedback | ~30 lines connecting feedback loop → template_evolver |
+| 5 | Template evolver not called after each run | ~10 lines in stage0_bridge.py |
+
+## Phases
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| [Phase 1](phase-01-wire-decomposition-into-stage0.md) | Wire decomposition into stage0 as BLOCKING pre-step | ⬜ |
+| [Phase 2](phase-02-founder-capabilities-db.md) | Founder Capabilities DB for gap analysis | ⬜ |
+| [Phase 3](phase-03-synthesis-constraint.md) | Synthesis constraint — force fact citation | ⬜ |
+| [Phase 4](phase-04-evolution-feedback-wiring.md) | Wire Brier → dimension weights + template scoring after each run | ⬜ |
+| [Phase 5](phase-05-validation.md) | End-to-end test: "achieve like Giang Trần Minh Thành" | ⬜ |
+
+## Architecture (Before vs After)
+
+### Before
+```
+User Query → [stage0.md: 2500 lines of LLM prompt] → LLM reasons everything → Output
+```
+
+### After
+```
+User Query
+  → [QueryClassifier] classify (DETERMINISTIC)
+  → [DimensionRegistry] select dimensions (DETERMINISTIC)
+  → [MicroQueryGenerator] generate 40-50 micro-queries (DETERMINISTIC)
+  → [AtomicResolver] resolve from local KB (DETERMINISTIC)
+  → [MicroQueryRunner] fire remaining via LLM (LLM: micro, constrained)
+  → [FactAssembler] verify + deduplicate + store (DETERMINISTIC)
+  → [TemplateEvolver] record metrics + evolve (DETERMINISTIC)
+  → [GapAnalyzer] with FounderCapabilities (DETERMINISTIC)
+  → [stage0.md agents] reason ONLY from pre-verified facts (LLM: structured)
+  → [SynthesisConstraint] validate citations (DETERMINISTIC)
+  → Output
+```
+
+## Files to Modify (all in D:\code\invesments\master_investments)
+
+1. `.claude/commands/stage0.md` — add decomposition pre-step + synthesis constraint
+2. `.claude/lib/intelligence/decomposition/stage0_bridge.py` — add template evolver call + founder context
+3. `.claude/lib/intelligence/decomposition/dimension_registry.py` — minor: add `benchmark_comparison` dimension (templates exist, dimension entry missing)
+4. `.claude/skills/business/feedback_loop/feedback-cycle-runner.py` — add dimension weight feedback
+
+## Files to Create
+
+1. `.claude/lib/intelligence/decomposition/founder_capabilities.py` — SQLite-backed founder skills/capital/network DB
+2. `.claude/lib/intelligence/decomposition/synthesis_validator.py` — post-synthesis fact citation checker
+3. `.claude/lib/intelligence/decomposition/tests/test_founder_capabilities.py`
+
+## Dependencies
+- Phase 2 depends on Phase 1 (founder context feeds into decomposition)
+- Phase 3 depends on Phase 1 (synthesis constraint references pre-decomposed facts)
+- Phase 4 independent (can parallel with Phase 2-3)
+- Phase 5 depends on all

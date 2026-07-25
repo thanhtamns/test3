@@ -1,0 +1,770 @@
+use anyhow::Result;
+use rusqlite::{params, Connection};
+use serde::Serialize;
+use std::collections::HashMap;
+use std::path::Path;
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::attestation;
+use crate::content_hash;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum ContributorType {
+    Unknown,
+    Human,
+    Ai,
+    Mixed,
+}
+
+impl ContributorType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::Human => "human",
+            Self::Ai => "ai",
+            Self::Mixed => "mixed",
+        }
+    }
+
+    fn from_str(s: &str) -> Self {
+        match s {
+            "human" => Self::Human,
+            "ai" => Self::Ai,
+            "mixed" => Self::Mixed,
+            _ => Self::Unknown,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProvenanceRecord {
+    pub id: Option<i64>,
+    pub session_id: String,
+    pub timestamp_ms: i64,
+    pub file_path: String,
+    pub code_hash: String,
+    pub model_id: String,
+    pub model_version: String,
+    pub contributor_type: ContributorType,
+    pub start_line: u32,
+    pub end_line: u32,
+    pub attestation_sig: String,
+    pub developer_id: String,
+    pub prompt_hash: String,
+    pub project_dir: String,
+}
+
+pub struct ProvenanceStore {
+    conn: Connection,
+}
+
+impl ProvenanceStore {
+    pub fn open(db_path: &Path) -> Result<Self> {
+        let conn = Connection::open(db_path)?;
+        conn.execute_batch(
+            "PRAGMA journal_mode=WAL;
+             PRAGMA synchronous=NORMAL;
+             PRAGMA busy_timeout=5000;",
+        )?;
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS provenance_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                timestamp_ms INTEGER NOT NULL,
+                file_path TEXT NOT NULL,
+                code_hash TEXT NOT NULL,
+                model_id TEXT NOT NULL DEFAULT 'unknown',
+                model_version TEXT NOT NULL DEFAULT '',
+                contributor_type TEXT NOT NULL DEFAULT 'unknown',
+                start_line INTEGER NOT NULL DEFAULT 0,
+                end_line INTEGER NOT NULL DEFAULT 0,
+                attestation_sig TEXT NOT NULL DEFAULT '',
+                developer_id TEXT NOT NULL DEFAULT '',
+                prompt_hash TEXT NOT NULL DEFAULT '',
+                project_dir TEXT NOT NULL DEFAULT ''
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_provenance_file
+                ON provenance_records(file_path);
+            CREATE INDEX IF NOT EXISTS idx_provenance_session
+                ON provenance_records(session_id);
+            CREATE INDEX IF NOT EXISTS idx_provenance_timestamp
+                ON provenance_records(timestamp_ms);
+
+            CREATE TABLE IF NOT EXISTS provenance_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                content_hash TEXT NOT NULL,
+                mtime_ns INTEGER NOT NULL,
+                snapshot_time_ms INTEGER NOT NULL,
+                UNIQUE(session_id, file_path)
+            );",
+        )?;
+        Ok(Self { conn })
+    }
+
+    pub fn record(&self, rec: &ProvenanceRecord) -> Result<i64> {
+        self.conn.execute(
+            "INSERT INTO provenance_records
+             (session_id, timestamp_ms, file_path, code_hash, model_id,
+              model_version, contributor_type, start_line, end_line,
+              attestation_sig, developer_id, prompt_hash, project_dir)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            params![
+                rec.session_id,
+                rec.timestamp_ms,
+                rec.file_path,
+                rec.code_hash,
+                rec.model_id,
+                rec.model_version,
+                rec.contributor_type.as_str(),
+                rec.start_line,
+                rec.end_line,
+                rec.attestation_sig,
+                rec.developer_id,
+                rec.prompt_hash,
+                rec.project_dir,
+            ],
+        )?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    pub fn query_by_file(&self, file_path: &str) -> Result<Vec<ProvenanceRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, session_id, timestamp_ms, file_path, code_hash, model_id,
+                    model_version, contributor_type, start_line, end_line,
+                    attestation_sig, developer_id, prompt_hash, project_dir
+             FROM provenance_records
+             WHERE file_path = ?1
+             ORDER BY timestamp_ms DESC",
+        )?;
+        let rows = stmt
+            .query_map(params![file_path], |row| {
+                Ok(ProvenanceRecord {
+                    id: Some(row.get(0)?),
+                    session_id: row.get(1)?,
+                    timestamp_ms: row.get(2)?,
+                    file_path: row.get(3)?,
+                    code_hash: row.get(4)?,
+                    model_id: row.get(5)?,
+                    model_version: row.get(6)?,
+                    contributor_type: ContributorType::from_str(
+                        &row.get::<_, String>(7)?,
+                    ),
+                    start_line: row.get(8)?,
+                    end_line: row.get(9)?,
+                    attestation_sig: row.get(10)?,
+                    developer_id: row.get(11)?,
+                    prompt_hash: row.get(12)?,
+                    project_dir: row.get(13)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    pub fn query_by_session(&self, session_id: &str) -> Result<Vec<ProvenanceRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, session_id, timestamp_ms, file_path, code_hash, model_id,
+                    model_version, contributor_type, start_line, end_line,
+                    attestation_sig, developer_id, prompt_hash, project_dir
+             FROM provenance_records
+             WHERE session_id = ?1
+             ORDER BY timestamp_ms ASC",
+        )?;
+        let rows = stmt
+            .query_map(params![session_id], |row| {
+                Ok(ProvenanceRecord {
+                    id: Some(row.get(0)?),
+                    session_id: row.get(1)?,
+                    timestamp_ms: row.get(2)?,
+                    file_path: row.get(3)?,
+                    code_hash: row.get(4)?,
+                    model_id: row.get(5)?,
+                    model_version: row.get(6)?,
+                    contributor_type: ContributorType::from_str(
+                        &row.get::<_, String>(7)?,
+                    ),
+                    start_line: row.get(8)?,
+                    end_line: row.get(9)?,
+                    attestation_sig: row.get(10)?,
+                    developer_id: row.get(11)?,
+                    prompt_hash: row.get(12)?,
+                    project_dir: row.get(13)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    pub fn enrich_model_id(&self, session_id: &str, model_id: &str) -> Result<u64> {
+        let changes = self.conn.execute(
+            "UPDATE provenance_records SET model_id = ?1
+             WHERE session_id = ?2 AND model_id = 'unknown'",
+            params![model_id, session_id],
+        )?;
+        Ok(changes as u64)
+    }
+
+    pub fn save_snapshot(
+        &self,
+        session_id: &str,
+        file_path: &str,
+        content_hash: &str,
+        mtime_ns: i64,
+    ) -> Result<()> {
+        let now = now_ms();
+        self.conn.execute(
+            "INSERT OR REPLACE INTO provenance_snapshots
+             (session_id, file_path, content_hash, mtime_ns, snapshot_time_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![session_id, file_path, content_hash, mtime_ns, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_snapshot(
+        &self,
+        session_id: &str,
+        file_path: &str,
+    ) -> Result<Option<(String, i64)>> {
+        let result = self.conn.query_row(
+            "SELECT content_hash, mtime_ns FROM provenance_snapshots
+             WHERE session_id = ?1 AND file_path = ?2",
+            params![session_id, file_path],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        );
+        match result {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    pub fn get_all_snapshots(
+        &self,
+        session_id: &str,
+    ) -> Result<HashMap<String, (String, i64)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT file_path, content_hash, mtime_ns FROM provenance_snapshots
+             WHERE session_id = ?1",
+        )?;
+        let mut map = HashMap::new();
+        let rows = stmt.query_map(params![session_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
+        })?;
+        for row in rows {
+            let (path, hash, mtime) = row?;
+            map.insert(path, (hash, mtime));
+        }
+        Ok(map)
+    }
+
+    pub fn query_by_date_range(&self, range_days: u32) -> Result<Vec<ProvenanceRecord>> {
+        let cutoff = now_ms() - (range_days as i64 * 86_400_000);
+        let mut stmt = self.conn.prepare(
+            "SELECT id, session_id, timestamp_ms, file_path, code_hash, model_id,
+                    model_version, contributor_type, start_line, end_line,
+                    attestation_sig, developer_id, prompt_hash, project_dir
+             FROM provenance_records
+             WHERE timestamp_ms >= ?1
+             ORDER BY timestamp_ms ASC",
+        )?;
+        let rows = stmt
+            .query_map(params![cutoff], |row| {
+                Ok(ProvenanceRecord {
+                    id: Some(row.get(0)?),
+                    session_id: row.get(1)?,
+                    timestamp_ms: row.get(2)?,
+                    file_path: row.get(3)?,
+                    code_hash: row.get(4)?,
+                    model_id: row.get(5)?,
+                    model_version: row.get(6)?,
+                    contributor_type: ContributorType::from_str(
+                        &row.get::<_, String>(7)?,
+                    ),
+                    start_line: row.get(8)?,
+                    end_line: row.get(9)?,
+                    attestation_sig: row.get(10)?,
+                    developer_id: row.get(11)?,
+                    prompt_hash: row.get(12)?,
+                    project_dir: row.get(13)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    pub fn cleanup(&self, retention_days: i64) -> Result<u64> {
+        let cutoff = now_ms() - (retention_days * 86_400_000);
+        let changes = self.conn.execute(
+            "DELETE FROM provenance_records WHERE timestamp_ms < ?1",
+            params![cutoff],
+        )?;
+        Ok(changes as u64)
+    }
+
+    pub fn record_count(&self) -> Result<u64> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM provenance_records",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(count as u64)
+    }
+}
+
+pub fn extract_model_id(hook_json: Option<&serde_json::Value>) -> String {
+    if let Ok(m) = std::env::var("CLAUDE_MODEL") {
+        if !m.is_empty() {
+            return m;
+        }
+    }
+    if let Some(json) = hook_json {
+        if let Some(m) = json.get("model").and_then(|v| v.as_str()) {
+            if !m.is_empty() {
+                return m.to_string();
+            }
+        }
+    }
+    "unknown".to_string()
+}
+
+pub fn parse_diff_ranges(project_dir: &Path, rel_path: &str) -> Vec<(u32, u32)> {
+    let output = Command::new("git")
+        .args(["diff", "--unified=0", "HEAD", "--", rel_path])
+        .current_dir(project_dir)
+        .output();
+
+    let output = match output {
+        Ok(o) if o.status.success() => o,
+        _ => return vec![],
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut ranges = Vec::new();
+
+    for line in stdout.lines() {
+        if !line.starts_with("@@") {
+            continue;
+        }
+        // Parse @@ -a,b +c,d @@ format — we want the + (new file) side
+        if let Some(plus_part) = line.split('+').nth(1) {
+            let nums: &str = plus_part.split_whitespace().next().unwrap_or("");
+            let parts: Vec<&str> = nums.split(',').collect();
+            let start: u32 = parts.first().and_then(|s| s.parse().ok()).unwrap_or(1);
+            let count: u32 = if parts.len() > 1 {
+                parts[1].parse().unwrap_or(1)
+            } else {
+                1
+            };
+            if count > 0 {
+                ranges.push((start, start + count - 1));
+            }
+        }
+    }
+
+    ranges
+}
+
+pub fn detect_changes(
+    project_dir: &Path,
+    session_id: &str,
+    store: &ProvenanceStore,
+    keypair: &attestation::KeyPair,
+) -> Result<Vec<ProvenanceRecord>> {
+    detect_changes_with_model(project_dir, session_id, store, keypair, None)
+}
+
+pub fn detect_changes_with_model(
+    project_dir: &Path,
+    session_id: &str,
+    store: &ProvenanceStore,
+    keypair: &attestation::KeyPair,
+    hook_json: Option<&serde_json::Value>,
+) -> Result<Vec<ProvenanceRecord>> {
+    let snapshots = store
+        .get_all_snapshots(session_id)
+        .unwrap_or_default();
+
+    if snapshots.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let now = now_ms();
+    let developer_id = whoami();
+    let model_id = extract_model_id(hook_json);
+    let model_version = String::new();
+    let mut records = Vec::new();
+
+    for (rel_path, (old_hash, _old_mtime)) in &snapshots {
+        let abs_path = project_dir.join(rel_path);
+        if !abs_path.exists() {
+            continue;
+        }
+
+        let file_bytes = match std::fs::read(&abs_path) {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+
+        let current_hash = content_hash::hash_content(&file_bytes);
+
+        if current_hash == *old_hash {
+            continue;
+        }
+
+        let line_count = String::from_utf8_lossy(&file_bytes).lines().count() as u32;
+
+        let diff_ranges = parse_diff_ranges(project_dir, rel_path);
+        let (start_line, end_line) = if diff_ranges.is_empty() {
+            (1, line_count)
+        } else {
+            let start = diff_ranges.iter().map(|(s, _)| *s).min().unwrap_or(1);
+            let end = diff_ranges.iter().map(|(_, e)| *e).max().unwrap_or(line_count);
+            (start, end)
+        };
+
+        let prompt_hash = String::new();
+        let sign_data = format!(
+            "{}:{}:{}:{}:{}:{}",
+            prompt_hash, model_id, model_version, current_hash, now, developer_id
+        );
+        let sig = keypair.sign(sign_data.as_bytes());
+
+        let rec = ProvenanceRecord {
+            id: None,
+            session_id: session_id.to_string(),
+            timestamp_ms: now,
+            file_path: rel_path.clone(),
+            code_hash: current_hash.clone(),
+            model_id: model_id.clone(),
+            model_version: model_version.clone(),
+            contributor_type: ContributorType::Ai,
+            start_line,
+            end_line,
+            attestation_sig: sig,
+            developer_id: developer_id.clone(),
+            prompt_hash: prompt_hash.clone(),
+            project_dir: project_dir.to_string_lossy().to_string(),
+        };
+
+        records.push(rec);
+    }
+
+    Ok(records)
+}
+
+pub fn snapshot_files(
+    project_dir: &Path,
+    session_id: &str,
+    store: &ProvenanceStore,
+    files: &[String],
+) -> Result<usize> {
+    let mut count = 0;
+    for rel_path in files {
+        let abs_path = project_dir.join(rel_path);
+        if !abs_path.exists() {
+            continue;
+        }
+        let hash = match content_hash::hash_file(&abs_path) {
+            Ok(h) => h,
+            Err(_) => continue,
+        };
+        let mtime = crate::util::get_file_mtime_ns(abs_path.to_str().unwrap_or(""))
+            .unwrap_or(0);
+        store.save_snapshot(session_id, rel_path, &hash, mtime)?;
+        count += 1;
+    }
+    Ok(count)
+}
+
+fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
+}
+
+fn whoami() -> String {
+    std::env::var("USER")
+        .or_else(|_| std::env::var("USERNAME"))
+        .unwrap_or_else(|_| "unknown".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup() -> (ProvenanceStore, tempfile::TempDir) {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db_path = dir.path().join("test.db");
+        let store = ProvenanceStore::open(&db_path).unwrap();
+        (store, dir)
+    }
+
+    fn make_record(file: &str, session: &str) -> ProvenanceRecord {
+        ProvenanceRecord {
+            id: None,
+            session_id: session.to_string(),
+            timestamp_ms: 1000,
+            file_path: file.to_string(),
+            code_hash: "abc123".to_string(),
+            model_id: "unknown".to_string(),
+            model_version: String::new(),
+            contributor_type: ContributorType::Ai,
+            start_line: 1,
+            end_line: 50,
+            attestation_sig: "sig".to_string(),
+            developer_id: "dev".to_string(),
+            prompt_hash: String::new(),
+            project_dir: "/test".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_record_and_query_by_file() {
+        let (store, _dir) = setup();
+        store.record(&make_record("src/main.rs", "s1")).unwrap();
+        store.record(&make_record("src/lib.rs", "s1")).unwrap();
+        let results = store.query_by_file("src/main.rs").unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].file_path, "src/main.rs");
+    }
+
+    #[test]
+    fn test_query_by_session() {
+        let (store, _dir) = setup();
+        store.record(&make_record("a.rs", "s1")).unwrap();
+        store.record(&make_record("b.rs", "s1")).unwrap();
+        store.record(&make_record("c.rs", "s2")).unwrap();
+        let results = store.query_by_session("s1").unwrap();
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn test_enrich_model_id() {
+        let (store, _dir) = setup();
+        store.record(&make_record("a.rs", "s1")).unwrap();
+        let updated = store.enrich_model_id("s1", "claude-opus-4-6").unwrap();
+        assert_eq!(updated, 1);
+        let recs = store.query_by_session("s1").unwrap();
+        assert_eq!(recs[0].model_id, "claude-opus-4-6");
+    }
+
+    #[test]
+    fn test_snapshot_save_and_get() {
+        let (store, _dir) = setup();
+        store
+            .save_snapshot("s1", "main.rs", "hash123", 999)
+            .unwrap();
+        let snap = store.get_snapshot("s1", "main.rs").unwrap();
+        assert!(snap.is_some());
+        let (hash, mtime) = snap.unwrap();
+        assert_eq!(hash, "hash123");
+        assert_eq!(mtime, 999);
+    }
+
+    #[test]
+    fn test_snapshot_upsert() {
+        let (store, _dir) = setup();
+        store
+            .save_snapshot("s1", "main.rs", "hash1", 100)
+            .unwrap();
+        store
+            .save_snapshot("s1", "main.rs", "hash2", 200)
+            .unwrap();
+        let (hash, mtime) = store.get_snapshot("s1", "main.rs").unwrap().unwrap();
+        assert_eq!(hash, "hash2");
+        assert_eq!(mtime, 200);
+    }
+
+    #[test]
+    fn test_get_all_snapshots() {
+        let (store, _dir) = setup();
+        store.save_snapshot("s1", "a.rs", "h1", 1).unwrap();
+        store.save_snapshot("s1", "b.rs", "h2", 2).unwrap();
+        store.save_snapshot("s2", "c.rs", "h3", 3).unwrap();
+        let snaps = store.get_all_snapshots("s1").unwrap();
+        assert_eq!(snaps.len(), 2);
+        assert!(snaps.contains_key("a.rs"));
+    }
+
+    #[test]
+    fn test_record_count() {
+        let (store, _dir) = setup();
+        assert_eq!(store.record_count().unwrap(), 0);
+        store.record(&make_record("a.rs", "s1")).unwrap();
+        store.record(&make_record("b.rs", "s1")).unwrap();
+        assert_eq!(store.record_count().unwrap(), 2);
+    }
+
+    #[test]
+    fn test_detect_changes() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db_path = dir.path().join("test.db");
+        let store = ProvenanceStore::open(&db_path).unwrap();
+        let keypair = attestation::KeyPair::generate();
+
+        let file = dir.path().join("test.txt");
+        std::fs::write(&file, "original").unwrap();
+
+        let hash = content_hash::hash_file(&file).unwrap();
+        let mtime = crate::util::get_file_mtime_ns(file.to_str().unwrap()).unwrap_or(0);
+        store
+            .save_snapshot("s1", "test.txt", &hash, mtime)
+            .unwrap();
+
+        std::fs::write(&file, "modified").unwrap();
+
+        let changes =
+            detect_changes(dir.path(), "s1", &store, &keypair).unwrap();
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].file_path, "test.txt");
+        assert_eq!(changes[0].contributor_type, ContributorType::Ai);
+    }
+
+    #[test]
+    fn test_detect_no_changes() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db_path = dir.path().join("test.db");
+        let store = ProvenanceStore::open(&db_path).unwrap();
+        let keypair = attestation::KeyPair::generate();
+
+        let file = dir.path().join("test.txt");
+        std::fs::write(&file, "content").unwrap();
+
+        let hash = content_hash::hash_file(&file).unwrap();
+        let mtime = crate::util::get_file_mtime_ns(file.to_str().unwrap()).unwrap_or(0);
+        store
+            .save_snapshot("s1", "test.txt", &hash, mtime)
+            .unwrap();
+
+        let changes =
+            detect_changes(dir.path(), "s1", &store, &keypair).unwrap();
+        assert_eq!(changes.len(), 0);
+    }
+
+    // --- TDD Step A: Lock existing behavior ---
+
+    #[test]
+    fn test_detect_changes_preserves_existing_fields() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db_path = dir.path().join("test.db");
+        let store = ProvenanceStore::open(&db_path).unwrap();
+        let keypair = attestation::KeyPair::generate();
+
+        let file = dir.path().join("test.txt");
+        std::fs::write(&file, "original content").unwrap();
+        let hash = content_hash::hash_file(&file).unwrap();
+        let mtime = crate::util::get_file_mtime_ns(file.to_str().unwrap()).unwrap_or(0);
+        store.save_snapshot("s1", "test.txt", &hash, mtime).unwrap();
+
+        std::fs::write(&file, "modified content").unwrap();
+
+        let changes = detect_changes(dir.path(), "s1", &store, &keypair).unwrap();
+        assert_eq!(changes.len(), 1);
+        let rec = &changes[0];
+        assert_eq!(rec.session_id, "s1");
+        assert_eq!(rec.file_path, "test.txt");
+        assert!(!rec.code_hash.is_empty());
+        assert_eq!(rec.contributor_type, ContributorType::Ai);
+        assert!(!rec.attestation_sig.is_empty());
+        assert!(!rec.developer_id.is_empty());
+    }
+
+    // --- TDD Step B: New behavior tests ---
+
+    // Env var tests consolidated into one to avoid thread-safety issues with set_var
+    #[test]
+    fn test_model_id_extraction() {
+        // Test 1: env var takes precedence
+        unsafe { std::env::set_var("CLAUDE_MODEL", "claude-opus-4") };
+        assert_eq!(extract_model_id(None), "claude-opus-4");
+
+        // Test 2: env var overrides hook JSON
+        let json = serde_json::json!({"model": "from-json"});
+        assert_eq!(extract_model_id(Some(&json)), "claude-opus-4");
+
+        // Test 3: without env var, falls back to hook JSON
+        unsafe { std::env::remove_var("CLAUDE_MODEL") };
+        let json = serde_json::json!({"model": "claude-sonnet-4"});
+        assert_eq!(extract_model_id(Some(&json)), "claude-sonnet-4");
+
+        // Test 4: no env var, no JSON model field → "unknown"
+        let json = serde_json::json!({});
+        assert_eq!(extract_model_id(Some(&json)), "unknown");
+
+        // Test 5: no env var, no JSON at all → "unknown"
+        assert_eq!(extract_model_id(None), "unknown");
+    }
+
+    #[test]
+    fn test_attestation_signs_full_envelope() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db_path = dir.path().join("test.db");
+        let store = ProvenanceStore::open(&db_path).unwrap();
+        let keypair = attestation::KeyPair::generate();
+
+        let file = dir.path().join("test.txt");
+        std::fs::write(&file, "original").unwrap();
+        let hash = content_hash::hash_file(&file).unwrap();
+        let mtime = crate::util::get_file_mtime_ns(file.to_str().unwrap()).unwrap_or(0);
+        store.save_snapshot("s1", "test.txt", &hash, mtime).unwrap();
+        std::fs::write(&file, "modified").unwrap();
+
+        let hook_json = serde_json::json!({"model": "test-model"});
+        let changes = detect_changes_with_model(
+            dir.path(), "s1", &store, &keypair, Some(&hook_json),
+        ).unwrap();
+
+        assert_eq!(changes.len(), 1);
+        let rec = &changes[0];
+
+        // Verify signature was computed over full 6-field envelope
+        let sign_data = format!(
+            "{}:{}:{}:{}:{}:{}",
+            rec.prompt_hash, rec.model_id, rec.model_version,
+            rec.code_hash, rec.timestamp_ms, rec.developer_id
+        );
+        let pk = keypair.public_key_hex();
+        assert!(attestation::verify(&pk, sign_data.as_bytes(), &rec.attestation_sig));
+    }
+
+    #[test]
+    fn test_detect_changes_with_model_from_json() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db_path = dir.path().join("test.db");
+        let store = ProvenanceStore::open(&db_path).unwrap();
+        let keypair = attestation::KeyPair::generate();
+
+        let file = dir.path().join("test.txt");
+        std::fs::write(&file, "original").unwrap();
+        let hash = content_hash::hash_file(&file).unwrap();
+        let mtime = crate::util::get_file_mtime_ns(file.to_str().unwrap()).unwrap_or(0);
+        store.save_snapshot("s1", "test.txt", &hash, mtime).unwrap();
+        std::fs::write(&file, "modified").unwrap();
+
+        std::env::remove_var("CLAUDE_MODEL");
+        let hook_json = serde_json::json!({"model": "claude-haiku-4"});
+        let changes = detect_changes_with_model(
+            dir.path(), "s1", &store, &keypair, Some(&hook_json),
+        ).unwrap();
+
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].model_id, "claude-haiku-4");
+    }
+
+    #[test]
+    fn test_parse_diff_ranges_empty_on_non_git() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let ranges = parse_diff_ranges(dir.path(), "nonexistent.txt");
+        assert!(ranges.is_empty());
+    }
+}

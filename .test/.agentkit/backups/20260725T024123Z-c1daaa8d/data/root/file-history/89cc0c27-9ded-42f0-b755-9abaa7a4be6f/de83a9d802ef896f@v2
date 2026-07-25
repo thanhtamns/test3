@@ -1,0 +1,127 @@
+use serde_json::json;
+
+use crate::provenance::ProvenanceRecord;
+
+pub fn generate(records: &[ProvenanceRecord]) -> serde_json::Value {
+    let components: Vec<_> = records
+        .iter()
+        .map(|r| {
+            json!({
+                "type": "file",
+                "name": r.file_path,
+                "hashes": [{ "alg": "BLAKE3", "content": r.code_hash }],
+                "properties": [
+                    { "name": "ai:model_id", "value": r.model_id },
+                    { "name": "ai:model_version", "value": r.model_version },
+                    { "name": "ai:contributor_type", "value": r.contributor_type.as_str() },
+                    { "name": "ai:attestation_sig", "value": r.attestation_sig },
+                    { "name": "ai:developer_id", "value": r.developer_id },
+                ]
+            })
+        })
+        .collect();
+
+    json!({
+        "bomFormat": "CycloneDX",
+        "specVersion": "1.6",
+        "version": 1,
+        "metadata": {
+            "tools": [{
+                "name": "codeflow",
+                "version": env!("CARGO_PKG_VERSION")
+            }]
+        },
+        "components": components
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::provenance::ContributorType;
+
+    fn sample_records() -> Vec<ProvenanceRecord> {
+        vec![ProvenanceRecord {
+            id: None,
+            session_id: "sess-1".into(),
+            timestamp_ms: 1000,
+            file_path: "src/app.ts".into(),
+            code_hash: "hash-abc".into(),
+            model_id: "claude-sonnet-4-20250514".into(),
+            model_version: "20250514".into(),
+            contributor_type: ContributorType::Ai,
+            start_line: 1,
+            end_line: 100,
+            attestation_sig: "sig-xyz".into(),
+            developer_id: "dev-1".into(),
+            prompt_hash: "ph1".into(),
+            project_dir: "/proj".into(),
+        }]
+    }
+
+    #[test]
+    fn test_cyclonedx_envelope_structure() {
+        let result = generate(&sample_records());
+        assert_eq!(result["bomFormat"], "CycloneDX");
+        assert_eq!(result["specVersion"], "1.6");
+        assert_eq!(result["version"], 1);
+        assert!(result["metadata"]["tools"].is_array());
+        assert!(result["components"].is_array());
+    }
+
+    #[test]
+    fn test_cyclonedx_ai_component_fields() {
+        let result = generate(&sample_records());
+        let comp = &result["components"][0];
+        assert_eq!(comp["type"], "file");
+        assert_eq!(comp["name"], "src/app.ts");
+        assert_eq!(comp["hashes"][0]["alg"], "BLAKE3");
+        assert_eq!(comp["hashes"][0]["content"], "hash-abc");
+
+        let props = comp["properties"].as_array().unwrap();
+        let model_prop = props.iter().find(|p| p["name"] == "ai:model_id").unwrap();
+        assert_eq!(model_prop["value"], "claude-sonnet-4-20250514");
+
+        let type_prop = props
+            .iter()
+            .find(|p| p["name"] == "ai:contributor_type")
+            .unwrap();
+        assert_eq!(type_prop["value"], "ai");
+
+        let sig_prop = props
+            .iter()
+            .find(|p| p["name"] == "ai:attestation_sig")
+            .unwrap();
+        assert_eq!(sig_prop["value"], "sig-xyz");
+    }
+
+    #[test]
+    fn test_cyclonedx_empty_records() {
+        let result = generate(&[]);
+        assert_eq!(result["bomFormat"], "CycloneDX");
+        assert_eq!(result["components"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_cyclonedx_multiple_components() {
+        let mut recs = sample_records();
+        recs.push(ProvenanceRecord {
+            id: None,
+            session_id: "sess-1".into(),
+            timestamp_ms: 2000,
+            file_path: "src/lib.rs".into(),
+            code_hash: "hash-def".into(),
+            model_id: "claude-haiku-3-5-20241022".into(),
+            model_version: "20241022".into(),
+            contributor_type: ContributorType::Mixed,
+            start_line: 5,
+            end_line: 20,
+            attestation_sig: "sig-abc".into(),
+            developer_id: "dev-2".into(),
+            prompt_hash: "ph2".into(),
+            project_dir: "/proj".into(),
+        });
+        let result = generate(&recs);
+        assert_eq!(result["components"].as_array().unwrap().len(), 2);
+    }
+}

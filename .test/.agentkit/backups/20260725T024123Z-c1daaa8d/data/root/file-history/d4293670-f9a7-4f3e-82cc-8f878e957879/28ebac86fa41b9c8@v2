@@ -1,0 +1,47 @@
+# CODEFLOW Phase 6: CLI Export + Dashboard — Shipped
+
+**Date:** 2026-06-07
+**Repo:** `D:/code/invesments/tools_decisions/rtk-analysis/`
+
+## What shipped
+
+Data export (JSON/CSV/HTML) and self-contained browser dashboard.
+
+| Module | Purpose |
+|--------|---------|
+| `core/exporter.rs` | export_json, export_csv, export_html, ExportStats, ModelCostSummary |
+| `core/dashboard_html.rs` | Self-contained HTML template, Chart.js CDN, XSS-safe JSON injection |
+| `cmds/codeflow/export_cmd.rs` | `rtk export --format html/json/csv --range --project --output` |
+| `cmds/codeflow/serve_cmd.rs` | `rtk serve --port` — live dashboard via TcpListener |
+
+**Total: 2164 tests passing (33 new), 0 regressions.**
+
+## Code review findings (all fixed)
+
+- **[C] dashboard_html.rs:** XSS via `</script>` in JSON blob injected into HTML. Fixed with `replace("</", "<\\/")`.
+- **[H] serve_cmd.rs:** No read timeout — slow-loris can block single-threaded server. Fixed with 5s `set_read_timeout`.
+- **[M] export_cmd.rs:** Unknown format silently produced HTML (wildcard match). Fixed: warns explicitly, still defaults to HTML.
+
+## Key design decisions
+
+1. **Chart.js via CDN** — keeps binary small, works offline after first browser cache
+2. **Single-threaded serve** — acceptable for local dev tool, no extra crates needed
+3. **XSS prevention** — `</` → `<\/` in JSON injection + `html_escape()` on all table cells
+4. **No new dependencies** — `std::net::TcpListener` only, zero new crates
+
+## Cumulative CODEFLOW progress
+
+| Phase | Status | Tests Added |
+|-------|--------|-------------|
+| 1 — Provenance Core | Complete | +29 |
+| 2 — Cost Attribution | Complete | +36 |
+| 3 — Budget Governance | Complete | +20 |
+| 4 — Quality Gate | Complete | +32 |
+| 5 — Compliance Export | Complete | +32 |
+| 6 — CLI Export + Dashboard | Complete | +33 |
+| **Total** | **6 of 7** | **2164** |
+
+## What's next
+
+- Phase 7 (OSS Polish + Launch Prep) — final phase, now unblocked
+- Mostly non-code: README, CI/CD, landing page, binary rename, install scripts

@@ -1,0 +1,181 @@
+---
+phase: 2
+title: "Coverage Tracker + Gap Detector"
+status: pending
+priority: P1
+effort: "2-3d"
+dependencies: [phase-01]
+---
+
+# Phase 2: Coverage Tracker + Gap Detector
+
+## Overview
+
+Build system that knows WHAT it knows and WHAT it doesn't. Tracks knowledge coverage by domain, detects gaps when new queries arrive, and generates targeted LLM research requests for exactly the missing knowledge.
+
+## Requirements
+
+- Functional: Per-domain coverage score (0-100%). Gap detection on every incoming query. Targeted research request generation. Staleness detection for aging facts.
+- Non-functional: Gap detection < 50ms. No false positives (claiming coverage when insufficient).
+
+## Architecture
+
+```
+Incoming Query
+  │
+  ▼
+CoverageTracker.check(query)
+  │
+  ├── coverage >= 80% → LOCAL REASONING (no LLM needed)
+  │
+  ├── coverage 40-80% → LOCAL + TARGETED LLM (fill specific gaps)
+  │     │
+  │     ▼
+  │   GapDetector.identify_gaps(query, existing_knowledge)
+  │     │
+  │     ▼
+  │   ResearchRequestGenerator.generate(gaps) → specific LLM queries
+  │
+  └── coverage < 40% → FULL LLM RESEARCH (novel domain)
+        │
+        ▼
+      Results → Distill → Store → coverage improves for next query
+```
+
+## Related Code Files
+
+**Create:**
+- `.claude/lib/intelligence/coverage/tracker.py` — domain coverage scoring
+- `.claude/lib/intelligence/coverage/gap-detector.py` — gap identification
+- `.claude/lib/intelligence/coverage/research-request-generator.py` — targeted LLM query generation
+- `.claude/lib/intelligence/coverage/staleness-monitor.py` — fact expiry tracking
+- `.claude/lib/intelligence/coverage/__init__.py`
+
+**Modify:**
+- `.claude/lib/intelligence/knowledge-distillation/local-reasoning-engine.py` — integrate coverage check before reasoning
+- `.claude/skills/business/deep-intelligence/stage0_integration.py` — use coverage for `gaps_for_llm` output
+
+## Implementation Steps
+
+### Step 1: Coverage Tracker (~1d)
+
+```python
+class CoverageTracker:
+    def __init__(self, db_path: str):
+        self.db = sqlite3.connect(db_path)  # decision-vectors.db
+
+    def check(self, query_features: dict) -> CoverageResult:
+        """Score how well local knowledge covers this query domain."""
+        # 1. Extract domain from query features (industry, business_model, etc.)
+        # 2. Count decision vectors matching domain
+        # 3. Count kill signals matching domain
+        # 4. Count pattern rules matching domain
+        # 5. Check freshness of matched knowledge
+        # 6. Score = weighted(vector_count, signal_count, rule_count, freshness)
+
+    def domain_report(self) -> dict:
+        """Per-domain coverage summary for dashboard."""
+        # Returns: {domain: {vectors: N, signals: N, rules: N, coverage_pct: N, stalest_fact_days: N}}
+```
+
+Coverage scoring:
+```
+vectors >= 20 AND signals >= 5 AND rules >= 3 AND all_fresh → 100%
+vectors >= 10 AND signals >= 3 → 70%
+vectors >= 5 → 40%
+vectors < 5 → <40% (novel domain)
+
+Freshness penalty: -10% per fact older than 90 days without verification
+```
+
+### Step 2: Gap Detector (~0.5d)
+
+```python
+class GapDetector:
+    def identify_gaps(self, query_features: dict, coverage: CoverageResult) -> list[Gap]:
+        """Find specific knowledge gaps for this query."""
+        gaps = []
+        # 1. Missing competitor data (no vectors with same industry)
+        # 2. Missing failure patterns (no kill signals for business_model)
+        # 3. Missing pricing intelligence (no market data for domain)
+        # 4. Stale facts (matched but expired)
+        # 5. Low-confidence existing facts (confidence < 0.6)
+        return gaps
+
+@dataclass
+class Gap:
+    gap_type: str         # competitor, failure, pricing, market_size, regulatory
+    domain: str
+    specifics: str        # "no competitor data for dropshipping_vietnam"
+    priority: int         # 1=critical, 2=important, 3=nice-to-have
+    suggested_query: str  # pre-built LLM query to fill this gap
+```
+
+### Step 3: Research Request Generator (~0.5d)
+
+```python
+class ResearchRequestGenerator:
+    def generate(self, gaps: list[Gap], schemas: dict) -> list[ResearchRequest]:
+        """Convert gaps → targeted, structured LLM queries."""
+        requests = []
+        for gap in gaps:
+            # 1. Select schema from gap_type
+            # 2. Build structured query (via StructuredQueryBuilder from P1)
+            # 3. Set priority from gap priority
+            # 4. Estimate cost (tokens × provider rate)
+            requests.append(ResearchRequest(
+                query=query,
+                schema=schema,
+                priority=gap.priority,
+                estimated_cost_usd=cost,
+                domain=gap.domain,
+            ))
+        return sorted(requests, key=lambda r: r.priority)
+```
+
+### Step 4: Staleness Monitor (~0.5d)
+
+```python
+class StalenessMonitor:
+    def scan(self) -> list[StaleRecord]:
+        """Find facts approaching or past expiry."""
+        # 1. Query fact_provenance for expires_at < now + 7 days
+        # 2. Query decision_vectors for created_at > 90 days without re-verification
+        # 3. Return prioritized list for re-research
+
+    def mark_refreshed(self, fact_id: int, new_confidence: float):
+        """Update fact after re-verification."""
+```
+
+### Step 5: Wire into stage0 (~0.5d)
+
+Modify `stage0_integration.py`:
+```python
+# BEFORE: hardcoded domain classification + claim gathering
+# AFTER:
+coverage = CoverageTracker(db_path).check(query_features)
+if coverage.score >= 0.8:
+    gaps_for_llm = []  # local is sufficient
+elif coverage.score >= 0.4:
+    gaps = GapDetector().identify_gaps(query_features, coverage)
+    gaps_for_llm = ResearchRequestGenerator().generate(gaps)
+else:
+    gaps_for_llm = "FULL_RESEARCH"  # novel domain, LLM does everything
+```
+
+## Success Criteria
+
+- [ ] Coverage score computed in <50ms per query
+- [ ] Gaps correctly identified for 10 test cases (manual audit)
+- [ ] Research requests are specific (not "tell me about X" but "list 5 competitors for X with URL, pricing, users")
+- [ ] Staleness monitor flags facts > 90 days old
+- [ ] stage0 uses coverage to determine LLM scope
+- [ ] Dashboard command: `python coverage/tracker.py --report` shows per-domain stats
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|---|---|
+| Coverage score too generous (false confidence) | Conservative scoring: require 20+ vectors for 100% |
+| Gap detector misses non-obvious gaps | Include catch-all "general gap" for domains with < 10 vectors |
+| Over-generating research requests (cost) | Budget cap per session from llm-config.json |

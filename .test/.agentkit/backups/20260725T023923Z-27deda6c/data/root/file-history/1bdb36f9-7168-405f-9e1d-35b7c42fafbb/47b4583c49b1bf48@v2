@@ -1,0 +1,81 @@
+"""
+ReasoningChainEngine — main entry point wiring decomposer → resolver → assembler → verdict → tracer.
+Single method: reason(query, context) → ChainVerdict with full audit trail.
+"""
+
+import time
+from pathlib import Path
+from typing import Optional
+
+from .problem_decomposer import ProblemDecomposer
+from .atomic_resolver import AtomicResolver
+from .chain_assembler import ChainAssembler
+from .verdict_generator import VerdictGenerator, ChainVerdict
+from .chain_tracer import ChainTracer
+
+
+class ReasoningChainEngine:
+    def __init__(
+        self,
+        vectors_db: Optional[Path] = None,
+        kill_signals_path: Optional[Path] = None,
+        provenance_db: Optional[Path] = None,
+        trace_path: Optional[Path] = None,
+    ):
+        self.decomposer = ProblemDecomposer()
+        self.resolver = AtomicResolver(vectors_db, kill_signals_path, provenance_db)
+        self.assembler = ChainAssembler()
+        self.verdict_gen = VerdictGenerator()
+        self.tracer = ChainTracer(trace_path)
+
+    def reason(
+        self,
+        query: str,
+        context: dict,
+        query_type: str = "opportunity_analysis",
+        trace: bool = True,
+    ) -> ChainVerdict:
+        start = time.perf_counter()
+
+        questions = self.decomposer.decompose(query, query_type)
+        resolutions = self.resolver.resolve_batch(questions, context)
+        chain = self.assembler.assemble(resolutions)
+        verdict = self.verdict_gen.generate(chain)
+
+        elapsed_ms = (time.perf_counter() - start) * 1000
+
+        if trace:
+            self.tracer.trace(query, query_type, resolutions, chain, verdict)
+
+        verdict.reason += f" [{elapsed_ms:.0f}ms]"
+        return verdict
+
+    def reason_custom(
+        self,
+        query: str,
+        questions: list[str],
+        context: dict,
+        trace: bool = True,
+    ) -> ChainVerdict:
+        atoms = self.decomposer.decompose_custom(questions)
+        resolutions = self.resolver.resolve_batch(atoms, context)
+        chain = self.assembler.assemble(resolutions)
+        verdict = self.verdict_gen.generate(chain)
+
+        if trace:
+            self.tracer.trace(query, "custom", resolutions, chain, verdict)
+
+        return verdict
+
+    def explain(self, query: str, context: dict, query_type: str = "opportunity_analysis") -> dict:
+        questions = self.decomposer.decompose(query, query_type)
+        resolutions = self.resolver.resolve_batch(questions, context)
+        chain = self.assembler.assemble(resolutions)
+        verdict = self.verdict_gen.generate(chain)
+
+        return {
+            "query": query,
+            "verdict": verdict.to_dict(),
+            "chain": chain.to_dict(),
+            "atoms": [r.to_dict() for r in resolutions],
+        }

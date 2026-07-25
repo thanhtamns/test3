@@ -1,0 +1,44 @@
+# Hunt Money-Flow-First Overhaul — Implementation Plan
+
+**Status:** complete
+**Created:** 2026-05-22
+**Target:** `D:\code\invesments\master_investments\.claude\commands\`
+**Report:** `./report.md`
+
+## Phases
+
+| Phase | Description | Status | Files |
+|---|---|---|---|
+| 1 | Filter fix — add leverage type scoring (Filter 6) | complete | asymmetry-filter.md |
+| 2 | Money flow scanner — new primary scanner | complete | scanners/money-flow-scanner.md |
+| 3 | Scanner inversions — 5 existing scanners | complete | regulatory, cross-price, cross-language, timing, founder-network |
+| 4 | Deal tracker system — 3 new agents | complete | deal-tracker.md, deal-learner.md, deal-dashboard.md |
+| 5 | hunt.md v3→v4 + checklist v3→v4 integration | complete | hunt.md, hunt-checklist.md |
+
+## Changes Summary
+
+### Phase 1: Filter
+- Added Filter 6 (Leverage Type) — ARBITRAGE(10) > BROKER(9) > INTELLIGENCE(8) > AGGREGATOR(7) > MEDIA(5) > WRAPPER(3) > BUILDER(1)
+- Score < 5 = KILL (kills BUILDER + WRAPPER)
+- Reweighted formula: leverage(0.25) + competition(0.20) + protection(0.20) + ai_resistance(0.15) + access(0.10) + margin(0.10)
+
+### Phase 2: Money Flow Scanner
+- New primary scanner (0/6) — maps transaction chains, finds bottleneck positions
+- Outputs position types, supply/demand contacts, disintermediation defense
+
+### Phase 3: Scanner Inversions
+- All 5 scanners inverted from "find gap → build" to "find money flow → position"
+- regulatory: gap → compliance broker/intelligence position
+- cross-price: gap → arbitrage/broker position with supply+demand contacts
+- cross-language: gap → affiliate/reseller/consultant position via partner programs
+- timing: gap → overflow broker/aggregator position during surges
+- founder-network: enhanced with money flow mapping per contact
+
+### Phase 4: Deal Tracker
+- deal-tracker.md: converts opportunities to deal cards (5 supply + 5 demand per opportunity)
+- deal-learner.md: extracts patterns from outcomes, feeds back into scanner weights
+- deal-dashboard.md: pipeline view with metrics, daily actions, pattern insights
+
+### Phase 5: Integration
+- hunt.md v3→v4: philosophy rewrite, 6 scanners, leverage enforcement, deal card integration, 14 anti-patterns
+- hunt-checklist.md v3→v4: Filter 6 added, deal cards in A5, deal pipeline mode, updated quality checks

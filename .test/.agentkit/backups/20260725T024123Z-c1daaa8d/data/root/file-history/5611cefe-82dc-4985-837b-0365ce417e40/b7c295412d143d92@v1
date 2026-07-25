@@ -1,0 +1,85 @@
+---
+title: "Strategic Brain Engine (SBE) — Phase 1"
+description: "Encode elite business thinking as deterministic rules. System thinks FIRST (20 principles + 8 contrarian rules + learned patterns), LLM executes LAST (fact retrieval + narrative). 97% token reduction, 80% pre-screen rate by month 24."
+status: pending
+priority: P1
+branch: "master"
+tags: [intelligence, local-first, strategic-brain, principles, mtde, anti-hallucination]
+blockedBy: []
+blocks: []
+created: "2026-05-10T10:34:50.571Z"
+createdBy: "ck:plan"
+source: skill
+target_repo: D:/code/invesments/master_investments
+estimated_effort: "8-10 days"
+---
+
+# Strategic Brain Engine (SBE) — Phase 1
+
+## Problem
+
+System's "peak intelligence" is 90%+ LLM-dependent. Gates catch FORMAT errors (missing quotes, zone tags), not LOGIC errors. LLM reasoning = black box = average thinking (trained on internet median). Elite business thinking requires DIFFERENT lens on same data.
+
+## Solution
+
+3-tier deterministic brain:
+- **Tầng 1 (Principle Engine):** 20 immutable principles + 8 contrarian rules. Computable YES/NO/SCORE.
+- **Tầng 2 (Pattern Engine):** Learned from outcomes, evolves monthly. (Phase 2 — not in this plan)
+- **Tầng 3 (Tactic Engine):** Real-time from deal tracker. (Phase 2 — not in this plan)
+
+Plus **MTDE (Micro-Task Decomposition Engine):** Decomposes big questions → 100-200 micro-queries → LLM extracts single facts → deterministic aggregation.
+
+## Architecture
+
+```
+Input → [Principle Engine Pass 1] → [MTDE micro-queries] → [Principle Engine Pass 2] → [Deterministic Verdict] → [LLM narrative only]
+```
+
+## Design Reports
+- `plans/reports/brainstorm-260510-1613-llm-dependency-audit-mtde-design.md`
+- `plans/reports/brainstorm-260510-1724-strategic-brain-engine-design.md`
+
+## Related Plans (all status: complete = planned, implementation varies)
+- `260510-0914-knowledge-distillation-engine` — Decision vectors DB (foundation)
+- `260510-0952-local-first-intelligence-architecture` — Overall LFI architecture
+- `260510-1331-micro-decomposition-engine` — MTDE concept
+- `260510-1440-local-reasoning-engine` — Technique engine + synthesizer
+
+## Target Directory
+```
+D:/code/invesments/master_investments/.claude/lib/intelligence/strategic-brain/
+├── engine/
+│   ├── principle-engine.py
+│   └── contrarian-rules.py
+├── mtde/
+│   ├── decomposer.py
+│   ├── retriever.py
+│   └── aggregator.py
+├── data/
+│   ├── principles.json
+│   ├── contrarian-rules.json
+│   └── dimension-templates.json
+├── integration/
+│   ├── sbe-orchestrator.py
+│   └── llm-constraint-generator.py
+└── tests/
+    ├── test-principle-engine.py
+    ├── test-mtde.py
+    └── test-sbe-orchestrator.py
+```
+
+## Phases
+
+| Phase | Name | Status | Effort | Dependencies |
+|-------|------|--------|--------|-------------|
+| 1 | [Principle Engine Core](./phase-01-principle-engine-core.md) | Pending | 2-3 days | None |
+| 2 | [MTDE Core](./phase-02-mtde-core.md) | Pending | 2-3 days | Phase 1 (uses principle-generated questions) |
+| 3 | [SBE Orchestrator + Integration](./phase-03-sbe-orchestrator-integration.md) | Pending | 2 days | Phase 1 + 2 |
+| 4 | [Validation + Benchmarking](./phase-04-validation-benchmarking.md) | Pending | 2 days | Phase 3 |
+
+## Key Design Decisions
+1. Principles are FROZEN (immutable axioms, not learned)
+2. Two-pass architecture: Pass 1 filters scope, Pass 2 evaluates with facts
+3. LLM used ONLY for fact extraction (not reasoning)
+4. Integration is ADDITIVE (existing pipeline unchanged)
+5. Target repo: `master_investments` (NOT _mmo)

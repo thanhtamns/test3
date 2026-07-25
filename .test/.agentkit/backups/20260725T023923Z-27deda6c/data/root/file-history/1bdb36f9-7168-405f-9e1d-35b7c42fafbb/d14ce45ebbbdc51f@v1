@@ -1,0 +1,376 @@
+#!/usr/bin/env python3
+"""
+Multi-LLM extraction runner for billionaire knowledge pipeline.
+Extracts decision patterns using Claude, GPT-4, and Gemini with consensus.
+"""
+
+import os
+import json
+import asyncio
+from pathlib import Path
+from datetime import datetime
+from typing import List, Dict, Any, Optional
+from dataclasses import dataclass, asdict
+
+BASE_DIR = Path(__file__).resolve().parents[5]
+KNOWLEDGE_DIR = BASE_DIR / "knowledge" / "billionaires"
+PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
+
+
+@dataclass
+class ExtractionResult:
+    chunk_id: str
+    model: str
+    pattern: Optional[Dict[str, Any]]
+    confidence: float
+    error: Optional[str] = None
+
+
+def load_prompt(prompt_name: str) -> str:
+    """Load extraction prompt template."""
+    prompt_path = PROMPTS_DIR / f"{prompt_name}.md"
+    with open(prompt_path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def extract_with_claude(chunk: Dict[str, Any], prompt_template: str) -> ExtractionResult:
+    """Extract decision pattern using Claude."""
+    try:
+        import anthropic
+        client = anthropic.Anthropic()
+
+        prompt = prompt_template.replace("{chunk_content}", chunk["content"])
+
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=1500,
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        text = response.content[0].text.strip()
+
+        if text.lower() == "null" or not text:
+            return ExtractionResult(
+                chunk_id=chunk["chunk_id"],
+                model="claude",
+                pattern=None,
+                confidence=0.0
+            )
+
+        if text.startswith("```"):
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+
+        pattern = json.loads(text)
+        pattern["extraction_meta"] = {
+            "chunk_id": chunk["chunk_id"],
+            "model": "claude",
+            "extracted_at": datetime.now().isoformat()
+        }
+
+        return ExtractionResult(
+            chunk_id=chunk["chunk_id"],
+            model="claude",
+            pattern=pattern,
+            confidence=0.85
+        )
+
+    except json.JSONDecodeError as e:
+        return ExtractionResult(
+            chunk_id=chunk["chunk_id"],
+            model="claude",
+            pattern=None,
+            confidence=0.0,
+            error=f"JSON parse error: {e}"
+        )
+    except Exception as e:
+        return ExtractionResult(
+            chunk_id=chunk["chunk_id"],
+            model="claude",
+            pattern=None,
+            confidence=0.0,
+            error=str(e)
+        )
+
+
+def extract_with_gpt4(chunk: Dict[str, Any], prompt_template: str) -> ExtractionResult:
+    """Extract decision pattern using GPT-4."""
+    try:
+        import openai
+        client = openai.OpenAI()
+
+        prompt = prompt_template.replace("{chunk_content}", chunk["content"])
+
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=1500,
+            response_format={"type": "json_object"}
+        )
+
+        text = response.choices[0].message.content.strip()
+
+        if text.lower() == "null" or text == "{}" or not text:
+            return ExtractionResult(
+                chunk_id=chunk["chunk_id"],
+                model="gpt4",
+                pattern=None,
+                confidence=0.0
+            )
+
+        pattern = json.loads(text)
+        if not pattern or pattern == {}:
+            return ExtractionResult(
+                chunk_id=chunk["chunk_id"],
+                model="gpt4",
+                pattern=None,
+                confidence=0.0
+            )
+
+        pattern["extraction_meta"] = {
+            "chunk_id": chunk["chunk_id"],
+            "model": "gpt4",
+            "extracted_at": datetime.now().isoformat()
+        }
+
+        return ExtractionResult(
+            chunk_id=chunk["chunk_id"],
+            model="gpt4",
+            pattern=pattern,
+            confidence=0.80
+        )
+
+    except Exception as e:
+        return ExtractionResult(
+            chunk_id=chunk["chunk_id"],
+            model="gpt4",
+            pattern=None,
+            confidence=0.0,
+            error=str(e)
+        )
+
+
+def extract_with_gemini(chunk: Dict[str, Any], prompt_template: str) -> ExtractionResult:
+    """Extract decision pattern using Gemini."""
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=os.environ.get("GOOGLE_API_KEY"))
+        model = genai.GenerativeModel("gemini-2.0-flash")
+
+        prompt = prompt_template.replace("{chunk_content}", chunk["content"])
+
+        response = model.generate_content(prompt)
+        text = response.text.strip()
+
+        if text.lower() == "null" or not text:
+            return ExtractionResult(
+                chunk_id=chunk["chunk_id"],
+                model="gemini",
+                pattern=None,
+                confidence=0.0
+            )
+
+        if text.startswith("```"):
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+
+        pattern = json.loads(text)
+        pattern["extraction_meta"] = {
+            "chunk_id": chunk["chunk_id"],
+            "model": "gemini",
+            "extracted_at": datetime.now().isoformat()
+        }
+
+        return ExtractionResult(
+            chunk_id=chunk["chunk_id"],
+            model="gemini",
+            pattern=pattern,
+            confidence=0.75
+        )
+
+    except Exception as e:
+        return ExtractionResult(
+            chunk_id=chunk["chunk_id"],
+            model="gemini",
+            pattern=None,
+            confidence=0.0,
+            error=str(e)
+        )
+
+
+def compute_consensus(results: List[ExtractionResult]) -> Dict[str, Any]:
+    """Compute consensus from multiple extraction results."""
+    valid_results = [r for r in results if r.pattern is not None]
+
+    if len(valid_results) == 0:
+        return {
+            "consensus": None,
+            "confidence": 0.0,
+            "agreement": 0,
+            "models_agreed": []
+        }
+
+    if len(valid_results) == 1:
+        return {
+            "consensus": valid_results[0].pattern,
+            "confidence": valid_results[0].confidence * 0.7,
+            "agreement": 1,
+            "models_agreed": [valid_results[0].model]
+        }
+
+    best = max(valid_results, key=lambda r: r.confidence)
+    merged = best.pattern.copy()
+
+    models_agreed = [r.model for r in valid_results]
+    agreement = len(valid_results)
+
+    if agreement == 3:
+        confidence = sum(r.confidence for r in valid_results) / 3 * 1.1
+    elif agreement == 2:
+        confidence = sum(r.confidence for r in valid_results) / 2 * 0.9
+    else:
+        confidence = valid_results[0].confidence * 0.7
+
+    confidence = min(confidence, 0.99)
+
+    merged["extraction_meta"] = {
+        "chunk_id": results[0].chunk_id,
+        "models_agreed": models_agreed,
+        "agreement": agreement,
+        "extracted_at": datetime.now().isoformat()
+    }
+
+    return {
+        "consensus": merged,
+        "confidence": round(confidence, 2),
+        "agreement": agreement,
+        "models_agreed": models_agreed
+    }
+
+
+def run_extraction_batch(
+    chunks: List[Dict[str, Any]],
+    models: List[str] = ["claude", "gpt4", "gemini"],
+    prompt_name: str = "decision-pattern-prompt"
+) -> Dict[str, Any]:
+    """Run extraction on a batch of chunks."""
+    prompt_template = load_prompt(prompt_name)
+
+    extractors = {
+        "claude": extract_with_claude,
+        "gpt4": extract_with_gpt4,
+        "gemini": extract_with_gemini
+    }
+
+    results = {
+        "patterns": [],
+        "review_queue": [],
+        "stats": {
+            "total_chunks": len(chunks),
+            "patterns_extracted": 0,
+            "high_confidence": 0,
+            "needs_review": 0,
+            "no_pattern": 0
+        }
+    }
+
+    for i, chunk in enumerate(chunks):
+        print(f"Processing chunk {i+1}/{len(chunks)}: {chunk['chunk_id']}")
+
+        extraction_results = []
+        for model_name in models:
+            if model_name in extractors:
+                result = extractors[model_name](chunk, prompt_template)
+                extraction_results.append(result)
+                status = "pattern" if result.pattern else "null"
+                print(f"  {model_name}: {status}")
+
+        consensus = compute_consensus(extraction_results)
+
+        if consensus["consensus"] is None:
+            results["stats"]["no_pattern"] += 1
+            continue
+
+        consensus["consensus"]["confidence"] = consensus["confidence"]
+        consensus["consensus"]["id"] = f"{chunk['author']}-ext-{len(results['patterns']):03d}"
+
+        if consensus["confidence"] >= 0.80:
+            results["patterns"].append(consensus["consensus"])
+            results["stats"]["patterns_extracted"] += 1
+            results["stats"]["high_confidence"] += 1
+            print(f"  -> HIGH CONFIDENCE ({consensus['confidence']})")
+        elif consensus["confidence"] >= 0.60:
+            results["review_queue"].append({
+                "pattern": consensus["consensus"],
+                "reason": "moderate_confidence",
+                "confidence": consensus["confidence"]
+            })
+            results["stats"]["needs_review"] += 1
+            print(f"  -> NEEDS REVIEW ({consensus['confidence']})")
+        else:
+            results["review_queue"].append({
+                "pattern": consensus["consensus"],
+                "reason": "low_confidence",
+                "confidence": consensus["confidence"]
+            })
+            results["stats"]["needs_review"] += 1
+            print(f"  -> LOW CONFIDENCE ({consensus['confidence']})")
+
+    return results
+
+
+def run_extraction(author: str, models: List[str] = ["claude"]) -> Dict[str, Any]:
+    """Run full extraction pipeline for an author."""
+    author_dir = KNOWLEDGE_DIR / author
+    chunks_file = author_dir / "chunks" / "all-chunks.json"
+    extracted_dir = author_dir / "extracted"
+    extracted_dir.mkdir(parents=True, exist_ok=True)
+
+    with open(chunks_file, "r", encoding="utf-8") as f:
+        chunks = json.load(f)
+
+    print(f"Loaded {len(chunks)} chunks for {author}")
+    print(f"Using models: {models}")
+
+    results = run_extraction_batch(chunks, models)
+
+    patterns_file = extracted_dir / "decision-patterns.json"
+    with open(patterns_file, "w", encoding="utf-8") as f:
+        json.dump(results["patterns"], f, indent=2)
+
+    review_file = extracted_dir / "review-queue.json"
+    with open(review_file, "w", encoding="utf-8") as f:
+        json.dump(results["review_queue"], f, indent=2)
+
+    log_file = extracted_dir / "extraction-log.json"
+    with open(log_file, "w", encoding="utf-8") as f:
+        json.dump({
+            "author": author,
+            "extracted_at": datetime.now().isoformat(),
+            "models": models,
+            **results["stats"]
+        }, f, indent=2)
+
+    print(f"\nExtraction complete:")
+    print(f"  Patterns extracted: {results['stats']['patterns_extracted']}")
+    print(f"  High confidence: {results['stats']['high_confidence']}")
+    print(f"  Needs review: {results['stats']['needs_review']}")
+    print(f"  No pattern found: {results['stats']['no_pattern']}")
+
+    return results
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Run multi-LLM extraction")
+    parser.add_argument("--author", required=True, help="Author slug")
+    parser.add_argument("--models", default="claude", help="Comma-separated model list")
+    parser.add_argument("--limit", type=int, help="Limit chunks to process")
+
+    args = parser.parse_args()
+    models = [m.strip() for m in args.models.split(",")]
+
+    run_extraction(args.author, models)

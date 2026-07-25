@@ -1,0 +1,82 @@
+# Phase 3: Persistence & Data
+
+**Priority:** P1
+**Status:** pending
+**Estimated time:** 1-2 hours
+**Depends on:** Phase 1
+
+## Context
+- Stage0 persists to `data/cases/`, `data/verdicts/`, `data/knowledge/`
+- Hunt needs its own namespace: `data/hunts/`
+- Simpler than stage0 — no knowledge graph, no calibration, just structured JSON per hunt
+
+## Directory Structure
+
+```
+master_investments/data/hunts/
+└── HUNT-260522-ke-toan-thue-vn/
+    ├── hunt-meta.json           # Case metadata (id, dates, status, founder)
+    ├── prey_profile.json        # Step 1 output
+    ├── pain_map.json            # Step 2 output
+    ├── proof.json               # Step 3 output (updated after human action)
+    ├── offer.json               # Step 4 output
+    └── scripts/                 # Step 5 output
+        ├── cold-outreach-dm.md
+        ├── cold-outreach-email.md
+        ├── landing-page-copy.md
+        ├── follow-up-sequence.md
+        ├── objection-handling.md
+        └── week-1-action-plan.md
+```
+
+## hunt-meta.json Schema
+
+```json
+{
+  "hunt_id": "HUNT-260522-ke-toan-thue-vn",
+  "created": "2026-05-22T21:00:00Z",
+  "status": "PREY_IDENTIFIED | PAIN_MAPPED | PROOF_PENDING | PROOF_PASSED | PROOF_FAILED | OFFER_DESIGNED | SCRIPTS_READY | EXECUTING | KILLED",
+  "founder_profile": "phamt-260507",
+  "prey_slug": "ke-toan-thue-vn",
+  "current_step": 3,
+  "proof_action_id": "ACTION-HUNT-260522-proof",
+  "stage0_case_id": null,
+  "notes": []
+}
+```
+
+## /hunt continue <id> Flow
+
+When user returns after sending outreach messages:
+1. Load `data/hunts/HUNT-<id>/hunt-meta.json`
+2. Check status = PROOF_PENDING
+3. AskUser for results: replies, confirmed, asked-for-solution, WTP quotes
+4. Update `proof.json`
+5. Evaluate proof_status (PASSED/WEAK/FAILED)
+6. If PASSED → continue to Step 4
+7. If FAILED → offer: retry with different pain, or different prey group
+
+## Stop Hook Integration
+
+Add to existing stop hook (or create hunt-specific):
+- If `/hunt` ran and status != KILLED and no `data/hunts/HUNT-<id>/` exists → WARN
+- Lighter than stage0's BLOCK — hunts are iterative, not one-shot
+
+## Bridge: stage0 → hunt
+
+When stage0 verdict = MOUNTAIN or SIDE_HUSTLE_WITH_STAIRCASE:
+- Verdict suggests: "Run `/hunt <prey from verdict>` to find specific customers"
+- hunt-meta.json links back: `stage0_case_id: "case-260522-xyz"`
+
+## Implementation Steps
+
+1. Create `data/hunts/` directory in master_investments
+2. Add hunt-meta.json schema validation (or just mkdir + write)
+3. Implement `/hunt continue` flow in hunt.md spec
+4. Optional: add hunt persistence to stop hook
+
+## Success Criteria
+- [ ] Directory created on first /hunt run
+- [ ] All 5 step outputs saved as separate JSON/MD files
+- [ ] /hunt continue loads previous state correctly
+- [ ] Status transitions are valid (no skipping PROOF)

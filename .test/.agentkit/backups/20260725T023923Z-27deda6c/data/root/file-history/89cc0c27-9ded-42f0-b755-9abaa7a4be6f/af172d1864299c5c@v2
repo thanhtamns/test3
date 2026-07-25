@@ -1,0 +1,164 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  fetchQualitySummary,
+  type QualitySummary,
+} from "@/lib/api";
+import { DateRangeSelector } from "@/components/date-range-selector";
+
+const SEVERITY_COLORS: Record<string, string> = {
+  critical: "bg-red-100 text-red-700",
+  high: "bg-orange-100 text-orange-700",
+  medium: "bg-amber-100 text-amber-700",
+  low: "bg-green-100 text-green-700",
+};
+
+export default function QualityPage() {
+  const [data, setData] = useState<QualitySummary | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [days, setDays] = useState(90);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    fetchQualitySummary(days)
+      .then((r) => { if (!cancelled) setData(r); })
+      .catch((e) => { if (!cancelled) setError(e.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [days]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold">Quality Metrics</h1>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-muted-foreground">
+              Could not load quality data. Make sure the API is running.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const passRate = data?.pass_rate ?? 0;
+  const passColor = passRate >= 90 ? "text-green-600" : passRate >= 70 ? "text-amber-600" : "text-red-600";
+  const severityEntries = Object.entries(data?.by_severity ?? {}).sort(
+    ([a], [b]) => severityOrder(a) - severityOrder(b)
+  );
+  const checkTypeEntries = Object.entries(data?.by_check_type ?? {}).sort(
+    ([, a], [, b]) => b - a
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Quality Metrics</h1>
+        <DateRangeSelector value={days} onChange={setDays} />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <MetricCard title="Gate Pass Rate" value={`${passRate.toFixed(1)}%`} description="of quality gates passed" className={passColor} />
+        <MetricCard title="Total Findings" value={data?.total_findings.toString() ?? "0"} description="issues detected" />
+        <MetricCard title="Blocked" value={data?.blocked_count.toString() ?? "0"} description="commits blocked by gate" />
+        <MetricCard
+          title="Severity Ratio"
+          value={severityEntries.length > 0 ? `${severityEntries.length} levels` : "None"}
+          description="active severity levels"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {severityEntries.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Findings by Severity</CardTitle>
+              <CardDescription>Distribution across severity levels</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {severityEntries.map(([sev, count]) => (
+                  <div key={sev} className="flex items-center justify-between">
+                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${SEVERITY_COLORS[sev] ?? "bg-gray-100 text-gray-700"}`}>
+                      {sev}
+                    </span>
+                    <Badge variant="secondary">{count}</Badge>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {checkTypeEntries.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Findings by Check Type</CardTitle>
+              <CardDescription>Which checks catch the most issues</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {checkTypeEntries.map(([type, count]) => (
+                  <div key={type} className="flex items-center justify-between">
+                    <span className="text-sm font-medium">{type}</span>
+                    <Badge variant="secondary">{count}</Badge>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {!data?.total_findings && (
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-muted-foreground">
+              No quality findings yet. Run <code className="bg-muted px-1 rounded">codeflow gate</code> to start capturing quality gate results.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function severityOrder(s: string): number {
+  const order: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+  return order[s] ?? 4;
+}
+
+function MetricCard({ title, value, description, className }: { title: string; value: string; description: string; className?: string }) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardDescription>{title}</CardDescription>
+        <CardTitle className={`text-3xl ${className ?? ""}`}>{value}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </CardContent>
+    </Card>
+  );
+}

@@ -1,0 +1,130 @@
+"""
+Decomposer — orchestrates classification, dimension selection, and micro-query
+generation. Checks local KB first via AtomicResolver. Zero LLM calls.
+"""
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
+
+from .dimension_registry import Dimension, get_dimensions
+from .micro_query_generator import MicroQuery, MicroQueryGenerator
+from .query_classifier import ClassificationResult, QueryClassifier
+from ..reasoning.problem_decomposer import AtomicQuestion
+from ..reasoning.atomic_resolver import AtomicResolver
+
+
+@dataclass
+class DecompositionTree:
+    original_query: str
+    query_type: str
+    classification_confidence: float
+    dimensions: list[Dimension]
+    micro_queries: list[MicroQuery]
+    pre_resolved: list[dict] = field(default_factory=list)
+    context: dict = field(default_factory=dict)
+
+    @property
+    def queries_to_fire(self) -> list[MicroQuery]:
+        resolved_texts = {r["query"] for r in self.pre_resolved}
+        return [q for q in self.micro_queries if q.text not in resolved_texts]
+
+    @property
+    def total_queries(self) -> int:
+        return len(self.micro_queries)
+
+    @property
+    def cached_count(self) -> int:
+        return len(self.pre_resolved)
+
+    def to_dict(self) -> dict:
+        return {
+            "original_query": self.original_query,
+            "query_type": self.query_type,
+            "classification_confidence": self.classification_confidence,
+            "dimensions": [d.to_dict() for d in self.dimensions],
+            "micro_queries": [q.to_dict() for q in self.micro_queries],
+            "pre_resolved": self.pre_resolved,
+            "context": self.context,
+            "total_queries": self.total_queries,
+            "cached_count": self.cached_count,
+            "queries_to_fire": len(self.queries_to_fire),
+        }
+
+
+class Decomposer:
+    def __init__(self, resolver: Optional[AtomicResolver] = None, weight_overrides: Optional[dict[str, float]] = None):
+        self.classifier = QueryClassifier()
+        self.generator = MicroQueryGenerator()
+        self.resolver = resolver
+        self.weight_overrides = weight_overrides
+
+    def decompose(self, query: Optional[str]) -> DecompositionTree:
+        if not query or not query.strip():
+            return DecompositionTree(
+                original_query=query or "",
+                query_type="custom",
+                classification_confidence=0.0,
+                dimensions=[],
+                micro_queries=[],
+                context={},
+            )
+
+        classification = self.classifier.classify(query)
+        dimensions = get_dimensions(classification.query_type, weight_overrides=self.weight_overrides)
+        micro_queries = self.generator.generate_batch(dimensions, classification.context)
+
+        pre_resolved = []
+        if self.resolver:
+            pre_resolved = self._resolve_against_kb(micro_queries, classification.context)
+
+        return DecompositionTree(
+            original_query=query,
+            query_type=classification.query_type,
+            classification_confidence=classification.confidence,
+            dimensions=dimensions,
+            micro_queries=micro_queries,
+            pre_resolved=pre_resolved,
+            context=classification.context,
+        )
+
+    def _resolve_against_kb(self, queries: list[MicroQuery], context: dict) -> list[dict]:
+        resolved = []
+        for mq in queries:
+            aq = AtomicQuestion(
+                text=mq.text,
+                query_type=mq.dimension,
+                category=self._map_dimension_to_category(mq.dimension),
+                weight=1.0,
+            )
+            resolution = self.resolver.resolve(aq, context)
+            if resolution.status == "RESOLVED" and resolution.confidence >= 0.5:
+                resolved.append({
+                    "query": mq.text,
+                    "dimension": mq.dimension,
+                    "answer": resolution.answer,
+                    "confidence": resolution.confidence,
+                    "source": resolution.source,
+                })
+        return resolved
+
+    def _map_dimension_to_category(self, dimension: str) -> str:
+        mapping = {
+            "career_path": "founder",
+            "deal_skills": "financial",
+            "network_access": "custom",
+            "founder_experience": "founder",
+            "base_rates": "base_rate",
+            "capital_requirements": "financial",
+            "competitive_landscape": "competitor",
+            "moat_patterns": "moat",
+            "timing_windows": "timing",
+            "unit_economics": "pricing",
+            "regulatory_risks": "regulatory",
+            "failure_patterns": "base_rate",
+            "compounding_mechanisms": "compound",
+            "execution_distance": "custom",
+            "leverage_type": "leverage",
+            "indirect_entry": "custom",
+        }
+        return mapping.get(dimension, "custom")

@@ -1,0 +1,45 @@
+'use strict';
+
+const { shouldPass } = require('../../lib/convergence-detector.cjs');
+const { recordIteration, reset } = require('../../lib/audit-history.cjs');
+
+beforeEach(() => reset());
+
+describe('convergence-detector', () => {
+  test('passes when no actionable gaps', () => {
+    const result = shouldPass([{ id: 'x', severity: 'minor' }]);
+    expect(result.pass).toBe(true);
+    expect(result.reason).toBe('no_actionable_gaps');
+  });
+
+  test('blocks when critical gaps exist and no convergence', () => {
+    const result = shouldPass([{ id: 'x', severity: 'critical' }]);
+    expect(result.pass).toBe(false);
+  });
+
+  test('force-passes at max iterations', () => {
+    const gaps = [{ id: 'x', severity: 'critical' }];
+    for (let i = 0; i < 5; i++) recordIteration(gaps);
+    const result = shouldPass(gaps);
+    expect(result.pass).toBe(true);
+    expect(result.reason).toBe('max_iterations');
+  });
+
+  test('detects stagnation after 2 non-improving iterations', () => {
+    const gaps3 = [{ id: 'a', severity: 'critical' }, { id: 'b', severity: 'major' }, { id: 'c', severity: 'major' }];
+    const gaps3b = [{ id: 'a', severity: 'critical' }, { id: 'b', severity: 'major' }, { id: 'd', severity: 'major' }];
+    recordIteration(gaps3);
+    recordIteration(gaps3b);
+    const result = shouldPass(gaps3);
+    expect(result.pass).toBe(true);
+    expect(result.reason).toBe('stagnating');
+  });
+
+  test('marks repeat gaps as unfillable', () => {
+    const gaps = [{ id: 'persistent', severity: 'critical' }];
+    recordIteration(gaps);
+    const result = shouldPass(gaps);
+    expect(result.pass).toBe(true);
+    expect(result.unfillable).toContain('persistent');
+  });
+});

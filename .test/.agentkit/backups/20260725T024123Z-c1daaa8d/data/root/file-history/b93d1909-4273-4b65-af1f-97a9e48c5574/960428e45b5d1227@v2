@@ -1,0 +1,99 @@
+{
+  "type": "coffee",
+  "trigger_patterns": ["/coffee", "coffee export", "Robusta", "Arabica", "SCA score", "cupping", "FOB", "green coffee", "Dak Lak"],
+  "min_length": 800,
+  "dimensions": {
+    "completeness": {
+      "weight": 0.25,
+      "checks": [
+        {
+          "id": "cof_market",
+          "rule": "contains('market|buyer|demand|import|destination')",
+          "severity": "critical",
+          "description": "No target market or buyer analysis",
+          "fix": "Specify target market, buyer type, and demand characteristics",
+          "fix_cost": "medium"
+        },
+        {
+          "id": "cof_quality",
+          "rule": "contains('quality|SCA|score|cupping|defect|grade|screen')",
+          "severity": "major",
+          "description": "No quality specification or grading discussed",
+          "fix": "Add quality parameters: SCA score range, defect count, screen size",
+          "fix_cost": "auto"
+        },
+        {
+          "id": "cof_logistics",
+          "rule": "contains('logistics|shipping|container|\\bport\\b|FCL|LCL|freight|transit')",
+          "severity": "major",
+          "description": "No logistics/shipping considerations",
+          "fix": "Add shipping method, port, container type, and timeline",
+          "fix_cost": "medium"
+        }
+      ]
+    },
+    "evidence": {
+      "weight": 0.25,
+      "checks": [
+        {
+          "id": "cof_pricing",
+          "rule": "contains('price|FOB|differential|ICE|cost|margin|$/kg|$/lb')",
+          "severity": "critical",
+          "description": "No pricing or cost analysis",
+          "fix": "Add FOB price, differentials, or cost breakdown",
+          "fix_cost": "large"
+        },
+        {
+          "id": "cof_sourced",
+          "rule": "unsourced_number_count() <= 8",
+          "severity": "major",
+          "description": "Too many unsourced numbers in coffee analysis",
+          "fix": "Source pricing data or tag with [?]",
+          "fix_cost": "auto"
+        }
+      ]
+    },
+    "depth": {
+      "weight": 0.25,
+      "checks": [
+        {
+          "id": "cof_supply_chain",
+          "rule": "contains('farmer|cooperative|processor|exporter|importer|roaster')",
+          "severity": "major",
+          "description": "No supply chain positioning discussed",
+          "fix": "Clarify position in value chain: sourcing, processing, or export",
+          "fix_cost": "medium"
+        },
+        {
+          "id": "cof_risk",
+          "rule": "contains('risk|weather|climate|disease|pest|price volatility|currency')",
+          "severity": "major",
+          "description": "No risk factors specific to coffee trade",
+          "fix": "Add coffee-specific risks: weather, disease, price volatility, FX",
+          "fix_cost": "auto"
+        }
+      ]
+    },
+    "actionability": {
+      "weight": 0.25,
+      "checks": [
+        {
+          "id": "cof_next_steps",
+          "rule": "contains('next step|action|sample|contact|visit|order|timeline')",
+          "severity": "major",
+          "description": "No actionable next steps for coffee trade",
+          "fix": "Add specific next actions: sample prep, buyer contact, timeline",
+          "fix_cost": "auto"
+        },
+        {
+          "id": "cof_timeline",
+          "rule": "contains('week|month|day|timeline|schedule|season|harvest')",
+          "severity": "minor",
+          "description": "No timeline or seasonal awareness"
+        }
+      ]
+    }
+  },
+  "pass_criteria": { "critical": 0, "major": 0 },
+  "max_iterations": 3
+}

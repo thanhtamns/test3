@@ -1,0 +1,97 @@
+---
+status: pending
+created: 2026-05-27
+target_repo: D:\code\invesments\master_investments
+title: "Hypothesis-Driven Intelligence Engine"
+description: >-
+  Evolve Stage0 from search-aggregation pipeline to hypothesis-driven
+  adversarial intelligence engine. Inspired by DeepMind Co-Scientist:
+  shift compute from SEARCH (60%) to THINK (80%). 5 phases.
+total_phases: 5
+estimated_effort: "25h"
+---
+
+# Hypothesis-Driven Intelligence Engine
+
+## Problem
+
+Stage0 produces DATA, not INTELLIGENCE. Current pipeline: 7+ web search agents → flat evidence vault → single-pass reasoning chain → synthesis. User critique: "quá bình thường và vẫn web search quá nhiều" (too ordinary, relies too much on web search).
+
+**Root cause:** Pipeline is COLLECT → ORGANIZE → SUMMARIZE. Missing the THINK step that makes Co-Scientist (DeepMind, Nature May 2025) produce novel discoveries.
+
+## Co-Scientist Architecture (reference)
+
+```
+Generation(10%) → [Verify against structured DBs(70%) + Debate(20%)] × N rounds → Convergence
+```
+
+Key principles:
+1. Generate NOVEL hypotheses before any search (first principles, not web-first)
+2. 70% compute on VERIFICATION against structured knowledge, not generation
+3. Contradictions are MORE valuable than confirmations
+4. Iterative refinement until ranking CONVERGES (not single-pass)
+5. Evolution: top ideas MERGE into stronger forms
+
+## Current Stage0 vs Proposed
+
+```
+CURRENT:
+  Search(60%) → Organize(20%) → Debate(10%) → Synthesize(10%)
+  Single-pass: Phase 0 → 1 → 2 → 2.5A/B/C → 2.7 → 3 → 4
+
+PROPOSED:
+  Seed(10%) → [Generate → Verify → Debate → Evolve] × N → Synthesize(10%)
+  Iterative: Phase 2.6 (Generate) → 2.7 (Debate) → 2.8 (Refine) loops until convergence
+```
+
+## Phase Overview
+
+| # | Phase | Status | Effort | Files |
+|---|-------|--------|--------|-------|
+| 1 | [First Principles Generator](phase-01-first-principles-generator.md) | pending | 5h | 3 new + 1 modify |
+| 2 | [Knowledge Graph](phase-02-knowledge-graph.md) | pending | 8h | 4 new + 2 modify |
+| 3 | [Refinement Loop](phase-03-refinement-loop.md) | pending | 6h | 2 new + 2 modify |
+| 4 | [Mechanism-First Output](phase-04-mechanism-first-output.md) | pending | 3h | 1 new + 2 modify |
+| 5 | [Integration + Testing](phase-05-integration-testing.md) | pending | 3h | 1 modify + tests |
+
+## Architecture
+
+```
+Phase 2 research agents (existing, UNCHANGED)
+        ↓
+Phase 2.5A: Evidence Vault (existing, UPGRADED → Knowledge Graph)
+Phase 2.5B: Reasoning Chain (existing, UNCHANGED)
+Phase 2.5C: Pattern Matcher (existing, UNCHANGED)
+        ↓
+Phase 2.6: FIRST PRINCIPLES GENERATOR (NEW)
+  - Generate 5-8 novel hypotheses WITHOUT web search
+  - Pure LLM reasoning from founder context + domain knowledge
+  - Each hypothesis has: mechanism, falsification criteria, causal chain
+        ↓
+Phase 2.7: Tournament (existing, UPGRADED)
+  - Now debates GENERATED hypotheses, not just collected patterns
+  - Feeds results to refinement loop
+        ↓
+Phase 2.8: REFINEMENT LOOP (NEW)
+  - For top-3: STRENGTHEN (fill evidence gaps) + ATTACK (find counter-evidence) + EVOLVE (merge)
+  - Re-run tournament on refined hypotheses
+  - Converge when top-3 stable across 2 rounds (max 3 rounds)
+        ↓
+Phase 3-4: Lens Analysis + Synthesis (existing, receives richer input)
+```
+
+## Dependencies
+
+- Tournament engine (Phase 2.7) — SHIPPED, 33/33 tests
+- Intelligence Controller — SHIPPED, hypothesis loop pattern reusable
+- Evidence Vault Protocol — exists, needs upgrade to Knowledge Graph
+- SKILL.md — will be modified in Phase 5 integration
+
+## Key Design Decisions
+
+1. **Knowledge Graph is Python, not markdown** — structured queryable data, not flat text
+2. **First Principles Generator is a PROTOCOL (markdown)** — follows evidence-vault-protocol pattern, LLM is the executor
+3. **Refinement Loop is bounded: max 3 rounds** — prevents infinite compute
+4. **Convergence = top-3 ranking stable** — deterministic stop condition
+5. **All new code in `.claude/lib/intelligence/`** — extends existing module structure
+6. **Evidence vault is NOT replaced** — Knowledge Graph is a structured LAYER on top of it

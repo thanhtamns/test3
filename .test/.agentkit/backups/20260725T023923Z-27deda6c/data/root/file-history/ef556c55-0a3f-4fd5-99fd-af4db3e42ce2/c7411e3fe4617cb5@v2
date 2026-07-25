@@ -1,0 +1,580 @@
+# LLM Dependency Audit & Micro-Task Decomposition Engine (MTDE) Design
+
+**Date:** 2026-05-10
+**Type:** Full System Review + Architecture Design
+**Scope:** master_investments — stage0, auto-evolution, feedback loop, transaction layer
+
+---
+
+## 1. CURRENT STATE: LLM DEPENDENCY MAP
+
+### 1.1 Component Census
+
+| Layer | Total Scripts | Deterministic | LLM-Dependent | LLM % |
+|-------|--------------|---------------|----------------|--------|
+| Pre-screening (Step 0-1.8) | 8 | 8 | 0 | **0%** |
+| Topic processing (Step 2-2.8) | 10 | 5 | 5 | 50% |
+| Data intelligence (Step 3.4-3.4f) | 6 | 6 | 0 | **0%** |
+| Wave 1 agents (Step 3.5) | 8+ | 0 | 8+ | **100%** |
+| Wave 2 agents (Step 3.8) | 6 | 0 | 6 | **100%** |
+| Synthesis (Step 4-5) | 3 | 1 | 2 | 67% |
+| Verdict (Step 6-7) | 8 | 4 | 4 | 50% |
+| Persistence (Step 8-10) | 5 | 5 | 0 | **0%** |
+| Execution (Step 11-12) | 4 | 0 | 4 | **100%** |
+| Feedback loop | 20 | 20 | 0 | **0%** |
+| Auto-evolution (L1-L2) | 3 | 3 | 0 | **0%** |
+| Auto-evolution (L3-L4) | 2 | 1 | 1 | 50% |
+| Money intelligence (math) | 6 | 6 | 0 | **0%** |
+| Money intelligence (reasoning) | 7 | 0 | 7 | **100%** |
+| Knowledge extraction | 6 | 4 | 2 | 33% |
+| Transaction scoring | 4 | 4 | 0 | **0%** |
+| Execution/outreach | 8 | 8 | 0 | **0%** |
+| **TOTAL** | **~114** | **~75 (66%)** | **~39 (34%)** | **34%** |
+
+### 1.2 Nhưng 34% Đó Là Phần QUAN TRỌNG NHẤT
+
+Dù 66% scripts là deterministic, phần LLM-dependent chiếm **90%+ giá trị quyết định**:
+
+```
+DETERMINISTIC (66% scripts, ~10% decision value)
+├── Gates: "Output này có đúng format không?" → YES/NO
+├── Scoring: "Brier score là bao nhiêu?" → 0.31
+├── Routing: "Topic này thuộc intent_class nào?" → operator_layer
+└── Persistence: "Lưu verdict vào DB" → done
+
+LLM-DEPENDENT (34% scripts, ~90% decision value)  ← BOTTLENECK
+├── Wave 1-2: "Opportunity này có tiềm năng không?" → reasoning
+├── Synthesis: "Tổng hợp 14 agent outputs thành verdict" → reasoning
+├── Circuit Design: "Cash flow circuit tối ưu là gì?" → creative synthesis
+├── Red-team: "Verdict này có lỗ hổng gì?" → adversarial reasoning
+└── Execution: "Kế hoạch 12 tuần cụ thể?" → planning
+```
+
+### 1.3 Vấn Đề Cốt Lõi
+
+**LLM reasoning là black box.** Khi hỏi "làm sao đạt level Giang TMT ($450M fund, 25 tuổi)?":
+
+- **Cách hiện tại:** LLM tổng hợp → output 1500-2000 words → verdict
+- **Vấn đề:** Không biết LLM bỏ qua những gì, không verify được từng claim, không reproduce được reasoning
+- **Hậu quả:** Gates chỉ bắt lỗi FORMAT (có đủ quotes? có zone tags?), KHÔNG bắt lỗi LOGIC (reasoning có đúng không?)
+
+---
+
+## 2. VÍ DỤ MINH HỌA: "ĐẠT LEVEL GIANG TMT"
+
+### 2.1 Cách LLM Trả Lời Trực Tiếp (Hiện tại)
+
+```
+Input: "Tư duy đỉnh cao để đạt level quản lý quỹ $450M ở tuổi 25"
+LLM Output (black box):
+  → "Hãy xây dựng network trong VC..."
+  → "Học finance ở trường top..."
+  → "Bắt đầu startup để có experience..."
+  → Verdict: MOUNTAIN_CANDIDATE (conf: 0.72)
+```
+
+**Vấn đề:** Generic, không verify được, không biết LLM dựa trên evidence nào.
+
+### 2.2 Cách MTDE Sẽ Xử Lý (Proposed)
+
+```
+Input: "Đạt level quản lý quỹ $450M ở tuổi 25"
+
+PHASE 1: DECOMPOSE (Deterministic — Python rules)
+├── Decomposer nhận input → tách thành 12 dimensions
+├── Mỗi dimension → 10-20 micro-questions
+├── Total: 150-200 micro-questions
+│
+├── DIMENSION: Career Path
+│   ├── Q1: "VC fund manager Vietnam age <30" → WebSearch → 3 names
+│   ├── Q2: "Giang Tran Minh Thanh career path" → WebSearch → timeline
+│   ├── Q3: "KVision fund AUM history" → WebSearch → $450M
+│   ├── Q4: "Kasikorn Bank Vietnam investments" → WebSearch → portfolio
+│   ├── Q5: "GEM Apartment revenue 2019" → WebSearch → 9-figure
+│   └── ...15 more micro-Qs
+│
+├── DIMENSION: Education Requirements  
+│   ├── Q1: "VC fund managers Vietnam education background" → WebSearch
+│   ├── Q2: "CFA requirement Vietnam fund management" → WebSearch
+│   ├── Q3: "MBA programs that place into SEA VC" → WebSearch
+│   └── ...10 more micro-Qs
+│
+├── DIMENSION: Capital & Network
+│   ├── Q1: "How VC associates get promoted to GP" → WebSearch
+│   ├── Q2: "Vietnam VC firms hiring 2025-2026" → WebSearch
+│   ├── Q3: "LP fundraising SEA venture funds" → WebSearch
+│   └── ...15 more micro-Qs
+│
+├── DIMENSION: Regulatory
+│   ├── Q1: "Vietnam fund management license requirements" → WebSearch
+│   ├── Q2: "SFC equivalent Vietnam securities law" → WebSearch
+│   └── ...8 more micro-Qs
+│
+├── DIMENSION: Base Rates
+│   ├── Q1: "How many people manage $100M+ fund by age 30" → WebSearch
+│   ├── Q2: "VC fund manager average age first fund" → WebSearch
+│   ├── Q3: "success rate first-time fund managers" → WebSearch
+│   └── ...10 more micro-Qs
+│
+└── ...7 more dimensions (Skills, Track Record, Deal Flow, 
+     Competitive Landscape, Timing, Alternative Paths, Kill Signals)
+
+PHASE 2: RETRIEVE (LLM as micro-search — tiny scope per query)
+├── Each micro-Q → 1 WebSearch → 1-3 specific facts
+├── LLM role: Extract specific data point from search result
+├── NOT reasoning — just "what number/name/date is in this text?"
+├── Accuracy: ~95% (vs ~60% for big reasoning)
+├── Cost: 200 × ~100 tokens = ~20K tokens total
+│
+├── Q1 result: {name: "Giang TMT", age: 25, fund: "KVision", aum: "$450M"}
+├── Q2 result: {path: "GEM Apartment → KVision", years: 3}
+├── Q3 result: {parent: "Kasikorn Bank", hq: "Thailand"}
+└── ...197 more micro-results
+
+PHASE 3: AGGREGATE (Deterministic — Python rules)
+├── Cross-reference: Remove contradictions (majority vote)
+├── Confidence: Per-fact confidence based on source count
+├── Gap detection: Which dimensions have <3 facts? → flag
+├── Pattern extraction: What do all successful paths share?
+│
+├── Pattern 1: "100% cases had institutional backing BEFORE fund"
+├── Pattern 2: "Median age first fund manager SEA = 35 (P10=28)"
+├── Pattern 3: "0 cases of $450M fund with solo founder background"
+├── Pattern 4: "Regulatory: need SSC license + 5yr experience"
+└── Gap: "No data on alternative paths (non-VC routes to $450M)"
+
+PHASE 4: SYNTHESIZE (LLM — but CONSTRAINED by Phase 3 output)
+├── LLM receives: 200 verified facts + patterns + gaps
+├── LLM role: Connect dots, NOT generate new claims
+├── Output MUST cite Phase 3 facts (no fabrication possible)
+├── Verdict grounded in evidence, not reasoning
+│
+└── Output: "KILL — P10 age for $450M fund = 28, requires SSC license
+     + 5yr institutional track record. Founder has 0yr. Alternative:
+     build $5-10M micro-fund (SIDE_HUSTLE) with 3yr track record 
+     → graduate to $50M+ fund by age 30-32."
+```
+
+### 2.3 So Sánh Chất Lượng
+
+| Metric | Current (LLM-direct) | MTDE (Proposed) |
+|--------|----------------------|-----------------|
+| Facts verified | 0-3 (LLM may fabricate) | 150-200 (each WebSearched) |
+| Reasoning transparency | Black box | Full trace per fact |
+| Reproducibility | Low (different each run) | High (same queries → same facts) |
+| Cost | ~50K tokens (1 big reasoning) | ~20K tokens (200 × 100 tokens) |
+| Time | ~60s (1 LLM call) | ~300s (200 micro-calls, parallelizable to ~60s) |
+| Accuracy | ~60% (reasoning errors) | ~90% (micro-extraction + aggregation) |
+| Evolvability | Manual rule updates | Auto-learn new dimensions from outcomes |
+
+---
+
+## 3. MTDE ARCHITECTURE DESIGN
+
+### 3.1 Core Components
+
+```
+┌─────────────────────────────────────────────────────┐
+│                  MTDE PIPELINE                       │
+│                                                     │
+│  ┌───────────┐    ┌───────────┐    ┌───────────┐   │
+│  │ DECOMPOSER│───▶│ RETRIEVER │───▶│AGGREGATOR │   │
+│  │(Python)   │    │(LLM-micro)│    │(Python)   │   │
+│  └───────────┘    └───────────┘    └───────────┘   │
+│       │                                    │        │
+│       ▼                                    ▼        │
+│  ┌───────────┐                      ┌───────────┐  │
+│  │ DIMENSION │                      │SYNTHESIZER│  │
+│  │ TEMPLATES │                      │(LLM-bound)│  │
+│  │ (JSON DB) │                      └───────────┘  │
+│  └───────────┘                                     │
+│                                                     │
+│  ┌───────────────────────────────────────────────┐  │
+│  │            EVOLUTION LAYER                     │  │
+│  │  outcome → new dimensions / questions / weights│  │
+│  └───────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────┘
+```
+
+### 3.2 Component Details
+
+#### A. DECOMPOSER (`mtde-decomposer.py`) — DETERMINISTIC
+
+**Input:** Natural language request (e.g., "đạt level Giang TMT")
+**Output:** List of 150-200 micro-questions grouped by dimension
+
+**Logic:**
+1. **Topic Classification** — reuse existing `topic-to-features.py` + `query-intent-classifier.py`
+2. **Dimension Selection** — lookup `dimension-templates.json`:
+   - Each topic-type maps to 10-15 relevant dimensions
+   - Each dimension has 10-20 question templates with `{variable}` slots
+3. **Variable Substitution** — fill templates with extracted entities
+4. **Question Prioritization** — weight by: dimension importance × information_gap × cost_per_query
+5. **Budget Allocation** — cap total queries based on available budget (default: 200)
+
+**Dimension Templates (examples):**
+```json
+{
+  "career_path": {
+    "weight": 1.0,
+    "questions": [
+      "{person} career timeline",
+      "{person} education background",
+      "{role} average age first appointment",
+      "{role} prerequisites qualifications {country}",
+      "{company} org chart leadership team",
+      "youngest {role} in {industry} {country}",
+      "{role} career path from {current_level}",
+      "how long to become {role} {industry}",
+      "{role} salary range {country}",
+      "{person} mentor network connections"
+    ]
+  },
+  "base_rates": {
+    "weight": 1.5,
+    "questions": [
+      "{role} success rate statistics",
+      "{role} failure rate first attempt",
+      "P10 P50 P90 {metric} for {role}",
+      "how many {role} exist in {country}",
+      "{industry} median {metric} {country}",
+      "survivorship bias {industry} {role}"
+    ]
+  },
+  "regulatory": {
+    "weight": 0.8,
+    "questions": [
+      "{industry} license requirements {country}",
+      "{role} certification needed {country}",
+      "legal structure for {business_type} {country}",
+      "minimum capital requirement {business_type} {country}"
+    ]
+  }
+}
+```
+
+**Key design:** Templates are STATIC, maintained in JSON. New dimensions added from outcome learning (see Evolution Layer). No LLM needed for decomposition.
+
+#### B. RETRIEVER (`mtde-retriever.py`) — LLM-MICRO
+
+**Input:** List of micro-questions
+**Output:** Per-question fact sheet (structured JSON)
+
+**Logic:**
+1. **Parallel WebSearch** — batch 10-20 concurrent searches
+2. **Fact Extraction** — LLM extracts SINGLE data point per result:
+   - Prompt: "From this text, extract: {specific_field}. Return JSON: {name, value, source_url, date}"
+   - Token budget: ~100 tokens per extraction (vs ~5000 for full reasoning)
+3. **Source Scoring** — deterministic tier classification:
+   - Tier S: Government/registry data
+   - Tier A: Financial filings, court records
+   - Tier B: Major news (VnExpress, Bloomberg)
+   - Tier C: Industry reports
+   - Tier D: Blog posts, forums
+   - Tier F: Social media, unverified
+4. **Dedup** — same fact from 2+ sources → confidence boost
+5. **Gap Detection** — questions with 0 results → flag for retry with alternative phrasing
+
+**LLM role here:** Information EXTRACTION only (not reasoning). "What number is in this paragraph?" — accuracy ~95%.
+
+#### C. AGGREGATOR (`mtde-aggregator.py`) — DETERMINISTIC
+
+**Input:** 200 fact sheets
+**Output:** Aggregated evidence package with patterns, contradictions, gaps
+
+**Logic:**
+1. **Contradiction Detection** — same field, different values → flag + majority vote
+2. **Pattern Extraction** — across dimensions, find recurring signals:
+   - "All 5 successful cases had X" → strong pattern
+   - "3 of 5 had X" → moderate pattern  
+   - "1 of 5 had X" → weak pattern
+3. **Gap Analysis** — dimensions with <3 facts → "insufficient evidence"
+4. **Base Rate Integration** — merge with existing `decision-vectors.db`:
+   - If similar cases exist → compare patterns
+   - If novel → flag as "no precedent"
+5. **Kill Signal Scan** — reuse existing `kill-signals.json` rules against aggregated facts
+6. **Confidence Calculation** — per-dimension and overall:
+   - `dim_conf = facts_count / expected_facts × avg_source_tier`
+   - `overall_conf = weighted_avg(dim_confs)`
+
+**Output format:**
+```json
+{
+  "dimensions": {
+    "career_path": {
+      "facts": [...],
+      "patterns": ["100% had institutional backing"],
+      "confidence": 0.85,
+      "contradictions": [],
+      "gaps": ["no data on non-traditional paths"]
+    }
+  },
+  "cross_dimension_patterns": [
+    {"pattern": "institutional backing required", "support": 5, "confidence": 0.9},
+    {"pattern": "median age = 35", "support": 3, "confidence": 0.7}
+  ],
+  "kill_signals": [
+    {"signal": "regulatory_barrier", "details": "SSC license requires 5yr exp"}
+  ],
+  "overall_confidence": 0.78,
+  "verdict_suggestion": "KILL or SIDE_HUSTLE (regulatory barrier + age P10=28)"
+}
+```
+
+#### D. SYNTHESIZER (`mtde-synthesizer.py`) — LLM-CONSTRAINED
+
+**Input:** Aggregated evidence package (NOT raw data)
+**Output:** Narrative verdict (1500-2000 words)
+
+**Constraints on LLM:**
+1. **MUST cite Phase 3 facts** — every claim must reference a fact_id
+2. **CANNOT introduce new claims** — only connect existing facts
+3. **MUST respect kill signals** — if aggregator found kill → verdict must reflect
+4. **Word budget** — max 2000 words
+5. **Structure enforced** — reuse existing stage0 Step 7 template
+
+**LLM role here:** Narrative generation ONLY. The "thinking" already happened in Phase 1-3. LLM is a writer, not a thinker.
+
+#### E. EVOLUTION LAYER (`mtde-evolver.py`) — DETERMINISTIC
+
+**Input:** Outcome data (from feedback loop)
+**Output:** Updated dimension templates, question weights, new patterns
+
+**Logic:**
+1. **Outcome → Dimension Correlation**
+   - When verdict = KILL but outcome = success → which dimensions were WRONG?
+   - When verdict = MOUNTAIN but outcome = failure → which dimensions MISSED signals?
+2. **Question Value Tracking**
+   - Each micro-question gets a "usefulness score" based on how often its answer changed the verdict
+   - Low-usefulness questions → deprioritized (save budget)
+   - High-usefulness questions → weight increased
+3. **New Dimension Discovery**
+   - If outcomes consistently fail for reasons NOT in any dimension → create new dimension
+   - Example: "3 failures due to 'founder psychology' — no dimension covers this" → add `founder_psychology` dimension
+4. **Template Expansion**
+   - If a dimension's questions consistently return 0 results → rephrase templates
+   - If a new question pattern yields high-value facts → add to templates
+
+**Storage:** `mtde-dimensions.db` (SQLite) with:
+- `dimensions` table: id, name, weight, question_templates (JSON)
+- `question_performance` table: question_hash, times_asked, times_useful, avg_source_tier
+- `evolution_log` table: timestamp, change_type, before, after, trigger_outcome_id
+
+---
+
+## 4. INTEGRATION WITH EXISTING SYSTEM
+
+### 4.1 Where MTDE Slots In
+
+```
+CURRENT STAGE0 PIPELINE:
+Step 1.8 (Local Pre-screen) → Step 2-2.8 (Topic) → Step 3.4 (Data Intel) 
+→ [Step 3.5 WAVE 1] → [Step 3.8 WAVE 2] → Step 4 (Synthesis) 
+→ Step 6 (Mountain Test) → Step 7 (Verdict)
+
+PROPOSED WITH MTDE:
+Step 1.8 (Local Pre-screen) → Step 2-2.8 (Topic) → Step 3.4 (Data Intel)
+→ [NEW: MTDE Phase 1-3] → Step 3.5 WAVE 1 (receives MTDE evidence) 
+→ Step 3.8 WAVE 2 (receives MTDE evidence) → Step 4 (Synthesis with MTDE facts)
+→ Step 6 (Mountain Test with MTDE confidence) → Step 7 (Verdict constrained by MTDE)
+```
+
+**Key change:** Wave 1-2 agents receive MTDE evidence package as CONTEXT, not as replacement. Agents must RESPOND TO evidence, not generate from scratch.
+
+### 4.2 Backward Compatibility
+
+- MTDE is ADDITIVE — existing pipeline unchanged
+- If MTDE fails (timeout, insufficient facts) → fallback to current LLM-only mode
+- MTDE output is injected via same mechanism as existing `money-intelligence-runner.py` output
+- No changes needed to persist-verdict, quality gate, or feedback loop
+
+### 4.3 Agent Prompt Modification
+
+Current Wave 1 agent prompt:
+```
+"Analyze {topic} for {dimensions}. Use WebSearch to find evidence."
+```
+
+Proposed Wave 1 agent prompt:
+```
+"Analyze {topic}. You MUST respond to the following verified evidence:
+{mtde_evidence_package}
+Your analysis must:
+1. AGREE or DISAGREE with each pattern (cite specific counter-evidence if disagree)
+2. IDENTIFY gaps the evidence missed
+3. ADD insights the evidence couldn't capture (qualitative judgment only)
+Do NOT repeat facts already in the evidence package."
+```
+
+**Effect:** Agent becomes AUDITOR of evidence (cheaper, faster, more accurate) instead of GENERATOR of evidence (expensive, slow, prone to fabrication).
+
+---
+
+## 5. UPGRADE PATH: 90% → 30% LLM-DEPENDENCY
+
+### Phase 1: MTDE Core (Week 1-2)
+- Build `mtde-decomposer.py` with 15 dimension templates
+- Build `mtde-retriever.py` with parallel WebSearch + micro-extraction
+- Build `mtde-aggregator.py` with pattern detection + kill scan
+- Test on 5 historical stage0 cases: compare MTDE evidence vs LLM-generated evidence
+- **Deliverable:** MTDE produces evidence packages that match or exceed LLM quality
+- **LLM dependency after:** ~70% (MTDE replaces ~20% of Wave 1 work)
+
+### Phase 2: Agent Constraint (Week 3-4)
+- Modify Wave 1-2 agent prompts to receive MTDE evidence
+- Agents become AUDITORS, not GENERATORS
+- Add quality gate: "agent conclusion must cite ≥3 MTDE facts"
+- Test on 10 cases: measure verdict accuracy change
+- **Deliverable:** Agents produce higher-quality, more grounded analysis
+- **LLM dependency after:** ~50% (agents do less, verify more)
+
+### Phase 3: Synthesis Replacement (Week 5-6)
+- Build deterministic synthesis from MTDE aggregator output
+- Replace Step 4 (LLM synthesis) with rule-based aggregation + LLM narrative
+- Replace Step 6.4 (constraint debate) with MTDE regulatory dimension
+- **Deliverable:** Verdict determined by evidence, not reasoning
+- **LLM dependency after:** ~35%
+
+### Phase 4: Evolution Wiring (Week 7-8)
+- Wire MTDE evolver to existing feedback loop (Brier scores, outcomes)
+- Auto-add dimensions from failure patterns
+- Auto-adjust question weights from outcome correlations
+- **Deliverable:** Self-improving decomposition
+- **LLM dependency after:** ~30% (and shrinking as dimensions grow)
+
+### Phase 5: Money Intelligence MTDE (Week 9-10)
+- Apply MTDE pattern to money-intelligence reasoning layer
+- Discovery Chain → decompose into "who has cash" micro-questions
+- Power Dynamics → decompose into "who controls what" micro-questions
+- **Deliverable:** Money intelligence grounded in verified facts
+- **LLM dependency after:** ~25%
+
+---
+
+## 6. WHAT LLM REMAINS ESSENTIAL FOR (The Irreducible ~25%)
+
+| Function | Why LLM Can't Be Replaced | MTDE Mitigation |
+|----------|---------------------------|-----------------|
+| **Qualitative judgment** | "Is this founder credible?" requires human-like assessment | MTDE provides evidence; LLM judges WITH evidence |
+| **Creative synthesis** | "Design a novel cash flow circuit" requires invention | MTDE provides templates + constraints; LLM combines |
+| **Adversarial reasoning** | "What could go wrong?" requires imagination | MTDE provides historical failures; LLM extrapolates |
+| **Narrative generation** | Human-readable verdict requires natural language | MTDE provides structure; LLM writes prose |
+| **Novel situation handling** | No precedent in DB → needs reasoning | MTDE flags "no precedent"; LLM reasons from first principles |
+
+**Key insight:** LLM goes from THINKER (generating conclusions) to WRITER + AUDITOR (narrating verified evidence + judging qualitative gaps). This is the correct role for LLM — it's good at language, mediocre at reasoning, terrible at fact-checking itself.
+
+---
+
+## 7. SELF-EVOLUTION MECHANISM
+
+### 7.1 How MTDE Evolves WITHOUT LLM
+
+```
+Outcome recorded → evolver.py runs (deterministic):
+
+1. DIMENSION SCORING
+   For each dimension that contributed to verdict:
+   - If verdict CORRECT: dimension.weight += 0.05
+   - If verdict WRONG: dimension.weight -= 0.10
+   - If dimension MISSED the failure cause: create new dimension
+
+2. QUESTION SCORING  
+   For each micro-question:
+   - If answer was cited in final verdict: question.usefulness += 1
+   - If answer contradicted final verdict: question.importance += 2
+   - If answer returned 0 results: question.rephrase_count += 1
+     → If rephrase_count > 3: deprecate question, generate variant
+
+3. PATTERN LIBRARY GROWTH
+   New pattern from outcome:
+   - "Regulatory barrier killed opportunity" 
+   → Add to pattern_library.json
+   → Future decompositions auto-include regulatory dimension (weight ≥ 1.5)
+
+4. KILL SIGNAL EXPANSION
+   New kill signal from failure:
+   - "Founder had 0 industry connections"
+   → Add to kill-signals.json with threshold
+   → Future local-reasoning-engine catches this without LLM
+```
+
+### 7.2 Evolution Flywheel
+
+```
+More outcomes → better dimensions → better questions → better facts
+→ better verdicts → better outcomes → more outcomes → ...
+
+Each cycle:
+- ~5 new questions added (from outcome gaps)
+- ~2 questions deprecated (low usefulness)
+- ~1 new dimension discovered (from novel failure modes)
+- ~3 kill signals refined (from false positives/negatives)
+- Net: system gets SMARTER without any LLM involvement in evolution
+```
+
+### 7.3 Compound Intelligence Accumulation
+
+After 100 outcomes:
+- **Dimension DB:** 15 → ~25 dimensions (67% growth)
+- **Question DB:** 200 → ~350 questions (75% growth)
+- **Kill signals:** 30 → ~80 signals (167% growth)
+- **Pattern library:** 50 → ~200 patterns (300% growth)
+- **Decision vectors:** 500 → ~600 cases (20% growth)
+
+After 500 outcomes:
+- System can pre-screen ~80% of topics without ANY LLM call
+- Remaining 20% get LLM with 350+ verified facts as context
+- Verdict accuracy: estimated ~90% (vs current ~65% for LLM-only)
+
+---
+
+## 8. COST ANALYSIS
+
+| Metric | Current (LLM-direct) | MTDE (Proposed) |
+|--------|----------------------|-----------------|
+| Tokens per analysis | ~200K (8+ agents × 25K each) | ~50K (200 × 100 micro + 20K synthesis) |
+| Cost per analysis | ~$3-5 (Opus) | ~$0.50-1.00 (Sonnet micro + Opus synthesis) |
+| Time per analysis | 120-300s | 60-120s (parallel micro-retrieval) |
+| Accuracy (estimated) | 60-70% | 85-90% |
+| Reproducibility | Low | High |
+| Evolution speed | Slow (manual rules) | Fast (auto from outcomes) |
+
+**ROI:** 4-5x cost reduction + 25% accuracy gain + reproducible results.
+
+---
+
+## 9. RISKS & MITIGATIONS
+
+| Risk | Probability | Impact | Mitigation |
+|------|------------|--------|------------|
+| WebSearch rate limits | HIGH | Blocks retrieval | Batch queries, cache results, retry with backoff |
+| Dimension templates too rigid | MEDIUM | Miss novel opportunities | Evolution layer adds dimensions; LLM fallback for novel |
+| Micro-extraction errors | LOW | Wrong facts propagated | Majority vote (3+ sources), confidence scoring |
+| Over-decomposition (too many Qs) | MEDIUM | Token waste | Budget cap (200 Qs), usefulness pruning |
+| MTDE delays pipeline | LOW | Slower than current | Parallel execution, cache hot dimensions |
+
+---
+
+## 10. SUCCESS METRICS
+
+| Metric | Current Baseline | 3-Month Target | 6-Month Target |
+|--------|-----------------|----------------|----------------|
+| LLM token usage per analysis | 200K | 80K | 50K |
+| Verdict accuracy (Brier) | 0.31 | 0.22 | 0.15 |
+| Facts verified per verdict | ~5 | ~100 | ~200 |
+| Dimensions in template DB | 0 | 15 | 25 |
+| Questions in template DB | 0 | 200 | 350 |
+| Auto-evolved dimensions | 0 | 3 | 10 |
+| Kill signals | 30 | 50 | 80 |
+| Pre-screen hit rate | ~20% | ~40% | ~60% |
+
+---
+
+## 11. UNRESOLVED QUESTIONS
+
+1. **Parallel WebSearch limits:** How many concurrent WebSearches can system handle? Current stage0 does ~40; MTDE needs ~200.
+2. **Dimension template bootstrap:** Should we seed from existing stage0 cases or build from scratch?
+3. **LLM model for micro-extraction:** Haiku (cheapest) vs Sonnet (more accurate) for fact extraction?
+4. **Cache strategy:** Cache micro-question results? For how long? Freshness decay?
+5. **Integration depth:** Should MTDE replace Wave 1 agents entirely or augment them?
+6. **User transparency:** Should verdict show full MTDE trace (200 facts) or summary?

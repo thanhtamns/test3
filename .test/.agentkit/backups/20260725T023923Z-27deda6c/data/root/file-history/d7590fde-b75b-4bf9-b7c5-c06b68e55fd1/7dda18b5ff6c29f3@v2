@@ -1,0 +1,249 @@
+"""
+test_capital_deployment.py — Tests for capital deployment paradigm (v25.5).
+
+Validates:
+- Capital-path classifier: MICRO_DEPLOY, ASSET_BUILDER tracks, deployment fields
+- DQ generator: capital questions, deprecated questions
+- Quality scorer: check_capital_deployment(), DEPLOY_CANDIDATE verdict
+- Grade thresholds for max=180
+
+Usage:
+    pytest tests/stage0/test_capital_deployment.py -v
+"""
+
+from __future__ import annotations
+
+import sys
+import unittest
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+SCRIPTS_DIR = REPO_ROOT / ".claude" / "skills" / "business" / "transaction-layer" / "nui-hunter" / "scripts"
+
+sys.path.insert(0, str(SCRIPTS_DIR))
+
+from importlib import import_module
+
+cpc = import_module("capital-path-classifier")
+dq = import_module("tier-adjusted-dq-generator")
+qs = import_module("stage0-quality-score")
+
+
+class TestCapitalDeploymentClassifier(unittest.TestCase):
+
+    def test_tier_0_default_track_is_micro_deploy(self):
+        result = cpc.classify({"capital_usd": 500})
+        self.assertEqual(result["track"], "MICRO_DEPLOY")
+
+    def test_tier_0_has_deployment_budget(self):
+        result = cpc.classify({"capital_usd": 500})
+        self.assertEqual(result["deployment_budget"], 500)
+
+    def test_tier_0_has_asset_slots(self):
+        result = cpc.classify({"capital_usd": 500})
+        self.assertGreaterEqual(result["asset_slots"], 3)
+
+    def test_tier_0_has_per_slot_budget(self):
+        result = cpc.classify({"capital_usd": 500})
+        expected = 500 // result["asset_slots"]
+        self.assertAlmostEqual(result["per_slot_budget"], expected, delta=1)
+
+    def test_tier_0_sleep_test_required(self):
+        result = cpc.classify({"capital_usd": 500})
+        self.assertTrue(result["constraints"].get("sleep_test_required"))
+
+    def test_tier_0_max_founder_hours(self):
+        result = cpc.classify({"capital_usd": 500})
+        self.assertLessEqual(result["constraints"]["max_founder_hours_post_setup"], 5)
+
+    def test_tier_0_no_product_dev_removed(self):
+        result = cpc.classify({"capital_usd": 500})
+        self.assertNotIn("no_product_dev", result["constraints"])
+
+    def test_tier_0_no_cash_first(self):
+        result = cpc.classify({"capital_usd": 500})
+        self.assertNotIn("cash_first", result["constraints"])
+
+    def test_tier_0_default_leverage_is_micro_deploy(self):
+        result = cpc.classify({"capital_usd": 500})
+        self.assertEqual(result["track"], "MICRO_DEPLOY")
+        self.assertEqual(result["leverage_access_score"], 0)
+
+    def test_asset_builder_subtrack_exists(self):
+        self.assertIn("ASSET_BUILDER", cpc.TIER_0_SUBTRACKS)
+        self.assertEqual(cpc.TIER_0_SUBTRACKS["ASSET_BUILDER"]["leverage_range"], (4, 6))
+
+    def test_tier_2_unchanged(self):
+        result = cpc.classify({"capital_usd": 10000})
+        self.assertEqual(result["track"], "PRODUCT")
+        self.assertNotIn("deployment_budget", result)
+
+    def test_track_alias_cashflow_seed(self):
+        self.assertIn("CASHFLOW_SEED", cpc.TRACK_ALIASES)
+        self.assertEqual(cpc.TRACK_ALIASES["CASHFLOW_SEED"], "MICRO_DEPLOY")
+
+    def test_track_alias_service_entry(self):
+        self.assertIn("SERVICE_ENTRY", cpc.TRACK_ALIASES)
+        self.assertEqual(cpc.TRACK_ALIASES["SERVICE_ENTRY"], "MICRO_DEPLOY")
+
+    def test_track_alias_leverage_entry(self):
+        self.assertIn("LEVERAGE_ENTRY", cpc.TRACK_ALIASES)
+        self.assertEqual(cpc.TRACK_ALIASES["LEVERAGE_ENTRY"], "ASSET_BUILDER")
+
+    def test_tier_0_primary_hypothesis_deploy(self):
+        result = cpc.classify({"capital_usd": 500})
+        self.assertEqual(result["primary_hypothesis"], "deploy_micro_assets")
+
+
+class TestDQCapitalQuestions(unittest.TestCase):
+
+    def test_tier_0_has_deploy_budget(self):
+        result = dq.generate("TIER_0")
+        codes = [q["code"] for q in result["questions"]]
+        self.assertIn("DEPLOY_BUDGET", codes)
+
+    def test_tier_0_has_roi_target(self):
+        result = dq.generate("TIER_0")
+        codes = [q["code"] for q in result["questions"]]
+        self.assertIn("ROI_TARGET", codes)
+
+    def test_tier_0_has_asset_scan(self):
+        result = dq.generate("TIER_0")
+        codes = [q["code"] for q in result["questions"]]
+        self.assertIn("ASSET_SCAN", codes)
+
+    def test_tier_0_has_kill_criteria(self):
+        result = dq.generate("TIER_0")
+        codes = [q["code"] for q in result["questions"]]
+        self.assertIn("KILL_CRITERIA", codes)
+
+    def test_tier_0_no_first_500(self):
+        result = dq.generate("TIER_0")
+        codes = [q["code"] for q in result["questions"]]
+        self.assertNotIn("FIRST_500", codes)
+
+    def test_tier_0_no_time_to_cash(self):
+        result = dq.generate("TIER_0")
+        codes = [q["code"] for q in result["questions"]]
+        self.assertNotIn("TIME_TO_CASH", codes)
+
+    def test_tier_0_still_has_leverage(self):
+        result = dq.generate("TIER_0")
+        codes = [q["code"] for q in result["questions"]]
+        self.assertIn("LEVERAGE", codes)
+
+    def test_tier_1_has_compound_mechanism(self):
+        result = dq.generate("TIER_1")
+        codes = [q["code"] for q in result["questions"]]
+        self.assertIn("COMPOUND_MECHANISM", codes)
+
+    def test_tier_2_has_roi_target(self):
+        result = dq.generate("TIER_2")
+        codes = [q["code"] for q in result["questions"]]
+        self.assertIn("ROI_TARGET", codes)
+
+    def test_tier_2_unchanged_winner(self):
+        result = dq.generate("TIER_2")
+        codes = [q["code"] for q in result["questions"]]
+        self.assertIn("WINNER", codes)
+        self.assertIn("LEVERAGE", codes)
+
+    def test_deploy_budget_has_kill_signal(self):
+        q = dq.DECISION_QUESTIONS["DEPLOY_BUDGET"]
+        self.assertIn("kill_signal", q)
+
+    def test_deprecated_questions_exist(self):
+        self.assertIn("FIRST_500", dq.DEPRECATED_QUESTIONS)
+        self.assertIn("TIME_TO_CASH", dq.DEPRECATED_QUESTIONS)
+
+
+class TestCapitalDeploymentScoring(unittest.TestCase):
+
+    def test_full_capital_deployment_scores_20(self):
+        text = (
+            "ROI: 40%/mo\n"
+            "deploy_cost: $200\n"
+            "Sleep test used as filter — only sleep-passing models included\n"
+            "Portfolio: 5 micro-assets with 30-day kill criteria\n"
+            "founder hours post-setup: <2h/week"
+        )
+        result = qs.check_capital_deployment(text)
+        self.assertEqual(result["score"], 20)
+        self.assertEqual(result["max"], 20)
+
+    def test_zero_signals_scores_zero(self):
+        text = "A plain sentence with no relevant patterns at all."
+        result = qs.check_capital_deployment(text)
+        self.assertEqual(result["score"], 0)
+
+    def test_roi_present_scores_5(self):
+        text = "ROI: 25%/mo on deployed capital."
+        result = qs.check_capital_deployment(text)
+        self.assertGreaterEqual(result["score"], 5)
+
+    def test_deploy_cost_scores_5(self):
+        text = "deploy_cost: $150 for this micro-asset."
+        result = qs.check_capital_deployment(text)
+        self.assertGreaterEqual(result["score"], 5)
+
+    def test_labor_penalty_still_fires(self):
+        text = "Q5-LEVERAGE: LABOR\nNo staircase path."
+        result = qs.check_capital_deployment(text)
+        self.assertIn("PENALTY", result["detail"])
+
+    def test_dimension_key_is_capital_deployment(self):
+        result = qs.score_verdict("minimal")
+        self.assertIn("capital_deployment", result["dimensions"])
+        self.assertNotIn("leverage_classification", result["dimensions"])
+
+    def test_max_is_180(self):
+        result = qs.score_verdict("minimal")
+        self.assertIn("180", result["grade_map"])
+
+
+class TestDeployCandidateVerdict(unittest.TestCase):
+
+    def test_deploy_candidate_in_valid_verdicts(self):
+        self.assertIn("DEPLOY_CANDIDATE", qs.VALID_VERDICTS)
+
+    def test_all_original_verdicts_still_present(self):
+        for v in ["KILL", "SIDE_HUSTLE", "SIDE_HUSTLE_WITH_STAIRCASE",
+                   "MOUNTAIN_CANDIDATE", "INSUFFICIENT_SIGNAL"]:
+            self.assertIn(v, qs.VALID_VERDICTS)
+
+    def test_exploration_verdicts_present(self):
+        for v in ["EXPLORATION_COMPLETE", "EXPLORATION_ONGOING"]:
+            self.assertIn(v, qs.VALID_VERDICTS)
+
+
+class TestGradeThresholds180(unittest.TestCase):
+
+    def test_grade_a_at_140(self):
+        self.assertEqual(qs.grade(140), "A")
+
+    def test_grade_b_at_139(self):
+        self.assertEqual(qs.grade(139), "B")
+
+    def test_grade_b_at_124(self):
+        self.assertEqual(qs.grade(124), "B")
+
+    def test_grade_c_at_123(self):
+        self.assertEqual(qs.grade(123), "C")
+
+    def test_grade_c_at_95(self):
+        self.assertEqual(qs.grade(95), "C")
+
+    def test_grade_d_at_72(self):
+        self.assertEqual(qs.grade(72), "D")
+
+    def test_grade_f_at_71(self):
+        self.assertEqual(qs.grade(71), "F")
+
+    def test_grade_a_at_max(self):
+        self.assertEqual(qs.grade(180), "A")
+
+
+if __name__ == "__main__":
+    if sys.platform == "win32":
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    unittest.main(verbosity=2)

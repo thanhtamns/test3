@@ -1,0 +1,204 @@
+#!/usr/bin/env python3
+"""
+SBE Benchmark Runner — validates SBE against historical stage0 cases.
+Measures verdict accuracy, token savings, timing, and principle coverage.
+"""
+
+import json
+import sys
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "integration"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "engine"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "mtde"))
+
+from sbe_orchestrator import SBEOrchestrator, VALID_VERDICTS
+
+CASES_PATH = Path(__file__).resolve().parent / "benchmark-cases.json"
+RESULTS_PATH = Path(__file__).resolve().parent / "benchmark-results.json"
+
+VERDICT_TO_OUTCOME = {
+    "KILL": 0,
+    "SIDE_HUSTLE": 0,
+    "NEEDS_DEEPER_ANALYSIS": None,
+    "MOUNTAIN_CANDIDATE": 1,
+}
+
+
+@dataclass
+class CaseResult:
+    case_id: str
+    topic: str
+    sbe_verdict: str
+    sbe_confidence: float
+    original_verdict: str
+    original_confidence: float
+    actual_outcome: int
+    sbe_correct: bool
+    original_correct: bool
+    time_ms: float
+    short_circuited: bool
+    principles_fired: int
+    token_estimate: int
+
+    def to_dict(self):
+        return {
+            "case_id": self.case_id,
+            "topic": self.topic,
+            "sbe_verdict": self.sbe_verdict,
+            "sbe_confidence": round(self.sbe_confidence, 3),
+            "original_verdict": self.original_verdict,
+            "actual_outcome": self.actual_outcome,
+            "sbe_correct": self.sbe_correct,
+            "original_correct": self.original_correct,
+            "time_ms": round(self.time_ms, 2),
+            "short_circuited": self.short_circuited,
+            "principles_fired": self.principles_fired,
+            "token_estimate": self.token_estimate,
+        }
+
+
+class SBEBenchmark:
+    def __init__(self, cases_path=None):
+        path = cases_path or CASES_PATH
+        with open(path, "r", encoding="utf-8") as f:
+            self.cases = json.load(f)
+        self.sbe = SBEOrchestrator()
+
+    def run_all(self) -> dict:
+        results = []
+        for case in self.cases:
+            result = self._run_single(case)
+            results.append(result)
+
+        summary = self._summarize(results)
+        return {
+            "baseline_date": time.strftime("%Y-%m-%d"),
+            "sbe_version": "1.0",
+            "metrics": summary,
+            "per_case": [r.to_dict() for r in results],
+        }
+
+    def _run_single(self, case: dict) -> CaseResult:
+        start = time.perf_counter()
+        sbe_result = self.sbe.run(
+            topic=case["topic"],
+            features=case["features"],
+            search_fn=None,
+            budget=100,
+        )
+        elapsed = (time.perf_counter() - start) * 1000
+
+        sbe_correct = self._verdict_matches_outcome(sbe_result.verdict, case["actual_outcome"])
+        original_correct = self._verdict_matches_outcome(case["original_verdict"], case["actual_outcome"])
+
+        principles_fired = 0
+        if sbe_result.trace:
+            for step in sbe_result.trace.steps:
+                if step["step"] == "pass1" and isinstance(step["data"], dict):
+                    partial = step["data"].get("partial_scores", {})
+                    principles_fired = len(partial)
+
+        token_estimate = len(case["features"]) * 20 + 500
+
+        return CaseResult(
+            case_id=case["case_id"],
+            topic=case["topic"],
+            sbe_verdict=sbe_result.verdict,
+            sbe_confidence=sbe_result.confidence,
+            original_verdict=case["original_verdict"],
+            original_confidence=case.get("original_confidence", 0),
+            actual_outcome=case["actual_outcome"],
+            sbe_correct=sbe_correct,
+            original_correct=original_correct,
+            time_ms=elapsed,
+            short_circuited=sbe_result.short_circuited,
+            principles_fired=principles_fired,
+            token_estimate=token_estimate,
+        )
+
+    def _verdict_matches_outcome(self, verdict: str, outcome: int) -> bool:
+        if verdict in ("KILL", "SIDE_HUSTLE"):
+            return outcome == 0
+        if verdict == "MOUNTAIN_CANDIDATE":
+            return outcome == 1
+        if "MOUNTAIN" in verdict or "PROVISIONAL" in verdict:
+            return outcome == 1
+        return False
+
+    def _summarize(self, results: list) -> dict:
+        total = len(results)
+        sbe_correct = sum(1 for r in results if r.sbe_correct)
+        original_correct = sum(1 for r in results if r.original_correct)
+        avg_time = sum(r.time_ms for r in results) / total if total else 0
+        short_circuits = sum(1 for r in results if r.short_circuited)
+
+        original_tokens = sum(c.get("original_token_usage", 200000) for c in self.cases)
+        sbe_tokens = sum(r.token_estimate for r in results)
+        token_savings_pct = ((original_tokens - sbe_tokens) / original_tokens * 100) if original_tokens else 0
+
+        avg_confidence_error = 0
+        for r in results:
+            expected = 1.0 if r.actual_outcome == 1 else 0.0
+            avg_confidence_error += abs(r.sbe_confidence - expected)
+        avg_confidence_error /= total if total else 1
+
+        return {
+            "total_cases": total,
+            "sbe_accuracy": sbe_correct / total if total else 0,
+            "sbe_correct": sbe_correct,
+            "original_accuracy": original_correct / total if total else 0,
+            "original_correct": original_correct,
+            "avg_time_ms": round(avg_time, 2),
+            "token_savings_pct": round(token_savings_pct, 1),
+            "short_circuit_rate": short_circuits / total if total else 0,
+            "short_circuit_count": short_circuits,
+            "avg_confidence_error": round(avg_confidence_error, 3),
+        }
+
+    def save_results(self, results: dict, path=None):
+        out_path = path or RESULTS_PATH
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(results, f, indent=2)
+        return out_path
+
+
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="SBE Benchmark Runner")
+    parser.add_argument("--cases", type=str, default=str(CASES_PATH))
+    parser.add_argument("--save", action="store_true", help="Save results to benchmark-results.json")
+    parser.add_argument("--report", action="store_true", help="Print markdown report")
+    args = parser.parse_args()
+
+    bench = SBEBenchmark(Path(args.cases))
+    results = bench.run_all()
+
+    if args.save:
+        path = bench.save_results(results)
+        print(f"Results saved to: {path}")
+
+    if args.report:
+        m = results["metrics"]
+        print(f"# SBE Benchmark Report - {results['baseline_date']}")
+        print(f"\n## Summary")
+        print(f"- Cases: {m['total_cases']}")
+        print(f"- SBE accuracy: {m['sbe_correct']}/{m['total_cases']} ({m['sbe_accuracy']*100:.0f}%)")
+        print(f"- Original accuracy: {m['original_correct']}/{m['total_cases']} ({m['original_accuracy']*100:.0f}%)")
+        print(f"- Token savings: {m['token_savings_pct']:.1f}%")
+        print(f"- Avg time: {m['avg_time_ms']:.1f}ms")
+        print(f"- Short-circuit rate: {m['short_circuit_rate']*100:.0f}%")
+        print(f"- Avg confidence error: {m['avg_confidence_error']:.3f}")
+        print(f"\n## Per-Case Results")
+        print(f"| Case | SBE | Original | Outcome | SBE OK | Orig OK | Time |")
+        print(f"|------|-----|----------|---------|--------|---------|------|")
+        for r in results["per_case"]:
+            print(f"| {r['case_id'][-30:]} | {r['sbe_verdict']} | {r['original_verdict']} | {r['actual_outcome']} | {r['sbe_correct']} | {r['original_correct']} | {r['time_ms']:.0f}ms |")
+    else:
+        print(json.dumps(results, indent=2))
+
+
+if __name__ == "__main__":
+    main()

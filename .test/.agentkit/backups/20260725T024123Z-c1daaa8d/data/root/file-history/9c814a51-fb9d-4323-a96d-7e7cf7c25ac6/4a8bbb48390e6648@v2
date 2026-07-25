@@ -1,0 +1,130 @@
+# Brainstorm: Micro-Decomposition Engine
+
+## Problem
+
+master_investments intelligence is 85% local for KNOWN patterns. But for NEW/COMPLEX questions, the system falls back to LLM big-picture reasoning — single prompt, single response, zero verification. This produces:
+- Hallucination risk on novel domains
+- No fact-level verification
+- No compound learning (insights die after session)
+- Reasoning quality = LLM quality (no amplification)
+
+**Benchmark:** User wants system thinking comparable to Giang Trần Minh Thành — $450M fund director at 25. Decomposing complex strategic questions into precise, verifiable micro-steps.
+
+## Current LLM Dependency Map
+
+| Component | Local% | What LLM does |
+|-----------|--------|---------------|
+| Kill decisions | 100% | Nothing |
+| Calibration | 100% | Nothing |
+| Governance | 100% | Nothing |
+| Verdict scoring | 100% | Nothing |
+| Reasoning engine | 85% | Fallback for novel |
+| Hunger loop | 65% | Research data retrieval |
+| Claim parsing | 60% | Parse unstructured text |
+| **Big questions** | **0%** | **ALL reasoning** ← problem |
+
+## Solution: Micro-Decomposition Engine
+
+**Principle:** LLM = micro-fact search engine. LOCAL = all reasoning + synthesis.
+
+### How it works
+
+```
+Big Question
+  → LOCAL decomposer: break into 5-8 dimensions
+    → Each dimension: 3-5 micro-queries (factual, verifiable)
+      → LLM: retrieve ONE fact per query (no reasoning)
+      → LOCAL: verify fact (confidence, contradiction, dedup)
+      → LOCAL: store in KB (compound learning)
+  → LOCAL synthesizer: score + gap + path (zero LLM)
+  → Output: precise answer with [K]/[T]/[?] per claim
+```
+
+### Example: "Achieve like Giang Trần Minh Thành"
+
+Instead of LLM writing 2000 words of generic advice:
+
+| Dimension | Micro-queries | LOCAL computation |
+|-----------|--------------|-------------------|
+| CAREER_PATH | Avg age VC director SEA? Required experience? | pattern_match(career_db, profile) |
+| DEAL_SKILLS | Typical deal sizes? DD process? | gap_analysis(skills, required) |
+| NETWORK | How access Thai banking? Entry paths? | network_distance(current, target) |
+| FOUNDER_EXP | Revenue benchmark at 22? Team size? | feasibility_score(resources) |
+| BASE_RATE | % of <25 directors globally? Survivorship? | probability_calc(base_rate, advantage) |
+
+Result: 20+ verified facts → LOCAL synthesis → precise gap analysis + actionable path.
+
+## Architecture Decision
+
+**Scope:** Stage0 integration + standalone /think command
+**Learning:** Template evolution + fact compounding (both)
+
+### Components
+
+```
+.claude/lib/intelligence/decomposition/
+├── decomposer.py           — Big query → dimension tree → micro-queries
+├── dimension_registry.py   — 15+ dimension templates (career, network, capital...)
+├── micro_query_runner.py   — Fire queries, enforce structured response
+├── fact_assembler.py       — Collect + verify + store facts
+├── synthesis_engine.py     — LOCAL-ONLY: score, gap, path generation
+├── template_evolver.py     — Learn which decomposition patterns work best
+└── tests/
+```
+
+### Integration
+
+- Reuses: claim_parser, claim_verifier, hunger_log, distillation_bridge
+- Stage0: Step 1.5 (after profile, before Wave 1) — pre-decompose opportunity
+- /think: New command for arbitrary complex questions
+- Evolution: Every decomposition → template accuracy tracking → template improvement
+
+## Evaluated Approaches
+
+### A: Micro-Decomposition Engine (CHOSEN)
+- **Pro:** Maximum precision, compound learning, LLM cost reduction over time
+- **Pro:** Every query trains the system — facts accumulate permanently
+- **Con:** ~7-10 days build, complex orchestration
+- **Con:** Initial decomposition quality depends on template design
+
+### B: Reasoning Chain Upgrade
+- **Pro:** Builds on existing reasoning engine, ~3-4 days
+- **Con:** Still chains LLM reasoning steps — not truly local
+- **Con:** Doesn't create reusable micro-facts
+
+### C: Report-first
+- **Pro:** Low risk, 1 day
+- **Con:** Analysis paralysis — delays actual capability building
+
+## Risks
+
+1. **Decomposition quality:** Bad templates → irrelevant micro-queries → wasted LLM calls
+   - Mitigation: template_evolver tracks which templates produce useful facts
+2. **Over-decomposition:** 50 micro-queries when 5 suffice → token waste
+   - Mitigation: satiation detector stops when confidence threshold met
+3. **Synthesis brittleness:** LOCAL synthesis misses nuance LLM would catch
+   - Mitigation: confidence-gated LLM fallback for low-confidence synthesis
+
+## Success Metrics
+
+- ≥80% of answer content from LOCAL computation (verified facts + scoring)
+- ≤20% LLM usage (micro-fact retrieval only, zero reasoning)
+- Each /think run adds ≥10 reusable facts to KB
+- After 10 similar queries, LLM calls drop 50%+ (compound learning)
+- Decomposition templates improve accuracy >5% per 20 uses
+
+## Estimated Effort
+
+| Phase | Effort |
+|-------|--------|
+| P1: Decomposer + dimension registry | 2d |
+| P2: Micro-query runner + fact assembler | 2d |
+| P3: Synthesis engine (LOCAL-only) | 2d |
+| P4: Template evolver + compound learning | 1-2d |
+| P5: Stage0 integration + /think command | 1-2d |
+| P6: Calibration + testing | 1d |
+| **Total** | **9-11d** |
+
+## Next Steps
+
+→ Create detailed implementation plan via /ck:plan

@@ -1,0 +1,233 @@
+---
+phase: 1
+title: "Rust CLI MVP (L1 Compress + L2 Dedup + Local Metrics)"
+status: pending
+priority: P1
+effort: "4 weeks"
+dependencies: []
+---
+
+# Phase 1: Rust CLI MVP
+
+## Overview
+
+Ship a single Rust binary that intercepts AI coding agent tool calls, compresses output (L1), deduplicates re-reads (L2), tracks token savings locally (SQLite), and buffers events for cloud sync. Must add <5ms overhead per command. Ship on macOS + Linux first (2 platforms). Add Windows + ARM post-MVP based on user demand. Includes a static landing page + waitlist to validate demand before Phase 2 cloud investment.
+
+**Red team changes applied:**
+- SQLite WAL replaces LMDB (dedup cache) and mmap ring buffer (event buffer) — cross-platform, crash-safe via WAL, no corruption recovery needed
+- Port top-10 RTK filters (not fork 70K LOC, not 40+ filters) — add more based on real usage data
+- Ship 2 platforms (macOS x86 + ARM, Linux x86) — defer Windows + Linux ARM to post-MVP
+- Protobuf versioning contract: proto3 additive-only, no field removal/rename, ingest accepts v1+ with defaults
+- Hook health-check: validate hook contract on every invocation, degrade to passthrough if broken
+- Context dedup 60-80% claim removed from success criteria (only measurable after Phase 4 IDE plugins)
+
+## Context
+
+- [Architecture Review](./architecture-review.md) — CLI Engine, Sync Daemon, Event Schema sections
+- [Brainstorm Report](./brainstorm-report.md) — RTK gap analysis, Layer 1-2 design
+- RTK source: `github.com/rtk-ai/rtk` (Apache 2.0, reference implementation)
+
+## Requirements
+
+**Functional:**
+- Intercept Claude Code Bash tool calls via PreToolUse/PostToolUse hooks
+- Compress command output using 8-stage TOML filter pipeline (RTK-compatible)
+- 10-15 command-specific filters (top by token savings: git diff/status/log, npm test, cargo build/test, pytest, tsc, eslint, docker logs, ls, find)
+- Context dedup: cache Bash-accessed file contents per session (note: Read/Grep/Glob bypass hooks — dedup only applies to cat/head/tail until Phase 4)
+- Local token savings tracking with SQLite (90-day retention)
+- Event buffering via SQLite WAL append-only table (replaces mmap ring buffer — crash-safe, cross-platform, no corruption recovery needed)
+- Hook health-check: validate expected input/output schema on every invocation, degrade to passthrough + warning if hook contract broken
+- `codeflow init` — install hooks for Claude Code
+- `codeflow stats` — show local savings dashboard (terminal)
+- `codeflow wrap <command>` — manual command wrapping
+- `codeflow cache clear` — clear dedup cache
+- `codeflow version` / `codeflow update` — version management
+
+**Non-functional:**
+- <5ms p99 latency overhead per command
+- <5ms dedup cache lookup (SQLite WAL — upgrade to LMDB post-MVP if this bottlenecks)
+- Single static binary, zero runtime dependencies
+- Works fully offline (no cloud dependency)
+- Fail-open: any CODEFLOW error → pass original output unchanged
+- Phase 1 platforms: macOS (Intel + Apple Silicon), Linux x86_64. Windows + ARM post-MVP
+- Protobuf versioning: proto3 additive-only. EventBatch.cli_version used for compatibility. Ingest accepts any version ≥ v1, missing fields get defaults
+
+## Architecture
+
+```
+Claude Code / AI Agent
+        │
+        ▼
+┌─ PreToolUse Hook ─────────────────────────┐
+│  Rewrite: "npm test" → "codeflow wrap npm test"  │
+└───────────────────────────────────────────┘
+        │
+        ▼
+┌─ CODEFLOW CLI ────────────────────────────┐
+│                                            │
+│  1. Execute original command               │
+│  2. Capture stdout/stderr                  │
+│  3. TOML filter pipeline (8 stages)        │
+│  4. Dedup check (LMDB cache)              │
+│  5. Emit event (protobuf → mmap ring)     │
+│  6. Return compressed output               │
+│                                            │
+│  On error: bypass all processing,          │
+│            return original output,          │
+│            log error to stderr             │
+└────────────────────────────────────────────┘
+        │
+        ▼
+┌─ PostToolUse Hook ────────────────────────┐
+│  Return compressed output to AI agent      │
+└────────────────────────────────────────────┘
+```
+
+**Dedup cache flow:**
+```
+File read request → blake3(path) → LMDB lookup
+  HIT + mtime unchanged → "File X (N tokens) read 30s ago, unchanged."
+  MISS or mtime changed → pass through, cache result
+  
+Invalidation triggers:
+  - File mtime change (inotify/FSEvents/ReadDirectoryChanges)
+  - Session boundary (new conversation ID)
+  - Manual: `codeflow cache clear`
+  - LRU eviction at 10,000 entries
+```
+
+## Related Code Files
+
+**Create:**
+- `cli/` — Rust workspace root
+- `cli/Cargo.toml` — workspace manifest
+- `cli/crates/core/` — compression pipeline, dedup cache, event emission
+- `cli/crates/core/src/filter.rs` — 8-stage TOML filter pipeline
+- `cli/crates/core/src/dedup.rs` — LMDB-backed content-addressable cache
+- `cli/crates/core/src/events.rs` — protobuf event emission + mmap ring buffer
+- `cli/crates/core/src/tracking.rs` — SQLite token savings analytics
+- `cli/crates/core/src/security.rs` — stub for Phase 5 security scanner
+- `cli/crates/commands/` — per-command filters (40+ commands)
+- `cli/crates/commands/src/git/` — git diff, status, log, push, gh
+- `cli/crates/commands/src/js/` — tsc, eslint, vitest, pnpm, next
+- `cli/crates/commands/src/python/` — pytest, ruff, mypy, pip
+- `cli/crates/commands/src/rust/` — cargo build/test/clippy
+- `cli/crates/commands/src/go/` — go test, vet, golangci-lint
+- `cli/crates/commands/src/cloud/` — docker, kubectl, aws, curl
+- `cli/crates/commands/src/system/` — ls, grep, find, cat, wc
+- `cli/crates/cli/` — main binary, clap CLI routing
+- `cli/crates/cli/src/main.rs` — entry point + subcommand routing
+- `cli/crates/cli/src/hooks.rs` — hook installation (PreToolUse/PostToolUse)
+- `cli/crates/cli/src/stats.rs` — local dashboard (terminal UI)
+- `cli/proto/events.proto` — protobuf v3 event schema
+- `cli/filters/` — TOML filter definitions (community-extensible)
+- `cli/filters/git-status.toml`, `cli/filters/npm-test.toml`, etc.
+- `.github/workflows/release.yml` — cross-compile + release CI
+
+## Implementation Steps
+
+### Week 1-2: Core Engine
+
+1. Initialize Rust workspace with `cli/Cargo.toml` (workspace members: core, commands, cli)
+2. Implement protobuf event schema (`cli/proto/events.proto`) — compile with `prost`
+3. Implement 8-stage TOML filter pipeline in `core/filter.rs`:
+   - strip_ansi → replace → match_output → strip_lines → truncate_lines → head_tail → max_lines → on_empty
+   - Each stage configurable via TOML per-command definitions
+4. Implement LMDB dedup cache in `core/dedup.rs`:
+   - blake3 hashing for content addressing
+   - mtime-based invalidation
+   - LRU eviction at 10K entries
+   - Session-scoped TTL (1hr max)
+5. Implement mmap ring buffer for event emission in `core/events.rs`:
+   - 16MB default size (configurable)
+   - FIFO producer/consumer
+   - Crash-safe (kernel-persisted mmap)
+6. Implement SQLite tracking in `core/tracking.rs`:
+   - WAL mode for concurrent read/write
+   - Schema: events(id, timestamp, command, input_tokens, output_tokens, saved, layer, project, session)
+   - 90-day TTL with automatic cleanup
+7. Write unit tests for each core module (>80% coverage target)
+
+### Week 3-4: Command Filters + CLI
+
+8. Port RTK command filter logic for top-20 commands (highest token savings):
+   - git: diff, status, log, push, gh pr
+   - js: tsc, eslint, vitest, pnpm install, next build
+   - python: pytest, ruff, mypy, pip install
+   - rust: cargo build, cargo test, cargo clippy
+   - system: ls, find, grep, cat
+9. Write TOML filter definitions for each command in `cli/filters/`
+10. Implement CLI binary in `cli/crates/cli/`:
+    - clap v4 for argument parsing
+    - `codeflow wrap <command>` — main interception path
+    - `codeflow init [-g]` — install Claude Code hooks
+    - `codeflow stats [--json]` — local savings dashboard
+    - `codeflow cache clear` — clear dedup cache
+    - `codeflow version` / `codeflow update` — version check
+11. Implement hook installation in `hooks.rs`:
+    - Generate `~/.claude/hooks/codeflow-pre-tool-use.sh`
+    - Generate `~/.claude/hooks/codeflow-post-tool-use.sh`
+    - Windows: Generate Git Bash-compatible scripts (NOT blocked like RTK)
+    - Detect existing RTK hooks → warn user about conflict
+12. Write integration tests: full command → hook → compress → output cycle
+
+### Week 5: Cross-Platform CI + Distribution
+
+13. Set up GitHub Actions release workflow (`.github/workflows/release.yml`):
+    - Build matrix: 6 targets (linux x86/arm, macos intel/arm, windows x86/arm)
+    - Static linking via musl (Linux) / MSVC (Windows)
+    - Automated release on git tag
+    - SHA256 checksum generation
+    - cargo-binstall metadata in Cargo.toml
+14. Set up Homebrew tap (`homebrew-codeflow/Formula/codeflow.rb`)
+15. Create install script: `curl -fsSL https://codeflow.dev/install.sh | sh`
+16. Test binary on all 6 platforms (CI matrix + manual spot-check)
+
+### Week 6: Polish + Launch Prep
+
+17. Add remaining 20+ command filters (ruby, go, dotnet, docker, kubectl)
+18. Implement `codeflow discover` — scan Claude Code history for missed savings
+19. Performance benchmarking: ensure <5ms p99 on all commands
+20. LMDB dedup benchmarking: ensure <1μs p99 lookup
+21. Write README.md with installation, usage, comparison vs RTK
+22. Create demo recording (asciinema) showing token savings
+23. Soft launch: post to Hacker News, r/ClaudeAI, Twitter/X
+
+## Success Criteria
+
+- [ ] Single binary ships on 6 platforms (Linux/macOS/Windows × x86/ARM)
+- [ ] <5ms p99 latency overhead per command (benchmark suite in CI)
+- [ ] <1μs p99 LMDB dedup cache lookup
+- [ ] 40+ command-specific TOML filters
+- [ ] Context dedup eliminates 60-80% of re-read tokens in test sessions
+- [ ] Overall compression ratio ≥50% on mixed dev workloads
+- [ ] `codeflow init` successfully installs hooks on all 3 OS families
+- [ ] Fail-open: any internal error → original output passed unchanged
+- [ ] SQLite tracking captures all events with 90-day retention
+- [ ] mmap ring buffer survives process crash (verified by kill -9 test)
+- [ ] 100+ GitHub stars within 2 weeks of launch
+- [ ] 50+ daily active CLI users within 4 weeks
+
+## Risk Assessment
+
+| Risk | Severity | Mitigation |
+|------|----------|------------|
+| LMDB mmap issues on Windows | MEDIUM | Test early on Windows. Fallback: SQLite for dedup on Windows |
+| Claude Code hook API changes | HIGH | Pin to current API version. Monitor Claude Code changelogs |
+| TOML filter false positives (removes useful output) | MEDIUM | Conservative defaults (Minimal level). Tee raw output always |
+| Cross-compilation failures | LOW | Use cross-rs for Linux ARM. Native runners for macOS/Windows |
+| Hook PATH resolution (RTK Issue #685) | MEDIUM | Use absolute path in hook scripts. Test with Homebrew/cargo installs |
+
+## Security Considerations
+
+- CLI processes developer code output locally — no data leaves machine in Phase 1
+- mmap ring buffer contains event data — secured by OS file permissions (0600)
+- SQLite database at `~/.local/share/codeflow/` — user-only permissions
+- No telemetry, no phone-home, no analytics without explicit opt-in
+- Security scanner stub exists but is not active until Phase 5
+
+## Next Steps
+
+- Phase 2 depends on Phase 1's event schema and mmap ring buffer
+- Sync daemon (Phase 2) reads from the ring buffer Phase 1 writes to
+- IDE plugins (Phase 4) will share the core compression library via FFI/WASM

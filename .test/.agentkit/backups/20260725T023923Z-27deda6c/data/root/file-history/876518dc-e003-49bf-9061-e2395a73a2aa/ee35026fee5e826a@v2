@@ -1,0 +1,501 @@
+use anyhow::Result;
+use regex::Regex;
+use serde::Deserialize;
+use std::path::Path;
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct FilterConfig {
+    pub command: CommandMatch,
+    #[serde(default)]
+    pub strip_ansi: Option<bool>,
+    #[serde(default)]
+    pub replace: Vec<ReplaceRule>,
+    #[serde(default)]
+    pub match_output: Option<MatchOutputRule>,
+    #[serde(default)]
+    pub strip_lines: Vec<StripLinesRule>,
+    #[serde(default)]
+    pub truncate_lines: Option<TruncateLinesRule>,
+    #[serde(default)]
+    pub head_tail: Option<HeadTailRule>,
+    #[serde(default)]
+    pub max_lines: Option<usize>,
+    #[serde(default)]
+    pub on_empty: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CommandMatch {
+    pub name: String,
+    #[serde(default)]
+    pub args_contain: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ReplaceRule {
+    pub pattern: String,
+    pub replacement: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MatchOutputRule {
+    pub pattern: String,
+    #[serde(default)]
+    pub invert: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct StripLinesRule {
+    pub pattern: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TruncateLinesRule {
+    pub max_length: usize,
+    #[serde(default = "default_suffix")]
+    pub suffix: String,
+}
+
+fn default_suffix() -> String {
+    "…".to_string()
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct HeadTailRule {
+    pub head: usize,
+    pub tail: usize,
+    #[serde(default = "default_separator")]
+    pub separator: String,
+}
+
+fn default_separator() -> String {
+    "\n... ({omitted} lines omitted) ...\n".to_string()
+}
+
+#[derive(Default)]
+pub struct FilterPipeline {
+    configs: Vec<FilterConfig>,
+}
+
+impl FilterPipeline {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn load_from_dir(dir: &Path) -> Result<Self> {
+        let mut configs = Vec::new();
+        if dir.exists() {
+            for entry in std::fs::read_dir(dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.extension().is_some_and(|e| e == "toml") {
+                    let content = std::fs::read_to_string(&path)?;
+                    let config: FilterConfig = toml::from_str(&content)?;
+                    configs.push(config);
+                }
+            }
+        }
+        Ok(Self { configs })
+    }
+
+    pub fn add_config(&mut self, config: FilterConfig) {
+        self.configs.push(config);
+    }
+
+    pub fn find_filter(&self, command: &str, args: &[String]) -> Option<&FilterConfig> {
+        self.configs.iter().find(|c| {
+            if c.command.name != command {
+                return false;
+            }
+            c.command.args_contain.iter().all(|required| {
+                args.iter().any(|a| a.contains(required.as_str()))
+            })
+        })
+    }
+
+    pub fn apply(&self, command: &str, args: &[String], output: &str) -> FilterResult {
+        let config = match self.find_filter(command, args) {
+            Some(c) => c,
+            None => return FilterResult::passthrough(output),
+        };
+        apply_filter(config, output)
+    }
+}
+
+#[derive(Debug)]
+pub struct FilterResult {
+    pub output: String,
+    pub input_len: usize,
+    pub output_len: usize,
+    pub filter_applied: bool,
+}
+
+impl FilterResult {
+    fn passthrough(output: &str) -> Self {
+        let len = output.len();
+        Self {
+            output: output.to_string(),
+            input_len: len,
+            output_len: len,
+            filter_applied: false,
+        }
+    }
+}
+
+pub fn apply_filter(config: &FilterConfig, output: &str) -> FilterResult {
+    let input_len = output.len();
+    let mut text = output.to_string();
+
+    // Stage 1: strip_ansi
+    if config.strip_ansi.unwrap_or(true) {
+        text = stage_strip_ansi(&text);
+    }
+
+    // Stage 2: replace
+    for rule in &config.replace {
+        text = stage_replace(&text, rule);
+    }
+
+    // Stage 3: match_output
+    if let Some(rule) = &config.match_output {
+        text = stage_match_output(&text, rule);
+    }
+
+    // Stage 4: strip_lines
+    for rule in &config.strip_lines {
+        text = stage_strip_lines(&text, rule);
+    }
+
+    // Stage 5: truncate_lines
+    if let Some(rule) = &config.truncate_lines {
+        text = stage_truncate_lines(&text, rule);
+    }
+
+    // Stage 6: head_tail
+    if let Some(rule) = &config.head_tail {
+        text = stage_head_tail(&text, rule);
+    }
+
+    // Stage 7: max_lines
+    if let Some(max) = config.max_lines {
+        text = stage_max_lines(&text, max);
+    }
+
+    // Stage 8: on_empty
+    if let Some(fallback) = &config.on_empty {
+        if text.trim().is_empty() {
+            text = fallback.clone();
+        }
+    }
+
+    let output_len = text.len();
+    FilterResult {
+        output: text,
+        input_len,
+        output_len,
+        filter_applied: true,
+    }
+}
+
+fn stage_strip_ansi(text: &str) -> String {
+    match strip_ansi_escapes::strip_str(text) {
+        s if s.is_empty() && !text.is_empty() => text.to_string(),
+        s => s.to_string(),
+    }
+}
+
+fn stage_replace(text: &str, rule: &ReplaceRule) -> String {
+    match Regex::new(&rule.pattern) {
+        Ok(re) => re.replace_all(text, rule.replacement.as_str()).to_string(),
+        Err(_) => text.to_string(),
+    }
+}
+
+fn stage_match_output(text: &str, rule: &MatchOutputRule) -> String {
+    let re = match Regex::new(&rule.pattern) {
+        Ok(r) => r,
+        Err(_) => return text.to_string(),
+    };
+    let lines: Vec<&str> = text.lines().collect();
+    let filtered: Vec<&str> = lines
+        .into_iter()
+        .filter(|line| {
+            let matches = re.is_match(line);
+            if rule.invert { !matches } else { matches }
+        })
+        .collect();
+    filtered.join("\n")
+}
+
+fn stage_strip_lines(text: &str, rule: &StripLinesRule) -> String {
+    let re = match Regex::new(&rule.pattern) {
+        Ok(r) => r,
+        Err(_) => return text.to_string(),
+    };
+    text.lines()
+        .filter(|line| !re.is_match(line))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn stage_truncate_lines(text: &str, rule: &TruncateLinesRule) -> String {
+    text.lines()
+        .map(|line| {
+            if line.len() > rule.max_length {
+                let truncated: String = line.chars().take(rule.max_length).collect();
+                format!("{}{}", truncated, rule.suffix)
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn stage_head_tail(text: &str, rule: &HeadTailRule) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    let total = lines.len();
+    if total <= rule.head + rule.tail {
+        return text.to_string();
+    }
+    let head_part: Vec<&str> = lines[..rule.head].to_vec();
+    let tail_part: Vec<&str> = lines[total - rule.tail..].to_vec();
+    let omitted = total - rule.head - rule.tail;
+    let sep = rule.separator.replace("{omitted}", &omitted.to_string());
+    format!("{}{}{}", head_part.join("\n"), sep, tail_part.join("\n"))
+}
+
+fn stage_max_lines(text: &str, max: usize) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    if lines.len() <= max {
+        return text.to_string();
+    }
+    lines[..max].join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_config(overrides: impl FnOnce(&mut FilterConfig)) -> FilterConfig {
+        let mut c = FilterConfig {
+            command: CommandMatch {
+                name: "test".to_string(),
+                args_contain: vec![],
+            },
+            strip_ansi: Some(false),
+            replace: vec![],
+            match_output: None,
+            strip_lines: vec![],
+            truncate_lines: None,
+            head_tail: None,
+            max_lines: None,
+            on_empty: None,
+        };
+        overrides(&mut c);
+        c
+    }
+
+    #[test]
+    fn test_strip_ansi() {
+        let input = "\x1b[31mERROR\x1b[0m: something failed";
+        let result = stage_strip_ansi(input);
+        assert_eq!(result, "ERROR: something failed");
+    }
+
+    #[test]
+    fn test_replace() {
+        let rule = ReplaceRule {
+            pattern: r"\d+\.\d+s".to_string(),
+            replacement: "X.Xs".to_string(),
+        };
+        let result = stage_replace("finished in 3.45s", &rule);
+        assert_eq!(result, "finished in X.Xs");
+    }
+
+    #[test]
+    fn test_match_output_keep() {
+        let rule = MatchOutputRule {
+            pattern: r"^error".to_string(),
+            invert: false,
+        };
+        let input = "info: ok\nerror: bad\nwarn: meh\nerror: worse";
+        let result = stage_match_output(input, &rule);
+        assert_eq!(result, "error: bad\nerror: worse");
+    }
+
+    #[test]
+    fn test_match_output_invert() {
+        let rule = MatchOutputRule {
+            pattern: r"^\s*$".to_string(),
+            invert: true,
+        };
+        let input = "line1\n\nline2\n\nline3";
+        let result = stage_match_output(input, &rule);
+        assert_eq!(result, "line1\nline2\nline3");
+    }
+
+    #[test]
+    fn test_strip_lines() {
+        let rule = StripLinesRule {
+            pattern: r"^Downloading".to_string(),
+        };
+        let input = "Downloading foo\nInstalling bar\nDownloading baz\nDone";
+        let result = stage_strip_lines(input, &rule);
+        assert_eq!(result, "Installing bar\nDone");
+    }
+
+    #[test]
+    fn test_truncate_lines() {
+        let rule = TruncateLinesRule {
+            max_length: 10,
+            suffix: "…".to_string(),
+        };
+        let input = "short\nthis is a very long line that needs truncation";
+        let result = stage_truncate_lines(input, &rule);
+        assert_eq!(result, "short\nthis is a …");
+    }
+
+    #[test]
+    fn test_head_tail() {
+        let rule = HeadTailRule {
+            head: 2,
+            tail: 2,
+            separator: "\n...({omitted} omitted)...\n".to_string(),
+        };
+        let input = "1\n2\n3\n4\n5\n6\n7\n8\n9\n10";
+        let result = stage_head_tail(input, &rule);
+        assert_eq!(result, "1\n2\n...(6 omitted)...\n9\n10");
+    }
+
+    #[test]
+    fn test_head_tail_short() {
+        let rule = HeadTailRule {
+            head: 5,
+            tail: 5,
+            separator: "\n...\n".to_string(),
+        };
+        let input = "1\n2\n3";
+        let result = stage_head_tail(input, &rule);
+        assert_eq!(result, "1\n2\n3");
+    }
+
+    #[test]
+    fn test_max_lines() {
+        let input = "1\n2\n3\n4\n5";
+        let result = stage_max_lines(input, 3);
+        assert_eq!(result, "1\n2\n3");
+    }
+
+    #[test]
+    fn test_on_empty() {
+        let config = make_config(|c| {
+            c.on_empty = Some("(no output)".to_string());
+        });
+        let result = apply_filter(&config, "   \n  ");
+        assert_eq!(result.output, "(no output)");
+    }
+
+    #[test]
+    fn test_full_pipeline() {
+        let config = make_config(|c| {
+            c.strip_ansi = Some(true);
+            c.strip_lines = vec![StripLinesRule {
+                pattern: r"^warning:".to_string(),
+            }];
+            c.head_tail = Some(HeadTailRule {
+                head: 2,
+                tail: 1,
+                separator: "\n...\n".to_string(),
+            });
+        });
+        let input = "\x1b[33mwarning: unused\x1b[0m\nerror: line 1\nerror: line 2\nerror: line 3\nerror: line 4\nerror: line 5";
+        let result = apply_filter(&config, input);
+        assert!(result.filter_applied);
+        assert!(result.output_len < result.input_len);
+        assert!(!result.output.contains("warning"));
+    }
+
+    #[test]
+    fn test_toml_parse() {
+        let toml_str = r#"
+strip_ansi = true
+max_lines = 50
+on_empty = "(clean working tree)"
+
+[command]
+name = "git"
+args_contain = ["status"]
+
+[[strip_lines]]
+pattern = "^\\s*$"
+
+[head_tail]
+head = 20
+tail = 5
+separator = "\n... ({omitted} lines omitted) ...\n"
+"#;
+        let config: FilterConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.command.name, "git");
+        assert_eq!(config.max_lines, Some(50));
+        assert!(config.head_tail.is_some());
+    }
+
+    #[test]
+    fn test_pipeline_find_filter() {
+        let mut pipeline = FilterPipeline::new();
+        pipeline.add_config(make_config(|c| {
+            c.command.name = "git".to_string();
+            c.command.args_contain = vec!["status".to_string()];
+        }));
+        pipeline.add_config(make_config(|c| {
+            c.command.name = "npm".to_string();
+        }));
+
+        assert!(pipeline.find_filter("git", &["status".to_string()]).is_some());
+        assert!(pipeline.find_filter("git", &["push".to_string()]).is_none());
+        assert!(pipeline.find_filter("npm", &["test".to_string()]).is_some());
+        assert!(pipeline.find_filter("unknown", &[]).is_none());
+    }
+
+    #[test]
+    fn test_passthrough_when_no_filter() {
+        let pipeline = FilterPipeline::new();
+        let result = pipeline.apply("unknown", &[], "hello world");
+        assert!(!result.filter_applied);
+        assert_eq!(result.output, "hello world");
+    }
+
+    #[test]
+    fn test_all_toml_filters_parse() {
+        let filters_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../filters");
+        assert!(filters_dir.exists(), "filters dir not found at {:?}", filters_dir);
+        let pipeline = FilterPipeline::load_from_dir(&filters_dir).unwrap();
+        let count = pipeline.configs.len();
+        assert!(count >= 10, "expected at least 10 filters, found {}", count);
+
+        let expected = [
+            ("git", vec!["status"], true),
+            ("git", vec!["diff"], true),
+            ("git", vec!["log"], true),
+            ("npm", vec!["test"], true),
+            ("cargo", vec!["build"], true),
+            ("cargo", vec!["test"], true),
+            ("pytest", vec![], true),
+            ("tsc", vec![], true),
+            ("eslint", vec![], true),
+            ("ls", vec![], true),
+            ("docker", vec!["logs"], true),
+            ("find", vec![], true),
+            ("go", vec!["test"], true),
+            ("pip", vec!["install"], true),
+            ("grep", vec![], true),
+        ];
+        for (cmd, args, should_exist) in expected {
+            let args: Vec<String> = args.into_iter().map(String::from).collect();
+            let found = pipeline.find_filter(cmd, &args).is_some();
+            assert_eq!(found, should_exist, "filter for '{} {:?}' expected={}", cmd, args, should_exist);
+        }
+    }
+}

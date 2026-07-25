@@ -1,0 +1,191 @@
+"""Tests for Brain 2: Forced Flow Engine."""
+
+import json
+import pytest
+from ..forced_flow_engine import ForcedFlowEngine, DEFAULT_GEOGRAPHIES, DEFAULT_INDUSTRIES
+from ..models import ForcedFlow, FounderProfile
+
+
+def _mock_research(responses: dict):
+    def fn(query: str) -> str:
+        for key, val in responses.items():
+            if key.lower() in query.lower():
+                return val
+        return ""
+    return fn
+
+
+def _mock_llm(mappings: dict):
+    def fn(prompt: str) -> str:
+        for key, val in mappings.items():
+            if key.lower() in prompt.lower():
+                return json.dumps(val)
+        return json.dumps({"regulation": None})
+    return fn
+
+
+class TestMandateExtraction:
+    def test_finds_regulation(self):
+        research = _mock_research({
+            "regulation": "EU AI Act Article 6 high-risk systems conformity assessment effective 2026-08-01"
+        })
+        llm = _mock_llm({
+            "eu ai act": {
+                "regulation": "EU AI Act Art.6",
+                "jurisdiction": "EU",
+                "effective_date": "2026-08-01",
+                "who_must_comply": "AI deployers",
+                "entity_count_estimate": 15000,
+                "compliance_cost_per_entity": 50000,
+                "penalty": "up to 35M EUR",
+                "summary": "High-risk AI conformity assessment",
+            },
+            "compliance provider": {"providers": ["Deloitte", "PwC"], "gap": "no SME-focused providers"},
+        })
+        engine = ForcedFlowEngine(research, llm, max_calls=30)
+        flows = engine.scan(geographies=["EU"], industries=["technology"])
+
+        assert len(flows) >= 1
+        f = flows[0]
+        assert f.regulation == "EU AI Act Art.6"
+        assert f.jurisdiction == "EU"
+        assert f.entity_count == 15000
+        assert f.total_forced_spend == pytest.approx(750_000_000)
+
+    def test_no_regulation_found(self):
+        research = _mock_research({"regulation": "no relevant regulatory text found"})
+        llm = _mock_llm({"": {"regulation": None}})
+        engine = ForcedFlowEngine(research, llm, max_calls=30)
+        flows = engine.scan(geographies=["US"], industries=["technology"])
+        assert len(flows) == 0
+
+
+class TestUrgencyCalculation:
+    def test_urgency_near_deadline(self):
+        f = ForcedFlow(regulation="test", jurisdiction="EU",
+                       effective_date="2026-08-01", who_must_comply="all",
+                       deadline_urgency=30)
+        score = f.urgency_score()
+        assert score > 0.9
+
+    def test_urgency_far_deadline(self):
+        f = ForcedFlow(regulation="test", jurisdiction="EU",
+                       effective_date="2028-01-01", who_must_comply="all",
+                       deadline_urgency=350)
+        score = f.urgency_score()
+        assert score < 0.1
+
+    def test_urgency_zero_days(self):
+        f = ForcedFlow(regulation="test", jurisdiction="EU",
+                       effective_date="2026-01-01", who_must_comply="all",
+                       deadline_urgency=0)
+        assert f.urgency_score() == 0.0
+
+
+class TestPriorityScoring:
+    def test_high_priority(self):
+        f = ForcedFlow(
+            regulation="EUDR", jurisdiction="EU",
+            effective_date="2026-12-30", who_must_comply="importers",
+            entity_count=10000, compliance_cost=10000,
+            deadline_urgency=60, provider_gap="missing traceability"
+        )
+        assert f.priority_score() > 0.5
+
+    def test_low_priority_no_gap(self):
+        f = ForcedFlow(
+            regulation="old rule", jurisdiction="US",
+            effective_date="2028-12-30", who_must_comply="banks",
+            entity_count=100, compliance_cost=1000,
+            deadline_urgency=350, provider_gap=""
+        )
+        assert f.priority_score() < 0.3
+
+    def test_size_score(self):
+        small = ForcedFlow(regulation="a", jurisdiction="US",
+                           effective_date="", who_must_comply="",
+                           entity_count=10, compliance_cost=100)
+        big = ForcedFlow(regulation="b", jurisdiction="US",
+                         effective_date="", who_must_comply="",
+                         entity_count=100000, compliance_cost=100000)
+        assert big.size_score() > small.size_score()
+
+
+class TestBudgetEnforcement:
+    def test_stops_at_budget(self):
+        call_count = 0
+        def counting_research(q):
+            nonlocal call_count
+            call_count += 1
+            return "some regulation text"
+
+        llm = _mock_llm({
+            "": {"regulation": "Test Rule", "jurisdiction": "US",
+                 "effective_date": "2026-12-01", "who_must_comply": "all",
+                 "entity_count_estimate": 1000, "compliance_cost_per_entity": 5000,
+                 "penalty": "fine", "summary": "test"},
+            "compliance provider": {"providers": [], "gap": "none"},
+        })
+        engine = ForcedFlowEngine(counting_research, llm, max_calls=5)
+        engine.scan(geographies=["US", "EU", "VN", "global"],
+                    industries=["tech", "finance", "health"])
+        assert engine.budget.calls_used <= 5
+
+
+class TestPositionRecommendation:
+    def test_broker_for_large_gap(self):
+        engine = ForcedFlowEngine(lambda q: "", lambda p: "{}", max_calls=30)
+        pos = engine._recommend_position("missing compliance service", 5000, 10000)
+        assert pos == "BROKER"
+
+    def test_intelligence_for_technical_gap(self):
+        engine = ForcedFlowEngine(lambda q: "", lambda p: "{}", max_calls=30)
+        pos = engine._recommend_position("technical assessment tools missing", 500, 10000)
+        assert pos == "INTELLIGENCE"
+
+    def test_aggregator_for_large_count(self):
+        engine = ForcedFlowEngine(lambda q: "", lambda p: "{}", max_calls=30)
+        pos = engine._recommend_position("", 10000, 1000)
+        assert pos == "AGGREGATOR"
+
+
+class TestIndustryResolution:
+    def test_explicit_industries(self):
+        engine = ForcedFlowEngine(lambda q: "", lambda p: "{}", max_calls=30)
+        inds = engine._resolve_industries(["fintech", "healthtech"], None)
+        assert inds == ["fintech", "healthtech"]
+
+    def test_founder_industries(self):
+        founder = FounderProfile(industries=["coffee export"])
+        engine = ForcedFlowEngine(lambda q: "", lambda p: "{}", max_calls=30)
+        inds = engine._resolve_industries(None, founder)
+        assert "coffee export" in inds
+
+    def test_defaults_when_empty(self):
+        engine = ForcedFlowEngine(lambda q: "", lambda p: "{}", max_calls=30)
+        inds = engine._resolve_industries(None, None)
+        assert len(inds) > 0
+
+    def test_search_failure_handled(self):
+        def failing(q):
+            raise ConnectionError("down")
+        engine = ForcedFlowEngine(failing, lambda p: "{}", max_calls=30)
+        flows = engine.scan(geographies=["US"], industries=["tech"])
+        assert flows == []
+
+
+class TestDeadlineDays:
+    def test_valid_date(self):
+        engine = ForcedFlowEngine(lambda q: "", lambda p: "{}", max_calls=30)
+        days = engine._calc_deadline_days("2030-01-01")
+        assert days > 0
+
+    def test_invalid_date(self):
+        engine = ForcedFlowEngine(lambda q: "", lambda p: "{}", max_calls=30)
+        days = engine._calc_deadline_days("not-a-date")
+        assert days == 365
+
+    def test_empty_date(self):
+        engine = ForcedFlowEngine(lambda q: "", lambda p: "{}", max_calls=30)
+        days = engine._calc_deadline_days("")
+        assert days == 365

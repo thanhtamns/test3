@@ -1,0 +1,228 @@
+---
+phase: 5
+title: "Integration + IC Unification + End-to-End Testing"
+status: pending
+priority: P1
+effort: "5h"
+dependencies: [1, "1B", 2, 3, "3A", 4]
+---
+
+# Phase 5: Integration + End-to-End Testing
+
+## Overview
+
+Wire all new components into SKILL.md, UNIFY IntelligenceController's hypothesis loop with the refinement loop (Co-Scientist gap #6), verify full pipeline end-to-end, and validate output quality improvement. This is the final assembly + unification phase.
+
+## Requirements
+
+- Functional: SKILL.md gains Phase 2.6 (First Principles Generator) and Phase 2.8 (Refinement Loop)
+- Functional: Evidence vault population triggers Knowledge Graph building
+- Functional: Full pipeline: 0 → 1 → 2 → 2.5A(+graph) → 2.5B → 2.5C → 2.6 → 2.6B(reflection) → 2.7 → 2.8(+proximity) → 3 → 4
+- Functional: Graceful degradation: if any new phase fails, pipeline falls back to pre-upgrade behavior
+- Functional: **IC UNIFICATION** — IntelligenceController's hypothesis loop (Seed → HypothesisLoop × 5) and refinement loop (Generate → Debate → Evolve × N) share the same KnowledgeGraph and convergence mechanism
+- Non-functional: Total pipeline time increase ≤ 8 min (current ~8-12 min, target ≤ 20 min with dynamic rounds)
+- Non-functional: All existing Python tests still pass
+- Non-functional: Manual validation with 2 test queries
+
+## Architecture
+
+### SKILL.md Changes
+
+```
+EXISTING (unchanged):
+  Phase 0:    Intent Classification
+  Phase 1:    Signal Scan
+  Phase 2:    Question Generation + Research (7+ agents)
+  Phase 2.5A: Evidence Vault Creation → NOW ALSO: Knowledge Graph population
+  Phase 2.5B: Multi-Step Reasoning Chain
+  Phase 2.5C: Opportunity Pattern Matching
+
+NEW INSERTIONS:
+  Phase 2.6:  First Principles Generator (PLAN COMPLETE — between 2.5C and 2.7)
+  Phase 2.6B: Reflection Agent (NEW — self-critique before tournament)
+  Phase 2.7:  Idea Tournament (EXISTING — UPGRADED: evidence-based debate)
+  Phase 2.8:  Refinement Loop (NEW — after 2.7, before Phase 3)
+              includes: proximity/diversity enforcement per round
+              includes: dynamic convergence (Elo delta + ranking stability)
+
+EXISTING (modified inputs only):
+  Phase 3:    Lens Analysis (now receives knowledge_graph + refinement_result)
+  Phase 4:    Vision Gate + Synthesis (mechanism-first output format)
+```
+
+### IC Unification (Co-Scientist gap #6)
+
+**Problem:** Two separate hypothesis loop systems exist:
+1. `IntelligenceController` (`.claude/lib/intelligence/controller/`) — Seed → HypothesisLoop × 5 cycles, builds MoneyFlowGraph, used by ThinkRunner
+2. Refinement Loop (Phase 2.8, new) — Generate → Debate → Evolve × N rounds, uses KnowledgeGraph
+
+These are structurally the SAME pattern (hypothesis → test → refine → converge) running on different graphs with different convergence rules. Maintaining two systems = doubled complexity + divergent behavior.
+
+**Solution:** Unify via shared interfaces:
+
+```python
+class ConvergenceProtocol:
+    """Shared convergence logic used by BOTH systems."""
+    def check(self, rounds: list) -> tuple[bool, str]:
+        # Same dual-signal logic: ranking stable OR Elo/confidence delta < threshold
+
+class GraphProtocol:
+    """Shared graph interface — MoneyFlowGraph and KnowledgeGraph both implement."""
+    def find_gaps(self) -> list[dict]: ...
+    def evidence_profile(self, text: str) -> dict: ...
+    def overall_confidence(self) -> float: ...
+```
+
+**Implementation:**
+1. Extract `convergence_checker.py` interface → shared by IC's CompletionJudge and Refinement's convergence
+2. Add `GraphProtocol` ABC → MoneyFlowGraph and KnowledgeGraph both implement
+3. IntelligenceController's `run()` method can optionally receive a KnowledgeGraph and populate it during seed/test phases
+4. ThinkRunner's `_intelligence_context` feeds INTO the refinement loop's KnowledgeGraph (not a separate data silo)
+
+**NOT changed:** Each system keeps its own specialized logic. IC focuses on money-flow topology. Refinement focuses on business hypothesis evolution. Unification is at the INTERFACE level, not a code merge.
+
+### Fallback Chain
+
+Every new component has a null-check fallback:
+
+```
+Phase 2.5A → Knowledge Graph:
+  IF graph build fails → graph = null, pipeline uses flat vault (current behavior)
+
+Phase 2.6 → First Principles:
+  IF generation fails → first_principles = null, tournament uses only pattern-matcher (current)
+
+Phase 2.7 → Tournament:
+  IF tournament fails → tournament_context = null (existing fallback, unchanged)
+
+Phase 2.8 → Refinement:
+  IF refinement fails → refinement_result = null, synthesis uses tournament result directly
+  IF convergence never reached → force stop at round 3, use latest ranking
+
+Phase 4 → Mechanism Output:
+  IF refinement_result = null → synthesis omits evolution trace, falls back to current format
+  IF knowledge_graph = null → synthesis omits contradiction section
+```
+
+**Principle:** no new component can BREAK the existing pipeline. Every addition is guarded by null-check. Worst case = pre-upgrade behavior.
+
+### Data Flow (Complete)
+
+```
+Phase 2 research agents
+    ↓
+Phase 2.5A: Evidence Vault → Knowledge Graph (NEW)
+    ↓                              ↓
+Phase 2.5B: Reasoning Chain    graph available for query
+    ↓                              ↓
+Phase 2.5C: Pattern Matcher    ↓
+    ↓                          ↓
+Phase 2.6: First Principles Generator
+    ↓  uses graph for context
+    ↓  produces 5-8 novel hypotheses
+    ↓
+Phase 2.6B: Reflection Agent (NEW)
+    ↓  self-critique each hypothesis (3 questions)
+    ↓  KILL <3/10, REFINE 3-5/10, PASS >5/10
+    ↓  filtered pool: ~7-10 candidates (from 10-13)
+    ↓
+Phase 2.7: Tournament (UPGRADED)
+    ↓  evidence-based debate: claims from KnowledgeGraph as ammunition
+    ↓  hypotheses ARGUE with evidence, not just get compared
+    ↓  produces Elo-ranked hypotheses
+    ↓
+Phase 2.8: Refinement Loop (NEW — dynamic)
+    ↓  STRENGTHEN: graph gaps → targeted search → update graph
+    ↓  ATTACK: inversion search → contradictions
+    ↓  EVOLVE: merge compatible hypotheses
+    ↓  PROXIMITY: penalize similar pairs, enforce top-3 diversity
+    ↓  RE-TOURNAMENT: evidence-based debate on refined candidates
+    ↓  CONVERGE: Elo delta <5% OR ranking stable OR max 5 rounds
+    ↓  produces: final ranking + evolution traces + updated graph + Elo trajectory
+    ↓
+Phase 3: Lens Analysis
+    ↓  receives: vault + reasoning chain + knowledge_graph + refinement_result
+    ↓
+Phase 4: Vision Gate + Synthesis
+    ↓  mechanism-first output format
+    ↓  evolution traces + contradictions + source attribution
+    ↓
+Output: Intelligence Report (mechanism-first format)
+```
+
+## Related Code Files
+
+- Modify: `.claude/skills/business/startup/SKILL.md` — add Phase 2.6, 2.6B, 2.8(+proximity), modify 2.5A, 2.7, 3, 4
+- Create: `.claude/lib/intelligence/shared/convergence_protocol.py` — shared convergence interface for IC + refinement
+- Create: `.claude/lib/intelligence/shared/graph_protocol.py` — shared graph query interface
+- Modify: `.claude/lib/intelligence/controller/completion_judge.py` — implement ConvergenceProtocol
+- Modify: `.claude/lib/intelligence/controller/think_runner_bridge.py` — feed IC graph into KnowledgeGraph
+- Read: All files from Phases 1-4 + 1B + 3A (verify they exist and are correct)
+- Run: All existing tests in `.claude/lib/intelligence/tournament/tests/` + `controller/tests/`
+- Run: All new tests from Phases 1, 1B, 2, 3, 3A
+
+## Implementation Steps
+
+1. Read current SKILL.md completely to understand exact insertion points
+2. Add Phase 2.5A modification:
+   - After evidence vault creation step, add: "Populate KnowledgeGraph from vault"
+   - Add: `knowledge_graph_path = plans/{session_id}/knowledge-graph.json`
+   - Add null-check: "If graph population fails, set knowledge_graph = null, continue"
+3. Add Phase 2.6 section (between 2.5C and 2.7):
+   - Spawn `first-principles-generator` agent
+   - Protocol: `.claude/agents/core/intelligence/first-principles-protocol.md`
+   - Input: founder_context, domain, evidence_vault_path, knowledge_graph_path
+   - Output: `plans/{session_id}/first-principles-hypotheses.md`
+   - Null-check: if fails, set first_principles = null, tournament uses only pattern-matcher
+4. Modify Phase 2.7 activation gate:
+   - Accept first-principles hypotheses as additional tournament candidates
+   - Combined pool: pattern-matcher top_5 + first-principles (5-8) = 10-13 candidates
+   - Hard cap still 10: if > 10, keep top by evidence backing (pattern-matcher) + founder_fit (first-principles)
+5. Add Phase 2.8 section (between 2.7 and Phase 3):
+   - Spawn `refinement-executor` agent
+   - Protocol: `.claude/agents/core/intelligence/refinement-loop-protocol.md`
+   - Input: tournament_result_path, knowledge_graph (serialized), founder_context
+   - Timeout: 600s
+   - Output: `plans/{session_id}/refinement-result.md`
+   - Null-check: if fails, set refinement_result = null, synthesis uses tournament result
+6. Modify Phase 3 (Lens Analysis):
+   - Add knowledge_graph_path and refinement_result_path to lens agent inputs
+   - Lens agents can query graph for structured evidence (optional enhancement)
+7. Modify Phase 4 (Synthesis):
+   - Add new inputs: refinement_result, knowledge_graph, first_principles_hypotheses
+   - Reference mechanism-output-protocol.md for formatting
+   - Null-checks for each: omit section if input is null
+8. Run ALL existing tests:
+   - `pytest .claude/lib/intelligence/tournament/tests/` — must still pass
+   - `pytest .claude/lib/intelligence/controller/tests/` — must still pass
+9. Run ALL new tests:
+   - `pytest .claude/lib/intelligence/hypothesis/tests/` (Phase 1)
+   - `pytest .claude/lib/intelligence/knowledge/tests/` (Phase 2)
+   - `pytest .claude/lib/intelligence/refinement/tests/` (Phase 3)
+10. Manual validation:
+    - Test 1: Run `/startup` with AI cost management thesis (same as the test that triggered this evolution)
+    - Test 2: Run `/startup` with a simpler query (verify fallback works when < 3 hypotheses)
+    - Compare output quality: mechanism present? evolution trace present? contradictions surfaced?
+    - Document results in `plans/260527-hypothesis-driven-intelligence-engine/validation-results.md`
+
+## Success Criteria
+
+- [ ] SKILL.md has Phase 2.6 + 2.6B + 2.8(+proximity) inserted cleanly between existing phases
+- [ ] Phase 2.7 tournament uses evidence-based debate prompts from KnowledgeGraph
+- [ ] Every new component has null-check fallback to pre-upgrade behavior
+- [ ] IC + Refinement share ConvergenceProtocol and GraphProtocol interfaces
+- [ ] IC's MoneyFlowGraph feeds into KnowledgeGraph (not a separate data silo)
+- [ ] All existing tests pass (zero regressions)
+- [ ] All new tests pass (Phase 1, 1B, 2, 3, 3A combined: 50+ tests)
+- [ ] Manual test 1 (complex query): output includes mechanism + evolution trace + contradictions + Elo trajectory
+- [ ] Manual test 2 (simple query): pipeline completes normally (new phases skipped gracefully)
+- [ ] Total pipeline time ≤ 20 min for complex query (with dynamic rounds)
+
+## Risk Assessment
+
+- **Risk:** SKILL.md is huge and actively evolving — merge conflicts likely
+  - Mitigation: All insertions are between existing phases (not modifying existing text). Phase 4 modifications are additive (new conditional blocks). Git diff will be clean.
+- **Risk:** Combined pipeline too slow (>17 min)
+  - Mitigation: First-principles generation is 120s max. Refinement is 600s max (usually 1-2 rounds = 200-400s). Tournament is 300s max. Total new compute: ~15-20 min theoretical worst case, but most rounds converge fast. Monitor and adjust timeouts if needed.
+- **Risk:** Too many agents spawned, context window pressure
+  - Mitigation: Each new agent is independent (not nested). First-principles agent finishes before tournament starts. Refinement agent finishes before synthesis. No parallel pressure increase.

@@ -1,0 +1,119 @@
+package api
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strings"
+	"time"
+)
+
+func (h *handler) handleComplianceExport(w http.ResponseWriter, r *http.Request) {
+	tenantID := tenantFromCtx(r)
+	project := r.URL.Query().Get("project")
+	format := r.URL.Query().Get("format")
+	days := parseDays(r.URL.Query().Get("days"), 90)
+
+	if format == "" {
+		format = "slsa"
+	}
+
+	provRows, err := h.store.QueryProvenance(r.Context(), tenantID, project, days)
+	if err != nil {
+		h.logger.Error("compliance provenance query failed", "error", err)
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	switch format {
+	case "slsa":
+		subjects := make([]map[string]any, 0, len(provRows))
+		deps := make([]map[string]any, 0, len(provRows))
+		for _, r := range provRows {
+			subjects = append(subjects, map[string]any{
+				"name":   r.FilePath,
+				"digest": map[string]string{"blake3": r.CodeHash},
+			})
+			deps = append(deps, map[string]any{
+				"uri":    fmt.Sprintf("ai-model://%s/%s", r.ModelID, r.ModelVersion),
+				"digest": map[string]string{},
+			})
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"_type":         "https://in-toto.io/Statement/v1",
+			"subject":       subjects,
+			"predicateType": "https://slsa.dev/provenance/v1",
+			"predicate": map[string]any{
+				"buildDefinition": map[string]any{
+					"buildType":            "https://codeflow.dev/ai-code-provenance/v1",
+					"resolvedDependencies": deps,
+				},
+				"runDetails": map[string]any{
+					"builder": map[string]string{"id": "https://codeflow.dev/cloud"},
+				},
+			},
+		})
+
+	case "cyclonedx":
+		components := make([]map[string]any, 0, len(provRows))
+		for _, r := range provRows {
+			components = append(components, map[string]any{
+				"type":   "file",
+				"name":   r.FilePath,
+				"hashes": []map[string]string{{"alg": "BLAKE3", "content": r.CodeHash}},
+				"properties": []map[string]string{
+					{"name": "ai:model_id", "value": r.ModelID},
+					{"name": "ai:contributor_type", "value": r.ContributorType},
+					{"name": "ai:attestation_sig", "value": r.AttestationSig},
+				},
+			})
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"bomFormat":   "CycloneDX",
+			"specVersion": "1.6",
+			"version":     1,
+			"components":  components,
+		})
+
+	case "soc2":
+		qualSummary, _ := h.store.QueryQualitySummary(r.Context(), tenantID, project, days)
+		models := map[string]bool{}
+		devs := map[string]bool{}
+		files := map[string]bool{}
+		for _, r := range provRows {
+			models[r.ModelID] = true
+			devs[r.DeveloperID] = true
+			files[r.FilePath] = true
+		}
+		modelList := mapKeys(models)
+		devList := mapKeys(devs)
+
+		w.Header().Set("Content-Type", "text/markdown")
+		fmt.Fprintf(w, "# SOC 2 Type II Evidence — AI Code Governance\n\n")
+		fmt.Fprintf(w, "Generated: %s\n\n", time.Now().Format(time.RFC3339))
+		fmt.Fprintf(w, "## CC6.1 — Logical Access Controls\n\n")
+		fmt.Fprintf(w, "- Total AI code changes: %d\n", len(provRows))
+		fmt.Fprintf(w, "- Unique files: %d\n", len(files))
+		fmt.Fprintf(w, "- Developers: %s\n", strings.Join(devList, ", "))
+		fmt.Fprintf(w, "- Models: %s\n\n", strings.Join(modelList, ", "))
+		fmt.Fprintf(w, "## CC8.1 — Change Management\n\n")
+		if qualSummary != nil {
+			fmt.Fprintf(w, "- Total findings: %d\n", qualSummary.TotalFindings)
+			fmt.Fprintf(w, "- Blocked: %d\n", qualSummary.BlockedCount)
+			fmt.Fprintf(w, "- Pass rate: %.1f%%\n", qualSummary.PassRate)
+		}
+
+	default:
+		http.Error(w, "unknown format: use slsa, cyclonedx, or soc2", http.StatusBadRequest)
+	}
+}
+
+func mapKeys(m map[string]bool) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
+}

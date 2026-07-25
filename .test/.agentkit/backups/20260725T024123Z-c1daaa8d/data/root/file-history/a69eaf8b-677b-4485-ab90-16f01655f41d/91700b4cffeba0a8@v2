@@ -1,0 +1,204 @@
+"""
+Decomposer — orchestrates classification, dimension selection, and micro-query
+generation. Checks local KB first via AtomicResolver.
+Optional LLM call for smart query generation when available.
+"""
+
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
+
+from .dimension_registry import Dimension, get_dimensions
+from .micro_query_generator import MicroQuery, MicroQueryGenerator
+from .query_classifier import ClassificationResult, QueryClassifier
+from ..reasoning.problem_decomposer import AtomicQuestion
+from ..reasoning.atomic_resolver import AtomicResolver
+
+
+@dataclass
+class DecompositionTree:
+    original_query: str
+    query_type: str
+    classification_confidence: float
+    dimensions: list[Dimension]
+    micro_queries: list[MicroQuery]
+    pre_resolved: list[dict] = field(default_factory=list)
+    context: dict = field(default_factory=dict)
+
+    @property
+    def queries_to_fire(self) -> list[MicroQuery]:
+        resolved_texts = {r["query"] for r in self.pre_resolved}
+        return [q for q in self.micro_queries if q.text not in resolved_texts]
+
+    @property
+    def total_queries(self) -> int:
+        return len(self.micro_queries)
+
+    @property
+    def cached_count(self) -> int:
+        return len(self.pre_resolved)
+
+    def to_dict(self) -> dict:
+        return {
+            "original_query": self.original_query,
+            "query_type": self.query_type,
+            "classification_confidence": self.classification_confidence,
+            "dimensions": [d.to_dict() for d in self.dimensions],
+            "micro_queries": [q.to_dict() for q in self.micro_queries],
+            "pre_resolved": self.pre_resolved,
+            "context": self.context,
+            "total_queries": self.total_queries,
+            "cached_count": self.cached_count,
+            "queries_to_fire": len(self.queries_to_fire),
+        }
+
+
+class Decomposer:
+    def __init__(self, resolver: Optional[AtomicResolver] = None, weight_overrides: Optional[dict[str, float]] = None):
+        self.classifier = QueryClassifier()
+        self.generator = MicroQueryGenerator()
+        self.resolver = resolver
+        self.weight_overrides = weight_overrides
+        if not self.weight_overrides:
+            from .template_evolver import TemplateEvolver
+            evolver = TemplateEvolver()
+            evolved = evolver.get_evolved_weights()
+            if evolved:
+                self.weight_overrides = evolved
+
+    def decompose(self, query: Optional[str]) -> DecompositionTree:
+        if not query or not query.strip():
+            return DecompositionTree(
+                original_query=query or "",
+                query_type="custom",
+                classification_confidence=0.0,
+                dimensions=[],
+                micro_queries=[],
+                context={},
+            )
+
+        classification = self.classifier.classify(query)
+        dimensions = get_dimensions(classification.query_type, weight_overrides=self.weight_overrides)
+        micro_queries = self.generator.generate_batch(dimensions, classification.context)
+
+        llm_queries = self._generate_smart_queries(query, classification, dimensions)
+        if llm_queries:
+            micro_queries = micro_queries + llm_queries
+
+        pre_resolved = []
+        if self.resolver:
+            pre_resolved = self._resolve_against_kb(micro_queries, classification.context)
+
+        return DecompositionTree(
+            original_query=query,
+            query_type=classification.query_type,
+            classification_confidence=classification.confidence,
+            dimensions=dimensions,
+            micro_queries=micro_queries,
+            pre_resolved=pre_resolved,
+            context=classification.context,
+        )
+
+    def _generate_smart_queries(
+        self, query: str, classification: ClassificationResult, dimensions: list[Dimension]
+    ) -> list[MicroQuery]:
+        """Use LLM to generate intent-aware queries that templates miss."""
+        try:
+            from ..llm.factory import complete_with_fallback
+        except Exception:
+            return []
+
+        dim_names = [d.name for d in dimensions]
+        context = classification.context
+        industry = context.get("industry", "unknown")
+        market = context.get("market", "global")
+
+        prompt = f"""Generate 8-10 specific, factual web search queries for researching this business question:
+
+QUERY: "{query}"
+INDUSTRY: {industry}
+MARKET: {market}
+QUERY TYPE: {classification.query_type}
+DIMENSIONS ALREADY COVERED: {', '.join(dim_names)}
+
+Rules:
+- Each query must be a SPECIFIC search you'd type into Google
+- Include failure/risk queries (not just positive)
+- Include specific names, numbers, dates where possible
+- Avoid generic queries like "what is {industry}"
+- Focus on OPERATOR-LEVEL intelligence, not surface-level descriptions
+- Include at least 2 queries about WHO is actually making money and HOW MUCH
+
+Return ONLY a JSON array of objects:
+[{{"query": "exact search text", "dimension": "closest_dimension_name", "type": "number|text|list"}}]"""
+
+        try:
+            result = complete_with_fallback(prompt, max_tokens=1024, temperature=0.3)
+            if not result or not hasattr(result, "content") or not result.content:
+                return []
+            text = result.content.strip()
+            start = text.find("[")
+            end = text.rfind("]") + 1
+            if start < 0 or end <= start:
+                return []
+            items = json.loads(text[start:end])
+            queries = []
+            for item in items[:10]:
+                q_text = item.get("query", "").strip()
+                if not q_text or len(q_text) < 10:
+                    continue
+                dim = item.get("dimension", dim_names[0] if dim_names else "custom")
+                if dim not in dim_names:
+                    dim = dim_names[0] if dim_names else "custom"
+                queries.append(MicroQuery(
+                    text=q_text,
+                    dimension=dim,
+                    expected_type=item.get("type", "text"),
+                    verification_hint="LLM-generated query",
+                ))
+            return queries
+        except Exception:
+            return []
+
+    def _resolve_against_kb(self, queries: list[MicroQuery], context: dict) -> list[dict]:
+        resolved = []
+        for mq in queries:
+            aq = AtomicQuestion(
+                text=mq.text,
+                query_type=mq.dimension,
+                category=self._map_dimension_to_category(mq.dimension),
+                weight=1.0,
+            )
+            resolution = self.resolver.resolve(aq, context)
+            if resolution.status == "RESOLVED" and resolution.confidence >= 0.5:
+                resolved.append({
+                    "query": mq.text,
+                    "dimension": mq.dimension,
+                    "answer": resolution.answer,
+                    "confidence": resolution.confidence,
+                    "source": resolution.source,
+                })
+        return resolved
+
+    def _map_dimension_to_category(self, dimension: str) -> str:
+        mapping = {
+            "career_path": "founder",
+            "deal_skills": "financial",
+            "network_access": "custom",
+            "founder_experience": "founder",
+            "base_rates": "base_rate",
+            "capital_requirements": "financial",
+            "competitive_landscape": "competitor",
+            "moat_patterns": "moat",
+            "timing_windows": "timing",
+            "unit_economics": "pricing",
+            "regulatory_risks": "regulatory",
+            "failure_patterns": "base_rate",
+            "compounding_mechanisms": "compound",
+            "execution_distance": "custom",
+            "leverage_type": "leverage",
+            "indirect_entry": "custom",
+            "benchmark_comparison": "founder",
+        }
+        return mapping.get(dimension, "custom")

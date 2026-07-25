@@ -1,0 +1,246 @@
+# System Evolution Audit: Investments/Stage0 vs AEVO/EvoX Meta-Evolution
+
+**Date:** 2026-05-16 | **Type:** Architecture Self-Review | **Trigger:** User question + TikTok AEVO content
+
+---
+
+## TL;DR Verdict
+
+**Hệ thống CÓ vấn đề tư duy — nhưng không phải về evolution. Vấn đề là evolution KHÔNG CLOSE LOOP.**
+
+Hệ thống có ~95% cơ sở hạ tầng của AEVO/EvoX, nhưng thiếu 1 thứ quyết định: **Meta-Edit Loop chạy tự động trên chính cơ chế ra quyết định.** Hiện tại evolution sửa DATA (weights, patterns, KB), nhưng KHÔNG sửa MECHANISM (agent prompts, gate logic, scoring functions).
+
+---
+
+## 1. AEVO/EvoX: Cơ chế meta-evolution là gì?
+
+### AEVO Loop (4 bước, paper từ HKUST/DeepWisdom/NTU)
+1. **Observe state** — đọc accumulated context: candidates + traces + failures
+2. **Meta-edit** — sửa MECHANISM (Pi_r → Pi_r+1) + set run plan
+3. **Evolution segment** — mechanism mới chạy nhiều vòng dưới run plan
+4. **Repeat** — evidence mới → meta-edit tiếp
+
+### EvoX (UC Berkeley, Feb 2026)
+- **Inner loop**: Generate candidates bình thường (search → LLM → evaluate → population)
+- **Outer loop**: Periodically UPDATE search strategy itself (meta-evolution)
+- Key insight: Fixed strategy stagnates. Evolving strategy tạo discrete performance breakthroughs.
+
+### Điểm chung cốt lõi
+| Concept | AEVO/EvoX | Ý nghĩa |
+|---------|-----------|----------|
+| Two-level | Solution vs Meta | Tách output vs mechanism |
+| Self-modification | Sửa code/config/goals/memory | Không chỉ tune params |
+| Anti-reward-hacking | Harness/evaluator | Ngăn gaming evaluator |
+| Non-saturation | Improve 100→200 rounds | Evolution tiếp tục lâu dài |
+| Accumulated state | Environment not just log | State = MDP, not append-only |
+
+---
+
+## 2. Hệ thống Investments hiện tại: Kiến trúc evolution
+
+### Inventory (measured)
+- **265 Python files** in intelligence/
+- **55 Python files** in feedback_loop/
+- **161 CJS hooks** enforcing behavior
+- **49 KB cases**, 44 verdicts, 45 Brier scores, 85 KG entities
+- Stage0 spec: **2953 lines** (v25)
+
+### Existing Evolution Mechanisms
+
+| Layer | What Evolves | How | Frequency |
+|-------|-------------|-----|-----------|
+| Signal weights | Gradient descent on accuracy | `weight_updater.py` | Weekly |
+| Persona accuracy | Brier score tracking | `feedback-cycle-runner.py` | Monthly |
+| Pattern library | Extract from outcomes | `pattern-extractor.py` | Per-outcome |
+| Knowledge base | Persist + verify | `persist-knowledge.py` | Per-case |
+| Depth tracking | Session progressive deepening | `situation-reasoning-engine.py` | Per-session |
+| Coverage gaps | Staleness + weak domains | `continuous_trigger.py` | Daily |
+| Auto-trainer | Retrain on accuracy drop | `auto_trainer.py` | On-trigger |
+| Learned rules | Injected at runtime | `stage0-learned-rules-injector.cjs` | Per-session |
+
+### What The System DOES Have (AEVO parallels)
+
+1. **Accumulated state as environment** ✅ — KB cases, KG entities, Brier scores, deal journal
+2. **Outcome tracking** ✅ — `/log-outcome` → Brier update → weight adjustment
+3. **Anti-reward-hacking** ✅ — Ground-truth verification (V16), quality gates, stop hooks
+4. **Multi-round non-saturation** ✅ — SRE depth levels 1→5 progressive deepening
+5. **Auto-trigger evolution** ✅ — SessionStart hook → 4 Python evolution scripts
+
+---
+
+## 3. Khoảng cách chí mạng: MECHANISM KHÔNG TỰ SỬA
+
+### AEVO sửa gì? → Sửa **Pi (mechanism)**
+- Selection strategy (chọn parent)
+- Mutation operators (cách biến đổi)
+- Feedback summary (cách tổng hợp signal)
+- Budget allocation (phân bổ resource)
+- Agent skills, goals, memory, format
+
+### Investments sửa gì? → Sửa **DATA feeds vào mechanism**
+- Signal weights ↑↓ (data)
+- Persona rankings ↑↓ (data)
+- Pattern library grows (data)
+- KB accumulates (data)
+
+### **NHƯNG KHÔNG SỬA:**
+- ❌ Agent prompt templates (2953-line stage0 is STATIC)
+- ❌ Gate logic (B0-B7 gates in brainstorm are HARDCODED)
+- ❌ Scoring functions (Mountain Test rubric is MANUAL)
+- ❌ Wave composition (which agents fire is HARDCODED per intent_class)
+- ❌ Synthesis strategy (how verdicts merge agent outputs is STATIC prompt)
+- ❌ Kill criteria (thresholds are MANUAL constants)
+
+**Metaphor:** Hệ thống như 1 nhà máy tự upgrade nguyên liệu (better data) nhưng KHÔNG BAO GIỜ upgrade máy móc (mechanism). AEVO upgrades máy móc.
+
+---
+
+## 4. Root Cause: Tại sao mechanism không evolve?
+
+### Constraint #1: LLM context window limitation
+- Stage0 = 2953 lines. LLM có ~200K tokens. Mechanism FITS in context.
+- Nhưng mechanism là MARKDOWN PROSE, không phải executable code.
+- Không có structured representation để meta-edit.
+
+### Constraint #2: No mechanism-as-code separation
+- AEVO separates: `Pi_r` (mechanism code) → `Pi_r+1` (modified mechanism code)
+- Investments: mechanism = prompt text embedded in .md files
+- Prompt text không có "knobs" rõ ràng để meta-agent xoay
+
+### Constraint #3: No evaluation of mechanism ITSELF
+- Weight updater: đánh giá signal quality → adjust weights ✅
+- Nhưng: ai đánh giá "Stage0 Step 6 Mountain Test rubric sai"? → NOBODY
+- Outcome chỉ linked to VERDICT (đúng/sai), không linked to WHICH MECHANISM STEP caused error
+
+### Constraint #4: Manual evolution only
+- V7→V8→V9→...→V19: Mỗi version = user phát hiện bug → rewrite spec
+- 19 major versions, mỗi version = 1 "meta-edit" thủ công
+- Tốc độ: ~1 version / 3-5 ngày (human speed)
+- AEVO: ~1 meta-edit / vài phút (machine speed)
+
+---
+
+## 5. So sánh chi tiết
+
+| Dimension | AEVO/EvoX | Investments System | Gap |
+|-----------|-----------|-------------------|-----|
+| **What evolves** | Mechanism code | Data/weights only | 🔴 CRITICAL |
+| **Evolution speed** | Minutes (auto) | Days (manual) | 🔴 CRITICAL |
+| **Causal attribution** | Traces link mechanism→outcome | Outcome→verdict only | 🟡 MODERATE |
+| **Meta-edit trigger** | Stagnation detection | User frustration | 🔴 CRITICAL |
+| **State representation** | Structured (MDP-like) | Semi-structured (JSONL + MD) | 🟡 MODERATE |
+| **Anti-reward-hacking** | Built-in harness | Quality gates + hooks | 🟢 PARITY |
+| **Accumulated knowledge** | Population of candidates | KB + KG + patterns | 🟢 PARITY |
+| **Non-saturation** | Proven in paper | SRE depth levels | 🟢 PARITY |
+| **Evaluation** | Automated benchmark | Manual outcome logging | 🟡 MODERATE |
+
+---
+
+## 6. Đây có phải vấn đề tư duy? → CÓ, nhưng cụ thể hơn
+
+Không phải "hệ thống nghĩ sai". Vấn đề là:
+
+**Hệ thống KHÔNG CÓ KHẢ NĂNG tự sửa cách nó nghĩ.**
+
+- Nó sửa dữ liệu nó dùng để nghĩ (weights, patterns) ✅
+- Nó KHÔNG sửa quy trình nó dùng để nghĩ (prompts, gates, rubrics) ❌
+- Nó KHÔNG detect khi quy trình nghĩ sai (no mechanism-level evaluation) ❌
+- Nó KHÔNG auto-modify quy trình khi phát hiện sai (no meta-edit loop) ❌
+
+**Analogy:** Như 1 bác sĩ luôn update knowledge (đọc journal mới) nhưng KHÔNG BAO GIỜ sửa diagnostic process (vẫn hỏi bệnh theo cùng 1 template 10 năm trước, dù bệnh nhân đã thay đổi).
+
+---
+
+## 7. Thiết kế Meta-Edit Layer (Nếu implement)
+
+### Architecture (AEVO-inspired for Investments)
+
+```
+┌─────────────────────────────────────────────────┐
+│  Meta-Controller (outer loop)                    │
+│  ┌───────────┐  ┌───────────┐  ┌─────────────┐ │
+│  │ Observe   │→ │ Meta-Edit │→ │ Run Segment │ │
+│  │ State     │  │ Mechanism │  │ N verdicts  │ │
+│  └───────────┘  └───────────┘  └─────────────┘ │
+│       ↑                                ↓        │
+│       └────── Evaluate Segment ────────┘        │
+└─────────────────────────────────────────────────┘
+                      ↕
+┌─────────────────────────────────────────────────┐
+│  Inner Loop (existing stage0 pipeline)           │
+│  Profile → Classify → Wave1 → Wave2 → Verdict  │
+└─────────────────────────────────────────────────┘
+```
+
+### What Gets Meta-Edited (Knobs)
+
+1. **Wave composition** — Which agents fire for which intent_class
+2. **Mountain Test rubric** — Scoring weights per dimension
+3. **Synthesis strategy** — How agent outputs merge into verdict
+4. **Kill thresholds** — Confidence/score cutoffs
+5. **Gate ordering** — Which gates run, in what sequence
+6. **Agent prompt templates** — Key instruction phrases
+7. **Budget allocation** — How many web calls per step
+
+### Evaluation Signal (How to Know If Meta-Edit Worked)
+
+- **Primary:** Brier score improvement over N verdicts after meta-edit
+- **Secondary:** Founder satisfaction (outcome logged vs not)
+- **Tertiary:** Time-to-verdict, cost-per-verdict
+
+### Safety (Anti-Reward-Hacking)
+
+- Meta-edit CANNOT disable quality gates (hardcoded invariant)
+- Meta-edit CANNOT modify kill hook enforcement
+- Max change per meta-edit cycle: 20% of any single knob
+- Rollback: If Brier score WORSENS by >10% over 5 verdicts → auto-revert
+
+---
+
+## 8. Practical Gap: Tại sao chưa tự tiến hoá mạnh?
+
+| Barrier | Detail | Effort to fix |
+|---------|--------|---------------|
+| No structured mechanism representation | Stage0 = prose. Need: JSON schema of knobs | 3-5 days |
+| No mechanism-level causal tracing | Can't attribute verdict error to specific step | 5-8 days |
+| No automated evaluation | Outcome logging = manual `/log-outcome` | 2-3 days |
+| No meta-edit controller | Nobody reads traces and modifies mechanism | 5-10 days |
+| Low sample size | 49 cases → insufficient signal for mechanism-level learning | Ongoing |
+
+**Total estimated effort:** ~15-25 days for MVP meta-edit layer.
+**Prerequisite:** ≥100 cases with outcomes logged (currently 49 cases, ~45 with Brier pending).
+
+---
+
+## 9. Immediate High-Impact Actions (No Meta-Edit Required)
+
+Even without full AEVO implementation, these close significant gaps:
+
+1. **Mechanism Error Attribution** (3 days) — When `/log-outcome` says verdict was WRONG, trace back: which Step (3.5 Wave1? Step 6 Mountain? Step 7 Synthesis?) produced the wrong signal? Log to `data/calibration/mechanism-errors.jsonl`.
+
+2. **Knob Extraction** (2 days) — Convert top 10 "magic numbers" in stage0 (Mountain threshold $10K, confidence 0.70, agents_fired 8, etc.) into `data/config/mechanism-knobs.json`. Makes them meta-editable.
+
+3. **Auto-Outcome from External Signal** (2 days) — Instead of manual `/log-outcome`, detect outcome from: user ran `/stage0` on same topic again (implicit KILL validation), user ran `/execute` (implicit GO validation), deal journal entry (explicit signal).
+
+---
+
+## 10. Verdict
+
+| Question | Answer |
+|----------|--------|
+| Đây có phải vấn đề tư duy? | **CÓ** — hệ thống tự sửa data nhưng không tự sửa process |
+| Hệ thống có AEVO-level evolution? | **KHÔNG** — thiếu meta-edit loop on mechanism |
+| Hệ thống có nền tảng để build? | **CÓ** — 95% infra đã sẵn (tracking, outcomes, weights, hooks) |
+| Priority fix? | Mechanism error attribution → Knob extraction → Meta-controller |
+| Timeline to parity? | ~25 days implementation + ~50 more cases for statistical validity |
+
+---
+
+## Research Sources
+- [EvoX: Meta-Evolution for Automated Discovery](https://arxiv.org/abs/2602.23413) — UC Berkeley, Feb 2026
+- [AlphaEvolve: A coding agent for scientific and algorithmic discovery](https://arxiv.org/abs/2506.13131) — DeepMind, Jun 2025
+- [EvoAgentX: Evolving Agentic Workflows](https://arxiv.org/abs/2507.03616) — Jul 2025
+- [EvolveR: Self-Evolving LLM Agents](https://arxiv.org/abs/2510.16079) — Oct 2025
+- [Survey: Self-Evolving AI Agents](https://arxiv.org/abs/2508.07407) — Aug 2025
+- [MetaAgent: Self-Evolving via Tool Meta-Learning](https://arxiv.org/abs/2508.00271) — Aug 2025
+- TikTok @ainius.net — AEVO video analysis (paper likely arXiv 2605.xxxxx, May 2026, not yet indexed)

@@ -1,0 +1,74 @@
+---
+phase: 2
+title: Layer 1 Signal Expansion
+status: completed
+priority: P2
+effort: 3d
+dependencies:
+  - 1
+---
+
+# Phase 2: Layer 1 Signal Expansion
+
+## Overview
+Add 3 new signal sources that feed SaaS-solvable problems into the pipeline. Current V16 scanners find existing businesses to copy; new scanners find unsolved problems to build products for.
+
+## Requirements
+- Functional: 3 new Python scripts outputting standardized signal JSON
+- Non-functional: Rate-limited, cached 24h TTL, idempotent. Use DuckDuckGo (free) not Google API.
+
+## Architecture
+
+```
+Existing V16 Scanners ──→ archetype-router
+                              ↓
+New Scanners ──────────→ signal-merger ──→ compound-filter (Phase 1)
+  ├─ pain-signal-miner
+  ├─ platform-shift-detector
+  └─ founder-edge-matcher
+```
+
+## Related Code Files
+
+**Create (in master_investments):**
+- `.claude/skills/business/transaction-layer/scripts/pain-signal-miner.py`
+- `.claude/skills/business/transaction-layer/scripts/platform-shift-detector.py`
+- `.claude/skills/business/transaction-layer/scripts/founder-edge-matcher.py`
+
+**Read (reference):**
+- `.claude/skills/business/transaction-layer/scripts/evidence-scraper.py` — output format pattern
+- `data/founder-profile.json` — founder skills/constraints for edge-matcher
+
+## Implementation Steps
+
+1. Create `pain-signal-miner.py`:
+   - Sources: Reddit (via reddit-research MCP), HN (via hacker-news MCP), DuckDuckGo fallback
+   - Search patterns: "I wish there was", "why doesn't", "I hate when", "someone should build", "I'd pay for"
+   - Filter: only problems solvable by 1 developer in <3 months
+   - Output: `{signals: [{source, url, pain_statement, category, upvotes, date, saas_solvable: bool}]}`
+   - Cache: 24h TTL per query in `data/empire/cache/`
+
+2. Create `platform-shift-detector.py`:
+   - Monitor: API deprecation, new platform launches, regulation changes
+   - Sources: HN "Show HN" + Product Hunt (via idea-reality MCP) + DuckDuckGo "[platform] API change 2026"
+   - Output: `{shifts: [{platform, change_type, impact, opportunity_window_months, confidence}]}`
+   - Focus: shifts that CREATE opportunity (not just news)
+
+3. Create `founder-edge-matcher.py`:
+   - Input: signal list + founder-profile.json
+   - Scoring: skill_match (0-10), location_advantage (0-10), capital_fit (0-10), time_fit (0-10)
+   - Output: `{matched: [{signal, edge_score, edge_reasons, execution_gap}]}`
+   - KILL signals where founder has <3/10 skill match
+
+4. Update SKILL.md to document new scripts in pipeline
+
+## Success Criteria
+- [ ] pain-signal-miner returns ≥10 signals from Reddit+HN in <60s
+- [ ] platform-shift-detector identifies ≥3 active platform shifts
+- [ ] founder-edge-matcher correctly filters signals against founder profile
+- [ ] Output format compatible with compound-filter.py input
+- [ ] All 3 scripts have --dry-run mode for testing
+
+## Risk Assessment
+- Risk: MCP servers unavailable → Mitigation: DuckDuckGo fallback for all sources
+- Risk: Too many false-positive pain signals → Mitigation: upvote/engagement threshold (≥10 upvotes)

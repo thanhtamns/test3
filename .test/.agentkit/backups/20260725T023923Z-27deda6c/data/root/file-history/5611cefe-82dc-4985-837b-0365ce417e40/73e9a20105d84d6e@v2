@@ -1,0 +1,576 @@
+[
+  {
+    "id": "P-001",
+    "name": "thiel_monopoly",
+    "group": "competition_avoidance",
+    "source": "Peter Thiel, Zero to One",
+    "axiom": "Competition destroys profits. Monopoly creates them.",
+    "rule": {
+      "condition_fields": ["competition_count", "unique_moat_score"],
+      "expression": "competition_count > 10 AND unique_moat_score < 3",
+      "action": "KILL",
+      "confidence_when_triggered": 0.85
+    },
+    "inversion_question": "How many people are already doing this?",
+    "micro_questions": [
+      "how many {business_type} in {country}",
+      "{niche} new entrant count last 12 months",
+      "what makes {opportunity} impossible to copy"
+    ],
+    "scoring": {
+      "field": "competition_count",
+      "bands": [
+        {"range": [0, 2], "score": 10, "signal": "blue_ocean"},
+        {"range": [3, 10], "score": 6, "signal": "emerging"},
+        {"range": [11, 50], "score": 3, "signal": "crowded"},
+        {"range": [51, 99999], "score": 0, "signal": "red_ocean"}
+      ]
+    },
+    "weight": 1.5,
+    "evolution": "FROZEN"
+  },
+  {
+    "id": "P-002",
+    "name": "category_of_one",
+    "group": "competition_avoidance",
+    "source": "Al Ries, 22 Immutable Laws of Marketing",
+    "axiom": "If you can't be first in a category, create a new category you can be first in.",
+    "rule": {
+      "condition_fields": ["can_define_new_category"],
+      "expression": "can_define_new_category == 1",
+      "action": "BONUS",
+      "confidence_when_triggered": 0.70
+    },
+    "inversion_question": "Can this create its own category?",
+    "micro_questions": [
+      "what existing category does {opportunity} belong to",
+      "is there a combination no one has named yet in {niche}"
+    ],
+    "scoring": {
+      "field": "can_define_new_category",
+      "bands": [
+        {"range": [1, 1], "score": 10, "signal": "category_creator"},
+        {"range": [0, 0], "score": 4, "signal": "existing_category"}
+      ]
+    },
+    "bonus_points": 3,
+    "weight": 1.5,
+    "evolution": "FROZEN"
+  },
+  {
+    "id": "P-003",
+    "name": "avoid_commodity",
+    "group": "competition_avoidance",
+    "source": "Warren Buffett, Berkshire Letters",
+    "axiom": "In a commodity business, you're a price taker. Differentiation is survival.",
+    "rule": {
+      "condition_fields": ["differentiation_signals"],
+      "expression": "differentiation_signals < 3",
+      "action": "KILL",
+      "confidence_when_triggered": 0.80
+    },
+    "inversion_question": "What stops a race to the bottom on price?",
+    "micro_questions": [
+      "how many undifferentiated {business_type} exist",
+      "what is the price variance in {niche}"
+    ],
+    "scoring": {
+      "field": "differentiation_signals",
+      "bands": [
+        {"range": [0, 1], "score": 0, "signal": "commodity"},
+        {"range": [2, 3], "score": 4, "signal": "weak_diff"},
+        {"range": [4, 6], "score": 7, "signal": "moderate_diff"},
+        {"range": [7, 10], "score": 10, "signal": "strong_diff"}
+      ]
+    },
+    "weight": 1.5,
+    "evolution": "FROZEN"
+  },
+  {
+    "id": "P-004",
+    "name": "asymmetric_payoff",
+    "group": "asymmetric_advantage",
+    "source": "Nassim Taleb, Antifragile",
+    "axiom": "Only play games where upside vastly exceeds downside.",
+    "rule": {
+      "condition_fields": ["upside_downside_ratio"],
+      "expression": "upside_downside_ratio < 3",
+      "action": "DEPRIORITIZE",
+      "confidence_when_triggered": 0.75
+    },
+    "inversion_question": "What's the max I can lose vs max I can gain?",
+    "micro_questions": [
+      "what is the startup cost for {opportunity}",
+      "what is the revenue ceiling for {business_type} in {country}"
+    ],
+    "scoring": {
+      "field": "upside_downside_ratio",
+      "bands": [
+        {"range": [0, 2], "score": 2, "signal": "symmetric"},
+        {"range": [3, 5], "score": 5, "signal": "mild_asymmetry"},
+        {"range": [6, 15], "score": 8, "signal": "strong_asymmetry"},
+        {"range": [16, 99999], "score": 10, "signal": "extreme_asymmetry"}
+      ]
+    },
+    "weight": 1.5,
+    "evolution": "FROZEN"
+  },
+  {
+    "id": "P-005",
+    "name": "antifragile_position",
+    "group": "asymmetric_advantage",
+    "source": "Nassim Taleb, Antifragile",
+    "axiom": "Position yourself where disruption helps rather than hurts.",
+    "rule": {
+      "condition_fields": ["disruption_benefits"],
+      "expression": "disruption_benefits == 1",
+      "action": "BONUS",
+      "confidence_when_triggered": 0.70
+    },
+    "inversion_question": "Does chaos/disruption make this stronger?",
+    "micro_questions": [
+      "what happens to {opportunity} if market crashes",
+      "does {business_type} benefit from competitor failures"
+    ],
+    "scoring": {
+      "field": "disruption_benefits",
+      "bands": [
+        {"range": [1, 1], "score": 10, "signal": "antifragile"},
+        {"range": [0, 0], "score": 4, "signal": "fragile_or_neutral"}
+      ]
+    },
+    "bonus_points": 5,
+    "weight": 1.5,
+    "evolution": "FROZEN"
+  },
+  {
+    "id": "P-006",
+    "name": "optionality",
+    "group": "asymmetric_advantage",
+    "source": "Nassim Taleb, Antifragile",
+    "axiom": "Value positions with multiple exit paths. Avoid single-path traps.",
+    "rule": {
+      "condition_fields": ["exit_paths"],
+      "expression": "exit_paths < 2",
+      "action": "PENALTY",
+      "confidence_when_triggered": 0.65
+    },
+    "inversion_question": "If this fails, what else can I do with the assets built?",
+    "micro_questions": [
+      "what skills does {opportunity} build that transfer elsewhere",
+      "can {business_type} pivot to adjacent markets"
+    ],
+    "scoring": {
+      "field": "exit_paths",
+      "bands": [
+        {"range": [0, 1], "score": 2, "signal": "trapped"},
+        {"range": [2, 3], "score": 6, "signal": "moderate_options"},
+        {"range": [4, 10], "score": 9, "signal": "high_optionality"}
+      ]
+    },
+    "penalty_points": -3,
+    "weight": 1.5,
+    "evolution": "FROZEN"
+  },
+  {
+    "id": "P-007",
+    "name": "information_asymmetry",
+    "group": "asymmetric_advantage",
+    "source": "Marc Rich, commodity trading",
+    "axiom": "Profit comes from knowing what others don't. No info edge = no profit edge.",
+    "rule": {
+      "condition_fields": ["info_advantage_score"],
+      "expression": "info_advantage_score < 2",
+      "action": "KILL",
+      "confidence_when_triggered": 0.75
+    },
+    "inversion_question": "What do I know that competitors don't?",
+    "micro_questions": [
+      "what proprietary data does founder have about {niche}",
+      "what local knowledge applies to {opportunity}"
+    ],
+    "scoring": {
+      "field": "info_advantage_score",
+      "bands": [
+        {"range": [0, 1], "score": 0, "signal": "no_edge"},
+        {"range": [2, 4], "score": 5, "signal": "mild_edge"},
+        {"range": [5, 7], "score": 8, "signal": "strong_edge"},
+        {"range": [8, 10], "score": 10, "signal": "monopoly_knowledge"}
+      ]
+    },
+    "weight": 1.5,
+    "evolution": "FROZEN"
+  },
+  {
+    "id": "P-008",
+    "name": "cash_flow_first",
+    "group": "cash_flow_leverage",
+    "source": "MJ DeMarco, Millionaire Fastlane + Alex Hormozi",
+    "axiom": "Time to first dollar is the #1 predictor of founder survival.",
+    "rule": {
+      "condition_fields": ["time_to_first_revenue_days"],
+      "expression": "time_to_first_revenue_days > 90",
+      "action": "DEPRIORITIZE",
+      "confidence_when_triggered": 0.80
+    },
+    "inversion_question": "How fast can this produce first dollar?",
+    "micro_questions": [
+      "what is typical time to first sale for {business_type}",
+      "can {opportunity} pre-sell before building"
+    ],
+    "scoring": {
+      "field": "time_to_first_revenue_days",
+      "bands": [
+        {"range": [0, 14], "score": 10, "signal": "instant_cash"},
+        {"range": [15, 30], "score": 8, "signal": "fast_cash"},
+        {"range": [31, 90], "score": 5, "signal": "moderate"},
+        {"range": [91, 365], "score": 2, "signal": "slow_burn"},
+        {"range": [366, 99999], "score": 0, "signal": "venture_timeline"}
+      ]
+    },
+    "weight": 1.3,
+    "evolution": "FROZEN"
+  },
+  {
+    "id": "P-009",
+    "name": "leverage_hierarchy",
+    "group": "cash_flow_leverage",
+    "source": "Naval Ravikant, How to Get Rich",
+    "axiom": "Code > Media > Capital > Labor. Higher leverage = more output per input.",
+    "rule": {
+      "condition_fields": ["leverage_type_score"],
+      "expression": "leverage_type_score < 3",
+      "action": "DEPRIORITIZE",
+      "confidence_when_triggered": 0.60
+    },
+    "inversion_question": "What type of leverage does this use?",
+    "micro_questions": [
+      "does {opportunity} scale without proportional labor increase",
+      "what is the marginal cost of serving one more customer in {business_type}"
+    ],
+    "scoring": {
+      "field": "leverage_type_score",
+      "bands": [
+        {"range": [0, 2], "score": 2, "signal": "labor_only"},
+        {"range": [3, 4], "score": 5, "signal": "capital_leverage"},
+        {"range": [5, 7], "score": 7, "signal": "media_leverage"},
+        {"range": [8, 10], "score": 10, "signal": "code_leverage"}
+      ]
+    },
+    "weight": 1.3,
+    "evolution": "FROZEN"
+  },
+  {
+    "id": "P-010",
+    "name": "cents_gate",
+    "group": "cash_flow_leverage",
+    "source": "MJ DeMarco, Millionaire Fastlane",
+    "axiom": "CENTS: Control, Entry, Need, Time, Scale. Score < 25/50 = side hustle max.",
+    "rule": {
+      "condition_fields": ["cents_score"],
+      "expression": "cents_score < 25",
+      "action": "CAP_SIDE_HUSTLE",
+      "confidence_when_triggered": 0.80
+    },
+    "inversion_question": "Does this pass the CENTS framework?",
+    "micro_questions": [
+      "what is barrier to entry for {business_type}",
+      "can {opportunity} run without founder daily involvement",
+      "does {business_type} have natural scale limit"
+    ],
+    "scoring": {
+      "field": "cents_score",
+      "bands": [
+        {"range": [0, 15], "score": 1, "signal": "job_replacement"},
+        {"range": [16, 25], "score": 4, "signal": "side_hustle"},
+        {"range": [26, 38], "score": 7, "signal": "real_business"},
+        {"range": [39, 50], "score": 10, "signal": "fastlane"}
+      ]
+    },
+    "weight": 1.3,
+    "evolution": "FROZEN"
+  },
+  {
+    "id": "P-011",
+    "name": "asset_vs_income",
+    "group": "cash_flow_leverage",
+    "source": "Felix Dennis, How to Get Rich",
+    "axiom": "Build assets, not income streams. Income stops when you stop. Assets compound.",
+    "rule": {
+      "condition_fields": ["creates_asset"],
+      "expression": "creates_asset == 0",
+      "action": "WARN",
+      "confidence_when_triggered": 0.70
+    },
+    "inversion_question": "What asset remains after 2 years of work?",
+    "micro_questions": [
+      "what sellable asset does {opportunity} create",
+      "does {business_type} have a exit multiple > 3x"
+    ],
+    "scoring": {
+      "field": "creates_asset",
+      "bands": [
+        {"range": [0, 0], "score": 2, "signal": "labor_trap"},
+        {"range": [1, 1], "score": 8, "signal": "asset_builder"}
+      ]
+    },
+    "weight": 1.3,
+    "evolution": "FROZEN"
+  },
+  {
+    "id": "P-012",
+    "name": "float_economics",
+    "group": "cash_flow_leverage",
+    "source": "Warren Buffett, Berkshire Letters (insurance float)",
+    "axiom": "Customer pays before vendor = free working capital = compounding engine.",
+    "rule": {
+      "condition_fields": ["customer_pays_first"],
+      "expression": "customer_pays_first == 1",
+      "action": "BONUS",
+      "confidence_when_triggered": 0.70
+    },
+    "inversion_question": "Who pays first — customer or supplier?",
+    "micro_questions": [
+      "what are typical payment terms in {business_type}",
+      "can {opportunity} collect upfront before delivering"
+    ],
+    "scoring": {
+      "field": "customer_pays_first",
+      "bands": [
+        {"range": [1, 1], "score": 9, "signal": "positive_float"},
+        {"range": [0, 0], "score": 4, "signal": "negative_float"}
+      ]
+    },
+    "bonus_points": 3,
+    "weight": 1.3,
+    "evolution": "FROZEN"
+  },
+  {
+    "id": "P-013",
+    "name": "moat_durability",
+    "group": "moat_defense",
+    "source": "Warren Buffett + Hamilton Helmer, 7 Powers",
+    "axiom": "A moat that can be replicated in < 6 months is not a moat.",
+    "rule": {
+      "condition_fields": ["replication_time_months"],
+      "expression": "replication_time_months < 6",
+      "action": "PENALTY",
+      "confidence_when_triggered": 0.75
+    },
+    "inversion_question": "How long would it take a well-funded competitor to copy this?",
+    "micro_questions": [
+      "what technical barriers exist in {niche}",
+      "how long did it take first mover in {business_type} to build"
+    ],
+    "scoring": {
+      "field": "replication_time_months",
+      "bands": [
+        {"range": [0, 3], "score": 1, "signal": "no_moat"},
+        {"range": [4, 6], "score": 4, "signal": "weak_moat"},
+        {"range": [7, 18], "score": 7, "signal": "moderate_moat"},
+        {"range": [19, 99999], "score": 10, "signal": "strong_moat"}
+      ]
+    },
+    "penalty_points": -2,
+    "weight": 1.2,
+    "evolution": "FROZEN"
+  },
+  {
+    "id": "P-014",
+    "name": "switching_cost",
+    "group": "moat_defense",
+    "source": "Hamilton Helmer, 7 Powers",
+    "axiom": "Low switching costs = customers leave for $1 less. High switching = retention.",
+    "rule": {
+      "condition_fields": ["switching_cost_dollars"],
+      "expression": "switching_cost_dollars < 100",
+      "action": "PENALTY",
+      "confidence_when_triggered": 0.65
+    },
+    "inversion_question": "How much would it cost a customer to switch away?",
+    "micro_questions": [
+      "what data/integration lock-in does {business_type} create",
+      "what is typical churn rate for {niche}"
+    ],
+    "scoring": {
+      "field": "switching_cost_dollars",
+      "bands": [
+        {"range": [0, 50], "score": 2, "signal": "trivial_switch"},
+        {"range": [51, 500], "score": 5, "signal": "moderate_switch"},
+        {"range": [501, 5000], "score": 8, "signal": "high_switch"},
+        {"range": [5001, 99999], "score": 10, "signal": "locked_in"}
+      ]
+    },
+    "penalty_points": -2,
+    "weight": 1.2,
+    "evolution": "FROZEN"
+  },
+  {
+    "id": "P-015",
+    "name": "network_effect_test",
+    "group": "moat_defense",
+    "source": "Andrew Chen, The Cold Start Problem",
+    "axiom": "True network effect: value increases with each user. Most claims are false.",
+    "rule": {
+      "condition_fields": ["network_effect_real"],
+      "expression": "network_effect_real == 0",
+      "action": "INFO",
+      "confidence_when_triggered": 0.60
+    },
+    "inversion_question": "Does the 100th user make this more valuable for user #1?",
+    "micro_questions": [
+      "does {opportunity} get better with more users",
+      "is {business_type} two-sided or one-sided"
+    ],
+    "scoring": {
+      "field": "network_effect_real",
+      "bands": [
+        {"range": [0, 0], "score": 3, "signal": "no_network_effect"},
+        {"range": [1, 1], "score": 9, "signal": "true_network_effect"}
+      ]
+    },
+    "weight": 1.2,
+    "evolution": "FROZEN"
+  },
+  {
+    "id": "P-016",
+    "name": "compound_knowledge",
+    "group": "moat_defense",
+    "source": "Patrick McKenzie, patio11",
+    "axiom": "Knowledge that compounds over time is the cheapest moat a solo founder can build.",
+    "rule": {
+      "condition_fields": ["knowledge_compounds"],
+      "expression": "knowledge_compounds == 1",
+      "action": "BONUS",
+      "confidence_when_triggered": 0.70
+    },
+    "inversion_question": "Does operating this business make you better at it over time?",
+    "micro_questions": [
+      "what domain expertise does {business_type} build over years",
+      "is there a learning curve that protects incumbents in {niche}"
+    ],
+    "scoring": {
+      "field": "knowledge_compounds",
+      "bands": [
+        {"range": [1, 1], "score": 9, "signal": "compounding_knowledge"},
+        {"range": [0, 0], "score": 3, "signal": "flat_knowledge"}
+      ]
+    },
+    "bonus_points": 3,
+    "weight": 1.2,
+    "evolution": "FROZEN"
+  },
+  {
+    "id": "P-017",
+    "name": "avoid_the_crowd",
+    "group": "strategic_positioning",
+    "source": "Contrarian observation (guru saturation signal)",
+    "axiom": "If 50+ tutorials exist, the opportunity is past peak for new entrants.",
+    "rule": {
+      "condition_fields": ["tutorial_count"],
+      "expression": "tutorial_count > 50",
+      "action": "KILL",
+      "confidence_when_triggered": 0.70
+    },
+    "inversion_question": "How many people are TEACHING this?",
+    "micro_questions": [
+      "how many youtube tutorials about {opportunity} in last 6 months",
+      "how many udemy courses on {business_type}"
+    ],
+    "scoring": {
+      "field": "tutorial_count",
+      "bands": [
+        {"range": [0, 5], "score": 10, "signal": "undiscovered"},
+        {"range": [6, 20], "score": 7, "signal": "early_awareness"},
+        {"range": [21, 50], "score": 4, "signal": "mainstream"},
+        {"range": [51, 99999], "score": 0, "signal": "oversaturated"}
+      ]
+    },
+    "weight": 1.0,
+    "evolution": "FROZEN"
+  },
+  {
+    "id": "P-018",
+    "name": "control_chokepoint",
+    "group": "strategic_positioning",
+    "source": "Peter Thiel + Rockefeller integration strategy",
+    "axiom": "Control a chokepoint in supply or distribution = extract rent from entire chain.",
+    "rule": {
+      "condition_fields": ["controls_chokepoint"],
+      "expression": "controls_chokepoint == 1",
+      "action": "BONUS",
+      "confidence_when_triggered": 0.75
+    },
+    "inversion_question": "Is there a bottleneck in this value chain I can own?",
+    "micro_questions": [
+      "what is the supply chain for {business_type}",
+      "where is the narrowest point in {niche} value chain"
+    ],
+    "scoring": {
+      "field": "controls_chokepoint",
+      "bands": [
+        {"range": [1, 1], "score": 10, "signal": "chokepoint_owner"},
+        {"range": [0, 0], "score": 3, "signal": "no_chokepoint"}
+      ]
+    },
+    "bonus_points": 5,
+    "weight": 1.0,
+    "evolution": "FROZEN"
+  },
+  {
+    "id": "P-019",
+    "name": "regulatory_arbitrage",
+    "group": "strategic_positioning",
+    "source": "Marc Rich, cross-border trading",
+    "axiom": "Legal in jurisdiction A, restricted in B. Operate from A, serve B. Profit from friction.",
+    "rule": {
+      "condition_fields": ["regulatory_arbitrage_exists"],
+      "expression": "regulatory_arbitrage_exists == 1",
+      "action": "BONUS",
+      "confidence_when_triggered": 0.65
+    },
+    "inversion_question": "Is there a legal difference between jurisdictions I can exploit?",
+    "micro_questions": [
+      "what regulations apply to {business_type} in target market",
+      "is {opportunity} legal in Vietnam but restricted elsewhere"
+    ],
+    "scoring": {
+      "field": "regulatory_arbitrage_exists",
+      "bands": [
+        {"range": [1, 1], "score": 8, "signal": "arb_opportunity"},
+        {"range": [0, 0], "score": 4, "signal": "no_arb"}
+      ]
+    },
+    "bonus_points": 3,
+    "weight": 1.0,
+    "evolution": "FROZEN"
+  },
+  {
+    "id": "P-020",
+    "name": "cultural_language_moat",
+    "group": "strategic_positioning",
+    "source": "Local-market operator advantage",
+    "axiom": "Language and cultural barriers protect local operators from global competition.",
+    "rule": {
+      "condition_fields": ["language_barrier_protects"],
+      "expression": "language_barrier_protects == 1",
+      "action": "BONUS",
+      "confidence_when_triggered": 0.60
+    },
+    "inversion_question": "Does language/culture block outsiders from competing here?",
+    "micro_questions": [
+      "do foreign competitors fail in {country} due to language",
+      "is {niche} content primarily in local language"
+    ],
+    "scoring": {
+      "field": "language_barrier_protects",
+      "bands": [
+        {"range": [1, 1], "score": 7, "signal": "language_moat"},
+        {"range": [0, 0], "score": 4, "signal": "no_language_barrier"}
+      ]
+    },
+    "bonus_points": 2,
+    "weight": 1.0,
+    "evolution": "FROZEN"
+  }
+]

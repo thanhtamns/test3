@@ -1,0 +1,71 @@
+# Brainstorm: Autonomous Evolution for master_investments
+
+**Date:** 2026-05-09 | **Status:** IMPLEMENTED
+
+## Problem
+
+5 evolution tasks required manual commands (`/evolve`, `/sync-knowledge`, etc.). User wants zero manual triggers — continuous autonomous evolution.
+
+## Analysis
+
+Mapped entire evolution infrastructure:
+- **Already automatic (hooks):** usage tracking, outcomes DB, experience resolution, meta-learning digest, cognitive consolidation, brain refresh, training corpus load
+- **Manual gaps:** knowledge hunting, scheduled evolution, batch prediction verify, knowledge refresh (broken), prediction extraction (LLM-dependent)
+
+**Root cause:** Manual tasks split into 2 types:
+1. Python-only (can run from hooks) — 4 tasks
+2. LLM-dependent (needs Claude agent, can't run from hooks) — 1 task (persona sync)
+
+## Approaches Evaluated
+
+| Approach | Coverage | Effort | Risk |
+|---|---|---|---|
+| **A: Hook-only** ✅ | 60% (4/5 gaps) | Low | Low |
+| A+B: Hook + CronCreate | 90% | Medium | Medium |
+| Full daemon mode | 100% | High | High |
+
+**Decision:** Approach A — 1 new hook + 1 fix. Maximum ROI.
+
+## What Was Built
+
+### 1. `evolution-auto-runner.cjs` (NEW)
+
+SessionStart hook with 4 autonomous checks:
+
+| Check | Threshold | Script | First Run Result |
+|---|---|---|---|
+| Auto-evolve (knowledge hunting) | 7 days | `auto_evolve.py` | ✅ Spawned (17.1 days stale) |
+| Scheduled evolution (prompt proposals) | 7 days | `scheduled-evolution-loop.py` | ✅ Spawned (never ran) |
+| Batch prediction verify | 3 days | `batch-auto-verify.py` | ⏭ Skipped (no pending) |
+| Knowledge hunter (external data) | 14 days | `knowledge_hunter.py` | ✅ Spawned (never ran) |
+
+**Safeguards:** lock files (10-min expiry), fail-open, detached processes, full logging.
+
+### 2. `knowledge-auto-refresh.cjs` (FIXED)
+
+Was: calls `--list-all` (useless, just lists personas)
+Now: writes priority queue to `.logs/kb-refresh-queue.json` + tries `--refresh-cache` for non-LLM updates
+
+### 3. Hook Registration
+
+Added to `settings.json` SessionStart with 15s timeout.
+
+## Hermes Agent Video Analysis (Prior Brainstorm)
+
+TikTok video about Nous Research Hermes Agent analyzed via 5-persona framework. Key finding: master_investments already implements 4/5 of Hermes' features (persistent memory, self-learning, multi-platform) in more sophisticated form. The 1 gap (cron-based automation) is now closed by this hook.
+
+## What Remains Manual (by design)
+
+- `/sync-knowledge` — requires LLM (WebSearch) for real persona refresh
+- `/evolve --extract` — requires LLM to read verdicts and extract predictions
+- `/log-outcome` — requires human judgment on real-world outcomes
+
+These cannot be automated without LLM sessions. Future option: CronCreate weekly Claude session.
+
+## Files Changed
+
+| File | Action | Location |
+|---|---|---|
+| `evolution-auto-runner.cjs` | CREATE | `master_investments/.claude/hooks/` |
+| `knowledge-auto-refresh.cjs` | EDIT | `master_investments_mmo/.claude/hooks/` |
+| `settings.json` | EDIT | `master_investments/.claude/` |

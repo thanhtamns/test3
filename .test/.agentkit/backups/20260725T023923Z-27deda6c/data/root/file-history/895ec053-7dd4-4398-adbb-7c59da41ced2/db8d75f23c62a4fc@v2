@@ -1,0 +1,97 @@
+---
+phase: 06
+status: complete
+priority: critical
+depends_on: phase-01, phase-02, phase-03, phase-04, phase-05
+---
+
+# Phase 06: Wire Python Modules Into Brainstorm SKILL.md
+
+## Overview
+Update brainstorm SKILL.md to call new Python modules, replacing prompt-only gates with code-enforced pipeline. This is the assembly step — connecting all components.
+
+## Files to Modify
+- `D:/code/invesments/master_investments_mmo/.claude/skills/brainstorm/SKILL.md`
+
+## Implementation Steps
+
+### 1. Update Gate B0 section — add adversarial pipeline
+
+After ThinkRunner runs, add orchestration instructions:
+
+```markdown
+### Gate B0.5: Adversarial Pipeline (BLOCKING — runs AFTER ThinkRunner)
+
+After ThinkRunner output is parsed, run the adversarial orchestrator:
+
+**Step 1: Generate persona debate prompts**
+```bash
+python adversarial_orchestrator.py --thinkrunner-output /tmp/thinkrunner.json --query "<QUERY>" --stage analyst
+```
+
+**Step 2: Spawn 3 persona agents in PARALLEL**
+Use Agent() tool with persona prompts from persona_debate.py. Each persona gets independent context.
+
+**Step 3: Spawn analyst agent** with ThinkRunner data + persona outputs as input.
+
+**Step 4: Spawn bullshit-detector agent** with analyst VEMRA as input to challenge.
+
+**Step 5: Spawn synthesizer agent** to merge analyst + critic into final VEMRA.
+```
+
+### 2. Add post-output validation section
+
+After VEMRA output is produced, add:
+
+```markdown
+### Gate B7: Output Validation (BLOCKING — runs AFTER VEMRA written)
+
+Validate the VEMRA output via gate_validator.py:
+```bash
+cat <VEMRA_FILE> | python gate_validator.py
+```
+
+If any gate FAILS → rewrite the failed section before presenting to user.
+
+Score quality via quality_scorer.py:
+```bash
+cat <VEMRA_FILE> | python quality_scorer.py --query "<QUERY>"
+```
+
+Include quality score in output footer.
+```
+
+### 3. Update compound learning section
+
+After analysis, ensure compound learning stores AND future runs retrieve:
+
+```markdown
+### Compound Learning (MANDATORY — post-output)
+Store claims for future retrieval (existing):
+```bash
+python post_analysis_store.py --topic "..." --claims '...' 
+```
+
+Verify retrieval works for next run:
+```bash
+python -c "from compound_cache import CompoundCache; c = CompoundCache(); print(len(c.lookup('operator_intelligence', {'industry': 'VC'})))"
+```
+```
+
+### 4. Add research tier reporting
+
+Update output requirements to include research tier summary:
+```
+## Research Tiers Fired
+- DuckDuckGo: X queries, Y [K] facts
+- Iterative deepening: N rounds, Z additional facts  
+- Ladder (route): A sources probed, B drilled
+```
+
+## Success Criteria
+- [ ] SKILL.md includes adversarial pipeline instructions
+- [ ] SKILL.md includes post-output validation
+- [ ] SKILL.md references correct Python file paths (absolute)
+- [ ] Compound learning retrieval is verified in flow
+- [ ] Research tier reporting is mandatory in output
+- [ ] All Python paths use master_investments absolute paths

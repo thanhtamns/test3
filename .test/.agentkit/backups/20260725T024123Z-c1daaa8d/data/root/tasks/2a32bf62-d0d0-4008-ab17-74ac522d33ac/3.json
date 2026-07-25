@@ -1,0 +1,18 @@
+{
+  "id": "3",
+  "subject": "Phase 3: Budget Governance + Policy Engine",
+  "description": "Real-time budget enforcement in PreToolUse hooks. TOML policies, warn/downgrade/block verdicts, webhook alerts, `codeflow budget` CLI. Target: 1.5 weeks.",
+  "status": "pending",
+  "blocks": [
+    "5"
+  ],
+  "blockedBy": [
+    "2"
+  ],
+  "metadata": {
+    "phase": 3,
+    "effort": "1.5w",
+    "planDir": "plans/260603-codeflow-ai-cost-intelligence-engine",
+    "phaseFile": "phase-03-budget-governance-policy-engine.md"
+  }
+}

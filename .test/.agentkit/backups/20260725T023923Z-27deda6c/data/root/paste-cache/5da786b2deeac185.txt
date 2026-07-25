@@ -1,0 +1,283 @@
+/stage0 10-20 mô hình kinh doanh $0-500 vốn, bền vững 10 năm, dòng tiền thực sự lớn, tư duy phải thực sự thông minh thay vì cạnh tranh với số đông
+
+Starting /stage0 analysis for: "10-20 mô hình kinh doanh $0-500 vốn, bền vững 10 năm, dòng tiền thực sự lớn, tư duy thông minh thay vì cạnh tranh với số đông"
+
+Let me run the initial pipeline steps.
+
+  Listed 2 directories, ran 1 shell command
+
+Action gate clear. Loading profile and running query mode detection.
+
+  Read 1 file
+
+Profile loaded (TIER_0, $0-1K capital). Now running query mode detection and topic disambiguation.
+
+This query is a hybrid — it's asking for EXPLORATION (10-20 models) but with a founder constraint ($0-500). Let me classify and disambiguate.
+
+  Ran 2 shell commands
+
+Query mode: FOUNDER_SPECIFIC (confidence 0.4 — low). Intent: power_law_hunt / cash_flow_operations. Since confidence is low on both classifiers and the query asks for "10-20 models", this is effectively an EXPLORATION with founder constraints. I'll treat it as FOUNDER_SPECIFIC but with exploration breadth.
+
+Step 2.5 — Topic Disambiguation:
+
+Your query has multiple dimensions:
+- Branch A: Contrarian business models that avoid competition ($0-500 start)
+- Branch B: High cash flow mechanisms accessible from zero capital
+- Branch C: 10-year Lindy-tested models (ancient business patterns reapplied)
+- Branch D: "Smart operator" positioning models (arbitrage, float, toll positions)
+
+● User answered Claude's questions:
+· Branches detected. Which to analyze? All branches overlap significantly — analyzing all in parallel would produce the richest output. Which approach? → All-parallel-depth-1 (Recommended)
+
+All-parallel-depth-1 selected. Running exploration across all 4 branches simultaneously with founder constraints ($0-500, TIER_0, Vietnam, no product dev, no paid ads).
+
+Let me dispatch the research agents. First, running the computation engines and experience brain in parallel with Wave 1 research.
+
+  Ran 3 shell commands
+
+Computation engines returned. Experience Brain had empty output — proceeding with Operator + Vicarious data. Now launching the 4-branch parallel research.
+
+● 4 background agents launched (↓ to manage)
+contrarian-research-agent (Branch A: Contrarian zero-capital models)
+zero-to-cash-architect (Branch B: High cash flow from zero)
+failure-archaeologist (Branch C: Lindy-tested ancient models)
+niche-archaeologist (Branch D: Operator positioning models)
+
+4 research agents dispatched across all branches. While they work, let me run additional deep search on forum-layer sources and the decomposition engine for pre-verified facts.
+
+  Ran 5 shell commands
+
+● Agent "Branch B: High cash flow from zero" completed
+
+Branch B (High cash flow from zero) completed with 7 detailed models. Excellent output. Waiting for remaining 3 branches to complete while the decomposition engine runs.
+
+Let me run targeted searches for evidence on the most promising models while waiting for remaining agents.
+
+● Web Search("BuiltWith revenue solo founder 2024 2025 how much")
+Did 1 search in 18s
+
+● Web Search(""zero capital" "high margin" business model contrarian positioning 2025 2026 examples")
+Did 1 search in 12s
+
+● Web Search("group purchasing organization small business started from nothing revenue success")
+Did 1 search in 41s
+
+Good data. BuiltWith confirmed at $22.6M/year with 4 employees. GPO industry: $7.3B across 560 businesses in US. Let me search for more contrarian models.
+
+● Web Search("information arbitrage business model examples 2024 2025 solo founder revenue")
+Did 1 search in 40s
+
+● Web Search(""toll position" OR "chokepoint" business model bootstrapped profitable niche")
+Did 1 search in 28s
+
+● Background command "Run decomposition with -X utf8 flag" completed (exit code 0)
+
+Strong evidence collected. Key data points:
+- BuiltWith: $22.6M/year, 4 employees (data toll model confirmed)
+- Solo founder median: $3K/mo, but top decile: $250K+/mo (Pieter Levels)
+- GPO industry: $7.3B across 560 businesses, 10-25% savings for members
+- Toll bridge characteristics: control chokepoint + pricing power + low capital to sustain
+
+Let me search for more Vietnam-applicable models and failure patterns.
+
+● Web Search("Vietnam business model low capital high profit 2025 cross-border trade middleman")
+Did 1 search in 31s
+
+● Web Search(""finder's fee" business zero capital broker success story how much earned")
+Did 1 search in 30s
+
+● Agent "Branch C: Lindy-tested ancient models" completed
+
+Branch C (Lindy-tested models) completed with excellent depth — 7 ancient models mapped to modern Vietnam-applicable paths. Key finding: export sourcing agent ranked #1 for Vietnam founder at $0-500.
+
+Finder's fee data confirmed: 2-10% of deal value, zero capital required. Let me check on the remaining two agents.
+
+● Web Search(""negative working capital" business model small business examples how to start")
+Did 1 search in 52s
+
+● Web Search("business model "switching costs" create lock-in solo founder examples niche 2024 2025")
+Did 1 search in 15s
+
+● Agent "Branch D: Operator positioning models" completed
+
+● Agent "Branch A: Contrarian zero-capital models" completed
+Read .claude\rules\development-rules.md (7 lines)
+Read .claude\rules\documentation-management.md (7 lines)
+Read .claude\rules\learned-rules-proposals.md (10 lines)
+Read .claude\rules\learned-rules.md (66 lines)
+Read .claude\rules\multi-source-search-routing.md (59 lines)
+Skills restored (stage0)
+
+Writing the consolidated verdict now, then persisting.
+
+  Ran 1 shell command
+
+● Write(.claude\skills\business\transaction-layer\nui-hunter\kb\cases\stage0-260517-zero-capital-smart-models.md)
+Wrote 257 lines to .claude\skills\business\transaction-layer\nui-hunter\kb\cases\stage0-260517-zero-capital-smart-models.md
+ Stage0 Verdict: Zero-Capital Smart Business Models ($0-500, 10yr Lindy, Large Cash Flow)
+
+*Case ID:** stage0-260517-zero-capital-smart-models
+*Date:** 2026-05-17
+*Query:** "10-20 mô hình kinh doanh $0-500 vốn, bền vững 10 năm, dòng tiền thực sự lớn, tư duy phải thực sự thông minh thay vì cạnh tranh với số đô
+g"
+*Mode:** FOUNDER_SPECIFIC | all-parallel-depth-1
+*Profile:** phamt-260507 | TIER_0 | $0-1000 | SERVICE_ENTRY | Vietnam
+
+--
+… +258 lines
+
+  Read 1 file, ran 7 shell commands
+
+The --case arg expects a Path. It's checking if the path exists. Let me look at what it expects.
+
+  Ran 1 shell command
+
+It expects a JSON case file, not the markdown verdict. Let me check the format.
+
+  Ran 1 shell command
+
+I need to create a JSON case file. Let me write it and then run the persist scripts.
+
+● Write(.claude\skills\business\transaction-layer\nui-hunter\kb\cases\stage0-260517-zero-capital-smart-models.json)
+Wrote 52 lines to .claude\skills\business\transaction-layer\nui-hunter\kb\cases\stage0-260517-zero-capital-smart-models.json
+{
+  "case_id": "stage0-260517-zero-capital-smart-models",
+  "title_en": "Zero-Capital Smart Business Models ($0-500, 10yr Lindy, Large Cash Flow)",
+  "title_vn": "Mo hinh kinh doanh $0-500 von, ben vung 10 nam, dong tien lon, tu duy thong minh",
+  "domain": "trade-intermediation",
+es",
+  "verdict": "MOUNTAIN_CANDIDATE",
+  "verdict_class": "MOUNTAIN_CANDIDATE",
+  "confidence": 0.68,
+  "founder_profile_fit": {
+… +49 lines
+
+  Ran 3 shell commands
+
+Knowledge persisted. Fix the agents_fired field to numeric for verdict persistence.
+
+● Update(.claude\skills\business\transaction-layer\nui-hunter\kb\cases\stage0-260517-zero-capital-smart-models.json)
+Added 2 lines, removed 1 line
+    "Trust building time (30-60 days minimum)",
+    "Competition from other brokers (differentiate via niche depth)"
+  ],
+  "agents_fired": ["marketplace-scanner", "contrarian-research-agent", "market-reality-checker", "deep-reasoner", "operator-mastery-brain", "vicar
+ious-knowledge", "arbitrage-scanner", "ecosystem-mapper", "timing-prophet", "float-architect", "causal-reasoner", "leverage-architect"],
+  "agents_fired": 12,
+  "agents_list": ["marketplace-scanner", "contrarian-research-agent", "market-reality-checker", "deep-reasoner", "operator-mastery-brain", "vicari
+ous-knowledge", "arbitrage-scanner", "ecosystem-mapper", "timing-prophet", "float-architect", "causal-reasoner", "leverage-architect"],
+  "date": "2026-05-17",
+  "execution_sequence": "Model #1 or #4 first → 30 cold messages week 1-2 → validate week 3-4 → close first deal month 2-3 → add Model #2 month 4-
+6 → compound month 7-12"
+}
+
+  Ran 1 shell command
+
+Now verify persistence.
+
+  Ran 1 shell command
+
+All 3 mandatory scripts passed (persist-verdict ✅, persist-knowledge ✅, verify-persistence 6/6 ✅).
+
+Now logging the trace and outputting the verdict.
+
+  Ran 1 shell command
+
+---
+VERDICT: MOUNTAIN_CANDIDATE | Confidence 0.68
+
+Query: 10-20 mô hình kinh doanh $0-500 vốn, bền vững 10 năm, dòng tiền thực sự lớn, tư duy phải thực sự thông minh thay vì cạnh tranh với số đông
+
+Condition: Execute ONE model to $2K/mo within 90 days. No model is passive at start — all need 60-100hr/mo grind initially.
+
+---
+TOP 12 MODELS (ranked by founder-fit × mountain probability)
+
+TIER 1 — Start Monday
+
+┌─────┬───────────────────────────────┬─────────┬─────────┬─────────┬────────┬───────────────────────────────────────────────────────────────────────────────┐
+│  #  │             Model             │ Capital │ P50/mo  │ P90/mo  │ Lindy  │                                   Mechanism                                   │
+├─────┼───────────────────────────────┼─────────┼─────────┼─────────┼────────┼───────────────────────────────────────────────────────────────────────────────┤
+│ 1   │ Export Sourcing Agent         │ $0-100  │ $800-2K │ $8-15K  │ 5000yr │ Finder's fee 2-10% connecting VN factories to foreign buyers. VN $786B trade  │
+│     │                               │         │         │         │        │ [K].                                                                          │
+├─────┼───────────────────────────────┼─────────┼─────────┼─────────┼────────┼───────────────────────────────────────────────────────────────────────────────┤
+│ 2   │ B2B Info Arbitrage Broker     │ $0-50   │ $1-3K   │ $10-20K │ 500yr  │ Sell curated intelligence. BuiltWith: $22.6M/4 people [K]. Knowledge          │
+│     │                               │         │         │         │        │ compounds.                                                                    │
+├─────┼───────────────────────────────┼─────────┼─────────┼─────────┼────────┼───────────────────────────────────────────────────────────────────────────────┤
+│ 3   │ Compliance Navigator          │ $0-200  │ $2-5K   │ $15-30K │ 100yr  │ Guide VN exporters through regulation maze. Failing costs $50-200K.           │
+│     │ (EUDR/FDA)                    │         │         │         │        │                                                                               │
+├─────┼───────────────────────────────┼─────────┼─────────┼─────────┼────────┼───────────────────────────────────────────────────────────────────────────────┤
+│ 4   │ Negative Float Deal Broker    │ $0      │ $1-3K   │ $10-25K │ 5000yr │ Pre-sell → collect deposit → source → deliver. Buyer funds the deal.          │
+└─────┴───────────────────────────────┴─────────┴─────────┴─────────┴────────┴───────────────────────────────────────────────────────────────────────────────┘
+
+TIER 2 — Viable, longer ramp
+
+┌─────┬─────────────────────────────────┬──────────┬─────────┬─────────┬────────┬────────────────────────────────────────────────────────────────────────┐
+│  #  │              Model              │ Capital  │ P50/mo  │ P90/mo  │ Lindy  │                               Mechanism                                │
+├─────┼─────────────────────────────────┼──────────┼─────────┼─────────┼────────┼────────────────────────────────────────────────────────────────────────┤
+│ 5   │ Customs/Logistics Micro-Broker  │ $100-300 │ $1-2K   │ $8-15K  │ 200yr  │ Back-haul arbitrage on empty return containers.                        │
+├─────┼─────────────────────────────────┼──────────┼─────────┼─────────┼────────┼────────────────────────────────────────────────────────────────────────┤
+│ 6   │ Niche Talent Broker (VN→global) │ $50-200  │ $2-4K   │ $15-40K │ 500yr  │ Pre-vetted VN devs. $500-2K/placement. Toptal charges 20-40% [K].      │
+├─────┼─────────────────────────────────┼──────────┼─────────┼─────────┼────────┼────────────────────────────────────────────────────────────────────────┤
+│ 7   │ MXV/Commodity Intelligence      │ $0-100   │ $500-2K │ $5-10K  │ 200yr  │ MXV + ICE data → alerts for VN traders. Subscription.                  │
+├─────┼─────────────────────────────────┼──────────┼─────────┼─────────┼────────┼────────────────────────────────────────────────────────────────────────┤
+│ 8   │ GPO for Micro-Exporters         │ $0-200   │ $1-3K   │ $10-20K │ 2000yr │ Aggregate 5-20 small exporters. Take 3-8% savings. $7.3B industry [K]. │
+└─────┴─────────────────────────────────┴──────────┴─────────┴─────────┴────────┴────────────────────────────────────────────────────────────────────────┘
+
+TIER 3 — Viable, higher skill/time
+
+┌─────┬──────────────────────────────┬──────────┬─────────┬────────┬────────┐
+│  #  │            Model             │ Capital  │ P50/mo  │ P90/mo │ Lindy  │
+├─────┼──────────────────────────────┼──────────┼─────────┼────────┼────────┤
+│ 9   │ Switching Cost Auditor       │ $0       │ $1-3K   │ $5-15K │ 100yr  │
+├─────┼──────────────────────────────┼──────────┼─────────┼────────┼────────┤
+│ 10  │ Process Automation Broker    │ $0-50    │ $1-3K   │ $8-15K │ 100yr  │
+├─────┼──────────────────────────────┼──────────┼─────────┼────────┼────────┤
+│ 11  │ Warranty/Returns Arbitrage   │ $200-500 │ $500-2K │ $5-10K │ 1000yr │
+├─────┼──────────────────────────────┼──────────┼─────────┼────────┼────────┤
+│ 12  │ Contract/Tender Intelligence │ $0-100   │ $1-2K   │ $5-15K │ 200yr  │
+└─────┴──────────────────────────────┴──────────┴─────────┴────────┴────────┘
+
+---
+DOORS CLOSED (Founder-Reality-Gate)
+
+SaaS/app (no_product_dev) · Content creator (zero audience, 18mo ramp) · Paid ads (no capital) · Franchise (capital barrier) · Dropshipping (85% failure [K], needs ad spend) · Crypto (capital + extreme power law) · Generic agency (undifferentiated)
+
+---
+WHY THESE ARE "SMART" (tư duy thông minh)
+
+1. Information asymmetry as moat. You know what Vietnamese factories make. Foreign buyers don't. That gap = your margin. AI can't bridge trust relationships.
+
+2. Negative float = infinite ROI. Model #4 uses buyer's money to fund the deal. Your capital deployed: $0. Return: commission. Division by zero = infinite ROI. This is how commodity traders from Venice to Robert Kuok operated.
+
+3. Compounding knowledge, not capital. Each deal teaches you something the next competitor doesn't know. After 50 deals you've built a database in your head that would cost $100K to replicate. That IS your moat.
+
+4. Lindy = anti-fragile. Trade intermediaries survived the fall of Rome, two World Wars, the internet. The form changes (letter → fax → email → LinkedIn). The function (trusted connector between buyer and seller) is permanent.
+
+5. Geographic arbitrage. Your living cost is $500-800/mo in Vietnam. Your clients pay US/EU rates. $3K/mo = poverty in SF. $3K/mo in Vietnam = top 5% lifestyle with savings.
+
+---
+EXECUTION SEQUENCE
+
+Week 1-2: Pick Model #1 or #4. Send 30 cold messages (LinkedIn + Alibaba) to buyers in ONE product category.
+
+Week 3-4: ≥3 responses = pursue. 0 responses = pivot product category, NOT model.
+
+Month 2-3: Close first deal. ANY size. $200 commission = validation.
+
+Month 4-6: Add Model #2 using knowledge from Model #1.
+
+Month 7-12: Compound. Each deal → next deal's introduction. Target $5-10K/mo.
+
+---
+KILL CRITERIA
+
+- Model 1: 0 sample requests after 60 outreaches → KILL this vertical
+- Model 2: <3 paid clients after 90 days → KILL
+- Model 3: 0 engagements after 45 days → KILL
+- Model 4: No 20%+ margin category after 30 days research → KILL
+
+---
+Persistence: Case JSON ✅ | Verdict MD ✅ | Knowledge graph ✅ | Trace ✅ | Verify 6/6 ✅
+
+✻ Baked for 17m 7s

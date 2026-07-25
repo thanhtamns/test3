@@ -1,0 +1,160 @@
+"""Tests for StrategicReasoner — LLM reasoning layer after synthesis."""
+
+import json
+from unittest.mock import MagicMock
+
+import pytest
+
+from ..strategic_reasoner import StrategicReasoner, StrategicInsight, _empty_insight
+
+
+def _make_fake_fact(fact_text="Test fact", dimension="failure_patterns", zone="K", confidence=0.8):
+    obj = MagicMock()
+    obj.fact = fact_text
+    obj.dimension = dimension
+    obj.zone_tag = zone
+    obj.confidence = confidence
+    return obj
+
+
+def _make_dim_score(dim_name="failure_patterns", score=0.6):
+    obj = MagicMock()
+    obj.score = score
+    obj.dimension = dim_name
+    return {dim_name: obj}
+
+
+def _mock_llm_fn(responses: list[str]):
+    call_idx = {"n": 0}
+
+    def fn(prompt, **kwargs):
+        idx = min(call_idx["n"], len(responses) - 1)
+        call_idx["n"] += 1
+        result = MagicMock()
+        result.content = responses[idx]
+        return result
+
+    return fn
+
+
+SYNTHESIS_RESPONSE = json.dumps({
+    "causal_chain": "High failure rate causes undercapitalization because margins are thin",
+    "contradictions": [{"fact_a": "Market growing", "fact_b": "Market saturated", "resolution": "Growing in niche", "reasoning": "Segment matters"}],
+    "inferred_gaps": [{"dimension": "timing", "inference": "Window closing", "based_on": "competition data"}],
+})
+
+STRATEGY_RESPONSE = json.dumps({
+    "asymmetric_play": "Vietnamese founder has cost advantage in SEA market",
+    "side_door": "Direct farmer relationships bypass middlemen",
+    "timing_window": "EUDR compliance creates 6-month window",
+    "compound_trap": "Curated supplier database",
+    "redesign_needed": False,
+})
+
+VERDICT_RESPONSE = json.dumps({
+    "verdict": "GO",
+    "kill_conditions": [{"condition": "Capital < $500", "present": False}],
+    "proceed_conditions": [{"condition": "Cost advantage > 30%", "present": True}],
+    "reasoning": "Mechanistic advantage exists via cost structure",
+})
+
+
+class TestStrategicReasonerReturnsInsight:
+    def test_reason_returns_full_insight(self):
+        llm_fn = _mock_llm_fn([SYNTHESIS_RESPONSE, STRATEGY_RESPONSE, VERDICT_RESPONSE])
+        reasoner = StrategicReasoner(max_calls=3, llm_fn=llm_fn)
+        facts = [_make_fake_fact("Market is growing 15%"), _make_fake_fact("Failure rate 60%", "unit_economics")]
+        result = reasoner.reason(facts, _make_dim_score(), {"query": "coffee export"}, {"capital_usd": 1000})
+
+        assert isinstance(result, StrategicInsight)
+        assert "undercapitalization" in result.causal_chain
+        assert result.asymmetric_play != ""
+        assert result.verdict == "GO"
+        assert result.llm_calls_made == 3
+        assert len(result.fact_references) == 2
+
+    def test_contradictions_parsed(self):
+        llm_fn = _mock_llm_fn([SYNTHESIS_RESPONSE, STRATEGY_RESPONSE, VERDICT_RESPONSE])
+        reasoner = StrategicReasoner(llm_fn=llm_fn)
+        result = reasoner.reason([_make_fake_fact()], _make_dim_score(), {}, {})
+        assert len(result.contradictions) == 1
+        assert result.contradictions[0]["resolution"] == "Growing in niche"
+
+
+class TestMaxCallsRespected:
+    def test_max_calls_enforced(self):
+        call_count = {"n": 0}
+
+        def counting_complete(prompt, **kwargs):
+            call_count["n"] += 1
+            r = MagicMock()
+            r.content = json.dumps({"causal_chain": "test", "contradictions": [], "inferred_gaps": []})
+            return r
+
+        reasoner = StrategicReasoner(max_calls=3, llm_fn=counting_complete)
+        reasoner.reason([_make_fake_fact()], _make_dim_score(), {}, {})
+        assert call_count["n"] == 3
+
+    def test_custom_max_calls(self):
+        call_count = {"n": 0}
+
+        def counting(prompt, **kwargs):
+            call_count["n"] += 1
+            if call_count["n"] > 2:
+                raise RuntimeError("Should not reach here")
+            r = MagicMock()
+            r.content = json.dumps({"causal_chain": "x"})
+            return r
+
+        reasoner = StrategicReasoner(max_calls=2, llm_fn=counting)
+        result = reasoner.reason([_make_fake_fact()], _make_dim_score(), {}, {})
+        assert result.llm_calls_made == 2
+
+
+class TestGracefulDegradation:
+    def test_empty_facts_returns_empty_insight(self):
+        reasoner = StrategicReasoner()
+        result = reasoner.reason([], {}, {}, {})
+        assert result.causal_chain == "[no_facts]"
+        assert result.llm_calls_made == 0
+
+    def test_llm_exception_degrades_gracefully(self):
+        def failing_llm(prompt, **kwargs):
+            raise RuntimeError("LLM unavailable")
+
+        reasoner = StrategicReasoner(llm_fn=failing_llm)
+        result = reasoner.reason([_make_fake_fact()], _make_dim_score(), {}, {})
+        assert isinstance(result, StrategicInsight)
+        assert result.llm_calls_made <= 1
+
+    def test_json_parse_failure_uses_defaults(self):
+        llm_fn = _mock_llm_fn([
+            "This is not JSON at all",
+            "Also not JSON",
+            "Still not JSON",
+        ])
+        reasoner = StrategicReasoner(llm_fn=llm_fn)
+        result = reasoner.reason([_make_fake_fact()], _make_dim_score(), {}, {})
+        assert isinstance(result, StrategicInsight)
+        assert result.verdict == "UNCERTAIN"
+
+
+class TestFactReferences:
+    def test_fact_references_populated(self):
+        llm_fn = _mock_llm_fn([SYNTHESIS_RESPONSE, STRATEGY_RESPONSE, VERDICT_RESPONSE])
+        facts = [_make_fake_fact(f"Fact number {i}") for i in range(5)]
+        reasoner = StrategicReasoner(llm_fn=llm_fn)
+        result = reasoner.reason(facts, _make_dim_score(), {}, {})
+        assert len(result.fact_references) == 5
+        assert all("Fact number" in ref for ref in result.fact_references)
+
+
+class TestEmptyInsightHelper:
+    def test_empty_insight_default(self):
+        result = _empty_insight()
+        assert result.causal_chain == "[degraded]"
+        assert result.llm_calls_made == 0
+
+    def test_empty_insight_custom_reason(self):
+        result = _empty_insight("timeout")
+        assert result.causal_chain == "[timeout]"

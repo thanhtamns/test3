@@ -1,0 +1,35 @@
+{
+  "type": "dream5_target",
+  "description": "Template for Dream 5 relationship engineering targets (Phase 4)",
+  "required_fields": ["name", "why_target", "what_they_need"],
+  "give_first_types": [
+    "intel_share",
+    "introduction",
+    "problem_solving",
+    "attendance_support",
+    "research_gift"
+  ],
+  "template": {
+    "id": "d5-NNNN",
+    "type": "dream5_target",
+    "name": "",
+    "role": "",
+    "company": "",
+    "why_target": "",
+    "what_they_need_i_can_provide": "",
+    "best_approach": "event|intro|cold_reach|online",
+    "mutual_connection": "",
+    "wealth_multiple": "5-10x",
+    "status": "researching|active|responsive|collaborating|replaced",
+    "replaced_reason": null,
+    "give_first_log": [],
+    "dependency_signals": {
+      "replies_within_24h": false,
+      "forwards_info_unprompted": false,
+      "introduces_you_to_others": false,
+      "asks_your_opinion_before_decisions": false
+    },
+    "added_at": "",
+    "last_interaction": ""
+  }
+}

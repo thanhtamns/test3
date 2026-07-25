@@ -1,0 +1,211 @@
+## 🔬 Non-Google Research Source Ladder — AUTO-EXECUTED
+
+**Topic:** <task-notification>
+<task-id>a5f06e3cc7318f3ce</task-id>
+<tool-use-id>toolu_011hCV9iGDtHtp1EQ97QrX8y</tool-use-id>
+<output-file>C:\Users\phamt\AppData\Local\Temp\claude\D--code-invesments-master-investments-mmo\125afffb-8f0e-4b81-9b9f-c5495cffa558\tasks\a5f06e3cc7318f3ce.output</
+**Routes auto-detected:** `technical_deep_research` (1 kw hits: data structure)
+
+### Route: `technical_deep_research`
+**Cache:** MISS (27.16s)
+**Tiers probed:** github_code_search, github_oss_metrics, hackernews_ask, archive_web
+**Total sources:** 14
+**Drill recommended:** 12
+**Skipped (low signal):** 0
+**Errored:** 2
+**Tool refs (skipped clean):** 0
+
+**🎯 Deep-drill these sources NOW** (signal density confirmed):
+- **Common Crawl** [50 signals] https://commoncrawl.org/
+  - Examples: [named_entity] Common Crawl | [named_entity] Open Repository | [named_entity] Web Crawl Data The
+- **Sourcegraph cloud search** [5 signals] https://sourcegraph.com/search?q=%3Ctask-notification%3E%0A%3Ctask-id%3Ea5f06e3cc7318f3ce%3C%2Ftask-id%3E%0A%3Ctool-use-id%3Etoolu_011hCV9iGDtHtp1EQ97QrX8y%3C%2Ftool-use-id%3E%0A%3Coutput-file%3EC%3A%5CUsers%5Cphamt%5CAppData%5CLocal%5CTemp%5Cclaude%5CD--code-invesments-master-investments-mmo%5C125afffb-8f0e-4b81-9b9f-c5495cffa558%5Ctasks%5Ca5f06e3cc7318f3ce.output%3C%2F
+  - Examples: [named_entity] Sourcegraph Sourcegraph | [named_entity] Search | [named_entity] Find
+- **Lobste.rs** [44 signals] https://lobste.rs/
+  - Examples: [named_entity] Lobsters Active Recent Comments | [named_entity] Search Login Login | [named_entity] Stop
+- **GitHub code search (web UI)** [50 signals] https://github.com/search?type=code&q=%3Ctask-notification%3E%0A%3Ctask-id%3Ea5f06e3cc7318f3ce%3C%2Ftask-id%3E%0A%3Ctool-use-id%3Etoolu_011hCV9iGDtHtp1EQ97QrX8y%3C%2Ftool-use-id%3E%0A%3Coutput-file%3EC%3A%5CUsers%5Cphamt%5CAppData%5CLocal%5CTemp%5Cclaude%5CD--code-invesments-master-investments-mmo%5C125afffb-8f0e-4b81-9b9f-c5495cffa558%5Ctasks%5Ca5f06e3cc7318f3ce.output%3C%2F
+  - Examples: [named_entity] Code | [named_entity] GitHub Skip | [named_entity] Navigation Menu Toggle
+- **archive.today (archive.ph)** [11 signals] https://archive.ph/
+  - Examples: [named_entity] Webpage | [named_entity] FAQ | [named_entity] Archive
+- **Internet Archive Wayback Machine** [50 signals] https://web.archive.org/web/*/
+  - Examples: [named_entity] Wayback Machine Ask | [named_entity] Hamburger | [named_entity] Internet Archive
+- **HN Algolia search** [3 signals] https://hn.algolia.com/?query=
+  - Examples: [named_entity] Hacker News Search | [named_entity] Algolia This | [named_entity] JavaScript
+- **grep.app** [4 signals] https://grep.app/search?q=%3Ctask-notification%3E%0A%3Ctask-id%3Ea5f06e3cc7318f3ce%3C%2Ftask-id%3E%0A%3Ctool-use-id%3Etoolu_011hCV9iGDtHtp1EQ97QrX8y%3C%2Ftool-use-id%3E%0A%3Coutput-file%3EC%3A%5CUsers%5Cphamt%5CAppData%5CLocal%5CTemp%5Cclaude%5CD--code-invesments-master-investments-mmo%5C125afffb-8f0e-4b81-9b9f-c5495cffa558%5Ctasks%5Ca5f06e3cc7318f3ce.output%3C%2F
+  - Examples: [named_entity] Code Search | [named_entity] Grep | [named_entity] Vercel
+- **GitHub repository search** [50 signals] https://github.com/search?type=repositories&q=%3Ctask-notification%3E%0A%3Ctask-id%3Ea5f06e3cc7318f3ce%3C%2Ftask-id%3E%0A%3Ctool-use-id%3Etoolu_011hCV9iGDtHtp1EQ97QrX8y%3C%2Ftool-use-id%3E%0A%3Coutput-file%3EC%3A%5CUsers%5Cphamt%5CAppData%5CLocal%5CTemp%5Cclaude%5CD--code-invesments-master-investments-mmo%5C125afffb-8f0e-4b81-9b9f-c5495cffa558%5Ctasks%5Ca5f06e3cc7318f3ce.output%3C%2F
+  - Examples: [named_entity] Repository | [named_entity] GitHub Skip | [named_entity] Navigation Menu Toggle
+- **GitHub trending** [50 signals] https://github.com/trending
+  - Examples: [named_entity] Trending | [named_entity] GitHub | [named_entity] GitHub Skip
+- **GitHub code search** [50 signals] https://github.com/search?type=code&q=%3Ctask-notification%3E%0A%3Ctask-id%3Ea5f06e3cc7318f3ce%3C%2Ftask-id%3E%0A%3Ctool-use-id%3Etoolu_011hCV9iGDtHtp1EQ97QrX8y%3C%2Ftool-use-id%3E%0A%3Coutput-file%3EC%3A%5CUsers%5Cphamt%5CAppData%5CLocal%5CTemp%5Cclaude%5CD--code-invesments-master-investments-mmo%5C125afffb-8f0e-4b81-9b9f-c5495cffa558%5Ctasks%5Ca5f06e3cc7318f3ce.output%3C%2F
+  - Examples: [named_entity] Code | [named_entity] GitHub Skip | [named_entity] Navigation Menu Toggle
+- **GitHub Sponsors leaderboards** [50 signals] https://github.com/sponsors/explore
+  - Examples: [named_entity] Explore GitHub Sponsors | [named_entity] GitHub Skip | [named_entity] Navigation Menu Toggle
+
+**⚠ Errored sources** (consider Playwright escalation if signal is critical):
+- Sourcegraph (HTTP 404)
+- HN Ask/Show top (ReadTimeout: HTTPSConnectionPool(host='news.ycombinator.com', port=443): Read ti)
+
+---
+### 🔍 Deep-drill snippets (route `technical_deep_research`)
+
+**Common Crawl** — 97 deep signals from https://commoncrawl.org/
+Top signals:
+  - [named_entity] Common Crawl
+  - [named_entity] Open Repository
+  - [named_entity] Web Crawl Data The
+  - [named_entity] Data Overview CDXJ Index
+  - [named_entity] Columnar Index Web Graphs
+  - [named_entity] Latest Crawl Crawl Stats
+  - [named_entity] Graph Stats Errata Resources
+  - [named_entity] Get Started
+  - [named_entity] Agent Blog Examples CCBot
+  - [named_entity] Infra Status Opt
+  - [named_entity] Out Registry FAQ Community
+  - [named_entity] Research Papers Mailing List
+Snippet:  Common Crawl - Open Repository of Web Crawl Data The Data Overview CDXJ Index Columnar Index Web Graphs Latest Crawl Crawl Stats Graph Stats Errata Resources Get Started AI Agent Blog Examples CCBot Infra Status Opt-Out Registry FAQ Community Research Papers Mailing List Archive Hugging Face Discord Collaborators About About Team Jobs Privacy Policy Terms of Use Search AI Agent Contact Us Common ...
+
+**GitHub code search (web UI)** — 83 deep signals from https://github.com/search?type=code&q=%3Ctask-notification%3E%0A%3Ctask-id%3Ea5f06e3cc7318f3ce%3C%2Ftask-id%3E%0A%3Ctool-use-id%3Etoolu_011hCV9iGDtHtp1EQ97QrX8y%3C%2Ftool-use-id%3E%0A%3Coutput-file%3EC%3A%5CUsers%5Cphamt%5CAppData%5CLocal%5CTemp%5Cclaude%5CD--code-invesments-master-investments-mmo%5C125afffb-8f0e-4b81-9b9f-c5495cffa558%5Ctasks%5Ca5f06e3cc7318f3ce.output%3C%2F
+Top signals:
+  - [named_entity] Code
+  - [named_entity] GitHub Skip
+  - [named_entity] Navigation Menu Toggle
+  - [named_entity] Sign
+  - [named_entity] Appearance
+  - [named_entity] Platform
+  - [named_entity] CODE CREATION GitHub Copilot
+  - [named_entity] Write
+  - [named_entity] GitHub Spark Build
+  - [named_entity] GitHub Models Manage
+  - [named_entity] MCP Registry New Integrate
+  - [named_entity] DEVELOPER WORKFLOWS Actions Automate
+Snippet:  Code search results · GitHub Skip to content Navigation Menu Toggle navigation Sign in Appearance settings Platform AI CODE CREATION GitHub Copilot Write better code with AI GitHub Spark Build and deploy intelligent apps GitHub Models Manage and compare prompts MCP Registry New Integrate external tools DEVELOPER WORKFLOWS Actions Automate any workflow Codespaces Instant dev environments Issues Pl...
+
+**Internet Archive Wayback Machine** — 109 deep signals from https://web.archive.org/web/*/
+Top signals:
+  - [named_entity] Wayback Machine Ask
+  - [named_entity] Hamburger
+  - [named_entity] Internet Archive
+  - [named_entity] Web
+  - [named_entity] Wayback Machine Texts
+  - [named_entity] Texts Video
+  - [named_entity] Video Audio
+  - [named_entity] Audio Software
+  - [named_entity] Software Images
+  - [named_entity] Images Donate
+  - [named_entity] Donate Ellipses
+  - [named_entity] More Donate
+Snippet:  Wayback Machine Ask the publishers to restore access to 500,000+ books. Hamburger icon An icon used to represent a menu that can be toggled by interacting with this icon. Internet Archive logo A line drawing of the Internet Archive headquarters building faÃ§ade. Web icon An illustration of a computer application window Wayback Machine Texts icon An illustration of an open book. Texts Video icon A...
+
+**GitHub repository search** — 86 deep signals from https://github.com/search?type=repositories&q=%3Ctask-notification%3E%0A%3Ctask-id%3Ea5f06e3cc7318f3ce%3C%2Ftask-id%3E%0A%3Ctool-use-id%3Etoolu_011hCV9iGDtHtp1EQ97QrX8y%3C%2Ftool-use-id%3E%0A%3Coutput-file%3EC%3A%5CUsers%5Cphamt%5CAppData%5CLocal%5CTemp%5Cclaude%5CD--code-invesments-master-investments-mmo%5C125afffb-8f0e-4b81-9b9f-c5495cffa558%5Ctasks%5Ca5f06e3cc7318f3ce.output%3C%2F
+Top signals:
+  - [named_entity] Repository
+  - [named_entity] GitHub Skip
+  - [named_entity] Navigation Menu Toggle
+  - [named_entity] Sign
+  - [named_entity] Appearance
+  - [named_entity] Platform
+  - [named_entity] CODE CREATION GitHub Copilot
+  - [named_entity] Write
+  - [named_entity] GitHub Spark Build
+  - [named_entity] GitHub Models Manage
+  - [named_entity] MCP Registry New Integrate
+  - [named_entity] DEVELOPER WORKFLOWS Actions Automate
+Snippet:  Repository search results · GitHub Skip to content Navigation Menu Toggle navigation Sign in Appearance settings Platform AI CODE CREATION GitHub Copilot Write better code with AI GitHub Spark Build and deploy intelligent apps GitHub Models Manage and compare prompts MCP Registry New Integrate external tools DEVELOPER WORKFLOWS Actions Automate any workflow Codespaces Instant dev environments Iss...
+
+**GitHub trending** — 200 deep signals from https://github.com/trending
+Top signals:
+  - [named_entity] Trending
+  - [named_entity] GitHub
+  - [named_entity] GitHub Skip
+  - [named_entity] Navigation Menu Toggle
+  - [named_entity] Sign
+  - [named_entity] Appearance
+  - [named_entity] Platform
+  - [named_entity] CODE CREATION GitHub Copilot
+  - [named_entity] Write
+  - [named_entity] GitHub Spark Build
+  - [named_entity] GitHub Models Manage
+  - [named_entity] MCP Registry New Integrate
+Snippet:  Trending repositories on GitHub today · GitHub Skip to content Navigation Menu Toggle navigation Sign in Appearance settings Platform AI CODE CREATION GitHub Copilot Write better code with AI GitHub Spark Build and deploy intelligent apps GitHub Models Manage and compare prompts MCP Registry New Integrate external tools DEVELOPER WORKFLOWS Actions Automate any workflow Codespaces Instant dev envi...
+
+**GitHub code search** — 83 deep signals from https://github.com/search?type=code&q=%3Ctask-notification%3E%0A%3Ctask-id%3Ea5f06e3cc7318f3ce%3C%2Ftask-id%3E%0A%3Ctool-use-id%3Etoolu_011hCV9iGDtHtp1EQ97QrX8y%3C%2Ftool-use-id%3E%0A%3Coutput-file%3EC%3A%5CUsers%5Cphamt%5CAppData%5CLocal%5CTemp%5Cclaude%5CD--code-invesments-master-investments-mmo%5C125afffb-8f0e-4b81-9b9f-c5495cffa558%5Ctasks%5Ca5f06e3cc7318f3ce.output%3C%2F
+Top signals:
+  - [named_entity] Code
+  - [named_entity] GitHub Skip
+  - [named_entity] Navigation Menu Toggle
+  - [named_entity] Sign
+  - [named_entity] Appearance
+  - [named_entity] Platform
+  - [named_entity] CODE CREATION GitHub Copilot
+  - [named_entity] Write
+  - [named_entity] GitHub Spark Build
+  - [named_entity] GitHub Models Manage
+  - [named_entity] MCP Registry New Integrate
+  - [named_entity] DEVELOPER WORKFLOWS Actions Automate
+Snippet:  Code search results · GitHub Skip to content Navigation Menu Toggle navigation Sign in Appearance settings Platform AI CODE CREATION GitHub Copilot Write better code with AI GitHub Spark Build and deploy intelligent apps GitHub Models Manage and compare prompts MCP Registry New Integrate external tools DEVELOPER WORKFLOWS Actions Automate any workflow Codespaces Instant dev environments Issues Pl...
+
+**GitHub Sponsors leaderboards** — 140 deep signals from https://github.com/sponsors/explore
+Top signals:
+  - [named_entity] Explore GitHub Sponsors
+  - [named_entity] GitHub Skip
+  - [named_entity] Navigation Menu Toggle
+  - [named_entity] Sign
+  - [named_entity] Appearance
+  - [named_entity] Platform
+  - [named_entity] CODE CREATION GitHub Copilot
+  - [named_entity] Write
+  - [named_entity] GitHub Spark Build
+  - [named_entity] GitHub Models Manage
+  - [named_entity] MCP Registry New Integrate
+  - [named_entity] DEVELOPER WORKFLOWS Actions Automate
+Snippet:  Explore GitHub Sponsors · GitHub Skip to content Navigation Menu Toggle navigation Sign in Appearance settings Platform AI CODE CREATION GitHub Copilot Write better code with AI GitHub Spark Build and deploy intelligent apps GitHub Models Manage and compare prompts MCP Registry New Integrate external tools DEVELOPER WORKFLOWS Actions Automate any workflow Codespaces Instant dev environments Issue...
+
+**Lobste.rs** — 44 deep signals from https://lobste.rs/
+Top signals:
+  - [named_entity] Lobsters Active Recent Comments
+  - [named_entity] Search Login Login
+  - [named_entity] Stop
+  - [named_entity] Aks
+  - [named_entity] Archive
+  - [named_entity] Ghostarchive
+  - [named_entity] What
+  - [named_entity] Fast
+  - [named_entity] Using SwiftUI
+  - [named_entity] Build
+  - [named_entity] Mac
+  - [named_entity] App
+Snippet:  Lobsters Active Recent Comments Search Login Login 53 Stop advertising in your commits rant vibecoding akselmo.dev authored by Aks 12 hours ago | caches Archive.org Ghostarchive | 49 comments 49 61 What is a harmonic? An interactive comic about additive synthesis art education visualization melatonin.dev authored by suda 18 hours ago | caches Archive.org Ghostarchive | 13 comments 13 8 Fast is be...
+
+---
+## 🤖 MANDATORY auto-spawn block — execute IMMEDIATELY in next response
+
+Per [EXHAUSTIVE-RESEARCH] rule, you MUST spawn 8 parallel Task agents
+in your VERY NEXT message to deep-extract from the drill-recommended sources above.
+Use a single message with multiple Agent tool calls (parallel execution).
+
+Each Task agent prompt template:
+```
+Task: Deep-extract operator-layer signals for topic "<TOPIC>" from <SOURCE_URL>.
+
+Goal: extract ALL specific data points: dollar amounts (with context),
+dated events (with year), named entities (real people/companies), tool/product names
+(with vendor), URLs, ban/platform mentions, failure/scam examples.
+
+For forum sources (mmo4me, voz, vn-z, V2EX, 52pojie): walk top 5-10 threads matching topic.
+For news sources (vnexpress, tuoitre, dantri, congan): walk top 10 articles.
+For dashboard sources (IndieHackers, Plausible, MicroConf): extract dated MRR + revenue numbers.
+
+Use WebFetch for retrieval. If 403/422/429, escalate to method_chain_fetcher.
+Return structured findings with source URL citations. Under 600 words.
+```
+
+Substitute `<TOPIC>` and `<SOURCE_URL>` for each drill-recommended source listed above.
+
+## 📋 Action plan (BLOCKING per [EXHAUSTIVE-RESEARCH]):
+1. **Spawn 8 Task agents in parallel** in your next response (single message, multiple Agent tool calls)
+2. **Wait for results** — each agent returns structured findings with citations
+3. **Synthesize** findings into the verdict, with mandatory `## Research tiers fired` section
+4. **Do NOT use WebSearch as primary** — that violates the rule. WebSearch is only for URL discovery.
+5. **Cite drill snippets** above — they contain raw signal you can quote directly
+
+**Reference:** `D:/code/invesments/master_investments/data/knowledge-sources/research-ladder.json` | `D:/code/invesments/master_investments/data/knowledge-sources/ladder-runner.py` | `.claude/rules/learned-rules.md` → "Exhaustive Research Rules"

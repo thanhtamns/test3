@@ -1,0 +1,194 @@
+/stage0 10-20 mô hình kinh doanh $0-500 vốn, bền vững 10 năm, dòng tiền thực sự lớn, không giới hạn ngách nhưng hãy tập trung vào ngách nhỏ với tư duy tính toán tinh hoa
+
+Running /stage0 pipeline. Starting with parallel initialization steps.
+
+  Listed 3 directories, ran 1 shell command
+
+No pending actions. Assertions + knobs loaded. Loading profile and assertions.
+
+  Read 2 files, ran 1 shell command
+
+Profile loaded: TIER_0, $0-1K, Vietnam. Query is broad (10-20 models) → treating as --breadth mode (category-level scan, no instance research).
+
+Now running query-mode detection and intent classification in parallel.
+
+  Ran 3 shell commands
+
+Query classified: EXPLORATION mode, TIER_0 ($0-500), cash_flow_operations intent. This is a broad scan — I'll treat as breadth mode (10-20 category-level models, no instance research per Step 2.56).
+
+Let me confirm the interpretation with you before proceeding.
+
+● User answered Claude's questions:
+· Tôi hiểu query của bạn: Tìm 10-20 mô hình kinh doanh ngách nhỏ, vốn $0-500, bền vững 10+ năm, dòng tiền lớn, tư duy tính toán tinh hoa (không generic). Profile: TIER_0, Vietnam, 30h/tuần. Đây là BREADTH scan (category-level) — sau đó bạn chọn 1-3 mô hình để drill deep. Proceed? → Proceed with breadth scan
+
+Breadth scan confirmed. Launching parallel research agents — Wave 1 base + addendum + computational engines.
+
+  Ran 3 shell commands
+
+Computational engines complete. Now launching the core research — Wave 1 parallel agents for breadth scan of 10-20 small-niche business models.
+
+Launching parallel research — 8 targeted searches for real small-niche models at $0-500 capital.
+
+● Web Search("micro business started under $500 capital profitable 2024 2025 real examples reddit")
+Did 1 search in 37s
+
+● Web Search("small niche business $0 capital sustainable 10 years cash flow examples indie hackers")
+Did 1 search in 38s
+
+● Web Search("arbitrage business models low capital high margin 2025 2026 specific niches")
+Did 1 search in 41s
+
+● Web Search("micro SaaS under $500 build passive income real revenue examples 2025")
+Did 1 search in 38s
+
+● Web Search(""started with nothing" "now makes" niche business solo founder bootstrapped")
+Did 2 searches in 31s
+
+● Web Search("Vietnam small business opportunities low capital high cash flow 2025 2026")
+Did 1 search in 35s
+
+● Web Search("service arbitrage business models geographic price difference Vietnam freelancer")
+Did 1 search in 34s
+
+● Web Search("digital micro asset portfolio passive income $100 $500 invested results 2025")
+Did 1 search in 32s
+
+Good breadth of data. Now running deeper searches on failure rates and specific niche models that match TIER_0 constraints.
+
+● Web Search("micro business failure rate first year statistics solo founder bootstrapped 2024 2025")
+Did 1 search in 37s
+
+● Web Search(""bought domain" OR "bought template" OR "bought newsletter" passive income $50 $200 monthly results 2025 2026")
+Did 3 searches in 45s
+
+● Web Search("niche digital product Gumroad Etsy under $500 investment real monthly income examples")
+Did 1 search in 38s
+
+● Web Search("commodity brokering middleman small scale Vietnam ASEAN low capital high volume trade")
+Did 1 search in 26s
+
+Research complete. Now running the pre-decomposition engine and local knowledge check, then synthesizing.
+
+  Ran 2 shell commands
+
+● Background command "Run pre-decomposition engine" completed (exit code 0)
+
+Found a prior case (stage0-260517) with similar query — MOUNTAIN_CANDIDATE verdict at 0.68 confidence. Let me check the prior verdict for insights, then build the new synthesis.
+
+  Read 1 file, listed 1 directory
+
+Prior case found with 3 models. This is a depth=2 session on the same topic. Let me check the SRE for depth tracking, then synthesize the new scan with fresh research + prior findings.
+
+  Ran 1 shell command
+
+SRE says depth 1 (new topic variant), but KB shows prior cases — this is actually depth 2 (repeat session with slight variation). Now I have enough data to synthesize the verdict. Let me build the case and verdict.
+
+  Read 1 file
+
+Now writing the verdict markdown.
+
+  Read 1 file
+Read .claude\rules\team-coordination-rules.md (91 lines)
+Read .claude\rules\research-verification.md (153 lines)
+Read .claude\rules\primary-workflow.md (7 lines)
+Read .claude\rules\orchestration-protocol.md (7 lines)
+Read .claude\rules\multi-source-search-routing.md (59 lines)
+Skills restored (stage0)
+
+Writing the verdict file using Write tool to avoid heredoc quoting issues.
+
+● Write(C:\Users\phamt\AppData\Local\Temp\verdict-stage0-260518-breadth-micro-models.md)
+Wrote 235 lines to C:\Users\phamt\AppData\Local\Temp\verdict-stage0-260518-breadth-micro-models.md
+ BREADTH SCAN: Micro-Capital Business Models ($0-500)
+# Case: stage0-260518-breadth-micro-models
+# Verdict: EXPLORATION_COMPLETE | Confidence: 0.65
+
+--
+
+# PREMISE
+
+uery: 10-20 business models, $0-500 capital, sustainable 10yr+, large cash flow potential, small niche focus with elite calculation thinking.
+… +235 lines
+
+Verdict written. Running persistence pipeline.
+
+  Ran 2 shell commands
+
+Wrong arg names. Fixing.
+
+  Ran 3 shell commands
+
+Knowledge persisted. Verdict blocked on confidence gate — changing class to EXPLORATION_ONGOING (breadth scan, not final).
+
+  Ran 4 shell commands
+
+All persisted. Running verification and SRE increment.
+
+  Ran 2 shell commands
+
+All 6/6 persistence checks PASS. Here's the verdict:
+
+---
+BREADTH SCAN: 15 Micro-Capital Business Models ($0-500)
+
+Verdict: EXPLORATION_ONGOING | Confidence: 0.65 | Capital: TIER_0
+
+---
+TIER 1 — HIGH CONVICTION (drill these first)
+
+┌─────┬───────────────────────────────────────────┬─────────────┬───────┬─────────┬───────────────────────────────────────┐
+│  #  │                   Model                   │ P50 Revenue │ Lindy │ Sleep?  │            Compound Asset             │
+├─────┼───────────────────────────────────────────┼─────────────┼───────┼─────────┼───────────────────────────────────────┤
+│ 1   │ SDR/Lead Gen Arbitrage (US SaaS clients)  │ $2K-5K/mo   │ 200yr │ Partial │ Client portfolio + SOPs + reputation  │
+├─────┼───────────────────────────────────────────┼─────────────┼───────┼─────────┼───────────────────────────────────────┤
+│ 2   │ Niche Digital Templates                   │ $200-500/mo │ 100yr │ YES     │ Template library + SEO + email list   │
+├─────┼───────────────────────────────────────────┼─────────────┼───────┼─────────┼───────────────────────────────────────┤
+│ 3   │ Commodity Micro-Brokering (VN agri→ASEAN) │ $500-2K/mo  │ 500yr │ No→Yes  │ Supplier/buyer relationships + routes │
+├─────┼───────────────────────────────────────────┼─────────────┼───────┼─────────┼───────────────────────────────────────┤
+│ 4   │ Newsletter → Paid Community (B2B intel)   │ $100-500/mo │ 300yr │ Partial │ Subscriber list + content archive     │
+└─────┴───────────────────────────────────────────┴─────────────┴───────┴─────────┴───────────────────────────────────────┘
+
+Why these 4: All pass 5-gate filter (Lindy ≥100yr, $0-500 capital, compound component, math works at founder constraints). #1 has highest P50, #3 has highest ceiling, #2 is most passive, #4 builds longest-term asset.
+
+TIER 2 — MODERATE (5 models)
+
+5. Micro-SaaS ($100-300/mo P50) — [RISK:AI_DISRUPTION]
+6. Domain Leasing ($50-200/mo P50) — purely passive but slow
+7. Content Repurposing Agency ($1K-2K/mo P50) — [RISK:AI_DISRUPTION]
+8. Productized Audit ($500-1.5K/mo P50) — needs domain credibility
+9. Affiliate Micro-Site ($50-200/mo P50) — [RISK:CHANNEL_DECAY]
+
+TIER 3 — EMERGING (6 models)
+
+10-15: AI Consulting, POD, Job Board, Airbnb Co-Host, Data Product, White-Label
+
+---
+OPERATOR MASTERY
+
+CCC (Cash Conversion Cycle):
+- Best: Templates = -30 days (cash before cost)
+- Worst: Brokering = +60-90 days (use L/C or prepay to fix)
+- Strategy: Start with negative-CCC model, use float to fund positive-CCC ventures
+
+Staircase (all Tier 1):
+Labor → System → Asset → Platform. Every model has an upgrade path from trading time to owning equity.
+
+Leverage ranking: Templates (#2) = Media leverage. SDR (#1) = Labor→Code. Brokering (#3) = Labor+Capital→Platform. Newsletter (#4) = Media→Community.
+
+---
+RISK TAGS FIRED
+
+1. [RISK:AI_DISRUPTION] — hits Tier 2/3 harder than Tier 1
+2. [RISK:CHANNEL_DECAY] — cold email + affiliate commissions declining
+3. [RISK:POWER_LAW] — MODE outcome = $0 for first 90 days. P50 numbers are SURVIVORS only
+
+---
+DAY 1 ACTION
+
+Pick ONE Tier 1 model. Set up free tools. Send 3 outreach messages or publish 1 piece of content. Measure at Day 7. Kill criteria: zero signal of demand after 7 days = try next Tier 1 model.
+
+To drill any model to instance level (specific buyers, prices, scripts):
+/stage0 outsourced SDR lead gen for US SaaS companies
+/stage0 VN agricultural commodity micro-brokering cashew pepper
+/stage0 niche digital templates [specific industry]
+/stage0 B2B newsletter paid community [specific niche]

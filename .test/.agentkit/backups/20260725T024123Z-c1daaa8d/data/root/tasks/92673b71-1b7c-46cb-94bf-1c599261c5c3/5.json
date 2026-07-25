@@ -1,0 +1,20 @@
+{
+  "id": "5",
+  "subject": "Phase 5: Security Scanner + Policy Engine + SSO",
+  "description": "Add L5 security scanning (PII/credential detection), configurable policy engine (block/warn/allow), enterprise SSO (SAML/SCIM via WorkOS), immutable audit log with hash chain. See phase-05-security-scanner-policy-engine-sso.md",
+  "activeForm": "Building Security + Policy Engine",
+  "status": "pending",
+  "blocks": [
+    "6"
+  ],
+  "blockedBy": [
+    "2"
+  ],
+  "metadata": {
+    "phase": 5,
+    "effort": "6 weeks",
+    "priority": "P2",
+    "planDir": "plans/260603-codeflow-ai-cost-intelligence-engine",
+    "phaseFile": "phase-05-security-scanner-policy-engine-sso.md"
+  }
+}

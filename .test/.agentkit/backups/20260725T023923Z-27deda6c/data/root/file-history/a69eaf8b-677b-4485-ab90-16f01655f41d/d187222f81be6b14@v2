@@ -1,0 +1,145 @@
+#!/usr/bin/env python3
+"""
+LiveThinkRunner — CLI entry point for ThinkRunner with real web research.
+Usage: python live_think_runner.py --query "..." [--max-queries 20] [--format markdown|json]
+
+This is the WIRING that connects the decomposition engine to actual research.
+"""
+
+import argparse
+import json
+import sys
+import os
+from pathlib import Path
+
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(ROOT / ".claude" / "lib"))
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Run ThinkRunner with live web research")
+    parser.add_argument("--query", required=True, help="The question/topic to analyze")
+    parser.add_argument("--max-queries", type=int, default=20, help="Max micro-queries to fire")
+    parser.add_argument("--format", choices=["markdown", "json", "brief"], default="json")
+    parser.add_argument("--delay", type=float, default=1.5, help="Delay between search calls (seconds)")
+    parser.add_argument("--verbose", action="store_true", help="Print progress messages")
+    parser.add_argument("--context", type=str, default=None, help="Path to hierarchical context JSON (L0-L2 pre-built)")
+    parser.add_argument("--export-prompts", action="store_true", help="Run deterministic layers only, export LLM prompts as JSON for external execution")
+    parser.add_argument("--inject-reasoning", type=str, default=None, help="Path to JSON with LLM responses to inject into result")
+    args = parser.parse_args()
+
+    from intelligence.decomposition.web_research_bridge import create_research_fn
+    from intelligence.decomposition.think_runner import ThinkRunner
+
+    research_fn = create_research_fn(delay_s=args.delay)
+
+    def progress(msg):
+        if args.verbose:
+            print(f"[THINK] {msg}", file=sys.stderr)
+
+    deepener = None
+    ladder = None
+    try:
+        from intelligence.decomposition.iterative_deepener import IterativeDeepener
+        deepener = IterativeDeepener(research_fn=research_fn, max_rounds=2, max_deep_queries=6)
+        progress("[WIRE] Iterative deepener loaded")
+    except Exception as e:
+        progress(f"[WIRE] Iterative deepener unavailable: {e}")
+
+    try:
+        from intelligence.decomposition.ladder_bridge import LadderBridge
+        ladder = LadderBridge()
+        if ladder.available:
+            progress("[WIRE] Ladder bridge loaded")
+        else:
+            progress("[WIRE] Ladder bridge: runner script not found, skip")
+            ladder = None
+    except Exception as e:
+        progress(f"[WIRE] Ladder bridge unavailable: {e}")
+
+    hce_stack = None
+    if args.context:
+        try:
+            from intelligence.decomposition.hierarchical_context_engine import build_context_from_json
+            hce_stack = build_context_from_json(args.context)
+            progress(f"[WIRE] Hierarchical context loaded from {args.context}")
+        except Exception as e:
+            progress(f"[WIRE] Hierarchical context load failed: {e}")
+
+    runner = ThinkRunner(research_fn=research_fn, deepener=deepener, ladder=ladder, hierarchical_context=hce_stack)
+    result = runner.think(args.query, progress_fn=progress)
+
+    # Wire technique orchestrator — fallback if ThinkRunner's internal run failed
+    _techniques_already_run = (
+        isinstance(result.technique_results, dict)
+        and "error" not in result.technique_results
+        and result.technique_results.get("results")
+    )
+    if not _techniques_already_run:
+        try:
+            from intelligence.reasoning.techniques.technique_registry import build_default_orchestrator
+            from intelligence.reasoning.techniques.base import TechniqueInput
+
+            # Reconstruct minimal facts from dimension scores when raw facts unavailable
+            from intelligence.hunger.claim_parser import ParsedClaim
+            reconstructed_facts: list[ParsedClaim] = []
+            for dim_name, dim_score in result.dimension_scores.items():
+                score_val = dim_score.score if hasattr(dim_score, "score") else 0.5
+                reconstructed_facts.append(
+                    ParsedClaim(
+                        fact=f"{dim_name}: score={score_val:.2f}",
+                        value=score_val,
+                        dimension=dim_name,
+                        confidence=score_val,
+                        zone_tag="K" if score_val >= 0.75 else "T" if score_val >= 0.5 else "?",
+                    )
+                )
+
+            tech_input = TechniqueInput(
+                facts=reconstructed_facts,
+                context={"query": args.query},
+                founder_context={},
+                ecosystem_map={},
+            )
+            orch = build_default_orchestrator()
+            orch_result = orch.run_all(tech_input)
+            progress(f"Techniques (fallback): {len(orch_result.results)} executed, consensus={orch_result.consensus}")
+
+            # Merge into result — preserve any partial data already present
+            existing = result.technique_results or {}
+            if isinstance(existing, dict) and "results" not in existing:
+                existing["results"] = {}
+            merged = orch_result.to_dict()
+            merged.update({k: v for k, v in existing.items() if k not in merged})
+            result.technique_results = merged
+            progress("Technique consensus merged into result")
+        except Exception as e:
+            progress(f"Techniques unavailable: {e}")
+    else:
+        progress(f"Techniques: already present (consensus={result.technique_results.get('consensus', 'unknown')})")
+
+    if args.format == "json":
+        print(json.dumps(result.to_dict(), indent=2, ensure_ascii=False, default=str))
+    elif args.format == "brief":
+        print(f"Score: {result.overall_score:.2f}")
+        print(f"Facts: {result.facts_used} ({result.facts_by_zone})")
+        print(f"Gaps: {len(result.gaps)}")
+        for rec in result.recommendations:
+            print(f"  → {rec}")
+        if result.strategy:
+            print(f"Strategy: {result.strategy.get('recommended_path', 'N/A')}")
+        if result.strategic_insight and result.strategic_insight.get("causal_chain"):
+            si = result.strategic_insight
+            print(f"Causal: {si['causal_chain'][:120]}")
+            if si.get("asymmetric_play"):
+                print(f"Asymmetric: {si['asymmetric_play'][:120]}")
+            if si.get("verdict"):
+                print(f"Verdict: {si['verdict']} — {si.get('kill_go_reasoning', '')[:100]}")
+    else:
+        print(runner.format(result))
+
+
+if __name__ == "__main__":
+    main()

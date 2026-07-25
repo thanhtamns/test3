@@ -1,0 +1,78 @@
+---
+phase: 1
+title: Signal Scanner
+status: completed
+priority: P1
+effort: 4h
+dependencies: []
+---
+
+# Phase 1: Signal Scanner
+
+## Overview
+
+New Python script `auto-hunt-signal-scanner.py` that scans KB cases + external sources to find unexplored niche opportunities. Pure deterministic Python, no LLM calls. Output: ranked `signal_candidates[]` JSON.
+
+## Requirements
+
+- Functional: Scan 28+ KB cases by domain/verdict, find gaps. Query DuckDuckGo for trending signals. Score and rank candidates.
+- Non-functional: <30s runtime, no API keys required, fail-open (errors → 0 candidates, not crash)
+
+## Architecture
+
+```
+auto-hunt-signal-scanner.py
+  │
+  ├── load_kb_cases()         → read all nui-hunter/kb/cases/*.json
+  ├── analyze_gaps()          → domains with <2 cases, unexplored intersections
+  ├── analyze_verdicts()      → patterns: what KILLED shares, what GO shares
+  ├── scan_external_signals() → DuckDuckGo 5 queries (business model trends)
+  ├── load_founder_profile()  → phamt-260411 from nui-hunter/kb/profiles/
+  ├── score_candidates()      → rank by (gap_score + signal_strength + profile_fit)
+  └── output: signal_candidates[] JSON to stdout
+```
+
+## Related Code Files
+
+- Create: `D:\code\invesments\master_investments\.claude\skills\business\transaction-layer\nui-hunter\scripts\auto-hunt-signal-scanner.py`
+- Read: `nui-hunter/kb/cases/*.json` (28+ files)
+- Read: `nui-hunter/kb/profiles/*.json` (founder profile)
+- Reference: `stage0-local-orchestrator.py` (pattern for module loading)
+
+## Implementation Steps
+
+1. Create `auto-hunt-signal-scanner.py` with argparse CLI (`--kb-dir`, `--profile-dir`, `--max-candidates`, `--json`)
+2. Implement `load_kb_cases()` — glob `kb/cases/*.json`, parse each, collect domain/verdict/date
+3. Implement `analyze_gaps()`:
+   - Count cases per domain → domains with <2 cases = gap
+   - Cross-reference domains against a curated list of 15 high-value domains (from niche-map-v5): `saas`, `b2b_service`, `commerce`, `export`, `digital_product`, `agency`, `marketplace`, `consulting`, `content`, `education`, `fintech`, `healthtech`, `logistics`, `real_estate`, `ai_tools`
+   - Domains with 0 cases in KB = primary gap candidates
+4. Implement `analyze_verdicts()`:
+   - Group by verdict class (GO/KILL/CONDITIONAL/EXPLORATION)
+   - Extract common kill reasons (capital, competition, margin)
+   - Find domains where KILL rate >75% → avoid. Domains where GO rate >50% → explore adjacent
+5. Implement `scan_external_signals()`:
+   - Use `urllib.request` to query DuckDuckGo HTML search (no API key)
+   - 5 queries: "emerging business models 2026", "zero capital business {month}", "micro-saas trends {month}", "service business opportunities Vietnam", "bootstrap business model profitable"
+   - Parse titles + snippets for signal keywords (new_platform, policy_change, tool_launch, complaint_pattern)
+   - Score each signal: ≥3 unique keywords = STRONG, 1-2 = MEDIUM, 0 = SKIP
+6. Implement `load_founder_profile()` — find latest profile JSON, extract capital_tier, skills, location
+7. Implement `score_candidates()`:
+   - Each candidate gets composite score: `gap_score (0-40) + signal_strength (0-30) + profile_fit (0-30)`
+   - Profile fit: does candidate domain match founder skills? (dev→saas/ai_tools=high, commerce=medium)
+   - Sort descending, return top `max_candidates` (default 10)
+8. Write tests: `test_auto_hunt_signal_scanner.py` — mock KB with 5 cases, verify gap detection, scoring
+
+## Success Criteria
+
+- [ ] Script runs <30s on 28 cases
+- [ ] Correctly identifies domains with 0 cases as primary gaps
+- [ ] External signal scan returns ≥1 signal per run (or logs "no signals" gracefully)
+- [ ] Output JSON matches schema: `{candidates: [{domain, gap_score, signal_strength, profile_fit, total_score, source_evidence}]}`
+- [ ] Tests pass: gap detection, scoring, empty KB edge case, profile loading
+
+## Risk Assessment
+
+- DuckDuckGo rate limiting → mitigation: 5 queries max, 2s delay between, fail-open
+- KB schema inconsistency across 28 cases → mitigation: graceful parsing with try/except per file
+- Profile file missing → mitigation: default profile with `_needs_validation` flag

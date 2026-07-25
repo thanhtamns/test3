@@ -1,0 +1,77 @@
+---
+title: "Hunt V5 — Anomaly-First Intelligence Engine"
+description: "Replace ChatGPT-level /hunt output with 3-brain anomaly detection engine producing specific price deltas, forced flow signals, and cross-referenced anomaly cards with margin calcs"
+status: completed
+priority: P1
+branch: "master"
+tags: [hunt, intelligence, anomaly, brains]
+blockedBy: []
+blocks: []
+created: "2026-05-24T13:36:27.296Z"
+createdBy: "ck:plan"
+source: skill
+---
+
+# Hunt V5 — Anomaly-First Intelligence Engine
+
+## Overview
+
+/hunt currently produces generic "15 business models" lists — ChatGPT-level output. The IntelligenceController (1,688 LOC, 20/20 tests) EXISTS but is NOT WIRED into /hunt. The `hunt-lib/` directory is EMPTY — all referenced scanners are non-existent.
+
+V5 replaces the entire architecture with:
+- **3 deterministic Brain engines** (Price Delta, Forced Flow, Anomaly Cross-Reference)
+- **Graph Engine** (refactored IntelligenceController with anomaly node support)
+- **Anomaly Store** (DuckDB persistence for compound knowledge across runs)
+
+Design principle: **Python controls search strategy, LLM parses raw text only.** Every decision path is testable, reproducible, budget-controlled (75 web calls max).
+
+## Target Repo
+
+`D:\code\invesments\master_investments` — all code changes go here, NOT _mmo.
+
+## Key Files (Existing)
+
+| File | Status |
+|------|--------|
+| `.claude/lib/intelligence/controller/intelligence_controller.py` | MODIFY — add anomaly node support |
+| `.claude/lib/intelligence/controller/money_flow_graph.py` | MODIFY — add anomaly node/edge types |
+| `.claude/lib/intelligence/controller/hypothesis_generator.py` | MODIFY — generate from Brain 1+2 |
+| `.claude/commands/hunt.md` | REPLACE — v4→v5 spec |
+| `.claude/commands/hunt-checklist.md` | REPLACE — v4→v5 checklist |
+
+## Key Files (New)
+
+| File | Purpose |
+|------|---------|
+| `.claude/lib/intelligence/brains/models.py` | PriceDelta, ForcedFlow, AnomalyCard dataclasses |
+| `.claude/lib/intelligence/brains/price_delta_engine.py` | Brain 1: cross-market price spreads |
+| `.claude/lib/intelligence/brains/forced_flow_engine.py` | Brain 2: regulatory mandate scanning |
+| `.claude/lib/intelligence/brains/anomaly_crossref.py` | Brain 3: triangulation + scoring |
+| `.claude/lib/intelligence/store/anomaly_store.py` | DuckDB CRUD for anomaly persistence |
+| `.claude/lib/intelligence/store/schema.sql` | DDL for anomaly tables |
+
+## Phases
+
+| Phase | Name | Status | Effort |
+|-------|------|--------|--------|
+| 1 | [Foundation Models + Store](./phase-01-foundation-models-store.md) | Complete | 2-3d |
+| 2 | [Brain 1 Price Delta Engine](./phase-02-brain-1-price-delta-engine.md) | Complete | 2-3d |
+| 3 | [Brain 2 Forced Flow Engine](./phase-03-brain-2-forced-flow-engine.md) | Complete | 2-3d |
+| 4 | [Brain 3 Anomaly Cross-Reference](./phase-04-brain-3-anomaly-cross-reference.md) | Complete | 2d |
+| 5 | [Graph Engine Integration](./phase-05-graph-engine-integration.md) | Complete | 1-2d |
+| 6 | [Command Spec + Output](./phase-06-command-spec-output.md) | Complete | 1-2d |
+| 7 | [End-to-End Testing + Validation](./phase-07-end-to-end-testing-validation.md) | Complete | 1-2d |
+
+**Total: ~14-18 days**
+
+## Dependencies
+
+- Requires DuckDB pip package in `.claude/skills/.venv/`
+- IntelligenceController already exists and passes 20/20 tests — modifications must not break existing tests
+- hunt.md v4 must be archived before v5 replaces it
+
+## Open Questions (from brainstorm)
+
+1. Should /hunt --pain and /hunt --flow modes survive as aliases? Or pure /hunt only?
+2. Should Anomaly Cards auto-generate deal cards (for /hunt deals pipeline)? Or keep separate?
+3. Should Brain 2 also scan VN government procurement portals (muasamcong.mpi.gov.vn)?

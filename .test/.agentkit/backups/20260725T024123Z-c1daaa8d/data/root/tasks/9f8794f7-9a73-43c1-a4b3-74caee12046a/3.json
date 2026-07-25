@@ -1,0 +1,17 @@
+{
+  "id": "3",
+  "subject": "Phase 3: Cloud Harden (P0+P1+P2)",
+  "description": "Fix unverified JWT fallback + X-Tenant-ID spoofing (P0 security), move Stripe webhook out of tenant auth, add ClickHouse healthz probe (with fakeStorage Ping), fix CSV export tenant isolation in dashboard, parameterize SQL queries. See phase-03-cloud-harden-p0-p1-p2.md",
+  "status": "pending",
+  "blocks": [
+    "4"
+  ],
+  "blockedBy": [],
+  "metadata": {
+    "phase": 3,
+    "priority": "P1",
+    "effort": "4h",
+    "planDir": "plans/260604-full-system-review",
+    "phaseFile": "phase-03-cloud-harden-p0-p1-p2.md"
+  }
+}

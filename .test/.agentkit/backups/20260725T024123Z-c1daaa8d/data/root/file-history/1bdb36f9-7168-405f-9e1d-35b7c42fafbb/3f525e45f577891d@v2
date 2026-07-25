@@ -1,0 +1,78 @@
+"""
+ResearchRequestGenerator — converts gaps into targeted, structured LLM queries.
+Ensures LLM is only asked specific questions, not open-ended research.
+"""
+
+from dataclasses import dataclass
+from typing import Optional
+
+from .gap_detector import Gap
+
+
+SCHEMA_MAP = {
+    "competitor": "competitors",
+    "failure": "kill_signals",
+    "pricing": "generic",
+    "market_size": "market_size",
+    "regulatory": "generic",
+    "success_pattern": "generic",
+    "staleness": "generic",
+}
+
+TOKEN_ESTIMATES = {
+    "competitors": 800,
+    "kill_signals": 600,
+    "market_size": 300,
+    "generic": 500,
+}
+
+COST_PER_1K_TOKENS = 0.003
+
+
+@dataclass
+class ResearchRequest:
+    query: str
+    schema_name: str
+    priority: int
+    estimated_cost_usd: float
+    domain: str
+    gap_type: str
+
+    def to_dict(self) -> dict:
+        return {
+            "query": self.query,
+            "schema_name": self.schema_name,
+            "priority": self.priority,
+            "estimated_cost_usd": self.estimated_cost_usd,
+            "domain": self.domain,
+            "gap_type": self.gap_type,
+        }
+
+
+class ResearchRequestGenerator:
+    def __init__(self, budget_cap_usd: float = 1.0):
+        self.budget_cap = budget_cap_usd
+
+    def generate(self, gaps: list[Gap]) -> list[ResearchRequest]:
+        requests = []
+        running_cost = 0.0
+
+        for gap in sorted(gaps, key=lambda g: g.priority):
+            schema_name = SCHEMA_MAP.get(gap.gap_type, "generic")
+            est_tokens = TOKEN_ESTIMATES.get(schema_name, 500)
+            est_cost = (est_tokens / 1000) * COST_PER_1K_TOKENS
+
+            if running_cost + est_cost > self.budget_cap:
+                break
+
+            requests.append(ResearchRequest(
+                query=gap.suggested_query,
+                schema_name=schema_name,
+                priority=gap.priority,
+                estimated_cost_usd=round(est_cost, 4),
+                domain=gap.domain,
+                gap_type=gap.gap_type,
+            ))
+            running_cost += est_cost
+
+        return requests

@@ -1,0 +1,74 @@
+---
+title: "CODEFLOW Differentiation MVP — File Read Dedup, Session Context, Waste Detection"
+description: "Transform CODEFLOW from RTK clone to genuinely differentiated product by intercepting Read/Grep/Glob tools, tracking session context, and detecting waste patterns"
+status: pending
+priority: P1
+effort: "2 weeks"
+branch: "master"
+tags: [rust, sqlite, hooks, dedup, session-tracking]
+blockedBy: [260603-codeflow-ai-cost-intelligence-engine]
+blocks: []
+created: "2026-06-04"
+createdBy: "ck:plan"
+source: skill
+---
+
+# CODEFLOW Differentiation MVP
+
+## Overview
+
+CODEFLOW Phase 1 shipped an RTK-equivalent CLI (Bash compression + command dedup). This plan adds the 3 features RTK architecturally cannot copy: **File Read Dedup** (intercept Read/Grep/Glob via hooks), **Session Context Model** (track all tool calls per session), and **Waste Pattern Detection** (`codeflow stats --waste`).
+
+These features shift CODEFLOW's token coverage from 25-35% (Bash only) to 80-95% (all tools), with target savings of ≥50% per session.
+
+**Source:** [brainstorm-differentiation-report.md](./brainstorm-differentiation-report.md)
+
+## Tech Stack (additions to Phase 1)
+
+| Component | Technology | Rationale |
+|-----------|-----------|-----------|
+| Session log | SQLite WAL (existing DB) | New table in existing `codeflow.db` |
+| File hash | blake3 (existing dep) | Already used for command dedup |
+| Hook handlers | Rust (existing binary) | Extend existing `hook pre-tool-use` / `hook post-tool-use` |
+| mtime check | `std::fs::metadata` | Zero new dependencies |
+
+**Zero new dependencies added.** All features built on existing Rust crates.
+
+## Phases
+
+| Phase | Name | Status | Effort | Priority |
+|-------|------|--------|--------|----------|
+| 1 | [Session Context Model](./phase-01-session-context-model.md) | Pending | 3d | P1 |
+| 2 | [File Read Dedup (Read/Grep/Glob Hooks)](./phase-02-file-read-dedup-read-grep-glob-hooks.md) | Pending | 3d | P1 |
+| 3 | [Waste Pattern Detection](./phase-03-waste-pattern-detection.md) | Pending | 2d | P2 |
+| 4 | [Hook Installer Update + Integration Tests](./phase-04-hook-installer-update-integration-tests.md) | Pending | 2d | P1 |
+
+## Execution Order
+
+```
+Phase 1 (Session Context) ──→ Phase 2 (File Read Dedup) ──→ Phase 4 (Hook Install + E2E)
+                                      │
+                                      └──→ Phase 3 (Waste Detection)
+```
+
+- Phase 1 is foundation — session log table used by all other phases
+- Phase 2 depends on Phase 1 (needs session log for recency checks)
+- Phase 3 depends on Phase 1 (analyzes session log for patterns)
+- Phase 4 depends on Phase 2 (tests the full hook pipeline end-to-end)
+
+## Success Criteria
+
+| Metric | Target |
+|--------|--------|
+| Total token savings (L1 + L2 + L2.5) | ≥ 50% on typical session |
+| File Read Dedup hit rate | ≥ 60% of re-reads detected |
+| Latency overhead per hook call | < 5ms p99 |
+| Tool call tracking coverage | 100% of Read/Grep/Glob/Bash |
+| Waste patterns identified | ≥ 3 per 30min session |
+| New dependencies added | 0 |
+
+## Dependencies
+
+- **Depends on:** Phase 1 CLI (complete) — existing binary, SQLite DB, blake3, filter pipeline
+- **Blocked by:** Nothing — all prerequisites met
+- **Cross-plan:** Extends `260603-codeflow-ai-cost-intelligence-engine` Phase 1

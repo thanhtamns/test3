@@ -1,0 +1,249 @@
+---
+phase: 3
+title: "Reasoning Chain Engine"
+status: pending
+priority: P1
+effort: "4-5d"
+dependencies: [KDE-complete]
+---
+
+# Phase 3: Reasoning Chain Engine
+
+## Overview
+
+Replace LLM chain-of-thought with local if-then reasoning chains distilled from knowledge base. System decomposes problems into atomic questions, answers each locally, chains conclusions into verdict. LLM only called for unanswerable atoms.
+
+## Requirements
+
+- Functional: Decompose any opportunity query into atomic questions. Answer 80%+ atoms locally. Chain answers into verdict with confidence. Contradiction detection between chains.
+- Non-functional: Full chain execution <500ms. Deterministic (same input → same output). Auditable chain trace.
+
+## Architecture
+
+```
+Opportunity Query
+  │
+  ▼
+ProblemDecomposer
+  │ decomposes into 10-20 atomic questions
+  ▼
+┌─────────────────────────────────┐
+│ AtomicResolver (per question)   │
+│  1. Check decision_vectors DB   │
+│  2. Check kill_signals          │
+│  3. Check pattern_rules         │
+│  4. Check fact_provenance       │
+│  → Resolved locally? YES → answer + confidence
+│  → Resolved locally? NO  → mark as GAP
+└─────────────────────────────────┘
+  │
+  ▼
+ChainAssembler
+  │ chains all resolved answers
+  │ detects contradictions
+  │ computes aggregate confidence
+  ▼
+VerdictGenerator
+  │ KILL / PASS / NEEDS_LLM (for gaps only)
+  ▼
+ContradictionDetector
+  │ flags if chain conclusions conflict with existing knowledge
+  ▼
+ChainTracer (audit log)
+```
+
+## Related Code Files
+
+**Create:**
+- `.claude/lib/intelligence/reasoning/problem-decomposer.py`
+- `.claude/lib/intelligence/reasoning/atomic-resolver.py`
+- `.claude/lib/intelligence/reasoning/chain-assembler.py`
+- `.claude/lib/intelligence/reasoning/verdict-generator.py`
+- `.claude/lib/intelligence/reasoning/contradiction-detector.py`
+- `.claude/lib/intelligence/reasoning/chain-tracer.py`
+- `.claude/lib/intelligence/reasoning/__init__.py`
+
+**Modify:**
+- `.claude/lib/intelligence/knowledge-distillation/local-reasoning-engine.py` — integrate chain reasoning as upgrade path
+- `.claude/skills/business/deep-intelligence/deep_reasoning_runner.py` — replace open LLM questions with chain-first
+
+## Implementation Steps
+
+### Step 1: Problem Decomposer (~1d)
+
+Template-based decomposition. NOT LLM-powered.
+
+```python
+class ProblemDecomposer:
+    TEMPLATES = {
+        "opportunity_analysis": [
+            "What industry is this in?",
+            "Who are the top 5 competitors?",
+            "What is the entry capital required?",
+            "What is the business model?",
+            "What moat type is possible?",
+            "What leverage type applies (code/media/capital/labor)?",
+            "What is the founder-market fit score?",
+            "Are there kill signals matching this pattern?",
+            "What is the failure rate for this category?",
+            "What is the realistic time-to-revenue?",
+            "Is there platform dependency risk?",
+            "What is the TAM for this niche?",
+            "Is timing favorable (market cycle)?",
+            "What compound mechanism exists?",
+            "Are there regulatory barriers?",
+        ],
+        "competitor_analysis": [...],
+        "pricing_analysis": [...],
+    }
+
+    def decompose(self, query: str, query_type: str) -> list[AtomicQuestion]:
+        template = self.TEMPLATES.get(query_type, self.TEMPLATES["opportunity_analysis"])
+        return [AtomicQuestion(q, query_type) for q in template]
+```
+
+### Step 2: Atomic Resolver (~1.5d)
+
+```python
+class AtomicResolver:
+    def __init__(self, vectors_db, kill_signals, pattern_rules, provenance_db):
+        self.sources = [vectors_db, kill_signals, pattern_rules, provenance_db]
+
+    def resolve(self, question: AtomicQuestion, context: dict) -> Resolution:
+        # 1. Extract key features from question + context
+        # 2. Search each source for matching knowledge
+        # 3. Rank matches by relevance + freshness + confidence
+        # 4. If best match confidence >= 0.6 → RESOLVED
+        # 5. If no match or confidence < 0.6 → GAP
+        return Resolution(
+            question=question,
+            answer=best_match.answer if resolved else None,
+            confidence=best_match.confidence if resolved else 0.0,
+            source=best_match.source if resolved else None,
+            status="RESOLVED" | "GAP",
+        )
+```
+
+### Step 3: Chain Assembler + Contradiction Detector (~1d)
+
+```python
+class ChainAssembler:
+    def assemble(self, resolutions: list[Resolution]) -> ChainResult:
+        resolved = [r for r in resolutions if r.status == "RESOLVED"]
+        gaps = [r for r in resolutions if r.status == "GAP"]
+
+        # Contradiction detection
+        contradictions = self._detect_contradictions(resolved)
+
+        # Aggregate confidence = geometric mean of individual confidences
+        # (one low-confidence answer drags down entire chain)
+        if resolved:
+            aggregate_conf = math.exp(sum(math.log(r.confidence) for r in resolved) / len(resolved))
+        else:
+            aggregate_conf = 0.0
+
+        return ChainResult(
+            resolved=resolved,
+            gaps=gaps,
+            contradictions=contradictions,
+            aggregate_confidence=aggregate_conf,
+            coverage_ratio=len(resolved) / (len(resolved) + len(gaps)),
+        )
+
+    def _detect_contradictions(self, resolutions: list[Resolution]) -> list[Contradiction]:
+        # Check: if moat_type=network_effect but competitor_count > 20 → contradiction
+        # Check: if entry_capital=low but TAM > $1B → suspicious
+        # Check: if failure_rate > 80% but kill_signals=0 → data gap
+        # Rules stored in contradiction_rules.json
+```
+
+### Step 4: Verdict Generator (~0.5d)
+
+```python
+class VerdictGenerator:
+    def generate(self, chain: ChainResult) -> Verdict:
+        # Kill conditions (any kill signal → KILL immediately)
+        for r in chain.resolved:
+            if r.source == "kill_signals":
+                return Verdict("KILL", confidence=r.confidence, reason=r.answer)
+
+        # Coverage gate
+        if chain.coverage_ratio < 0.5:
+            return Verdict("NEEDS_LLM", confidence=0.0, gaps=chain.gaps)
+
+        # Contradiction gate
+        if chain.contradictions:
+            return Verdict("NEEDS_LLM", confidence=0.0, contradictions=chain.contradictions)
+
+        # Score-based verdict
+        if chain.aggregate_confidence >= 0.7:
+            score = self._compute_score(chain.resolved)
+            if score >= 7.0:
+                return Verdict("PASS", confidence=chain.aggregate_confidence, score=score)
+            else:
+                return Verdict("WEAK_PASS", confidence=chain.aggregate_confidence, score=score)
+        else:
+            return Verdict("NEEDS_LLM", confidence=chain.aggregate_confidence, gaps=chain.gaps)
+```
+
+### Step 5: Chain Tracer (~0.5d)
+
+```python
+class ChainTracer:
+    def trace(self, query, decomposition, resolutions, chain, verdict) -> TraceRecord:
+        """Full audit trail for every verdict."""
+        record = {
+            "timestamp": datetime.now().isoformat(),
+            "query": query,
+            "atoms_total": len(decomposition),
+            "atoms_resolved": len(chain.resolved),
+            "atoms_gap": len(chain.gaps),
+            "contradictions": len(chain.contradictions),
+            "aggregate_confidence": chain.aggregate_confidence,
+            "verdict": verdict.type,
+            "chain_detail": [
+                {"question": r.question.text, "answer": r.answer, "confidence": r.confidence, "source": r.source}
+                for r in resolutions
+            ],
+        }
+        # Append to chain_traces.jsonl
+        self._append_jsonl(record)
+        return record
+```
+
+### Step 6: Wire into deep_reasoning_runner.py (~0.5d)
+
+```python
+# BEFORE: send entire problem to LLM
+# AFTER:
+chain_engine = ReasoningChainEngine(db_paths)
+verdict = chain_engine.reason(query, context)
+
+if verdict.type == "NEEDS_LLM":
+    # Only send GAP questions to LLM, not the whole problem
+    llm_queries = [gap.suggested_query for gap in verdict.gaps]
+    llm_results = intelligence_llm.query_batch(llm_queries)
+    # Distill LLM results → local DB (for next time)
+    distiller.distill(llm_results)
+    # Re-run chain with new knowledge
+    verdict = chain_engine.reason(query, context)
+```
+
+## Success Criteria
+
+- [ ] Decomposer generates 10-20 atomic questions per query type
+- [ ] Atomic resolver matches against all 4 local sources
+- [ ] Chain execution <500ms for 90%+ of cases
+- [ ] Contradiction detector catches obvious conflicts (tested on 10 cases)
+- [ ] Verdict matches LLM verdict on 80%+ of cases (backtested on 50 historical)
+- [ ] Chain trace JSONL is auditable — every verdict has full reasoning trail
+- [ ] NEEDS_LLM rate < 20% for domains with 20+ vectors
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|---|---|
+| Template decomposition too rigid | Add "custom_questions" field, expandable per domain |
+| Atomic resolver matches wrong vectors | Weighted feature matching (existing in local-reasoning-engine) |
+| Geometric mean too harsh on confidence | Allow configurable aggregation (geometric/harmonic/min) |
+| Chain can't handle nuanced cases | NEEDS_LLM fallback is expected for complex novel cases |

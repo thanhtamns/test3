@@ -1,0 +1,166 @@
+---
+phase: 7
+title: "Validation and Calibration"
+status: pending
+priority: P2
+effort: "2d"
+dependencies: [6]
+---
+
+# Phase 7: Validation and Calibration
+
+## Overview
+
+Validate the full meta-evolution system works correctly, calibrate initial parameters, and establish monitoring for ongoing health. This is the "burn-in" phase — run controlled experiments to prove the system improves verdicts.
+
+**AEVO parallel:** AEVO's ablation study proved the harness prevents reward hacking. We need similar validation that our meta-edits improve Brier, not just change knobs.
+
+## Requirements
+
+**Functional:**
+- Replay 10+ historical cases through new system to validate trace + attribution
+- Establish Brier baseline before meta-evolution enabled
+- Run first meta-edit cycle on real accumulated errors
+- Monitor for 2 weeks, collect evidence of improvement/stability
+
+**Non-functional:**
+- Zero production impact during validation (shadow mode)
+- All validation results logged for audit
+- Clear GO/NO-GO criteria for full activation
+
+## Related Code Files
+
+**Target repo:** `D:/code/invesments/master_investments`
+
+- Create: `.claude/lib/intelligence/mechanism/validation_runner.py`
+- Create: `data/calibration/meta-evolution-validation.json` — validation results
+- Create: `.claude/lib/intelligence/mechanism/shadow_mode.py` — shadow evaluation
+
+## Implementation Steps
+
+### Step 1: Historical replay validation
+
+Run 10 existing cases (with known outcomes) through the new system:
+- Load case from kb/cases/
+- Simulate trace (reconstruct from chain_traces.jsonl if available)
+- Run error attribution
+- Check: does attribution correctly identify the step that went wrong?
+
+```python
+class ValidationRunner:
+    def replay_case(self, case_id: str) -> ValidationResult:
+        case = self._load_case(case_id)
+        trace = self._reconstruct_or_load_trace(case_id)
+        
+        if not trace:
+            return ValidationResult(case_id, status="no_trace")
+        
+        # Run attribution
+        errors = self.attributor.attribute(
+            case_id, case["actual_outcome"], case["predicted_verdict"])
+        
+        # Validate: does attribution make sense?
+        return ValidationResult(
+            case_id=case_id,
+            predicted=case["predicted_verdict"],
+            actual=case["actual_outcome"],
+            errors_found=len(errors),
+            top_error_knob=errors[0].knobs[0] if errors else None,
+            plausible=self._assess_plausibility(errors, case)
+        )
+```
+
+### Step 2: Establish Brier baseline
+
+Calculate current Brier score across all cases with outcomes:
+```python
+def establish_baseline():
+    brier_scores = load_brier_scores()
+    return {
+        "n_cases": len(brier_scores),
+        "mean_brier": mean(brier_scores),
+        "p25_brier": percentile(brier_scores, 25),
+        "p75_brier": percentile(brier_scores, 75),
+        "timestamp": now(),
+        "meta_evolution_active": False
+    }
+```
+
+This becomes the comparison point. Meta-evolution succeeds if mean Brier improves.
+
+### Step 3: Shadow mode (first 2 weeks)
+
+Meta-edit controller PROPOSES but does NOT apply edits:
+```python
+class ShadowMode:
+    def run(self, controller: MetaEditController) -> ShadowResult:
+        """Run controller but don't commit changes."""
+        result = controller.run(dry_run=True)
+        self._log_shadow_result(result)
+        return result
+```
+
+After 2 weeks of shadow results:
+- Review proposed edits: do they make sense?
+- Count: how many would have been blocked by safety?
+- Simulate: if we HAD applied them, would Brier improve?
+
+### Step 4: Controlled activation
+
+GO criteria (ALL must pass):
+- [ ] ≥10 historical replays show plausible attribution
+- [ ] Shadow mode produced ≥3 sensible edit proposals
+- [ ] No shadow edit proposal violates safety invariants
+- [ ] Simulated Brier improvement ≥5% (or at least no regression)
+
+NO-GO criteria (ANY triggers pause):
+- [ ] Attribution consistently wrong (assigns errors to correct steps)
+- [ ] Shadow mode produces only 1 edit type (over-fitting on single failure mode)
+- [ ] Safety harness blocks >50% of proposals (bounds too tight OR controller too aggressive)
+
+### Step 5: Monitoring dashboard metrics
+
+Post-activation, track weekly:
+- Brier score trend (rolling 10-case window)
+- Meta-edits applied vs reverted ratio
+- Safety violations count
+- Time between edits (should be stable, not accelerating)
+- Knob drift from original values
+
+### Step 6: Calibration of meta-parameters
+
+The meta-edit controller itself has parameters to tune:
+- `segment_size`: 5 (how many verdicts before evaluating edit)
+- `min_errors_to_propose`: 3 (minimum errors before proposing)
+- `trigger_interval`: 5 (outcomes between controller runs)
+- `max_edits_per_week`: 3
+- `revert_threshold`: 0.10 (10% Brier regression)
+
+Start conservative. If system is too slow to improve → reduce segment_size and min_errors. If too aggressive → increase.
+
+## Success Criteria
+
+- [ ] 10+ historical replays completed with plausible attribution
+- [ ] Brier baseline established with confidence interval
+- [ ] 2-week shadow mode produces sensible proposals
+- [ ] GO/NO-GO decision made with evidence
+- [ ] Monitoring dashboard operational
+- [ ] First REAL meta-edit applied and tracked
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|------|------------|
+| Insufficient cases for validation | Use all 49 cases; accept lower confidence |
+| Shadow mode takes too long | Can compress to 1 week if 5+ outcomes logged |
+| Baseline Brier too noisy | Use rolling window, not point estimate |
+
+## Definition of Done
+
+The meta-evolution system is DONE when:
+1. It has autonomously proposed AND applied ≥1 knob edit
+2. That edit was KEPT after segment evaluation (not reverted)
+3. Brier score did not regress over the segment
+4. User ran /meta-status and confirmed system health
+
+At that point, the system has achieved **AEVO-level outer loop**: it observes, edits mechanism, evaluates, and keeps successful edits — all without human intervention.

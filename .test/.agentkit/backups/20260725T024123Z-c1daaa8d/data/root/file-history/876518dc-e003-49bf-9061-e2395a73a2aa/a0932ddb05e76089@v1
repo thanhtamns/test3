@@ -1,0 +1,85 @@
+---
+title: "Full System Review — Quality, Security & Test Hardening"
+description: "Fix bugs, eliminate DRY violations, harden auth/security, add test coverage across CLI (Rust), Cloud (Go), Dashboard (Next.js)"
+status: pending
+priority: P1
+effort: "20h"
+branch: "master"
+tags: [rust, go, nextjs, security, testing, refactor, quality]
+blockedBy: []
+blocks: []
+created: "2026-06-04"
+createdBy: "ck:plan"
+source: skill
+---
+
+# Full System Review — Quality, Security & Test Hardening
+
+## Overview
+
+System-wide quality pass across all 3 tiers. Fixes 2 security vulnerabilities (unverified JWT + X-Tenant-ID spoofing), 3 bugs (race condition, semantic mismatch, event type collision + batchToRows overwrite), 3 DRY violations, and adds test coverage for 10+ untested modules. Originated from [brainstorm-report.md](./brainstorm-report.md).
+
+**Research corrections vs brainstorm:**
+- D2 (body limits) — PARTIALLY VALID. Webhook (64KB) and events (10MB) have limits. Other POST endpoints need audit. Don't dismiss entirely.
+- D3 (SQL injection) — NOT EXPLOITABLE. `days` is validated int. Fragile pattern worth fixing for maintainability.
+- G5 (WebSocket reconnection) — MISIDENTIFIED. Already implemented with exponential backoff + max 10 retries.
+
+## Phases
+
+| Phase | Name | Status | Effort | Priority |
+|-------|------|--------|--------|----------|
+| 1 | [CLI Fix & Standardize (P0+P1)](./phase-01-cli-fix-standardize-p0-p1.md) | Pending | 4h | P1 |
+| 2 | [CLI Test Coverage (P2)](./phase-02-cli-test-coverage-p2.md) | Pending | 4h | P2 |
+| 3 | [Cloud Harden (P0+P1+P2)](./phase-03-cloud-harden-p0-p1-p2.md) | Pending | 5h | P0 |
+| 4 | [Cloud Test Coverage (P2)](./phase-04-cloud-test-coverage-p2.md) | Pending | 3h | P2 |
+| 5 | [Dashboard Polish (P3)](./phase-05-dashboard-polish-p3.md) | Pending | 2h | P3 |
+| 6 | [Infrastructure & DevOps (P3+P4)](./phase-06-infrastructure-devops-p3-p4.md) | Pending | 2h | P3 |
+
+## Execution Order
+
+```
+Phase 1 (CLI Fix) ──→ Phase 2 (CLI Tests)
+Phase 3 (Cloud Harden) ──→ Phase 4 (Cloud Tests)
+Phase 5 (Dashboard) ──────┐
+Phase 6 (Infrastructure) ─┘ (independent)
+```
+
+- Phases 1+2 and 3+4 are two parallel tracks (CLI vs Cloud)
+- Phase 5 and 6 are independent, can run in any order
+- Phase 2 depends on Phase 1 (tests validate the refactored code)
+- Phase 4 depends on Phase 3 (tests validate the hardened endpoints)
+
+## Dependencies
+
+- **Cross-plan:** Touches same files as `260604-codeflow-differentiation-mvp` (complete) and `260603-codeflow-ai-cost-intelligence-engine` (in-progress Phase 3+). No blocking conflicts — this plan fixes existing code, doesn't change APIs.
+- **Proto change (A7):** If adding `EventType::Both`, requires proto regeneration. Coordinate with any in-flight proto changes.
+
+## Red Team Review
+
+### Session — 2026-06-04
+**Findings:** 15 (14 accepted, 1 rejected)
+**Severity breakdown:** 5 Critical, 4 High, 5 Medium
+
+| # | Finding | Severity | Disposition | Applied To |
+|---|---------|----------|-------------|------------|
+| 1 | X-Tenant-ID header accepted without verification — tenant spoofing | Critical | Accept | Phase 3 |
+| 2 | `batchToRows` overwrites compression with dedup data — plan claim false | Critical | Accept | Phase 1, Phase 3 |
+| 3 | Stripe webhook behind `withTenantAuth` — tightening auth breaks webhooks | Critical | Accept | Phase 3 |
+| 4 | Path encoding change is breaking API change — cut entirely (YAGNI) | Critical | Accept | Phase 5 |
+| 5 | `fakeStorage` needs `Ping` method — missing from plan file list | Critical | Accept | Phase 3 |
+| 6 | `OptionalRow` removal needs `use rusqlite::OptionalExtension` import | High | Accept | Phase 1 |
+| 7 | Module-level `throw` for tenant validation crashes entire app | High | Accept | Phase 5 |
+| 8 | `estimateCost` model-aware pricing is YAGNI — no model data in API | High | Accept | Phase 5 |
+| 9 | `CODEFLOW_ENV` doesn't exist — use JWKS URL presence instead | High | Accept | Phase 3 |
+| 10 | CSV export is behind auth — reframe as tenant isolation fix | Medium | Accept | Phase 3 |
+| 11 | `handleHealthz` type is `handler` (lowercase), must stay on `root` mux | Medium | Accept | Phase 3 |
+| 12 | D2 body limits not fully dismissed — audit all POST endpoints | Medium | Accept | plan.md |
+| 13 | Proto sync verification is manual busywork — add CI check instead | Medium | Accept | Phase 6 |
+| 14 | Test count "80" is unverified magic number | Medium | Accept | Phase 1, Phase 2 |
+| 15 | Migration framework is YAGNI | Medium | Reject | — (2h prep is reasonable) |
+
+### Whole-Plan Consistency Sweep
+- Files reread: plan.md, phase-01 through phase-06
+- Decision deltas checked: 14
+- Reconciled stale references: 8 (batchToRows claim, OptionalRow, type name, CSV framing, tenant validation, path encoding cut, model-aware cut, test count)
+- Unresolved contradictions: 0

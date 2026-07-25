@@ -1,0 +1,85 @@
+"""DGM Proposer — Loop 3 self-rewriting code proposals.
+
+Reads evolution infrastructure code + performance signals,
+generates targeted code modification proposals via LLM.
+Scope-locked to evolution/ directory only.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Callable, Optional
+
+MIN_CYCLES_BETWEEN_PROPOSALS = 50
+
+
+@dataclass
+class DGMProposal:
+    target_file: str
+    patch: str
+    rationale: str
+    generated_at: str
+
+
+class DGMProposer:
+    def __init__(
+        self,
+        evolution_dir: Path,
+        proposals_dir: Path,
+        llm_call: Callable[[str], str],
+    ):
+        self.evolution_dir = Path(evolution_dir)
+        self.proposals_dir = Path(proposals_dir)
+        self.llm_call = llm_call
+
+    def should_propose(self, cycles_since_last: int) -> bool:
+        return cycles_since_last >= MIN_CYCLES_BETWEEN_PROPOSALS
+
+    def gather_context(self, performance_data: Optional[dict] = None) -> dict:
+        source_files = {}
+        for f in self.evolution_dir.glob("*.py"):
+            source_files[f.name] = f.read_text(encoding="utf-8")
+        return {
+            "source_files": source_files,
+            "performance": performance_data or {},
+        }
+
+    def generate_proposal(self, performance_data: Optional[dict] = None) -> DGMProposal:
+        context = self.gather_context(performance_data)
+        prompt = self._build_prompt(context)
+        raw = self.llm_call(prompt)
+        data = json.loads(raw)
+        return DGMProposal(
+            target_file=data["target_file"],
+            patch=data["patch"],
+            rationale=data["rationale"],
+            generated_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+    def validate_scope(self, proposal: DGMProposal) -> bool:
+        target = Path(proposal.target_file)
+        if ".." in str(target) or target.is_absolute():
+            return False
+        resolved = (self.evolution_dir / target).resolve()
+        try:
+            resolved.relative_to(self.evolution_dir.resolve())
+            return True
+        except ValueError:
+            return False
+
+    def _build_prompt(self, context: dict) -> str:
+        files_summary = "\n".join(
+            f"--- {name} ---\n{content[:500]}"
+            for name, content in context["source_files"].items()
+        )
+        perf = json.dumps(context["performance"], indent=2)
+        return (
+            "You are a DGM (Darwin Godel Machine) code evolution proposer.\n"
+            f"Performance signals:\n{perf}\n\n"
+            f"Source files:\n{files_summary}\n\n"
+            "Propose ONE targeted modification to improve fitness scores. "
+            "Return JSON with: target_file, patch (full file content), rationale."
+        )

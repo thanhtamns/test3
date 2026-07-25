@@ -1,0 +1,20 @@
+{
+  "id": "3",
+  "subject": "Phase 3: Compliance Export (codeflow audit + SLSA + CycloneDX)",
+  "description": "SLSA in-toto DSSE, CycloneDX 1.6 AI-BOM, SOC 2 CC6.1/CC8.1 evidence, retention purge, audit CLI command. 24 TDD steps. Plan: plans/260608-codeflow-gap-closure-tdd/phase-03-compliance-export-codeflow-audit-slsa-cyclonedx.md",
+  "status": "pending",
+  "blocks": [
+    "4",
+    "7"
+  ],
+  "blockedBy": [
+    "1",
+    "2"
+  ],
+  "metadata": {
+    "phase": 3,
+    "effort": "4d",
+    "priority": "P1",
+    "planDir": "plans/260608-codeflow-gap-closure-tdd"
+  }
+}

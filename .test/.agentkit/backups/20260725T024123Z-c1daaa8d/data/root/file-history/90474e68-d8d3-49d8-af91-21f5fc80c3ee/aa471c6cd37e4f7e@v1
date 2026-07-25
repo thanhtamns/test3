@@ -1,0 +1,297 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
+import {
+  fetchOverview,
+  fetchSavingsTrend,
+  formatTokens,
+  estimateCost,
+  type OverviewStats,
+  type DailySavings,
+} from "@/lib/api";
+
+export default function OverviewPage() {
+  const [stats, setStats] = useState<OverviewStats | null>(null);
+  const [trend, setTrend] = useState<DailySavings[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([fetchOverview(), fetchSavingsTrend(30)])
+      .then(([s, t]) => {
+        setStats(s);
+        setTrend(t || []);
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold">Overview</h1>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-muted-foreground">
+              Could not connect to CODEFLOW API. Make sure the ingest server is
+              running.
+            </p>
+            <p className="text-sm text-muted-foreground mt-2">
+              Run:{" "}
+              <code className="bg-muted px-1 rounded">
+                cd cloud && go run ./cmd/ingest
+              </code>
+            </p>
+          </CardContent>
+        </Card>
+        <DemoStats />
+      </div>
+    );
+  }
+
+  if (!stats || stats.event_count === 0) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold">Overview</h1>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-muted-foreground">
+              No events yet. Install CODEFLOW hooks and start coding.
+            </p>
+            <p className="text-sm text-muted-foreground mt-2">
+              Run:{" "}
+              <code className="bg-muted px-1 rounded">
+                codeflow init && codeflow sync --once
+              </code>
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return <StatsView stats={stats} trend={trend} />;
+}
+
+function StatsView({
+  stats,
+  trend,
+}: {
+  stats: OverviewStats;
+  trend: DailySavings[];
+}) {
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold">Overview</h1>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <MetricCard
+          title="Tokens Saved"
+          value={formatTokens(stats.total_saved)}
+          description={`${estimateCost(stats.total_saved)} estimated savings`}
+        />
+        <MetricCard
+          title="Savings Rate"
+          value={`${stats.savings_pct.toFixed(1)}%`}
+          description="of input tokens saved"
+        />
+        <MetricCard
+          title="Events Tracked"
+          value={formatTokens(stats.event_count)}
+          description="command executions"
+        />
+        <MetricCard
+          title="Input Tokens"
+          value={formatTokens(stats.total_input_tokens)}
+          description={`${formatTokens(stats.total_output_tokens)} after compression`}
+        />
+      </div>
+
+      {trend.length > 0 && <SavingsTrendChart data={trend} />}
+
+      {stats.top_commands && stats.top_commands.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Top Commands by Savings</CardTitle>
+            <CardDescription>
+              Commands with the highest token savings
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Command</TableHead>
+                  <TableHead className="text-right">Tokens Saved</TableHead>
+                  <TableHead className="text-right">Executions</TableHead>
+                  <TableHead className="text-right">Est. Cost Saved</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {stats.top_commands.map((cmd) => (
+                  <TableRow key={cmd.command}>
+                    <TableCell>
+                      <code className="bg-muted px-1.5 py-0.5 rounded text-sm">
+                        {cmd.command}
+                      </code>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Badge variant="secondary">
+                        {formatTokens(cmd.saved)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">{cmd.count}x</TableCell>
+                    <TableCell className="text-right">
+                      {estimateCost(cmd.saved)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function SavingsTrendChart({ data }: { data: DailySavings[] }) {
+  const formatted = data.map((d) => ({
+    ...d,
+    day: d.day.slice(5),
+  }));
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Daily Savings Trend</CardTitle>
+        <CardDescription>Tokens saved per day (last 30 days)</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={formatted}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+              <XAxis dataKey="day" className="text-xs" />
+              <YAxis tickFormatter={(v) => formatTokens(Number(v))} className="text-xs" />
+              <Tooltip
+                formatter={(value, name) => [
+                  formatTokens(Number(value)),
+                  String(name) === "compression_saved" ? "Compression" : "Dedup",
+                ]}
+              />
+              <Area
+                type="monotone"
+                dataKey="compression_saved"
+                stackId="1"
+                stroke="hsl(221, 83%, 53%)"
+                fill="hsl(221, 83%, 53%)"
+                fillOpacity={0.3}
+                name="compression_saved"
+              />
+              <Area
+                type="monotone"
+                dataKey="dedup_saved"
+                stackId="1"
+                stroke="hsl(142, 71%, 45%)"
+                fill="hsl(142, 71%, 45%)"
+                fillOpacity={0.3}
+                name="dedup_saved"
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DemoStats() {
+  const demo: OverviewStats = {
+    total_input_tokens: 125000,
+    total_output_tokens: 62500,
+    total_saved: 62500,
+    savings_pct: 50.0,
+    event_count: 847,
+    top_commands: [
+      { command: "git diff", saved: 28000, count: 156 },
+      { command: "git status", saved: 12400, count: 312 },
+      { command: "cargo test", saved: 9800, count: 89 },
+      { command: "npm test", saved: 7200, count: 142 },
+      { command: "tsc", saved: 5100, count: 148 },
+    ],
+  };
+
+  const demoTrend: DailySavings[] = Array.from({ length: 14 }, (_, i) => ({
+    day: `2026-05-${String(i + 18).padStart(2, "0")}`,
+    total_saved: 3000 + Math.floor(Math.random() * 4000),
+    total_input: 8000 + Math.floor(Math.random() * 4000),
+    event_count: 40 + Math.floor(Math.random() * 40),
+    compression_saved: 2000 + Math.floor(Math.random() * 2500),
+    dedup_saved: 1000 + Math.floor(Math.random() * 1500),
+  }));
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground italic">
+        Showing demo data:
+      </p>
+      <StatsView stats={demo} trend={demoTrend} />
+    </div>
+  );
+}
+
+function MetricCard({
+  title,
+  value,
+  description,
+}: {
+  title: string;
+  value: string;
+  description: string;
+}) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardDescription>{title}</CardDescription>
+        <CardTitle className="text-3xl">{value}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </CardContent>
+    </Card>
+  );
+}

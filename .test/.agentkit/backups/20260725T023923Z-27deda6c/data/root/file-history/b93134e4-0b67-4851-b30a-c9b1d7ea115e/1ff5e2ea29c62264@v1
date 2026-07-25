@@ -1,0 +1,49 @@
+---
+title: E2E Local Test — Demo-Ready Validation
+description: >-
+  Rebuild Docker stack with Phase 3 auth, seed data, benchmark CLI, run live
+  session, produce quality scorecard for investor demo
+status: pending
+priority: P1
+effort: 3h
+branch: master
+tags:
+  - e2e
+  - testing
+  - demo
+  - docker
+  - benchmark
+blockedBy: []
+blocks: []
+created: '2026-06-04T15:44:01.386Z'
+createdBy: 'ck:plan'
+source: skill
+---
+
+# E2E Local Test — Demo-Ready Validation
+
+## Overview
+
+Validate the full codeflow stack end-to-end after the 6-phase system review. Rebuild Docker with hardened auth, seed demo data, benchmark CLI savings, run a live coding session, and produce a quality scorecard suitable for investor demos.
+
+## Phases
+
+| Phase | Name | Status | Effort |
+|-------|------|--------|--------|
+| 1 | [Rebuild Docker Stack](./phase-01-rebuild-docker-stack.md) | Pending | Completed |
+| 2 | [Seed and Dashboard](./phase-02-seed-and-dashboard.md) | Pending | Completed |
+| 3 | [CLI Benchmark Script](./phase-03-cli-benchmark-script.md) | Pending | Completed |
+| 4 | [Live Session and Quality Scorecard](./phase-04-live-session-and-quality-scorecard.md) | Pending | Completed |
+
+## Execution Order
+
+```
+Phase 1 → Phase 2 → Phase 3 → Phase 4
+```
+
+Strictly sequential — each phase depends on the previous.
+
+## Dependencies
+
+- **Requires:** `260604-full-system-review` (complete) — code changes must be in place
+- **No conflicts** with `260603-codeflow-ai-cost-intelligence-engine` (in-progress Phase 3+)

@@ -1,0 +1,263 @@
+"""
+Headless Browser Fallback — CloakBrowser (primary) + Playwright (fallback).
+
+CloakBrowser: source-level Chromium patches, scores 0.9 on reCAPTCHA v3.
+Falls back to Playwright+stealth if CloakBrowser unavailable.
+
+First-use install:
+    pip install cloakbrowser              # primary (auto-downloads patched Chromium)
+    pip install playwright playwright-stealth  # fallback
+    playwright install chromium
+
+Docker (Windows):
+    docker run -d --name cloak -p 127.0.0.1:9222:9222 cloakhq/cloakbrowser cloakserve
+    # Then set CLOAKBROWSER_CDP_URL=http://localhost:9222
+
+Usage:
+    fetcher = HeadlessFallback()
+    result = await fetcher.fetch(url, platform="tiktok")
+    result = await fetcher.fetch(url, proxy="http://1.2.3.4:8080")
+"""
+
+import asyncio
+import logging
+import os
+from typing import Any, Dict, Optional
+
+logger = logging.getLogger(__name__)
+
+_HEADLESS_TIMEOUT = 30_000  # ms
+_NAV_WAIT = "networkidle"
+_CDP_URL = os.environ.get("CLOAKBROWSER_CDP_URL")
+
+
+def _check_cloakbrowser() -> bool:
+    try:
+        import cloakbrowser  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def _check_playwright() -> bool:
+    try:
+        import playwright  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+async def _apply_stealth(page) -> None:
+    try:
+        from playwright_stealth import stealth_async
+        await stealth_async(page)
+    except ImportError:
+        await page.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+            window.chrome = {runtime: {}};
+        """)
+
+
+class HeadlessFallback:
+    """CloakBrowser-first headless fetcher with Playwright fallback."""
+
+    def __init__(self) -> None:
+        self._cloak_available: Optional[bool] = None
+        self._pw_available: Optional[bool] = None
+
+    @property
+    def available(self) -> bool:
+        return self.cloak_available or self.pw_available
+
+    @property
+    def cloak_available(self) -> bool:
+        if self._cloak_available is None:
+            self._cloak_available = _check_cloakbrowser() or bool(_CDP_URL)
+        return self._cloak_available
+
+    @property
+    def pw_available(self) -> bool:
+        if self._pw_available is None:
+            self._pw_available = _check_playwright()
+        return self._pw_available
+
+    @property
+    def engine(self) -> str:
+        if self.cloak_available:
+            return "cloakbrowser"
+        if self.pw_available:
+            return "playwright"
+        return "none"
+
+    async def fetch(
+        self,
+        url: str,
+        platform: Optional[str] = None,
+        proxy: Optional[str] = None,
+        cookies: Optional[Dict[str, str]] = None,
+        wait_selector: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        if not self.available:
+            return self._unavailable_result(url)
+
+        try:
+            if self.cloak_available:
+                return await self._run_cloakbrowser(url, platform, proxy, cookies, wait_selector)
+            return await self._run_playwright(url, platform, proxy, cookies, wait_selector)
+        except Exception as exc:
+            logger.error("Headless fetch failed for %s: %s", url, exc)
+            if self.cloak_available and self.pw_available:
+                logger.info("CloakBrowser failed, falling back to Playwright for %s", url)
+                try:
+                    return await self._run_playwright(url, platform, proxy, cookies, wait_selector)
+                except Exception as pw_exc:
+                    logger.error("Playwright fallback also failed: %s", pw_exc)
+                    return {"html": "", "url": url, "status": 0, "error": str(pw_exc)}
+            return {"html": "", "url": url, "status": 0, "error": str(exc)}
+
+    async def _run_cloakbrowser(
+        self,
+        url: str,
+        platform: Optional[str],
+        proxy: Optional[str],
+        cookies: Optional[Dict[str, str]],
+        wait_selector: Optional[str],
+    ) -> Dict[str, Any]:
+        if _CDP_URL:
+            return await self._run_cloakbrowser_cdp(url, proxy, cookies, wait_selector)
+
+        from cloakbrowser import launch_async
+
+        browser = await launch_async(humanize=True)
+        try:
+            context = await browser.new_context(
+                proxy={"server": proxy} if proxy else None,
+                viewport={"width": 1280, "height": 800},
+                locale="en-US",
+            )
+            if cookies:
+                parsed = _parse_cookie_dict(url, cookies)
+                await context.add_cookies(parsed)
+
+            page = await context.new_page()
+            response = await page.goto(url, timeout=_HEADLESS_TIMEOUT, wait_until=_NAV_WAIT)
+            status = response.status if response else 0
+
+            if wait_selector:
+                try:
+                    await page.wait_for_selector(wait_selector, timeout=8000)
+                except Exception:
+                    pass
+
+            html = await page.content()
+            final_url = page.url
+        finally:
+            await browser.close()
+
+        return {"html": html, "url": final_url, "status": status, "error": None}
+
+    async def _run_cloakbrowser_cdp(
+        self,
+        url: str,
+        proxy: Optional[str],
+        cookies: Optional[Dict[str, str]],
+        wait_selector: Optional[str],
+    ) -> Dict[str, Any]:
+        """Connect to remote CloakBrowser Docker via CDP."""
+        from playwright.async_api import async_playwright
+
+        async with async_playwright() as pw:
+            browser = await pw.chromium.connect_over_cdp(_CDP_URL)
+            context = await browser.new_context(
+                proxy={"server": proxy} if proxy else None,
+                viewport={"width": 1280, "height": 800},
+                locale="en-US",
+            )
+            if cookies:
+                parsed = _parse_cookie_dict(url, cookies)
+                await context.add_cookies(parsed)
+
+            page = await context.new_page()
+            response = await page.goto(url, timeout=_HEADLESS_TIMEOUT, wait_until=_NAV_WAIT)
+            status = response.status if response else 0
+
+            if wait_selector:
+                try:
+                    await page.wait_for_selector(wait_selector, timeout=8000)
+                except Exception:
+                    pass
+
+            html = await page.content()
+            final_url = page.url
+            await browser.close()
+
+        return {"html": html, "url": final_url, "status": status, "error": None}
+
+    async def _run_playwright(
+        self,
+        url: str,
+        platform: Optional[str],
+        proxy: Optional[str],
+        cookies: Optional[Dict[str, str]],
+        wait_selector: Optional[str],
+    ) -> Dict[str, Any]:
+        from playwright.async_api import async_playwright
+
+        proxy_config = {"server": proxy} if proxy else None
+
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(
+                headless=True,
+                proxy=proxy_config,
+                args=["--disable-blink-features=AutomationControlled"],
+            )
+            context = await browser.new_context(
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+                viewport={"width": 1280, "height": 800},
+                locale="en-US",
+            )
+
+            if cookies:
+                parsed = _parse_cookie_dict(url, cookies)
+                await context.add_cookies(parsed)
+
+            page = await context.new_page()
+            await _apply_stealth(page)
+
+            response = await page.goto(url, timeout=_HEADLESS_TIMEOUT, wait_until=_NAV_WAIT)
+            status = response.status if response else 0
+
+            if wait_selector:
+                try:
+                    await page.wait_for_selector(wait_selector, timeout=8000)
+                except Exception:
+                    pass
+
+            html = await page.content()
+            final_url = page.url
+            await browser.close()
+
+        return {"html": html, "url": final_url, "status": status, "error": None}
+
+    def _unavailable_result(self, url: str) -> Dict[str, Any]:
+        msg = (
+            "No headless browser available. Install one of:\n"
+            "  pip install cloakbrowser  (recommended)\n"
+            "  pip install playwright playwright-stealth && playwright install chromium\n"
+            "  Set CLOAKBROWSER_CDP_URL for remote Docker instance"
+        )
+        logger.warning(msg)
+        return {"html": "", "url": url, "status": 0, "error": msg}
+
+
+def _parse_cookie_dict(url: str, cookies: Dict[str, str]):
+    from urllib.parse import urlparse
+    domain = urlparse(url).netloc
+    return [
+        {"name": k, "value": v, "domain": domain, "path": "/"}
+        for k, v in cookies.items()
+    ]

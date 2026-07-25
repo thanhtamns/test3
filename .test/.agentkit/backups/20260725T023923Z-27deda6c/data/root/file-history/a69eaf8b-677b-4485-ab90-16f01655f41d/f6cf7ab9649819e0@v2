@@ -1,0 +1,115 @@
+"""Provider factory for easy instantiation from config."""
+
+import json
+import os
+from pathlib import Path
+from typing import Optional
+
+from .provider_interface import LLMProvider, ProviderConfig
+from .providers import ClaudeProvider, OpenAIProvider, GeminiProvider, OllamaProvider
+
+_ENV_PATHS = [
+    Path(__file__).parent.parent.parent / ".env",
+    Path(__file__).parent.parent.parent.parent / ".env",
+]
+for _p in _ENV_PATHS:
+    if _p.exists():
+        for line in _p.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            key, val = key.strip(), val.strip()
+            if not os.environ.get(key):
+                os.environ[key] = val
+
+PROVIDER_CLASSES = {
+    "claude": ClaudeProvider,
+    "openai": OpenAIProvider,
+    "gemini": GeminiProvider,
+    "ollama": OllamaProvider,
+}
+
+DEFAULT_CONFIG_PATH = Path(__file__).parent.parent.parent / "data" / "llm-config.json"
+
+
+def load_config(config_path: Optional[Path] = None) -> dict:
+    """Load LLM configuration from JSON file."""
+    path = config_path or DEFAULT_CONFIG_PATH
+    if not path.exists():
+        raise FileNotFoundError(f"LLM config not found: {path}")
+    with open(path) as f:
+        return json.load(f)
+
+
+def create_provider(name: str, config: Optional[dict] = None) -> LLMProvider:
+    """Create a provider instance by name."""
+    if name not in PROVIDER_CLASSES:
+        raise ValueError(f"Unknown provider: {name}. Available: {list(PROVIDER_CLASSES.keys())}")
+
+    full_config = load_config() if config is None else config
+    provider_config = full_config.get("providers", {}).get(name, {})
+
+    if not provider_config.get("enabled", False):
+        raise ValueError(f"Provider '{name}' is disabled in config")
+
+    api_key_env = provider_config.get("api_key_env", "")
+    api_key = os.environ.get(api_key_env, "") if api_key_env else ""
+
+    if name != "ollama" and not api_key:
+        raise ValueError(f"API key not found for provider '{name}'. Set {api_key_env} env var.")
+
+    model = provider_config.get("default_model")
+    if not model:
+        raise ValueError(f"No default_model configured for provider '{name}'")
+
+    pconfig = ProviderConfig(
+        api_key=api_key,
+        model=model,
+        max_tokens=provider_config.get("max_tokens", 4096),
+        timeout_seconds=provider_config.get("timeout_seconds", 120),
+        base_url=provider_config.get("base_url"),
+    )
+
+    return PROVIDER_CLASSES[name](pconfig)
+
+
+def get_default_provider(config: Optional[dict] = None) -> LLMProvider:
+    """Get the default provider from config."""
+    full_config = config or load_config()
+    default_name = full_config.get("default_provider", "claude")
+    return create_provider(default_name, full_config)
+
+
+def get_fallback_chain(config: Optional[dict] = None) -> list[LLMProvider]:
+    """Get ordered list of fallback providers."""
+    full_config = config or load_config()
+    chain = full_config.get("fallback_chain", ["claude"])
+    providers = []
+
+    for name in chain:
+        try:
+            providers.append(create_provider(name, full_config))
+        except (ValueError, ImportError):
+            continue
+
+    return providers
+
+
+def complete_with_fallback(prompt: str, config: Optional[dict] = None, **kwargs) -> "CompletionResult":
+    """Complete with automatic fallback on failure."""
+    from .provider_interface import CompletionResult
+
+    providers = get_fallback_chain(config)
+    if not providers:
+        raise RuntimeError("No providers available in fallback chain")
+
+    last_error = None
+    for provider in providers:
+        try:
+            return provider.complete(prompt, **kwargs)
+        except Exception as e:
+            last_error = e
+            continue
+
+    raise RuntimeError(f"All providers failed. Last error: {last_error}")

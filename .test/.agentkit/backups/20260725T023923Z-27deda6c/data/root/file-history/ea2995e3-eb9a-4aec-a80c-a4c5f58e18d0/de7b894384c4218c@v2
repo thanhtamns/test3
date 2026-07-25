@@ -1,0 +1,25 @@
+---
+name: project-hypothesis-driven-intelligence
+description: "Stage0 evolution from search-aggregation to hypothesis-driven adversarial intelligence engine, inspired by DeepMind Co-Scientist"
+metadata: 
+  node_type: memory
+  type: project
+  originSessionId: 5aaf7e87-6fec-4ed7-8e13-20070f8a9888
+---
+
+Stage0 evolution plan: shift from search-first (60% web search) to think-first (80% reasoning). 7 phases, ~35h.
+
+**Why:** User critique that Stage0 output is "too ordinary, relies too much on web search." Co-Scientist (DeepMind, Nature May 2025) demonstrated that 70% compute should go to VERIFICATION against structured knowledge, not generation or search. Deep review (2026-05-29) identified 6 missing gaps vs Co-Scientist architecture.
+
+**How to apply:** When implementing, target repo is master_investments (not _mmo). Plan lives at `plans/260527-hypothesis-driven-intelligence-engine/`. 7 phases:
+1. First Principles Generator (Phase 2.6) — novel hypotheses BEFORE web search (**COMPLETE**)
+1B. **Reflection Agent** — self-critique BEFORE tournament, kill weak hypotheses (Co-Scientist gap #5)
+2. Knowledge Graph — structured queryable evidence layer on top of flat vault
+3. Refinement Loop (Phase 2.8) — strengthen/attack/evolve × N rounds. **UPGRADED:** dynamic convergence via Elo delta rate (gap #1), evidence-based debate (gap #3), test-time compute scaling (gap #4)
+3A. **Proximity & Diversity Enforcer** — prevent premature convergence to single archetype (gap #2)
+4. Mechanism-First Output — causal chains + falsification + evolution traces
+5. Integration + **IC Unification** — merge IntelligenceController + Refinement into shared convergence/graph protocol (gap #6)
+
+Key principles: contradictions > confirmations. Elo delta rate > fixed round cap. Evidence-based debate > opinion-based. Diversity tax on top-3. Null-check fallback on every new component.
+
+Related: [[project_intelligence_controller]], [[project_llm_sensor_wiring]]

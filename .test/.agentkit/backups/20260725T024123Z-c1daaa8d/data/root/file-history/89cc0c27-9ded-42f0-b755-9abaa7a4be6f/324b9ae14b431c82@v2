@@ -1,0 +1,128 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  fetchBudgetStatus,
+  type BudgetSummary,
+} from "@/lib/api";
+
+export default function BudgetPage() {
+  const [data, setData] = useState<BudgetSummary | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchBudgetStatus()
+      .then((r) => { if (!cancelled) setData(r); })
+      .catch((e) => { if (!cancelled) setError(e.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold">Budget Management</h1>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-muted-foreground">
+              Could not load budget data. Make sure the API is running.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const spent = data?.total_spent_usd ?? 0;
+  const limit = data?.budget_limit_usd ?? 0;
+  const usagePct = limit > 0 ? (spent / limit) * 100 : 0;
+  const statusColor = usagePct >= 100 ? "text-red-600" : usagePct >= 75 ? "text-amber-600" : "text-green-600";
+  const barColor = usagePct >= 100 ? "bg-red-500" : usagePct >= 75 ? "bg-amber-500" : "bg-green-500";
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold">Budget Management</h1>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <MetricCard title="Total Spent" value={`$${spent.toFixed(2)}`} description="across all policies" />
+        <MetricCard title="Budget Limit" value={limit > 0 ? `$${limit.toFixed(2)}` : "No limit"} description="configured maximum" />
+        <MetricCard title="Usage" value={`${usagePct.toFixed(1)}%`} description="of budget consumed" className={statusColor} />
+        <MetricCard title="Policies" value={data?.policy_count.toString() ?? "0"} description="active budget policies" />
+      </div>
+
+      {limit > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Spend vs Limit</CardTitle>
+            <CardDescription>
+              {usagePct >= 100 ? "Budget exceeded!" : usagePct >= 75 ? "Approaching budget limit" : "Within budget"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span>${spent.toFixed(2)} spent</span>
+                <span>${limit.toFixed(2)} limit</span>
+              </div>
+              <div className="h-4 bg-muted rounded-full overflow-hidden">
+                <div className={`h-full ${barColor} rounded-full transition-all`} style={{ width: `${Math.min(usagePct, 100)}%` }} />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {data?.latest_action && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Latest Action</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm font-mono">{data.latest_action}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {!data?.policy_count && (
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-muted-foreground">
+              No budget policies configured yet. Add budget rules to your CODEFLOW config to start tracking.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function MetricCard({ title, value, description, className }: { title: string; value: string; description: string; className?: string }) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardDescription>{title}</CardDescription>
+        <CardTitle className={`text-3xl ${className ?? ""}`}>{value}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </CardContent>
+    </Card>
+  );
+}

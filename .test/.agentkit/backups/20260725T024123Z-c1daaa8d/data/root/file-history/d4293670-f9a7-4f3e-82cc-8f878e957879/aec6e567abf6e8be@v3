@@ -1,0 +1,489 @@
+//! SLSA Provenance v1.0 attestation export in in-toto envelope format.
+//!
+//! Spec: https://slsa.dev/spec/v1.0/provenance
+//! Envelope: https://github.com/in-toto/attestation/blob/main/spec/README.md
+//!
+//! The payload is a base64-encoded JSON ProvenanceStatement. The envelope
+//! contains one Ed25519 signature produced by the RTK attestation key
+//! (see `core::attestation`).
+
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+
+use crate::core::attestation;
+use crate::core::provenance::ProvenanceRecord;
+use crate::compliance::report_common::AuditStats;
+
+// ── in-toto envelope ──────────────────────────────────────────────────────────
+
+const PAYLOAD_TYPE: &str = "application/vnd.in-toto+json";
+
+/// One Ed25519 signature in the in-toto envelope.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Signature {
+    /// Hex-encoded Ed25519 public key (keyid).
+    pub keyid: String,
+    /// Hex-encoded Ed25519 signature over the payload bytes.
+    pub sig: String,
+}
+
+/// in-toto Envelope wrapping a SLSA ProvenanceStatement payload.
+///
+/// Payload is base64-encoded UTF-8 JSON (standard base64, RFC 4648 §4, with padding).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InTotoEnvelope {
+    #[serde(rename = "payloadType")]
+    pub payload_type: String,
+    /// Base64-encoded JSON ProvenanceStatement.
+    pub payload: String,
+    pub signatures: Vec<Signature>,
+}
+
+// ── SLSA Provenance v1.0 types ────────────────────────────────────────────────
+
+/// Top-level SLSA ProvenanceStatement (the decoded payload inside the envelope).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SlsaAttestation {
+    /// Fixed: "https://in-toto.io/Statement/v1"
+    #[serde(rename = "_type")]
+    pub statement_type: String,
+    /// Array of subject artifacts this provenance describes.
+    pub subject: Vec<SlsaSubject>,
+    /// Fixed: "https://slsa.dev/provenance/v1"
+    #[serde(rename = "predicateType")]
+    pub predicate_type: String,
+    pub predicate: SlsaPredicate,
+}
+
+/// A subject artifact (AI-generated file + its SHA-256 hash).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SlsaSubject {
+    pub name: String,
+    pub digest: SlsaDigest,
+}
+
+/// Digest map — at minimum `sha256`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SlsaDigest {
+    pub sha256: String,
+}
+
+/// SLSA v1 predicate.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SlsaPredicate {
+    #[serde(rename = "buildDefinition")]
+    pub build_definition: BuildDefinition,
+    #[serde(rename = "runDetails")]
+    pub run_details: RunDetails,
+}
+
+/// Build definition — external parameters + resolved dependencies.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuildDefinition {
+    /// Fixed build type URI identifying this is an AI provenance attestation.
+    #[serde(rename = "buildType")]
+    pub build_type: String,
+    #[serde(rename = "externalParameters")]
+    pub external_parameters: ExternalParameters,
+    #[serde(rename = "resolvedDependencies")]
+    pub resolved_dependencies: Vec<ResolvedDependency>,
+}
+
+/// User-supplied parameters that drove the build.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExternalParameters {
+    pub project: String,
+    #[serde(rename = "dateFrom")]
+    pub date_from: String,
+    #[serde(rename = "dateTo")]
+    pub date_to: String,
+}
+
+/// One AI-generated file dependency entry.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResolvedDependency {
+    pub uri: String,
+    pub digest: SlsaDigest,
+    /// Session ID that produced this file.
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    /// Model that generated the file.
+    #[serde(rename = "modelId")]
+    pub model_id: String,
+    pub contributor: String,
+    pub timestamp: String,
+}
+
+/// Run details — builder + metadata.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunDetails {
+    pub builder: Builder,
+    pub metadata: RunMetadata,
+}
+
+/// Builder identity.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Builder {
+    pub id: String,
+    pub version: String,
+}
+
+/// Run-level metadata.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunMetadata {
+    #[serde(rename = "invocationId")]
+    pub invocation_id: String,
+    #[serde(rename = "startedOn")]
+    pub started_on: String,
+    #[serde(rename = "finishedOn")]
+    pub finished_on: String,
+    #[serde(rename = "totalProvenance")]
+    pub total_provenance: u64,
+    #[serde(rename = "totalCostUsd")]
+    pub total_cost_usd: f64,
+}
+
+// ── Builder constant ──────────────────────────────────────────────────────────
+
+const BUILD_TYPE: &str = "https://codeflow.dev/ai-provenance/v1";
+const BUILDER_ID: &str = "https://codeflow.dev/rtk";
+
+// ── Main generation function ──────────────────────────────────────────────────
+
+/// Build DSSE Pre-Authentication Encoding (PAE) for signing.
+///
+/// Format: `"DSSEv1" SP len(type) SP type SP len(body) SP body`
+/// Spec: https://github.com/secure-systems-lab/dsse/blob/master/protocol.md
+fn pae(payload_type: &str, payload: &[u8]) -> Vec<u8> {
+    let mut buf = Vec::new();
+    buf.extend_from_slice(b"DSSEv1 ");
+    buf.extend_from_slice(payload_type.len().to_string().as_bytes());
+    buf.push(b' ');
+    buf.extend_from_slice(payload_type.as_bytes());
+    buf.push(b' ');
+    buf.extend_from_slice(payload.len().to_string().as_bytes());
+    buf.push(b' ');
+    buf.extend_from_slice(payload);
+    buf
+}
+
+/// Generate a signed in-toto envelope containing a SLSA v1 provenance statement.
+///
+/// Returns an `InTotoEnvelope` with the payload base64-encoded and one
+/// Ed25519 signature from the RTK attestation key.
+///
+/// Signatures are computed over DSSE PAE(payloadType, payload) per the
+/// in-toto DSSE spec, ensuring compatibility with external SLSA verifiers.
+pub fn generate_slsa(
+    records: &[ProvenanceRecord],
+    stats: &AuditStats,
+) -> Result<InTotoEnvelope> {
+    let attestation = build_attestation(records, stats);
+    let payload_json =
+        serde_json::to_string(&attestation).context("failed to serialize SLSA attestation")?;
+    let payload_bytes = payload_json.as_bytes();
+
+    let keypair = attestation::load_or_generate()
+        .context("failed to load/generate attestation key")?;
+
+    // Sign over PAE(payloadType, payload) per DSSE spec.
+    let pae_bytes = pae(PAYLOAD_TYPE, payload_bytes);
+    let sig_hex = keypair.sign(&pae_bytes);
+    let keyid = keypair.public_key_hex();
+
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    let payload_b64 = STANDARD.encode(payload_bytes);
+
+    Ok(InTotoEnvelope {
+        payload_type: PAYLOAD_TYPE.to_string(),
+        payload: payload_b64,
+        signatures: vec![Signature {
+            keyid,
+            sig: sig_hex,
+        }],
+    })
+}
+
+fn build_attestation(records: &[ProvenanceRecord], stats: &AuditStats) -> SlsaAttestation {
+    let (date_from, date_to) = &stats.date_range;
+
+    // Subjects: one entry per unique (file_path, code_hash) pair.
+    let mut seen_subjects: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut subjects: Vec<SlsaSubject> = Vec::new();
+    for r in records {
+        let key = format!("{}:{}", r.file_path, r.code_hash);
+        if seen_subjects.insert(key) {
+            subjects.push(SlsaSubject {
+                name: r.file_path.clone(),
+                digest: SlsaDigest {
+                    sha256: r.code_hash.clone(),
+                },
+            });
+        }
+    }
+
+    // Resolved dependencies: one entry per provenance record.
+    let resolved_dependencies: Vec<ResolvedDependency> = records
+        .iter()
+        .map(|r| ResolvedDependency {
+            uri: format!("file://{}", r.file_path),
+            digest: SlsaDigest {
+                sha256: r.code_hash.clone(),
+            },
+            session_id: r.session_id.clone(),
+            model_id: r.model_id.clone(),
+            contributor: r.contributor_type.as_str().to_string(),
+            timestamp: r.timestamp.clone(),
+        })
+        .collect();
+
+    let project = std::env::current_dir()
+        .ok()
+        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "unknown".to_string());
+
+    let invocation_id = format!("codeflow-audit-{}", chrono::Utc::now().timestamp());
+    let now = chrono::Utc::now().to_rfc3339();
+
+    SlsaAttestation {
+        statement_type: "https://in-toto.io/Statement/v1".to_string(),
+        subject: subjects,
+        predicate_type: "https://slsa.dev/provenance/v1".to_string(),
+        predicate: SlsaPredicate {
+            build_definition: BuildDefinition {
+                build_type: BUILD_TYPE.to_string(),
+                external_parameters: ExternalParameters {
+                    project,
+                    date_from: date_from.clone(),
+                    date_to: date_to.clone(),
+                },
+                resolved_dependencies,
+            },
+            run_details: RunDetails {
+                builder: Builder {
+                    id: BUILDER_ID.to_string(),
+                    version: env!("CARGO_PKG_VERSION").to_string(),
+                },
+                metadata: RunMetadata {
+                    invocation_id,
+                    started_on: date_from.clone(),
+                    finished_on: now,
+                    total_provenance: stats.total_provenance,
+                    total_cost_usd: stats.total_cost_usd,
+                },
+            },
+        },
+    }
+}
+
+/// Decode the base64 payload from an envelope and deserialize into `SlsaAttestation`.
+pub fn decode_payload(envelope: &InTotoEnvelope) -> Result<SlsaAttestation> {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    let bytes = STANDARD
+        .decode(&envelope.payload)
+        .context("invalid base64 in envelope payload")?;
+    serde_json::from_slice(&bytes).context("invalid JSON in SLSA payload")
+}
+
+/// Verify the first envelope signature against the DSSE PAE of the payload.
+pub fn verify_envelope_signature(envelope: &InTotoEnvelope) -> Result<bool> {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    if envelope.signatures.is_empty() {
+        return Ok(false);
+    }
+    let payload_bytes = STANDARD
+        .decode(&envelope.payload)
+        .context("invalid base64 in envelope payload")?;
+    let pae_bytes = pae(&envelope.payload_type, &payload_bytes);
+    let sig = &envelope.signatures[0];
+    attestation::verify(&sig.keyid, &pae_bytes, &sig.sig)
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::compliance::report_common::AuditStats;
+    use crate::core::provenance::{ContributorType, ProvenanceRecord};
+
+    fn make_record(file: &str, code_hash: &str, model: &str) -> ProvenanceRecord {
+        ProvenanceRecord {
+            id: Some(1),
+            model_id: model.to_string(),
+            model_version: "1.0".to_string(),
+            prompt_hash: "abc".to_string(),
+            code_hash: code_hash.to_string(),
+            file_path: file.to_string(),
+            start_line: 1,
+            end_line: 50,
+            contributor_type: ContributorType::Ai,
+            attestation_sig: "deadsig".to_string(),
+            timestamp: "2025-01-01T00:00:00+00:00".to_string(),
+            developer_id: "dev@example.com".to_string(),
+            session_id: "sess_001".to_string(),
+        }
+    }
+
+    fn empty_stats() -> AuditStats {
+        AuditStats {
+            total_provenance: 0,
+            total_cost_usd: 0.0,
+            quality_findings: 0,
+            date_range: (
+                "2025-01-01T00:00:00+00:00".to_string(),
+                "2025-04-01T00:00:00+00:00".to_string(),
+            ),
+        }
+    }
+
+    // ── 1. SLSA attestation JSON structure ───────────────────────────────────
+
+    #[test]
+    fn slsa_attestation_has_correct_statement_type() {
+        let records = vec![make_record("src/main.rs", "abc123", "claude")];
+        let stats = AuditStats {
+            total_provenance: 1,
+            ..empty_stats()
+        };
+        let attestation = build_attestation(&records, &stats);
+        assert_eq!(
+            attestation.statement_type,
+            "https://in-toto.io/Statement/v1"
+        );
+    }
+
+    #[test]
+    fn slsa_attestation_predicate_type_is_slsa_v1() {
+        let stats = empty_stats();
+        let att = build_attestation(&[], &stats);
+        assert_eq!(att.predicate_type, "https://slsa.dev/provenance/v1");
+    }
+
+    #[test]
+    fn slsa_build_type_is_codeflow() {
+        let stats = empty_stats();
+        let att = build_attestation(&[], &stats);
+        assert_eq!(
+            att.predicate.build_definition.build_type,
+            "https://codeflow.dev/ai-provenance/v1"
+        );
+    }
+
+    // ── 2. In-toto envelope format ───────────────────────────────────────────
+
+    #[test]
+    fn envelope_has_correct_payload_type() {
+        let stats = empty_stats();
+        let env = generate_slsa(&[], &stats).unwrap();
+        assert_eq!(env.payload_type, "application/vnd.in-toto+json");
+    }
+
+    #[test]
+    fn envelope_payload_is_valid_base64_json() {
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
+        let stats = empty_stats();
+        let env = generate_slsa(&[], &stats).unwrap();
+        let bytes = STANDARD.decode(&env.payload).unwrap();
+        let parsed: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(parsed.get("_type").is_some());
+        assert!(parsed.get("predicateType").is_some());
+    }
+
+    // ── 3. Date range parsing ────────────────────────────────────────────────
+
+    #[test]
+    fn date_range_30d_90d_1y_all_parse_correctly() {
+        use crate::compliance::report_common::range_to_since;
+        assert!(range_to_since("30d").is_some());
+        assert!(range_to_since("90d").is_some());
+        assert!(range_to_since("1y").is_some());
+        assert!(range_to_since("all").is_none());
+    }
+
+    // ── 4. Empty database → empty but valid attestation ──────────────────────
+
+    #[test]
+    fn empty_records_produces_valid_envelope() {
+        let stats = empty_stats();
+        let env = generate_slsa(&[], &stats).unwrap();
+        let decoded = decode_payload(&env).unwrap();
+        assert!(decoded.subject.is_empty());
+        assert!(decoded
+            .predicate
+            .build_definition
+            .resolved_dependencies
+            .is_empty());
+    }
+
+    // ── 5. Ed25519 signature present and valid format ────────────────────────
+
+    #[test]
+    fn envelope_has_one_signature() {
+        let stats = empty_stats();
+        let env = generate_slsa(&[], &stats).unwrap();
+        assert_eq!(env.signatures.len(), 1);
+    }
+
+    #[test]
+    fn envelope_signature_keyid_is_valid_hex() {
+        let stats = empty_stats();
+        let env = generate_slsa(&[], &stats).unwrap();
+        let sig = &env.signatures[0];
+        // Ed25519 public key = 32 bytes = 64 hex chars
+        assert_eq!(sig.keyid.len(), 64);
+        assert!(sig.keyid.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn envelope_signature_sig_is_valid_hex() {
+        let stats = empty_stats();
+        let env = generate_slsa(&[], &stats).unwrap();
+        let sig = &env.signatures[0];
+        // Ed25519 signature = 64 bytes = 128 hex chars
+        assert_eq!(sig.sig.len(), 128);
+        assert!(sig.sig.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn envelope_signature_verifies_against_payload() {
+        let stats = empty_stats();
+        let env = generate_slsa(&[], &stats).unwrap();
+        let ok = verify_envelope_signature(&env).unwrap();
+        assert!(ok);
+    }
+
+    // ── 6. Subjects de-duplicated by (file_path, code_hash) ─────────────────
+
+    #[test]
+    fn duplicate_records_produce_single_subject() {
+        let records = vec![
+            make_record("src/lib.rs", "hash_a", "claude"),
+            make_record("src/lib.rs", "hash_a", "claude"),
+        ];
+        let stats = AuditStats {
+            total_provenance: 2,
+            ..empty_stats()
+        };
+        let att = build_attestation(&records, &stats);
+        assert_eq!(att.subject.len(), 1);
+        // But resolved_dependencies contains all records
+        assert_eq!(att.predicate.build_definition.resolved_dependencies.len(), 2);
+    }
+
+    // ── 7. Decode payload roundtrip ──────────────────────────────────────────
+
+    #[test]
+    fn decode_payload_roundtrip() {
+        let records = vec![make_record("src/main.rs", "deadbeef", "claude")];
+        let stats = AuditStats {
+            total_provenance: 1,
+            ..empty_stats()
+        };
+        let env = generate_slsa(&records, &stats).unwrap();
+        let decoded = decode_payload(&env).unwrap();
+        assert_eq!(decoded.subject.len(), 1);
+        assert_eq!(decoded.subject[0].name, "src/main.rs");
+        assert_eq!(decoded.subject[0].digest.sha256, "deadbeef");
+    }
+}

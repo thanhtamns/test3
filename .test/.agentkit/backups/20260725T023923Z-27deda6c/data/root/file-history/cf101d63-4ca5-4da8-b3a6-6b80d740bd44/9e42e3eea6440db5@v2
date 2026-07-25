@@ -1,0 +1,225 @@
+#!/usr/bin/env python3
+"""
+Auto-Hunt Mini Stage0 — builds LLM prompts + formats final report.
+
+Two modes:
+  --prompt-only: Output prompt text for Claude to execute (used by hook)
+  --format-report: Take LLM results JSON and produce final report markdown
+
+Usage:
+    echo '{"hypotheses":[...]}' | python auto-hunt-mini-stage0.py --stdin --prompt-only
+    python auto-hunt-mini-stage0.py --results-file results.json --format-report --output-dir plans/reports
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from datetime import datetime
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+TEMPLATE_PATH = SCRIPT_DIR / "auto-hunt-prompt-template.md"
+DEFAULT_OUTPUT_DIR = SCRIPT_DIR.parents[5] / "plans" / "reports"
+MAX_HUNTS = 3
+
+STRENGTH_THRESHOLDS = {"STRONG": 70, "MEDIUM": 40}
+
+
+def classify_strength(total_score: int) -> str:
+    if total_score >= STRENGTH_THRESHOLDS["STRONG"]:
+        return "STRONG"
+    if total_score >= STRENGTH_THRESHOLDS["MEDIUM"]:
+        return "MEDIUM"
+    return "WEAK"
+
+
+def load_template() -> str:
+    if TEMPLATE_PATH.exists():
+        return TEMPLATE_PATH.read_text(encoding="utf-8")
+    return "Analyze {domain}: verdict GO/KILL/CONDITIONAL, Day 1 action, kill criteria."
+
+
+def build_prompts(hypotheses: list[dict], profile: dict, max_hunts: int = MAX_HUNTS) -> list[dict]:
+    template = load_template()
+    prompts = []
+
+    for h in hypotheses[:max_hunts * 2]:
+        strength = classify_strength(h.get("total_score", 0))
+        if strength == "WEAK":
+            continue
+        if len(prompts) >= max_hunts:
+            break
+
+        replacements = {
+            "domain": h.get("domain", "unknown"),
+            "statement": h.get("statement", ""),
+            "prior_confidence": str(h.get("prior_confidence", 0.5)),
+            "source_evidence": ", ".join(h.get("source_signal", [])),
+            "hypothesis_id": h.get("id", "AH-???"),
+            "capital_tier": profile.get("capital_tier", "TIER_0"),
+            "skills_approach": profile.get("skills_approach", "market_driven"),
+            "location": profile.get("location", "Vietnam"),
+            "constraints": ", ".join(profile.get("constraints", [])),
+        }
+        prompt_text = template
+        for key, val in replacements.items():
+            prompt_text = prompt_text.replace("{" + key + "}", str(val))
+
+        prompts.append({
+            "hypothesis_id": h["id"],
+            "domain": h["domain"],
+            "strength": strength,
+            "total_score": h.get("total_score", 0),
+            "prompt": prompt_text,
+        })
+
+    return prompts
+
+
+def format_report(
+    hypotheses: list[dict],
+    results: list[dict],
+    profile: dict,
+    scan_summary: dict,
+) -> str:
+    date = datetime.now().strftime("%Y-%m-%d")
+    lines = [
+        f"# Auto-Hunt Report {date}",
+        "",
+        f"**Profile:** {profile.get('profile_id', '?')} | "
+        f"Capital: {profile.get('capital_tier', '?')} | "
+        f"Location: {profile.get('location', '?')}",
+        f"**KB scanned:** {scan_summary.get('kb_cases_scanned', '?')} cases | "
+        f"**Gaps found:** {scan_summary.get('gaps_found', '?')} | "
+        f"**Hypotheses tested:** {len(results)}",
+        "",
+        "---",
+        "",
+        "## Top Niches",
+        "",
+        "| # | Niche | Verdict | WHY | Day 1 Action |",
+        "|---|-------|---------|-----|--------------|",
+    ]
+
+    go_results = sorted(
+        [r for r in results if r.get("verdict", "").upper() != "KILL"],
+        key=lambda r: r.get("confidence", 0),
+        reverse=True,
+    )
+    kill_results = [r for r in results if r.get("verdict", "").upper() == "KILL"]
+
+    for i, r in enumerate(go_results[:3], 1):
+        verdict = r.get("verdict", "?")
+        domain = r.get("domain", "?")
+        mechanism = r.get("mechanism", "?")[:60]
+        action = r.get("day1_action", "-")[:80]
+        lines.append(f"| {i} | {domain} | **{verdict}** | {mechanism} | {action} |")
+
+    if not go_results:
+        lines.append("| - | No GO niches found | KILL | All hypotheses killed | - |")
+
+    lines.extend(["", "---", ""])
+
+    for r in go_results[:3]:
+        domain = r.get("domain", "?")
+        lines.extend([
+            f"### {domain}",
+            "",
+            f"**Verdict:** {r.get('verdict', '?')} (confidence: {r.get('confidence', '?')})",
+            f"**Mechanism:** {r.get('mechanism', '?')}",
+            f"**Evidence:** {r.get('evidence_url', 'none')}",
+            f"**Anti-confirmation risk:** {r.get('anti_confirmation', 'none')}",
+            "",
+            "**Kill Criteria:**",
+        ])
+        for kc in r.get("kill_criteria", []):
+            lines.append(f"- {kc}")
+        lines.extend(["", f"**Day 1:** {r.get('day1_action', '-')}", ""])
+
+    if kill_results:
+        lines.extend(["## Killed", ""])
+        for r in kill_results:
+            lines.append(f"- **{r.get('domain', '?')}**: {r.get('mechanism', r.get('anti_confirmation', '?'))}")
+        lines.append("")
+
+    lines.extend([
+        "---",
+        f"*Generated by auto-hunt-mini-stage0.py at {datetime.now().isoformat()}*",
+    ])
+
+    return "\n".join(lines)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Auto-Hunt Mini Stage0 Runner")
+    parser.add_argument("--stdin", action="store_true", help="Read hypotheses from stdin")
+    parser.add_argument("--hypotheses-file", type=Path)
+    parser.add_argument("--hypotheses-json", type=str)
+    parser.add_argument("--results-file", type=Path, help="LLM results JSON for report formatting")
+    parser.add_argument("--prompt-only", action="store_true", help="Output prompts, don't run LLM")
+    parser.add_argument("--format-report", action="store_true", help="Format final report from results")
+    parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    parser.add_argument("--max-hunts", type=int, default=MAX_HUNTS)
+    args = parser.parse_args()
+
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+    if args.format_report:
+        if not args.results_file or not args.results_file.exists():
+            print("Error: --format-report requires --results-file", file=sys.stderr)
+            return 1
+        data = json.loads(args.results_file.read_text(encoding="utf-8"))
+        report = format_report(
+            data.get("hypotheses", []),
+            data.get("results", []),
+            data.get("profile", {}),
+            data.get("scan_summary", {}),
+        )
+        date_str = datetime.now().strftime("%y%m%d")
+        out_path = args.output_dir / f"auto-hunt-report-{date_str}.md"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(report, encoding="utf-8")
+        print(f"Report written to: {out_path}")
+        return 0
+
+    if args.stdin:
+        hyp_data = json.load(sys.stdin)
+    elif args.hypotheses_file and args.hypotheses_file.exists():
+        hyp_data = json.loads(args.hypotheses_file.read_text(encoding="utf-8"))
+    elif args.hypotheses_json:
+        hyp_data = json.loads(args.hypotheses_json)
+    else:
+        print("Error: provide --stdin, --hypotheses-file, or --hypotheses-json", file=sys.stderr)
+        return 1
+
+    hypotheses = hyp_data.get("hypotheses", [])
+    profile = hyp_data.get("profile", {})
+
+    prompts = build_prompts(hypotheses, profile, args.max_hunts)
+
+    result = {
+        "timestamp": datetime.now().isoformat(),
+        "hypotheses_received": len(hypotheses),
+        "prompts_generated": len(prompts),
+        "skipped_weak": len(hypotheses) - len(prompts),
+        "prompts": prompts,
+        "profile": profile,
+        "scan_summary": {
+            "kb_cases_scanned": hyp_data.get("kb_cases_scanned", "?"),
+            "gaps_found": hyp_data.get("gaps_found", "?"),
+        },
+    }
+
+    if args.prompt_only:
+        json.dump(result, sys.stdout, indent=2, ensure_ascii=False)
+    else:
+        print(f"Generated {len(prompts)} prompts from {len(hypotheses)} hypotheses")
+        for p in prompts:
+            print(f"  [{p['hypothesis_id']}] {p['domain']} ({p['strength']}) — score {p['total_score']}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

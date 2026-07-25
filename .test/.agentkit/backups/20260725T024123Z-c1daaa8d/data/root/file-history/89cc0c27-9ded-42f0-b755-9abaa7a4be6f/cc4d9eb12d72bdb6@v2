@@ -1,0 +1,122 @@
+"use client";
+
+import { useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { downloadComplianceExport } from "@/lib/api";
+import { DateRangeSelector } from "@/components/date-range-selector";
+
+const FORMATS = [
+  {
+    id: "slsa",
+    title: "SLSA Provenance",
+    description: "In-toto DSSE envelope with build provenance (JSON)",
+    spec: "SLSA v1 / in-toto v1",
+  },
+  {
+    id: "cyclonedx",
+    title: "CycloneDX AI-BOM",
+    description: "Software bill of materials with AI contributor metadata (JSON)",
+    spec: "CycloneDX 1.6",
+  },
+  {
+    id: "soc2",
+    title: "SOC 2 Evidence",
+    description: "CC6.1 logical access + CC8.1 change management report (Markdown)",
+    spec: "SOC 2 Type II",
+  },
+];
+
+export default function CompliancePage() {
+  const [days, setDays] = useState(90);
+  const [downloading, setDownloading] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleExport(format: string) {
+    setDownloading(format);
+    setError(null);
+    try {
+      await downloadComplianceExport(format, days);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Export failed");
+    } finally {
+      setDownloading(null);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Compliance Reports</h1>
+        <DateRangeSelector value={days} onChange={setDays} />
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Export Compliance Artifacts</CardTitle>
+          <CardDescription>
+            Generate industry-standard compliance reports from your AI code provenance data.
+            Reports cover the last {days} days.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {FORMATS.map((f) => (
+              <Card key={f.id} className="flex flex-col">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg">{f.title}</CardTitle>
+                  <CardDescription>{f.description}</CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-col flex-1 justify-end gap-2">
+                  <span className="text-xs text-muted-foreground">Spec: {f.spec}</span>
+                  <Button
+                    onClick={() => handleExport(f.id)}
+                    disabled={downloading !== null}
+                    variant="outline"
+                    className="w-full"
+                  >
+                    {downloading === f.id ? "Downloading..." : `Export ${f.title}`}
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {error && (
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-red-600 text-sm">Export error: {error}</p>
+            <p className="text-muted-foreground text-sm mt-1">
+              Make sure the API is running and provenance data exists for the selected time range.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>About Compliance Exports</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground space-y-2">
+          <p>
+            <strong>SLSA:</strong> Supply-chain Levels for Software Artifacts. Proves which AI models contributed to which files with cryptographic attestation.
+          </p>
+          <p>
+            <strong>CycloneDX:</strong> AI Bill of Materials. Lists every file with its AI contributor type, model ID, and attestation signature per CycloneDX 1.6 properties extension.
+          </p>
+          <p>
+            <strong>SOC 2:</strong> Service Organization Control evidence. Maps AI code governance to CC6.1 (logical access) and CC8.1 (change management) trust criteria.
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

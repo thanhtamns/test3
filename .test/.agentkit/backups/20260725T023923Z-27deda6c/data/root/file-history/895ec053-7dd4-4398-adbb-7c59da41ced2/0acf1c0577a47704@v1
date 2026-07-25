@@ -1,0 +1,50 @@
+---
+phase: 01
+status: pending
+priority: high
+solution: S-4
+---
+
+# Phase 01: Compound Learning Retrieval Bridge
+
+## Overview
+Wire `brainstorm_claims` + `brainstorm_mechanisms` tables into `CompoundCache.lookup()` so ThinkRunner automatically retrieves past analysis claims — not just decision_vectors.
+
+## Problem
+- `post_analysis_store.py` WRITES to `brainstorm_claims` table
+- `CompoundCache.lookup()` READS from `decision_vectors` table only
+- Two tables never connected → each analysis starts from zero
+
+## Files to Modify
+- `D:/code/invesments/master_investments/.claude/lib/intelligence/decomposition/compound_cache.py`
+
+## Implementation Steps
+
+1. Add method `_query_brainstorm_claims(dimension, context)` to CompoundCache
+   - Query `brainstorm_claims` table WHERE dimension matches (with alias mapping)
+   - Filter by 180-day freshness (same as decision_vectors)
+   - Return as ParsedClaim objects compatible with existing return type
+
+2. Add method `_query_brainstorm_mechanisms(context)` to CompoundCache
+   - Query `brainstorm_mechanisms` for matching topic/industry
+   - Return mechanism + bottleneck + money_flow as context enrichment
+
+3. Update `lookup()` to merge both sources
+   - Call existing `_query_decision_vectors()` 
+   - Call new `_query_brainstorm_claims()`
+   - Deduplicate by fact text similarity (>90% match = duplicate)
+   - Return merged list, sorted by confidence DESC
+
+4. Handle case where brainstorm tables don't exist yet (graceful fallback)
+
+5. Write tests in `tests/test_compound_cache_bridge.py`
+   - Test: brainstorm_claims retrieved alongside decision_vectors
+   - Test: deduplication works
+   - Test: graceful fallback when brainstorm tables missing
+   - Test: 180-day freshness filtering applies to brainstorm_claims
+
+## Success Criteria
+- [ ] `CompoundCache.lookup()` returns claims from BOTH tables
+- [ ] Existing tests still pass
+- [ ] New test file passes
+- [ ] Second ThinkRunner run on same topic shows cached claims from first run

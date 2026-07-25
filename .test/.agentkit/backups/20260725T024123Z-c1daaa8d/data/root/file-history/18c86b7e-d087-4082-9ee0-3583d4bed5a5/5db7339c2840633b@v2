@@ -1,0 +1,14 @@
+strip_ansi = true
+
+[command]
+name = "ls"
+
+[[strip_lines]]
+pattern = '^total \d+'
+
+[head_tail]
+head = 30
+tail = 10
+separator = "\n... ({omitted} entries omitted) ...\n"
+
+max_lines = 80

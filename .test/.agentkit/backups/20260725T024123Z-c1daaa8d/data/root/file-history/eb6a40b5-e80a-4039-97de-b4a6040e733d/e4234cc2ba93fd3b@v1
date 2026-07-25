@@ -1,0 +1,203 @@
+"""
+IntelligenceController — the brain that controls LLM search.
+
+Orchestrates: Seed → HypothesisLoop(generate → direct → search → update → judge) × max 5 cycles.
+Returns MoneyFlowGraph with verified edges and bottleneck positions.
+
+This is DETERMINISTIC Python controlling the LLM, not the other way around.
+"""
+
+import json
+import time
+from dataclasses import dataclass, field
+from typing import Callable, Optional
+
+from .money_flow_graph import MoneyFlowGraph
+from .seeder import Seeder
+from .hypothesis_generator import HypothesisGenerator
+from .search_director import SearchDirector
+from .graph_updater import GraphUpdater
+from .completion_judge import CompletionJudge, VERDICT_CONTINUE
+
+
+@dataclass
+class CycleLog:
+    cycle: int
+    hypotheses_generated: int = 0
+    searches_executed: int = 0
+    nodes_before: int = 0
+    nodes_after: int = 0
+    edges_before: int = 0
+    edges_after: int = 0
+    confidence_before: float = 0.0
+    confidence_after: float = 0.0
+    verdict: str = ""
+    duration_s: float = 0.0
+
+    def to_dict(self) -> dict:
+        return {
+            "cycle": self.cycle,
+            "hypotheses_generated": self.hypotheses_generated,
+            "searches_executed": self.searches_executed,
+            "nodes": f"{self.nodes_before}→{self.nodes_after}",
+            "edges": f"{self.edges_before}→{self.edges_after}",
+            "confidence": f"{self.confidence_before:.2f}→{self.confidence_after:.2f}",
+            "verdict": self.verdict,
+            "duration_s": round(self.duration_s, 2),
+        }
+
+
+@dataclass
+class IntelligenceResult:
+    graph: MoneyFlowGraph
+    cycles_run: int
+    total_searches: int
+    final_verdict: str
+    cycle_logs: list[CycleLog] = field(default_factory=list)
+    bottleneck_positions: list[dict] = field(default_factory=list)
+    duration_s: float = 0.0
+
+    def to_dict(self) -> dict:
+        return {
+            "graph": self.graph.to_dict(),
+            "cycles_run": self.cycles_run,
+            "total_searches": self.total_searches,
+            "final_verdict": self.final_verdict,
+            "cycle_logs": [c.to_dict() for c in self.cycle_logs],
+            "bottleneck_positions": self.bottleneck_positions,
+            "duration_s": round(self.duration_s, 2),
+        }
+
+    def summary(self) -> str:
+        g = self.graph
+        lines = [
+            f"Intelligence Result: {self.final_verdict}",
+            f"  Cycles: {self.cycles_run}, Searches: {self.total_searches}, Duration: {self.duration_s:.1f}s",
+            f"  Graph: {len(g.nodes)} nodes, {len(g.edges)} edges, confidence={g.overall_confidence():.2f}",
+            f"  Verified edges: {g.verified_edge_count()}/{len(g.edges)}",
+            f"  Hypotheses: {len(g.confirmed_hypotheses())} confirmed, {len(g.untested_hypotheses())} untested",
+            f"  Bottleneck positions: {len(self.bottleneck_positions)}",
+        ]
+        for pos in self.bottleneck_positions[:5]:
+            ptype = pos.get("type", "?")
+            entity = pos.get("entity", pos.get("between", "?"))
+            vol = pos.get("monthly_value", pos.get("monthly_volume", "?"))
+            lines.append(f"    → {ptype}: {entity} (${vol}/mo)" if vol != "?" else f"    → {ptype}: {entity}")
+        return "\n".join(lines)
+
+
+class IntelligenceController:
+    def __init__(
+        self,
+        research_fn: Callable[[str], str],
+        webfetch_fn: Optional[Callable[[str], str]] = None,
+        llm_fn: Optional[Callable[[str], str]] = None,
+        progress_fn: Optional[Callable[[str], None]] = None,
+        max_cycles: int = 5,
+    ):
+        self.research_fn = research_fn
+        self.webfetch_fn = webfetch_fn
+        self.llm_fn = llm_fn
+        self.progress_fn = progress_fn
+        self.max_cycles = max_cycles
+
+        self.seeder = Seeder(research_fn=research_fn)
+        self.hypothesis_gen = HypothesisGenerator(llm_fn=llm_fn)
+        self.search_director = SearchDirector(research_fn=research_fn, webfetch_fn=webfetch_fn)
+        self.graph_updater = GraphUpdater()
+        self.completion_judge = CompletionJudge(max_cycles=max_cycles)
+
+    def run(self, topic: str, mode: str = "money_flow") -> IntelligenceResult:
+        start = time.time()
+        self._log(f"Intelligence Controller starting: '{topic}' (mode={mode})")
+
+        # Phase 1: SEED — 3 targeted searches to bootstrap graph
+        self._log("Phase 1: SEED — bootstrapping graph with 3 searches...")
+        graph = self.seeder.seed(topic)
+        self._log(f"  Seed complete: {len(graph.nodes)} nodes, {len(graph.edges)} edges")
+
+        cycle_logs = []
+        cycles_run = 0
+
+        # Phase 2: HYPOTHESIS LOOP — generate → search → update → judge
+        for cycle in range(self.max_cycles):
+            cycle_start = time.time()
+            cycles_run = cycle + 1
+            self._log(f"Cycle {cycles_run}: generating hypotheses...")
+
+            log = CycleLog(
+                cycle=cycles_run,
+                nodes_before=len(graph.nodes),
+                edges_before=len(graph.edges),
+                confidence_before=graph.overall_confidence(),
+            )
+
+            # Generate hypotheses from graph gaps
+            hypotheses = self.hypothesis_gen.generate(graph, topic, cycle=cycle)
+            log.hypotheses_generated = len(hypotheses)
+            self._log(f"  Generated {len(hypotheses)} hypotheses")
+
+            if not hypotheses:
+                log.verdict = "no_hypotheses"
+                log.nodes_after = len(graph.nodes)
+                log.edges_after = len(graph.edges)
+                log.confidence_after = graph.overall_confidence()
+                log.duration_s = time.time() - cycle_start
+                cycle_logs.append(log)
+                break
+
+            # Plan and execute searches
+            tasks = self.search_director.plan_searches(graph, cycle)
+            self._log(f"  Planned {len(tasks)} searches (budget remaining: {self.search_director.budget_remaining})")
+
+            results = self.search_director.execute(tasks)
+            log.searches_executed = len(results)
+
+            # Update graph from results
+            for result in results:
+                if result.success:
+                    changes = self.graph_updater.update_from_result(
+                        graph=graph,
+                        hypothesis=result.task.hypothesis,
+                        raw_text=result.raw_response,
+                        source_url=result.task.query,
+                    )
+                    self._log(f"  {result.task.hypothesis.id}: {changes['status']} (+{changes['nodes_added']}n, +{changes['edges_added']}e)")
+                else:
+                    result.task.hypothesis.status = "INCONCLUSIVE"
+
+            log.nodes_after = len(graph.nodes)
+            log.edges_after = len(graph.edges)
+            log.confidence_after = graph.overall_confidence()
+
+            # Judge: continue or stop?
+            verdict = self.completion_judge.judge(graph, cycles_run, self.search_director.budget_remaining)
+            log.verdict = verdict.verdict
+            log.duration_s = time.time() - cycle_start
+            cycle_logs.append(log)
+
+            self._log(f"  Verdict: {verdict.verdict} ({verdict.reason}) — confidence={verdict.confidence:.2f}, verified={verdict.verified_edges}/{verdict.total_edges}")
+
+            if verdict.verdict != VERDICT_CONTINUE:
+                break
+
+        # Phase 3: SYNTHESIZE — extract positions from verified graph
+        positions = graph.bottleneck_positions()
+        total_searches = 3 + self.search_director.budget_spent  # 3 seed + test searches
+
+        result = IntelligenceResult(
+            graph=graph,
+            cycles_run=cycles_run,
+            total_searches=total_searches,
+            final_verdict=cycle_logs[-1].verdict if cycle_logs else "no_cycles",
+            cycle_logs=cycle_logs,
+            bottleneck_positions=positions,
+            duration_s=time.time() - start,
+        )
+
+        self._log(f"Complete: {result.summary()}")
+        return result
+
+    def _log(self, msg: str) -> None:
+        if self.progress_fn:
+            self.progress_fn(msg)

@@ -1,0 +1,254 @@
+#!/usr/bin/env python3
+"""Wound Extractor — Step 6.8.4
+
+Researches target vulnerabilities before side-door approach design."""
+
+import argparse
+import json
+import re
+import sys
+from pathlib import Path
+
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8")
+
+QUERY_TEMPLATES = [
+    {"type": "current_pain", "template": "{role} {org_type} challenges 2026"},
+    {"type": "past_wounds", "template": "{role} {org_type} failed OR mistakes"},
+    {"type": "capability_gaps", "template": "{role} {org_type} hiring OR team gaps"},
+    {"type": "threat_landscape", "template": "{role} {org_type} competitors OR threats"},
+    {"type": "reputation_wounds", "template": "{role} {org_type} criticism OR controversy"},
+]
+
+WOUND_PATTERNS = {
+    "credibility_wound": r"\b(young|inexperienced|prove|questioned|doubted)\b",
+    "isolation_wound": r"\b(lonely|alone|can't share|no peers|isolated)\b",
+    "legacy_wound": r"\b(remembered|impact|lasting|meaningful|legacy)\b",
+    "control_wound": r"\b(betrayed|trust issues|paranoid|micromanage|control)\b",
+    "rivalry_wound": r"\b(competitor|rival|beat|outperform|jealous)\b",
+    "boredom_wound": r"\b(bored|unchallenged|routine|stale|unfulfilled)\b",
+}
+
+ROLE_ARCHETYPES = [
+    {"domain_keys": ["vc", "fund", "invest", "capital"], "role": "Fund Director", "org_type": "VC fund", "domain": "startup investment"},
+    {"domain_keys": ["tech", "software", "saas", "product"], "role": "CTO", "org_type": "tech company", "domain": "technology"},
+    {"domain_keys": ["retail", "ecommerce", "consumer"], "role": "Head of Growth", "org_type": "retail brand", "domain": "consumer growth"},
+    {"domain_keys": ["real estate", "property", "realty"], "role": "Portfolio Manager", "org_type": "real estate firm", "domain": "property investment"},
+    {"domain_keys": ["manufacturing", "factory", "industrial"], "role": "Operations Director", "org_type": "manufacturer", "domain": "operations"},
+    {"domain_keys": ["media", "content", "publishing"], "role": "Editorial Director", "org_type": "media company", "domain": "content strategy"},
+]
+
+DEFAULT_ROLES = [
+    {"role": "CEO", "org_type": "private company", "domain": "general business"},
+    {"role": "Investment Director", "org_type": "family office", "domain": "alternative investment"},
+]
+
+AGENT_WOUND_MAP = {
+    "power-cartographer": ["wounds", "giving_speed"],
+    "gate-broker": ["giving_speed", "anxiety_triggers"],
+    "tay-trang-positioner": ["needs_not_wants"],
+    "proximity-engineer": ["anxiety_triggers"],
+    "ego-leverage-specialist": ["wounds", "giving_speed"],
+    "patron-acquisition-strategist": ["wounds", "giving_speed", "needs_not_wants", "anxiety_triggers"],
+    "chameleon-communicator": ["needs_not_wants", "anxiety_triggers"],
+    "value-fabricator": ["needs_not_wants", "exploitation_angles"],
+}
+
+
+def extract_target_roles(case: dict) -> list[dict]:
+    topic = case.get("first_query", case.get("topic", case.get("title_en", ""))).lower()
+    domain = case.get("domain", "").lower()
+    combined = f"{topic} {domain}"
+
+    matched = []
+    for archetype in ROLE_ARCHETYPES:
+        if any(k in combined for k in archetype["domain_keys"]):
+            matched.append({"role": archetype["role"], "org_type": archetype["org_type"], "domain": archetype["domain"]})
+        if len(matched) == 2:
+            break
+
+    if not matched:
+        matched = DEFAULT_ROLES[:2]
+
+    if len(matched) < 3:
+        matched.append({"role": "Association President", "org_type": "industry association", "domain": domain or "industry"})
+
+    return matched[:3]
+
+
+def generate_research_queries(role: dict) -> list[dict]:
+    return [
+        {"type": t["type"], "query": t["template"].format(role=role["role"], org_type=role["org_type"])}
+        for t in QUERY_TEMPLATES
+    ]
+
+
+def classify_wound_type(evidence: str) -> str:
+    text = evidence.lower()
+    for wound_type, pattern in WOUND_PATTERNS.items():
+        if re.search(pattern, text):
+            return wound_type
+    return "unclassified"
+
+
+def infer_giving_speed(wound_types: list[str]) -> str:
+    counts = {w: wound_types.count(w) for w in set(wound_types)}
+    dominant = max(counts, key=counts.get) if counts else "unclassified"
+    if dominant in ("isolation_wound", "boredom_wound"):
+        return "fast"
+    if dominant in ("control_wound", "rivalry_wound"):
+        return "slow"
+    if dominant == "legacy_wound":
+        return "transactional"
+    return "moderate"
+
+
+def _infer_role_wounds(role: dict, kill_mechanisms: list[str]) -> list[dict]:
+    wounds = []
+    role_label = f"{role['role']}, {role['org_type']}"
+
+    wound_type = "credibility_wound"
+    if any(k in " ".join(kill_mechanisms) for k in ("network", "track_record", "credential")):
+        wound_type = "credibility_wound"
+    elif any(k in " ".join(kill_mechanisms) for k in ("capital", "resource")):
+        wound_type = "control_wound"
+
+    wounds.append({
+        "type": wound_type,
+        "evidence_pattern": f"[INFERRED] {role_label} — inferred from kill mechanisms: {', '.join(kill_mechanisms[:2])}",
+        "research_queries": [q["query"] for q in generate_research_queries(role)[:2]],
+        "exploitation_angle": f"Address {wound_type.replace('_', ' ')} directly — offer evidence, not promises",
+        "compound_value": f"Solving this = trust + repeat access to {role['org_type']} network",
+    })
+    return wounds
+
+
+def _infer_needs(role: dict) -> list[str]:
+    needs_map = {
+        "Fund Director": ["deal flow intelligence", "co-investor validation", "portfolio operator support"],
+        "CTO": ["engineering talent", "vendor benchmarks", "architecture peer review"],
+        "Head of Growth": ["channel data", "conversion benchmarks", "creative performance data"],
+        "Portfolio Manager": ["market comps", "exit timing signals", "regulatory intelligence"],
+        "Operations Director": ["supply chain data", "cost benchmarks", "process automation tools"],
+        "Editorial Director": ["audience analytics", "trend signals", "distribution partnerships"],
+        "CEO": ["market intelligence", "executive peer network", "strategic validation"],
+        "Investment Director": ["deal sourcing", "due diligence support", "sector expertise"],
+        "Association President": ["member value programs", "sponsorship revenue", "industry credibility"],
+    }
+    return needs_map.get(role["role"], ["peer validation", "market intelligence", "operational support"])
+
+
+def _infer_anxiety_triggers(role: dict) -> list[str]:
+    anxiety_map = {
+        "Fund Director": ["LP quarterly reviews", "portfolio write-offs", "peer fund outperformance"],
+        "CTO": ["technical debt accumulation", "security breaches", "key engineer departures"],
+        "Head of Growth": ["CAC spikes", "channel saturation", "attribution failures"],
+        "Portfolio Manager": ["market corrections", "liquidity events", "regulatory changes"],
+        "Operations Director": ["supply disruptions", "cost overruns", "quality failures"],
+        "Editorial Director": ["audience decline", "platform algorithm shifts", "advertiser pullouts"],
+        "CEO": ["cash flow pressure", "key staff churn", "competitive launches"],
+        "Investment Director": ["deal flow drying up", "vintage year underperformance", "LP redemptions"],
+        "Association President": ["membership churn", "event failures", "relevance erosion"],
+    }
+    return anxiety_map.get(role["role"], ["performance pressure", "stakeholder scrutiny", "competitive threats"])
+
+
+def build_wound_map(roles: list[dict], profile: dict) -> dict:
+    kill_mechanisms = profile.get("_kill_mechanisms", [])
+    wound_map_entries = []
+
+    for role in roles:
+        wounds = _infer_role_wounds(role, kill_mechanisms)
+        wound_types = [w["type"] for w in wounds]
+        giving_speed = infer_giving_speed(wound_types)
+
+        wound_map_entries.append({
+            "role": f"{role['role']}, {role['org_type']}",
+            "wounds": wounds,
+            "needs_not_wants": _infer_needs(role),
+            "anxiety_triggers": _infer_anxiety_triggers(role),
+            "giving_speed": giving_speed,
+        })
+
+    return {
+        "roles_analyzed": len(roles),
+        "wound_profiles": wound_map_entries,
+        "profile_source": profile.get("name", "unknown"),
+    }
+
+
+def generate_agent_injection(wound_map: dict) -> dict:
+    profiles = wound_map.get("wound_profiles", [])
+    injections = {}
+
+    for agent, fields in AGENT_WOUND_MAP.items():
+        blocks = []
+        for profile in profiles:
+            block_lines = [f"TARGET: {profile['role']}"]
+            if "wounds" in fields:
+                for w in profile.get("wounds", []):
+                    block_lines.append(f"  WOUND [{w['type']}]: {w['evidence_pattern']}")
+                    block_lines.append(f"  ANGLE: {w['exploitation_angle']}")
+            if "giving_speed" in fields:
+                block_lines.append(f"  GIVING_SPEED: {profile['giving_speed']}")
+            if "needs_not_wants" in fields:
+                block_lines.append(f"  NEEDS: {', '.join(profile['needs_not_wants'])}")
+            if "anxiety_triggers" in fields:
+                block_lines.append(f"  ANXIETY: {', '.join(profile['anxiety_triggers'])}")
+            if "exploitation_angles" in fields:
+                for w in profile.get("wounds", []):
+                    block_lines.append(f"  EXPLOIT: {w['exploitation_angle']}")
+            blocks.append("\n".join(block_lines))
+
+        injections[agent] = "\n\n".join(blocks)
+
+    return injections
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Wound Extractor (Step 6.8.4)")
+    parser.add_argument("--case-file", required=True, help="Path to case JSON")
+    parser.add_argument("--profile-file", default=None, help="Path to founder profile JSON")
+    parser.add_argument("--dry-run", action="store_true", help="Output research queries only")
+    args = parser.parse_args()
+
+    case_path = Path(args.case_file)
+    if not case_path.exists():
+        print(json.dumps({"error": f"case file not found: {args.case_file}"}))
+        sys.exit(1)
+
+    with open(case_path, "r", encoding="utf-8") as f:
+        case = json.load(f)
+
+    profile = {}
+    if args.profile_file:
+        profile_path = Path(args.profile_file)
+        if profile_path.exists():
+            with open(profile_path, "r", encoding="utf-8") as f:
+                profile = json.load(f)
+
+    kill_mechanisms = case.get("kill_mechanisms", case.get("kill_reasons", []))
+    profile["_kill_mechanisms"] = kill_mechanisms
+
+    roles = extract_target_roles(case)
+    all_queries = [{"role": r["role"], "queries": generate_research_queries(r)} for r in roles]
+
+    if args.dry_run:
+        print(json.dumps({"dry_run": True, "roles": roles, "research_queries_generated": all_queries}, indent=2, ensure_ascii=False))
+        sys.exit(0)
+
+    wound_map = build_wound_map(roles, profile)
+    agent_injections = generate_agent_injection(wound_map)
+
+    output = {
+        "step": "6.8.4",
+        "wound_map": wound_map,
+        "agent_injections": agent_injections,
+        "research_queries_generated": all_queries,
+    }
+
+    print(json.dumps(output, indent=2, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

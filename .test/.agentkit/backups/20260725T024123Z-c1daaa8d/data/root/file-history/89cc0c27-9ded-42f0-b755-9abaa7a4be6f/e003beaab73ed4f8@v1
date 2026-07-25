@@ -1,0 +1,179 @@
+use anyhow::Result;
+use codeflow_core::budget_policy::{period_days, PolicyConfig, PolicyEngine};
+use codeflow_core::cost::CostStore;
+
+use crate::paths;
+
+pub fn status(json: bool) -> Result<()> {
+    let config = PolicyConfig::load();
+    let engine = PolicyEngine::new(config.clone());
+    let days = Some(period_days(&config.global.period));
+
+    let db_path = paths::data_dir().join("cost.db");
+    let developer_id = codeflow_core::util::developer_id();
+    let project_dir = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+
+    let (acc_dev, acc_project) = if db_path.exists() {
+        let store = CostStore::open(&db_path)?;
+        let dev = store.accumulated_cost_by_dev(&developer_id, days)?;
+        let proj = store.accumulated_cost(&project_dir, days)?;
+        (dev, proj)
+    } else {
+        (0.0, 0.0)
+    };
+
+    if json {
+        let output = serde_json::json!({
+            "developer": {
+                "id": developer_id,
+                "accumulated_usd": acc_dev,
+            },
+            "project": {
+                "dir": project_dir,
+                "accumulated_usd": acc_project,
+            },
+            "policy": {
+                "period": config.global.period,
+                "warn_at_pct": config.global.warn_at_pct,
+                "block_at_pct": config.global.block_at_pct,
+                "limits": config.limits.iter().map(|l| {
+                    serde_json::json!({
+                        "scope": l.scope,
+                        "id": l.id,
+                        "max_usd": l.max_usd,
+                        "action": l.action_on_exceed,
+                    })
+                }).collect::<Vec<_>>(),
+            },
+            "verdict": format!("{:?}", engine.evaluate(&developer_id, &project_dir, acc_dev, acc_project)),
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+        return Ok(());
+    }
+
+    println!("╔══════════════════════════════════════════════════╗");
+    println!("║           CODEFLOW Budget Status                 ║");
+    println!("╠══════════════════════════════════════════════════╣");
+    println!(
+        "║  Period:       {:<34}║",
+        config.global.period
+    );
+    println!(
+        "║  Developer:    {:<34}║",
+        developer_id
+    );
+    println!("╠══════════════════════════════════════════════════╣");
+
+    for rule in &config.limits {
+        let accumulated = match rule.scope.as_str() {
+            "developer" => acc_dev,
+            "project" => acc_project,
+            _ => 0.0,
+        };
+        let pct = if rule.max_usd > 0.0 {
+            (accumulated / rule.max_usd * 100.0) as u32
+        } else {
+            100
+        };
+        let status_icon = if pct >= config.global.block_at_pct {
+            "\x1b[31m■ BLOCKED\x1b[0m"
+        } else if pct >= config.global.warn_at_pct {
+            "\x1b[33m■ WARNING\x1b[0m"
+        } else {
+            "\x1b[32m■ OK\x1b[0m"
+        };
+
+        println!(
+            "║  {}:{:<8} ${:>8.2}/${:<8.2} {:>3}% {}",
+            rule.scope,
+            rule.id,
+            accumulated,
+            rule.max_usd,
+            pct,
+            status_icon
+        );
+    }
+
+    println!("╚══════════════════════════════════════════════════╝");
+
+    let verdict = engine.evaluate(&developer_id, &project_dir, acc_dev, acc_project);
+    match verdict {
+        codeflow_core::budget_policy::Verdict::Block(msg) => {
+            println!("\n\x1b[31m⛔ {}\x1b[0m", msg);
+        }
+        codeflow_core::budget_policy::Verdict::Warn(msg) => {
+            println!("\n\x1b[33m⚠ {}\x1b[0m", msg);
+        }
+        codeflow_core::budget_policy::Verdict::Allow => {
+            println!("\n\x1b[32m✓ All budgets within limits\x1b[0m");
+        }
+    }
+
+    Ok(())
+}
+
+pub fn history(days: Option<i64>, json: bool) -> Result<()> {
+    let config = PolicyConfig::load();
+    let period_d = days.unwrap_or_else(|| period_days(&config.global.period));
+
+    let db_path = paths::data_dir().join("cost.db");
+    if !db_path.exists() {
+        if json {
+            println!("[]");
+        } else {
+            println!("No cost data yet.");
+        }
+        return Ok(());
+    }
+
+    let store = CostStore::open(&db_path)?;
+    let groups = store.by_group("day", None, Some(period_d))?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&groups)?);
+        return Ok(());
+    }
+
+    if groups.is_empty() {
+        println!("No spending history for the last {} days.", period_d);
+        return Ok(());
+    }
+
+    println!("\n  Spending History (last {} days)\n", period_d);
+    println!(
+        "  {:<12} {:>10} {:>12} {:>12} {:>6}",
+        "Date", "Cost ($)", "Input Tok", "Output Tok", "Count"
+    );
+    println!("  {}", "─".repeat(56));
+
+    for g in &groups {
+        println!(
+            "  {:<12} {:>10.2} {:>12} {:>12} {:>6}",
+            g.key,
+            g.cost_usd,
+            format_tokens(g.input_tokens),
+            format_tokens(g.output_tokens),
+            g.record_count,
+        );
+    }
+
+    let total: f64 = groups.iter().map(|g| g.cost_usd).sum();
+    println!("  {}", "─".repeat(56));
+    println!("  {:<12} {:>10.2}", "TOTAL", total);
+    println!();
+
+    Ok(())
+}
+
+fn format_tokens(n: u64) -> String {
+    if n >= 1_000_000 {
+        format!("{:.1}M", n as f64 / 1_000_000.0)
+    } else if n >= 1_000 {
+        format!("{:.1}K", n as f64 / 1_000.0)
+    } else {
+        n.to_string()
+    }
+}

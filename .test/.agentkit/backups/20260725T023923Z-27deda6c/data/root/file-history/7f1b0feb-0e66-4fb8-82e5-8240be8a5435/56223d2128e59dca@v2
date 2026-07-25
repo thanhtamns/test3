@@ -1,0 +1,240 @@
+"""Tests for brains/models.py — serialization, validation, computed fields."""
+
+import pytest
+from ..models import PriceDelta, ForcedFlow, FlowPosition, AnomalyCard, FounderProfile, VALID_POSITION_TYPES
+
+
+class TestPriceDelta:
+    def test_spread_auto_calculated(self):
+        d = PriceDelta(product="coffee", market_a="VN", market_b="EU",
+                       price_a=1000, price_b=1500, currency="USD", unit="ton")
+        assert d.spread_pct == pytest.approx(50.0)
+
+    def test_net_margin_auto_calculated(self):
+        d = PriceDelta(product="coffee", market_a="VN", market_b="EU",
+                       price_a=1000, price_b=1500, currency="USD", unit="ton",
+                       bridge_cost=200)
+        assert d.net_margin == pytest.approx(300.0)
+        assert d.net_margin_pct == pytest.approx(30.0)
+
+    def test_round_trip(self):
+        d = PriceDelta(product="pepper", market_a="VN", market_b="US",
+                       price_a=5000, price_b=8000, currency="USD", unit="ton",
+                       bridge_cost=500, sources=["http://example.com"])
+        restored = PriceDelta.from_dict(d.to_dict())
+        assert restored.product == "pepper"
+        assert restored.spread_pct == d.spread_pct
+        assert restored.net_margin == d.net_margin
+        assert restored.sources == ["http://example.com"]
+
+    def test_zero_price_a_no_division_error(self):
+        d = PriceDelta(product="x", market_a="A", market_b="B",
+                       price_a=0, price_b=100, currency="USD", unit="kg")
+        assert d.spread_pct == 0.0
+
+
+class TestForcedFlow:
+    def test_total_spend_auto_calculated(self):
+        f = ForcedFlow(regulation="EU AI Act", jurisdiction="EU",
+                       effective_date="2026-08-01", who_must_comply="AI deployers",
+                       entity_count=15000, compliance_cost=50000)
+        assert f.total_forced_spend == pytest.approx(750_000_000)
+
+    def test_urgency_score(self):
+        f = ForcedFlow(regulation="test", jurisdiction="US",
+                       effective_date="2026-12-01", who_must_comply="all",
+                       deadline_urgency=100)
+        score = f.urgency_score()
+        assert 0 < score < 1
+        assert score == pytest.approx((365 - 100) / 365)
+
+    def test_urgency_score_past_deadline(self):
+        f = ForcedFlow(regulation="test", jurisdiction="US",
+                       effective_date="2025-01-01", who_must_comply="all",
+                       deadline_urgency=400)
+        assert f.urgency_score() == 0.0
+
+    def test_priority_score_with_gap(self):
+        f = ForcedFlow(regulation="EUDR", jurisdiction="EU",
+                       effective_date="2026-12-30", who_must_comply="importers",
+                       entity_count=10000, compliance_cost=10000,
+                       deadline_urgency=180, provider_gap="no VN traceability")
+        score = f.priority_score()
+        assert 0 < score <= 1.0
+
+    def test_round_trip(self):
+        f = ForcedFlow(regulation="Circular 78", jurisdiction="VN",
+                       effective_date="2026-07-01", who_must_comply="enterprises",
+                       entity_count=5000, compliance_cost=1000,
+                       provider_gap="missing digital filing", sources=["http://gov.vn"])
+        restored = ForcedFlow.from_dict(f.to_dict())
+        assert restored.regulation == "Circular 78"
+        assert restored.total_forced_spend == f.total_forced_spend
+
+
+class TestFlowPosition:
+    def test_monthly_revenue_auto_calculated(self):
+        fp = FlowPosition(flow_name="test", position_type="GATEWAY", market="US",
+                          estimated_daily_volume=1000, take_rate=0.03, avg_transaction_value=10.0)
+        assert fp.monthly_revenue == pytest.approx(1000 * 30 * 0.03 * 10.0)
+
+    def test_monthly_revenue_not_overridden(self):
+        fp = FlowPosition(flow_name="test", position_type="GATEWAY", market="US",
+                          estimated_daily_volume=1000, take_rate=0.03, avg_transaction_value=10.0,
+                          monthly_revenue=5000.0)
+        assert fp.monthly_revenue == 5000.0
+
+    def test_position_score_range(self):
+        fp = FlowPosition(flow_name="test", position_type="GATEWAY", market="US",
+                          estimated_daily_volume=5000, switching_cost=0.8,
+                          alternative_count=2, network_effect=0.7, build_complexity=0.3)
+        score = fp.position_score()
+        assert 0 <= score <= 1.0
+
+    def test_position_score_high_moat(self):
+        high_moat = FlowPosition(flow_name="high", position_type="BOTTLENECK", market="US",
+                                  estimated_daily_volume=10000, switching_cost=0.9,
+                                  alternative_count=1, network_effect=0.8, build_complexity=0.2)
+        low_moat = FlowPosition(flow_name="low", position_type="GATEWAY", market="US",
+                                 estimated_daily_volume=10000, switching_cost=0.1,
+                                 alternative_count=9, network_effect=0.1, build_complexity=0.8)
+        assert high_moat.position_score() > low_moat.position_score()
+
+    def test_round_trip(self):
+        fp = FlowPosition(flow_name="API Gateway", position_type="GATEWAY", market="VN",
+                          description="Routes API calls", estimated_daily_volume=5000,
+                          take_rate=0.05, avg_transaction_value=2.0,
+                          switching_cost=0.6, alternative_count=3, network_effect=0.4,
+                          build_complexity=0.5, capital_required=10000, time_to_first_flow=60,
+                          confidence="[T]", sources=["http://example.com"])
+        restored = FlowPosition.from_dict(fp.to_dict())
+        assert restored.flow_name == "API Gateway"
+        assert restored.position_type == "GATEWAY"
+        assert restored.monthly_revenue == fp.monthly_revenue
+        assert restored.sources == ["http://example.com"]
+
+    def test_zero_volume_no_division_error(self):
+        fp = FlowPosition(flow_name="test", position_type="GATEWAY", market="US",
+                          estimated_daily_volume=0, take_rate=0.05)
+        assert fp.monthly_revenue == 0.0
+        assert fp.position_score() >= 0.0
+
+    def test_valid_position_types_constant(self):
+        assert "GATEWAY" in VALID_POSITION_TYPES
+        assert "AGGREGATOR" in VALID_POSITION_TYPES
+        assert "BOTTLENECK" in VALID_POSITION_TYPES
+        assert "DATA_EXHAUST" in VALID_POSITION_TYPES
+        assert "STANDARD" in VALID_POSITION_TYPES
+        assert len(VALID_POSITION_TYPES) == 5
+
+
+class TestAnomalyCard:
+    def test_id_format(self):
+        c = AnomalyCard()
+        assert c.id.startswith("ANOM-")
+        parts = c.id.split("-")
+        assert len(parts) == 4  # ANOM-YYMMDD-HHMMSS-hexsuffix
+        assert len(parts[1]) == 6
+        assert len(parts[2]) == 6
+        assert len(parts[3]) == 6
+
+    def test_margin_auto_calculated(self):
+        c = AnomalyCard(price_per_unit=100, cost_per_unit=30, units_per_month=50)
+        assert c.margin_per_unit == pytest.approx(70.0)
+        assert c.monthly_income == pytest.approx(3500.0)
+
+    def test_final_rank(self):
+        c = AnomalyCard(anomaly_score=0.8, margin_per_unit=500,
+                        founder_fit=0.7, urgency=0.9)
+        rank = c.final_rank()
+        assert rank > 0
+        expected = 0.8 * (500 / 1000) * 0.7 * 0.9
+        assert rank == pytest.approx(expected)
+
+    def test_final_rank_zero_urgency(self):
+        c = AnomalyCard(anomaly_score=0.8, margin_per_unit=500,
+                        founder_fit=0.7, urgency=0.0)
+        rank = c.final_rank()
+        assert rank > 0  # uses 0.01 floor
+
+    def test_round_trip(self):
+        c = AnomalyCard(
+            anomaly_type="INTERSECTION", title="test anomaly",
+            position_type="BROKER", action="CONNECT",
+            price_per_unit=100, cost_per_unit=30, units_per_month=50,
+            contacts=[{"name": "test", "role": "buyer"}],
+            script="Hi, I noticed...", kill_criteria="No response in 7 days"
+        )
+        restored = AnomalyCard.from_dict(c.to_dict())
+        assert restored.anomaly_type == "INTERSECTION"
+        assert restored.monthly_income == c.monthly_income
+        assert len(restored.contacts) == 1
+
+    def test_default_status(self):
+        c = AnomalyCard()
+        assert c.status == "ACTIVE"
+        assert c.delta_trend == "STABLE"
+
+
+class TestFounderProfile:
+    def test_has_language(self):
+        f = FounderProfile(languages=["Vietnamese", "English", "Mandarin"])
+        assert f.has_language("vietnamese")
+        assert f.has_language("ENGLISH")
+        assert not f.has_language("Portuguese")
+
+    def test_has_industry(self):
+        f = FounderProfile(industries=["coffee export", "agriculture"])
+        assert f.has_industry("coffee")
+        assert f.has_industry("Agriculture")
+        assert not f.has_industry("fintech")
+
+    def test_has_expertise(self):
+        f = FounderProfile(domain_expertise=["commodity trading", "VN tax"])
+        assert f.has_expertise("commodity")
+        assert f.has_expertise("tax")
+        assert not f.has_expertise("AI")
+
+    def test_round_trip(self):
+        f = FounderProfile(
+            industries=["coffee"], languages=["vi", "en"],
+            location="Dak Lak, VN", capital_range="$5K-$20K"
+        )
+        restored = FounderProfile.from_dict(f.to_dict())
+        assert restored.location == "Dak Lak, VN"
+        assert restored.capital_range == "$5K-$20K"
+
+
+class TestDualScoring:
+    def test_final_rank_trader_mode_unchanged(self):
+        c = AnomalyCard(anomaly_score=0.8, margin_per_unit=500,
+                        founder_fit=0.7, urgency=0.9)
+        expected = 0.8 * (500 / 1000) * 0.7 * 0.9
+        assert c.final_rank(mode="trader") == pytest.approx(expected)
+
+    def test_final_rank_no_mode_backward_compat(self):
+        c = AnomalyCard(anomaly_score=0.8, margin_per_unit=500,
+                        founder_fit=0.7, urgency=0.9)
+        assert c.final_rank() == c.final_rank(mode="trader")
+
+    def test_final_rank_owner_mode_uses_position_score(self):
+        fp = FlowPosition(flow_name="gateway", position_type="GATEWAY", market="US",
+                          estimated_daily_volume=5000, switching_cost=0.7,
+                          alternative_count=2, network_effect=0.5, build_complexity=0.3)
+        c = AnomalyCard(anomaly_score=0.8, founder_fit=0.7,
+                        flow_position=fp.to_dict())
+        owner_rank = c.final_rank(mode="owner")
+        assert owner_rank > 0
+        expected = fp.position_score() * 0.7 * 0.8
+        assert owner_rank == pytest.approx(expected)
+
+    def test_final_rank_combined_uses_max(self):
+        fp = FlowPosition(flow_name="gateway", position_type="GATEWAY", market="US",
+                          estimated_daily_volume=5000, switching_cost=0.7,
+                          alternative_count=2, network_effect=0.5, build_complexity=0.3)
+        c = AnomalyCard(anomaly_score=0.8, margin_per_unit=500,
+                        founder_fit=0.7, urgency=0.9, flow_position=fp.to_dict())
+        combined = c.final_rank(mode="combined")
+        trader = c.final_rank(mode="trader")
+        owner = c.final_rank(mode="owner")
+        assert combined == pytest.approx(max(trader, owner))

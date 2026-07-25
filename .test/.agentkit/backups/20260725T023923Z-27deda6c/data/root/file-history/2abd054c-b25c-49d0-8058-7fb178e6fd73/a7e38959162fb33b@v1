@@ -1,0 +1,313 @@
+# Universal Analysis Protocol
+
+**One protocol. Any analytical activity.** This file is the master operating procedure for all analysis requests: channel/founder analysis, opportunity discovery, market research, business model validation, niche validation, competitor analysis, investment analysis, and stage0 mountain hunting.
+
+**Core claim:** The same knowledge corpus + same discipline steps apply across all of these. Only the domain-specific priors change.
+
+---
+
+## When this protocol activates
+
+This protocol MUST run at the start of any request matching these patterns:
+
+- "Analyze this channel / founder / creator / brand / business"
+- "Is X sustainable / profitable / worth investing"
+- "Find opportunities in X market / niche / industry"
+- "Research X market / competitor / trend"
+- "Validate this business model / product idea / niche"
+- "Phân tích kênh / founder / cơ hội / thị trường"
+- Any `/stage0` invocation
+- Any analytical `/brainstorm` / `/invest` / `/ck:*` command
+
+If the request doesn't match these patterns, the protocol does not activate. Casual conversation, code editing, documentation work bypass this protocol.
+
+---
+
+## The 7-step protocol
+
+### Step 0 — Load Training Corpus (BLOCKING)
+
+Before any reasoning begins:
+
+1. Read `data/training/INDEX.json`
+2. Load all artifacts marked `load_priority: always_on_start`:
+   - `README.md` (orientation)
+   - `knowledge-taxonomy.md` (what knowledge types exist)
+   - `inference-engine.md` (how to use knowledge)
+   - `universal-analysis-protocol.md` (this file)
+   - `mental-models.md` (6 frameworks)
+3. Read `INDEX.json` artifacts list for on-demand files
+
+**If corpus cannot be loaded → ABORT analysis and report corruption.**
+
+---
+
+### Step 1 — Classify Activity + Identify Domain
+
+Based on the request, classify into ONE or MORE of these activity types:
+
+| Activity | Primary knowledge types activated |
+|---|---|
+| Channel analysis | Rules (content_credibility, identity_verification, operational_distress), Archetypes, Verification (Tier 1 all 4) |
+| Founder evaluation | Rules (founder_archetype, identity_verification), Archetypes, Mental models (MM-02 Founder/Business Separation) |
+| Opportunity discovery | Rules (unit_economics, business_model_evolution), Mental models (MM-04 Munger Inversion, MM-06 DeMarco CENTS), Domain heuristics |
+| Market research | Mental models (MM-03 Triangulation Gate), Domain heuristics, Calibration data |
+| Business model validation | Mental models (MM-06 DeMarco CENTS), Rules (unit_economics), Domain heuristics |
+| Niche validation | Rules (unit_economics, marketing_strategy), Mental models (MM-04 Munger Inversion) |
+| Competitor analysis | Verification methods (Tier 1 + Tier 2), Rules (brand_verification, content_credibility) |
+| Investment analysis | All mental models, all rules, all archetypes |
+| Stage0 mountain hunting | ALL artifacts (this is the heaviest consumer) |
+
+Identify the **domain** (e.g., VN garment D2C, VN TikTok Shop, US SaaS, crypto, commodities) for loading domain heuristics.
+
+---
+
+### Step 2 — Apply Identification Firewall (MM-01)
+
+**Fire condition:** About to read founder/creator content, especially vulnerability narratives.
+
+**Action:**
+1. State explicitly: "Applying MM-01 Identification Firewall. I am separating empathy for the person from analysis of the business."
+2. Set skepticism multiplier to 2x.
+3. Decide: will I read founder content first or external signals first?
+4. **Correct answer: External signals FIRST** (see Step 3).
+
+---
+
+### Step 3 — Execute Tier 1 Verification (BEFORE founder content)
+
+**For channel/founder analysis:**
+```bash
+python data/training/scripts/tier1-verify.py \
+  --website <from-bio-link> \
+  --channel-url <from-request> \
+  --name-or-brand <from-initial-scan> \
+  --output /tmp/tier1-<slug>.json
+```
+
+**For opportunity discovery / market research:**
+- Tier 1 methods adapt: instead of personal identity, verify market size claims against independent sources (trade data, industry reports, tax registries).
+
+**For business model validation:**
+- Tier 1 methods adapt: instead of founder identity, verify unit economics against competitor base rates and public revenue estimates.
+
+**Universal rule:** Always run independent-signal verification BEFORE consuming the subject's own narrative about itself.
+
+---
+
+### Step 4 — Fire Behavioral Rules on Topic Match
+
+Load all rules from `data/training/extracted-rules-channel-analysis.json`. For each rule:
+- Check if trigger keywords match the topic
+- Check if rule domain is relevant to the analysis
+- If matched, add to "priors fired" list
+- Track which rules fired for verdict citation
+
+**Example:** For "analyze TikTok fashion channel" request, these rules auto-fire:
+- SCH-012 (content credibility) if vulnerability content detected
+- SCH-013 (cliffhanger format) if numbered series detected
+- SCH-016 (wayback verification) always fires on brand claims
+- SCH-017 (email forensics) always fires on founder identity check
+- SCH-018 (unit econ death cert) if founder admits per-order loss
+- SCH-019 (operational distress) if soliciting volunteers detected
+- SCH-020 (hormozi pivot) if audience funnel pattern detected
+- SCH-021 (retreating founder) if biographical markers match
+
+---
+
+### Step 5 — Apply Mental Models at Decision Points
+
+Check each mental model's trigger condition at every reasoning step:
+
+| At this reasoning step | Check these models |
+|---|---|
+| Reading founder content | MM-01 Identification Firewall |
+| Founder is data source | MM-02 Founder/Business Separation |
+| Revenue/scale claim encountered | MM-03 Triangulation Gate (BLOCKING) |
+| Asking "is this sustainable?" | MM-04 Munger 10-Condition Inversion |
+| Vulnerability + audience detected | MM-05 Hormozi Pivot Detection |
+| Evaluating business model | MM-06 DeMarco CENTS Score |
+
+**Discipline rule:** If a model's trigger fires but the analyst skips it, the analysis is degraded. Must restart.
+
+---
+
+### Step 6 — Match Archetypes
+
+Compare subject's markers against `data/training/archetypes/*.json`:
+- Extract markers from Tier 1 output + content summary
+- Compare to each archetype's `detection_markers`
+- If threshold met (e.g., 5/9 for ARCH-001), load archetype trajectory as PRIOR
+- Use archetype's sustainability_paths_with_probabilities as hypothesis scaffolding
+
+**If no archetype matches:** This is a signal to capture a new archetype (after ≥2 independent cases of the new pattern).
+
+---
+
+### Step 7 — Synthesize Verdict with Knowledge Citations
+
+Output format:
+
+```markdown
+# Analysis Verdict — <topic>
+
+## TL;DR
+<1-2 sentence verdict>
+
+## Knowledge fired during this analysis
+
+### Rules applied (from data/training/extracted-rules-channel-analysis.json)
+- SCH-XXX (<domain>) → <what evidence triggered it, what action it forced>
+- ...
+
+### Mental models fired (from data/training/mental-models.json)
+- MM-XX <Name> → <how it was applied, what output it produced>
+- ...
+
+### Archetypes matched (from data/training/archetypes/)
+- ARCH-XXX <Name> → <N/M markers matched, which trajectory applied>
+
+### Verification methods executed (from data/training/verification-toolkit.md)
+- Tier 1 Method X → <output>
+
+## Findings
+<analysis content with evidence chain>
+
+## Sustainability / Viability Assessment
+<based on archetype trajectory + Munger inversion + triangulation gate>
+
+## Confidence level
+<high | medium | low> based on:
+- Coverage of Tier 1 methods: <N/4>
+- Number of rules fired with evidence: <count>
+- Archetype match strength: <N/M markers>
+- Triangulation gate result: <passed | forced KILL>
+
+## Unresolved gaps
+<things that would increase confidence if resolved>
+
+## NEXT ACTION
+<single concrete action, <= 2 hours doable>
+```
+
+**Verdict cannot be emitted without the "Knowledge fired" section.** If no knowledge fired, the analysis used pure intuition and must be restarted.
+
+---
+
+## Post-analysis: Approval capture
+
+When user approves a piece of reasoning during or after the analysis:
+
+```bash
+python data/training/scripts/capture-approved-inference.py \
+  --type <rule|model|method|archetype|heuristic|meta> \
+  --content "<exact approved inference text, PII-scrubbed>" \
+  --session-id <session> \
+  --source-analysis "<brief description of the analysis>"
+```
+
+This is the learning loop. Without it, the corpus does not grow. Without growth, the system does not compound.
+
+---
+
+## Activity-specific branches
+
+### Channel/Founder Analysis
+- Focus: identity verification, content arc decoding, unit economics
+- Primary Tier 1: email forensics + engagement timeline
+- Primary models: MM-01, MM-02, MM-05 (Hormozi pivot)
+- Primary archetypes: founder archetypes library
+
+### Opportunity Discovery
+- Focus: market size, entry barriers, compounding potential
+- Primary Tier 1: trade data, industry reports, tax registry
+- Primary models: MM-04 Munger Inversion, MM-06 DeMarco CENTS
+- Primary rules: unit_economics domain rules
+- Integration: stage0 Step 4 deep research
+
+### Market Research
+- Focus: base rates, trajectory, saturation
+- Primary Tier 1: statista, trade stats, industry reports
+- Primary models: MM-03 Triangulation Gate (forced on any claim)
+- Primary rules: brand_verification, marketing_strategy
+
+### Business Model Validation
+- Focus: CENTS score, unit economics, moat evaluation
+- Primary models: MM-06 DeMarco CENTS (deterministic)
+- Primary rules: unit_economics, content_credibility
+- Integration: stage0 Step 6 Mountain Test v2
+
+### Niche Validation
+- Focus: failure base rates, competitive density
+- Primary models: MM-04 Munger Inversion
+- Primary rules: content_credibility, unit_economics
+- Integration: stage0 anti-confirmation queries
+
+### Competitor Analysis
+- Focus: identity, real scale, money flow
+- Primary Tier 1: all 4 methods on each competitor
+- Primary models: MM-03 Triangulation Gate
+- Primary rules: brand_verification, content_credibility
+
+### Investment Analysis
+- Focus: everything
+- Primary: full corpus active
+- Integration: Investment-orchestrator command
+
+### Stage0 Mountain Hunting
+- Focus: $10K+/mo mountain discovery with compounding
+- Primary: full corpus auto-loaded via Step 3.5 hook
+- **See `inference-engine.md` for stage0 spec modifications required**
+
+---
+
+## Quality gates
+
+Before emitting any verdict, check:
+
+- [ ] Training corpus loaded (Step 0)
+- [ ] Activity classified + domain identified (Step 1)
+- [ ] MM-01 Identification Firewall applied if relevant (Step 2)
+- [ ] Tier 1 verification executed BEFORE narrative (Step 3)
+- [ ] Behavioral rules fired + tracked (Step 4)
+- [ ] Mental models applied at every relevant reasoning step (Step 5)
+- [ ] Archetypes matched (Step 6)
+- [ ] Verdict cites fired knowledge explicitly (Step 7)
+- [ ] Confidence level stated with rationale
+- [ ] Next action specified (≤2h doable)
+- [ ] Approval capture invoked if user validates any inference
+
+**Any unchecked box = degraded analysis. Must restart.**
+
+---
+
+## What this protocol prevents
+
+1. **Reading founder narrative as ground truth** — Step 3 forces independent verification first
+2. **Rationalizing weak revenue claims** — MM-03 Triangulation Gate is binary
+3. **Positive-bias forward analysis** — MM-04 Munger Inversion forces failure enumeration
+4. **Missing hidden business models** — MM-05 Hormozi Pivot Detection catches audience funnels
+5. **Solopreneur trap evaluation** — MM-06 DeMarco CENTS scores distinguish Slowlane from Fastlane
+6. **Pattern amnesia** — rules auto-fire, not dependent on analyst memory
+7. **Shallow analysis** — citation requirement exposes skipped steps
+
+---
+
+## Updating this protocol
+
+When retrospective analysis reveals a systematic gap (user correction repeated 2+ times):
+1. Capture as META-NNN in meta-learning
+2. Update this protocol with new step or modified step
+3. Update `inference-engine.md` with new fire condition
+4. Commit with message: `protocol: add step N for <gap name>`
+
+---
+
+**See also:**
+- `inference-engine.md` — HOW knowledge fires (mechanism)
+- `knowledge-taxonomy.md` — WHAT gets trained (types)
+- `mental-models.md` — 6 reasoning frameworks detail
+- `verification-toolkit.md` — Tier 1/2/3 forensic methods detail
+- `archetypes/*.json` — archetype library
+- `INDEX.json` — machine-readable artifact list
+- `README.md` — file structure + loading methods

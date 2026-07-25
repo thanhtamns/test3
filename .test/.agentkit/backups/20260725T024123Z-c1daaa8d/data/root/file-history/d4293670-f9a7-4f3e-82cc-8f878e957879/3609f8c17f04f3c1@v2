@@ -1,0 +1,48 @@
+# CODEFLOW Phase 5: Compliance Export Engine — Shipped
+
+**Date:** 2026-06-07
+**Repo:** `D:/code/invesments/tools_decisions/rtk-analysis/`
+
+## What shipped
+
+SLSA Provenance v1.0 attestation export via `rtk audit` CLI.
+
+| Module | Purpose |
+|--------|---------|
+| `compliance/mod.rs` | Module root |
+| `compliance/report_common.rs` | AuditFormat, AuditStats, date range parsing, DB query helpers |
+| `compliance/slsa_export.rs` | In-toto envelope, SLSA v1 type tree, DSSE PAE signing |
+| `cmds/codeflow/audit_cmd.rs` | `rtk audit --format slsa --range 90d --json` |
+| `core/provenance.rs` (extended) | `query_range()` with date/project/dev filters |
+
+**Total: 2131 tests passing (32 new), 0 regressions.**
+
+## Code review findings (all fixed)
+
+- **[C] slsa_export.rs:** Signed raw payload instead of DSSE PAE(payloadType, payload). External SLSA verifiers would reject. Fixed with proper PAE encoding per DSSE spec.
+- **[H] audit_cmd.rs:** Double DB query — `query_provenance_records` + `gather_stats` both queried provenance.db independently. Fixed with `stats_from_records()` that computes stats from already-fetched records.
+- **[H] report_common.rs:** `range_to_since` accepted negative day values (e.g., "-5d" → future timestamp). Added `n <= 0` guard.
+- **[M] slsa_export.rs:** Comment said "base64url-encoded" but code used standard base64. Fixed doc.
+
+## Key design decisions
+
+1. **DSSE PAE signing** — Signatures computed over `PAE(payloadType, raw_payload)` per in-toto DSSE spec. Ensures compatibility with `slsa-verifier`, Sigstore, and other external verification tools.
+2. **MVP: SLSA only** — CycloneDX, SOC 2, EU AI Act return "coming in a future release" message. Each spec is multi-week work.
+3. **Graceful empty DB** — Missing provenance.db/cost.db → empty but structurally valid attestation. No crash on fresh installs.
+4. **Retention cleanup descoped** — Export works without retention management. Can be added post-MVP.
+
+## Cumulative progress
+
+| Phase | Status | Tests |
+|-------|--------|-------|
+| 1 — Provenance Core | Complete | +29 |
+| 2 — Cost Attribution | Complete | +36 |
+| 3 — Budget Governance | Complete | +20 |
+| 4 — Quality Gate | Complete | +32 |
+| 5 — Compliance Export | Complete | +32 |
+| **Total** | **5 of 7** | **2131** |
+
+## What's next
+
+- Phase 6 (CLI Export + Dashboard) — now unblocked
+- Phase 7 (OSS Polish + Launch) — blocked on 6

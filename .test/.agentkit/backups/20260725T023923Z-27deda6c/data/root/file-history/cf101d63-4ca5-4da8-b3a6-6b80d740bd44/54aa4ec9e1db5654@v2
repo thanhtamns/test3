@@ -1,0 +1,71 @@
+---
+phase: 2
+title: Hypothesis Wiring
+status: completed
+priority: P1
+effort: 2h
+dependencies:
+  - 1
+---
+
+# Phase 2: Hypothesis Wiring
+
+## Overview
+
+Wire existing `hypothesis_engine.py` to accept signal_candidates from Phase 1 and generate novel niche hypotheses. Add dedup layer against existing KB cases. No new hypothesis engine code — just adapter + dedup.
+
+## Requirements
+
+- Functional: Convert signal_candidates → hypothesis_engine input format. Dedupe output against 28+ KB cases. Return 3-5 novel hypotheses.
+- Non-functional: Reuse existing hypothesis_engine.py without modification. Adapter pattern.
+
+## Architecture
+
+```
+signal_candidates[] (from Phase 1)
+  │
+  ▼
+auto-hunt-hypothesis-adapter.py
+  ├── format_signals_as_hypotheses()  → convert gaps to hypothesis statements
+  ├── dedupe_against_kb()             → reject if same domain+verdict exists
+  ├── call hypothesis_engine          → generate + score
+  └── output: novel_hypotheses[] JSON
+```
+
+## Related Code Files
+
+- Create: `D:\code\invesments\master_investments\.claude\skills\business\transaction-layer\nui-hunter\scripts\auto-hunt-hypothesis-adapter.py`
+- Read: `D:\code\invesments\master_investments\.claude\skills\business\data_intelligence\reasoning\hypothesis_engine.py`
+- Read: `nui-hunter/kb/cases/*.json` (for dedup)
+
+## Implementation Steps
+
+1. Create `auto-hunt-hypothesis-adapter.py` with CLI (`--signals-json`, `--kb-dir`, `--max-hypotheses 5`)
+2. Implement `format_signals_as_hypotheses()`:
+   - Each signal_candidate → hypothesis statement: "A {domain} business targeting {signal_evidence} can achieve $10K/mo within 12 months for a founder with {profile_skills}"
+   - Map gap_score to prior_confidence (high gap = lower prior = more room to discover)
+3. Implement `dedupe_against_kb()`:
+   - Load all KB case domains + topics
+   - Fuzzy match: if hypothesis domain matches existing case domain AND verdict was KILL → skip (already explored + killed)
+   - If domain matches but verdict was CONDITIONAL/GO → skip (already being tracked)
+   - Only pass through hypotheses where domain is NEW or approach is significantly different
+4. Implement `generate()`:
+   - Import hypothesis_engine.Hypothesis dataclass
+   - Create N_HYPOTHESES (5) from formatted signals
+   - Apply diversity constraint (MAX_PREDICT_OVERLAP = 0.60)
+   - Return top 3-5 by composite score
+5. Output JSON: `{hypotheses: [{id, statement, domain, prior_confidence, source_signal, predicts, falsifies}]}`
+6. Test: verify dedup correctly rejects existing domains, passes novel ones
+
+## Success Criteria
+
+- [ ] Accepts signal_candidates JSON from Phase 1 output
+- [ ] Correctly dedupes against existing KB (0 false passes on known domains)
+- [ ] Generates 3-5 hypotheses when given ≥3 candidates
+- [ ] Generates 0 hypotheses when all candidates already in KB (correct empty output)
+- [ ] Each hypothesis has concrete domain, statement, and falsification criteria
+
+## Risk Assessment
+
+- hypothesis_engine import path complexity → mitigation: use same sys.path pattern as stage0-local-orchestrator
+- Dedup too aggressive (kills everything) → mitigation: fuzzy match threshold tunable via --similarity-threshold (default 0.7)

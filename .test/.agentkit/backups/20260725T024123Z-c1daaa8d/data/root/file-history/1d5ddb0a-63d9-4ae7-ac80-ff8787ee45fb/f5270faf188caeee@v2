@@ -1,0 +1,157 @@
+---
+phase: 3
+title: "Build AI & Matching Engine"
+status: pending
+priority: P1
+effort: "15h (Week 3)"
+dependencies: [2]
+---
+
+# Phase 3: Build AI & Matching Engine
+
+## Overview
+
+Replace keyword matching with AI-powered analysis. GPT-4o-mini analyzes product → generates personalized channel recommendations + copy-paste outreach scripts per channel. This is the VALUE MULTIPLIER that justifies payment.
+
+## Requirements
+
+- Functional: AI generates product analysis + per-channel outreach scripts personalized to product
+- Non-functional: <10s total response time, <$0.01 per analysis (GPT-4o-mini cost), cache results
+
+## Architecture
+
+```
+ProductProfile (from scraper)
+  → GPT-4o-mini: "Analyze this product. Who is the target user?"
+  → Enhanced ProductProfile with: target_persona, value_prop, unique_angle
+  → Channel Matching (semantic, not just keyword)
+  → Per-channel: GPT-4o-mini generates outreach script
+  → Cache result in Turso DB
+  → Return full report
+```
+
+## Related Code Files
+
+- Create: `src/ai-analyzer.ts` — Product analysis via OpenAI
+- Create: `src/script-generator.ts` — Per-channel outreach script generation
+- Create: `src/db.ts` — Turso/SQLite connection + schema
+- Modify: `src/channels.ts` — Add semantic matching
+- Modify: `src/index.ts` — Wire AI into analysis pipeline
+
+## Implementation Steps
+
+### Step 1: Database Setup (2h)
+
+1. Set up Turso database (free tier):
+   ```sql
+   CREATE TABLE analyses (
+     id TEXT PRIMARY KEY,
+     url TEXT NOT NULL,
+     product_profile JSON,
+     ai_analysis JSON,
+     channels JSON,
+     scripts JSON,
+     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+   );
+   
+   CREATE TABLE users (
+     id TEXT PRIMARY KEY,
+     email TEXT,
+     stripe_customer_id TEXT,
+     plan TEXT DEFAULT 'free',
+     analyses_count INTEGER DEFAULT 0,
+     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+   );
+   ```
+
+2. Cache layer: same URL analyzed within 24h → return cached result
+
+### Step 2: AI Product Analyzer (4h)
+
+3. Build prompt for product analysis:
+   ```
+   System: You are a distribution strategist for indie software products.
+   
+   Given this product info:
+   - Title: {title}
+   - Description: {description}
+   - Features: {features}
+   - Pricing: {pricing}
+   
+   Analyze and return JSON:
+   {
+     "target_persona": "Who exactly would use this?",
+     "pain_point": "What specific problem does it solve?",
+     "value_prop": "Why this over alternatives?",
+     "unique_angle": "What's the hook for cold outreach?",
+     "category": "saas|api|marketplace|extension|template|content",
+     "keywords": ["5-10 relevant keywords for channel matching"]
+   }
+   ```
+
+4. Use GPT-4o-mini for cost efficiency (~$0.002 per analysis)
+5. Parse response, validate JSON, fallback to keyword matching if AI fails
+
+### Step 3: Semantic Channel Matching (4h)
+
+6. Enhanced matching algorithm:
+   ```
+   Score = (keyword_overlap × 0.3) + (category_match × 0.3) + 
+           (audience_relevance × 0.2) + (commercial_tolerance × 0.2)
+   ```
+
+7. Add "anti-match" rules:
+   - r/SaaS: only if product IS SaaS
+   - r/webdev: only if product targets developers
+   - Facebook groups: only if product serves non-tech users
+   - HN: only if product has technical novelty
+
+8. Return top 15 channels, ordered by expected conversion (not just audience size)
+
+### Step 4: Script Generator (3h)
+
+9. Per-channel outreach script generation:
+   ```
+   System: Write a {platform}-appropriate post/message for this product.
+   
+   Product: {ai_analysis}
+   Channel: {channel_name} on {platform}
+   Channel rules: {dont_do}
+   Best format: {best_format}
+   
+   Requirements:
+   - Value-first (lead with insight, not pitch)
+   - Under 150 words
+   - Include specific hook for THIS community
+   - End with soft CTA (ask for feedback, not "buy now")
+   ```
+
+10. Generate scripts for top 10 channels (batch API call)
+11. Include "What NOT to do" warning per channel
+
+### Step 5: Wire Together + Deploy (2h)
+
+12. Update analysis endpoint:
+    - Free: product analysis + top 5 channels (no scripts)
+    - Paid: full 15 channels + AI scripts + "What NOT to do" + timing recs
+13. Deploy to Cloudflare Workers with Turso binding
+14. Test with 20 real product URLs
+
+## Success Criteria
+
+- [ ] AI product analysis returns valid JSON for 18/20 test URLs
+- [ ] Semantic matching produces more relevant results than keyword-only (A/B comparison)
+- [ ] Scripts are personalized and channel-appropriate (manual QA: 7/10 quality)
+- [ ] Total cost per analysis <$0.01
+- [ ] Response time <10s for full analysis
+- [ ] Results cached in Turso, cache hit returns <1s
+- [ ] Free vs paid tier gating works correctly
+
+## Risk Assessment
+
+| Risk | Probability | Mitigation |
+|------|-------------|------------|
+| OpenAI API costs spike | 15% | GPT-4o-mini is cheap; add rate limit 100 analyses/day |
+| AI generates bad scripts | 25% | Add manual review for first 50 analyses; iterate prompt |
+| Turso free tier limits | 10% | 9GB storage, 500M rows read/mo — plenty for MVP |
+| AI hallucinations in product analysis | 20% | Always show scraped data alongside AI interpretation |

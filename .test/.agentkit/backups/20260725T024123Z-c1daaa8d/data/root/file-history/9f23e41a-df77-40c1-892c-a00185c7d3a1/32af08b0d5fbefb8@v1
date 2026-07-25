@@ -1,0 +1,247 @@
+mod hooks;
+mod paths;
+mod stats;
+mod sync;
+mod wrap;
+
+use clap::{Parser, Subcommand};
+use tracing_subscriber::EnvFilter;
+
+#[derive(Parser)]
+#[command(name = "codeflow", version, about = "AI coding cost intelligence engine")]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Install Claude Code hooks
+    Init {
+        /// Install globally (~/.claude/settings.json)
+        #[arg(short, long)]
+        global: bool,
+    },
+    /// Remove Claude Code hooks
+    Uninit {
+        /// Remove from global settings
+        #[arg(short, long)]
+        global: bool,
+    },
+    /// Wrap and compress a command's output
+    Wrap {
+        /// Command and arguments to execute
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        command: Vec<String>,
+    },
+    /// Show local savings statistics
+    Stats {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+        /// Number of days to include (default: 90)
+        #[arg(long)]
+        days: Option<i64>,
+    },
+    /// Sync local events to cloud
+    Sync {
+        /// Sync once and exit (default: continuous daemon)
+        #[arg(long)]
+        once: bool,
+        /// API URL override
+        #[arg(long, env = "CODEFLOW_API_URL")]
+        api_url: Option<String>,
+    },
+    /// Manage the dedup cache
+    Cache {
+        #[command(subcommand)]
+        action: CacheAction,
+    },
+    /// Hook entry points (called by Claude Code, not by users)
+    #[command(hide = true)]
+    Hook {
+        #[command(subcommand)]
+        action: HookAction,
+    },
+    /// Check for updates
+    Update,
+}
+
+#[derive(Subcommand)]
+enum CacheAction {
+    /// Clear the dedup cache
+    Clear,
+    /// Show cache statistics
+    Info,
+}
+
+#[derive(Subcommand)]
+enum HookAction {
+    /// PreToolUse hook handler
+    PreToolUse,
+    /// PostToolUse hook handler
+    PostToolUse,
+}
+
+fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .with_writer(std::io::stderr)
+        .init();
+
+    let cli = Cli::parse();
+
+    let result = match cli.command {
+        Commands::Init { global } => hooks::install(global),
+        Commands::Uninit { global } => hooks::uninstall(global),
+        Commands::Wrap { command } => wrap::execute(&command),
+        Commands::Stats { json, days } => stats::show(json, days),
+        Commands::Sync { once, api_url } => {
+            let mut config = sync::SyncConfig::default();
+            config.one_shot = once;
+            if let Some(url) = api_url {
+                config.api_url = url;
+            }
+            sync::run(config)
+        }
+        Commands::Cache { action } => handle_cache(action),
+        Commands::Hook { action } => handle_hook(action),
+        Commands::Update => {
+            println!("codeflow {}", env!("CARGO_PKG_VERSION"));
+            println!("commit:  {}", option_env!("CODEFLOW_GIT_SHA").unwrap_or("dev"));
+            println!("target:  {}", env!("TARGET"));
+            println!();
+            println!("Update: download latest from https://github.com/codeflow-dev/codeflow/releases");
+            Ok(())
+        }
+    };
+
+    if let Err(e) = result {
+        eprintln!("error: {:#}", e);
+        std::process::exit(1);
+    }
+}
+
+fn handle_cache(action: CacheAction) -> anyhow::Result<()> {
+    let db_path = paths::db_path();
+    match action {
+        CacheAction::Clear => {
+            if db_path.exists() {
+                let cache = codeflow_core::dedup::DedupCache::open(&db_path, "")?;
+                let removed = cache.clear()?;
+                println!("Cleared {} cache entries.", removed);
+            } else {
+                println!("Cache is empty.");
+            }
+            Ok(())
+        }
+        CacheAction::Info => {
+            if db_path.exists() {
+                let cache = codeflow_core::dedup::DedupCache::open(&db_path, "")?;
+                let count = cache.entry_count()?;
+                println!("Cache entries: {}", count);
+                println!("Database: {}", db_path.display());
+            } else {
+                println!("No cache database found.");
+            }
+            Ok(())
+        }
+    }
+}
+
+fn handle_hook(action: HookAction) -> anyhow::Result<()> {
+    match action {
+        HookAction::PreToolUse => {
+            let input = match read_stdin() {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("[codeflow] hook health-check: stdin read failed: {}", e);
+                    println!("{{}}");
+                    return Ok(());
+                }
+            };
+
+            let parsed: serde_json::Value = match serde_json::from_str(&input) {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!("[codeflow] hook health-check: invalid JSON from Claude Code: {}", e);
+                    println!("{{}}");
+                    return Ok(());
+                }
+            };
+
+            if !parsed.is_object() {
+                eprintln!("[codeflow] hook health-check: expected JSON object, got {}", parsed);
+                println!("{{}}");
+                return Ok(());
+            }
+
+            let tool_name = parsed.get("tool_name").and_then(|v| v.as_str());
+            if tool_name != Some("Bash") {
+                println!("{{}}");
+                return Ok(());
+            }
+
+            if let Some(tool_input) = parsed.get("tool_input") {
+                if !tool_input.is_object() {
+                    eprintln!("[codeflow] hook health-check: tool_input is not an object");
+                    println!("{{}}");
+                    return Ok(());
+                }
+                if let Some(command) = tool_input.get("command").and_then(|c| c.as_str()) {
+                    if should_wrap(command) {
+                        let codeflow_bin = std::env::current_exe()
+                            .map(|p| p.to_string_lossy().to_string())
+                            .unwrap_or_else(|_| "codeflow".to_string());
+                        let quoted_bin = shell_quote(&codeflow_bin);
+                        let rewritten = format!("{} wrap {}", quoted_bin, command);
+                        let response = serde_json::json!({
+                            "tool_input": {
+                                "command": rewritten
+                            }
+                        });
+                        println!("{}", serde_json::to_string(&response)?);
+                        return Ok(());
+                    }
+                }
+            }
+
+            println!("{{}}");
+            Ok(())
+        }
+        HookAction::PostToolUse => {
+            let _ = read_stdin();
+            println!("{{}}");
+            Ok(())
+        }
+    }
+}
+
+fn should_wrap(command: &str) -> bool {
+    let first_word = command.split_whitespace().next().unwrap_or("");
+    let stem = std::path::Path::new(first_word)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(first_word);
+    let wrappable = [
+        "git", "npm", "npx", "pnpm", "yarn", "cargo", "pytest", "python",
+        "tsc", "eslint", "ls", "find", "grep", "cat", "head", "tail",
+        "docker", "kubectl", "go", "make", "pip", "ruff", "mypy", "vitest",
+    ];
+    wrappable.contains(&stem)
+}
+
+fn shell_quote(s: &str) -> String {
+    if s.contains(' ') || s.contains('\\') || s.contains('\'') || s.contains('"') {
+        format!("'{}'", s.replace('\'', "'\\''"))
+    } else {
+        s.to_string()
+    }
+}
+
+fn read_stdin() -> anyhow::Result<String> {
+    use std::io::Read;
+    let mut buf = String::new();
+    std::io::stdin().read_to_string(&mut buf)?;
+    Ok(buf)
+}

@@ -1,0 +1,117 @@
+---
+phase: 3
+title: "Execution Gate Design"
+status: pending
+priority: P0
+effort: "3h"
+dependencies: [1, 2]
+---
+
+# Phase 3: Execution Gate Design
+
+## Overview
+Break the deadlock loop by forcing real-world action after positive verdicts. System BLOCKS further analysis until pending actions are resolved. This is the critical fix — without it, the system remains an observation engine producing zero outcomes regardless of how accurate its scoring becomes.
+
+## Requirements
+- Functional: Every MOUNTAIN/CONDITIONAL_GO verdict produces exactly 1 concrete first action
+- Functional: Next `/stage0` run checks for unresolved actions and BLOCKS if any exist
+- Functional: User can resolve actions as: completed (with outcome), abandoned (with reason), or in-progress
+- Non-functional: Action must be < $50 cost AND < 2 hours time (low barrier)
+- Non-functional: Resolution feeds back into outcomes.db as REAL ground truth
+
+## Architecture
+```
+Stage0 verdict (MOUNTAIN/CONDITIONAL_GO)
+  → Extract first_action from verdict context
+  → Write ACTION-<case_id>.json to data/actions/
+  → Display to user: "First action: <specific task>. Report back with /action resolve <id>"
+
+Next /stage0 run:
+  → Hook checks data/actions/ for unresolved entries
+  → If unresolved > 0: BLOCK with message listing pending actions
+  → User must /action resolve <id> <outcome> before new analysis
+
+/action resolve <id> completed "got 2 replies from 5 cold emails"
+  → Update ACTION json: status=completed, outcome=<text>, resolved_at=now
+  → Write REAL outcome to outcomes.jsonl
+  → Update Bayesian node for this case (n_updates += 1)
+  → Unblock next /stage0
+
+/action resolve <id> abandoned "market moved, opportunity expired"
+  → Update ACTION json: status=abandoned, reason=<text>
+  → Write outcome=0 to outcomes.jsonl
+  → Unblock next /stage0
+```
+
+## Related Code Files
+- Create: `D:\code\invesments\master_investments\data\actions\` directory
+- Create: `D:\code\invesments\master_investments\.claude\commands\action.md` — /action command spec
+- Modify: `D:\code\invesments\master_investments\.claude\commands\stage0.md` — Add action extraction at Step 7/12
+- Create: `D:\code\invesments\master_investments\.claude\hooks\action-gate.cjs` — Pre-stage0 blocker hook
+- Modify: `D:\code\invesments\master_investments\.claude\skills\business\feedback_loop\auto-outcome-detector.py` — Accept real outcomes from action resolution
+
+## Implementation Steps
+
+1. Create `data/actions/` directory structure:
+   ```json
+   // ACTION-stage0-260420-cashflow-ai-workflow-brokerage.json
+   {
+     "id": "ACTION-stage0-260420-cashflow-ai-workflow-brokerage",
+     "case_id": "stage0-260420-cashflow-ai-workflow-brokerage",
+     "verdict_class": "PROVISIONAL_MOUNTAIN",
+     "action": "Send 5 cold emails to SMBs in Thanh Hoa offering AI workflow audit for free",
+     "max_cost": "$0",
+     "max_time": "2h",
+     "created_at": "2026-05-17T...",
+     "due_by": "2026-05-20T...",
+     "status": "pending",
+     "resolved_at": null,
+     "outcome": null,
+     "outcome_binary": null
+   }
+   ```
+
+2. Create `/action` command (`action.md`):
+   - `/action list` — show all pending actions
+   - `/action resolve <id> completed "<what happened>"` — mark done, record outcome
+   - `/action resolve <id> abandoned "<why>"` — mark abandoned
+   - `/action extend <id> <days>` — extend deadline (max 2 extensions)
+
+3. Create `action-gate.cjs` hook (fires on `/stage0` invocation):
+   ```javascript
+   // Check data/actions/ for unresolved entries
+   // If any pending with due_by < now: HARD BLOCK
+   // If any pending with due_by > now: SOFT WARNING
+   // If 0 pending: pass through
+   ```
+
+4. Modify stage0 Step 7 verdict output — after verdict, if class = MOUNTAIN/CONDITIONAL_GO:
+   - Extract `first_action` from `kill_criteria[0]` inverse or `stair_step.year_1_3` first step
+   - Generate specific, measurable, <2h action
+   - Write ACTION json
+   - Display: "🎯 First action (due 3 days): <action>. Report: /action resolve <id> completed '<result>'"
+
+5. Wire action resolution → real outcomes:
+   - On `/action resolve <id> completed`: write to `data/calibration/outcomes.jsonl` with `source: "real_action"`
+   - Update `data/intelligence/outcomes.db` predictions table: `outcome = {"label": "attempted", "verified_by": "user_action"}`
+   - Update Bayesian node: increment `n_updates`, adjust alpha/beta based on binary outcome
+
+6. Pattern detection (after 5+ resolved actions):
+   - If 5 consecutive abandoned: surface message "Pattern: you analyze but don't act. What's blocking?"
+   - If 3+ completed with positive outcome: surface "Your MOUNTAIN detection is working. Trust it more."
+
+## Success Criteria
+- [ ] Positive verdict produces ACTION json in data/actions/
+- [ ] Next /stage0 run BLOCKS when unresolved actions exist
+- [ ] /action resolve writes REAL outcome to outcomes.jsonl (not synthetic)
+- [ ] Bayesian nodes get n_updates > 0 after action resolution
+- [ ] 3-day deadline enforced (with extension option)
+- [ ] Pattern detection fires after 5 consecutive same-status resolutions
+
+## Risk Assessment
+- Risk: User finds gate annoying and stops using /stage0 entirely
+  - Mitigation: Allow `/stage0 --skip-gate` override with explicit warning "skipping feeds the analysis loop"
+  - Mitigation: Keep actions genuinely small (<2h, <$50) so barrier is low
+- Risk: Action extraction produces vague/generic actions
+  - Mitigation: Template library of specific first-actions per archetype (cold email, post, sign up, message)
+  - Validation: Action must contain a NUMBER (5 emails, 3 calls, 1 post) to be accepted

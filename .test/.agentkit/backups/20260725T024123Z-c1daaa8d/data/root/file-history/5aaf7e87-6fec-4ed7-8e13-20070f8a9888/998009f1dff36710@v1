@@ -1,0 +1,208 @@
+---
+title: "Idea Tournament Engine — Co-Scientist Pairwise Debate + Elo for Stage0 Pipeline"
+description: "Add adversarial idea-vs-idea tournament between Phase 2.5C and Phase 4 in Stage0 pipeline. Prompt protocol + lightweight Python Elo scorer. Inspired by DeepMind Co-Scientist."
+status: pending
+priority: P1
+branch: "master"
+tags: [intelligence, stage0, tournament, elo, debate]
+blockedBy: []
+blocks: []
+created: "2026-05-27T06:46:51.517Z"
+createdBy: "ck:plan"
+source: skill
+---
+
+# Idea Tournament Engine — Co-Scientist Pairwise Debate + Elo for Stage0 Pipeline
+
+## Overview
+
+Stage0 pipeline runs linearly: Phase 0 (Intent) → Phase 1 (Signal Scan) → Phase 2 (Research + Evidence Vault + Reasoning Chain) → Phase 2.5C (Pattern Matching) → Phase 3 (Lens Analysis) → Phase 4 (Vision Gate + Synthesis + Verdict). Research agents report independently — they never challenge EACH OTHER. DeepMind's Co-Scientist proves pairwise idea tournaments with Elo ranking produce strictly better outputs than linear merge.
+
+This plan adds a **Tournament Phase (Phase 2.7)** between Phase 2.5C (Pattern Matching) and Phase 4 (Vision Gate + Synthesis). Opportunities extracted from evidence vault + pattern matcher compete pairwise in structured LLM-judged debates, accumulate Elo scores, and get diversity-enforced before synthesis.
+
+**Target codebase:** `D:\code\invesments\master_investments` (NOT _mmo)
+
+**Architecture: Prompt Protocol + Lightweight Python**
+
+The tournament follows the SAME pattern as existing `evidence-vault-protocol.md` and `reasoning-chain-protocol.md`:
+- A **tournament agent protocol** (markdown) defines the debate format and orchestration
+- A **lightweight Python Elo scorer** (`tournament/elo_engine.py`) handles the math
+- The Claude agent reading SKILL.md spawns the tournament agent, which runs debates as LLM calls and uses the Python scorer for Elo updates
+- NO heavy Python orchestration module — the LLM IS the orchestrator
+
+**Key integration points:**
+- `.claude/skills/business/startup/SKILL.md` — Stage0 pipeline (Phase 2.7 insertion)
+- `.claude/agents/core/intelligence/tournament-protocol.md` — Tournament agent protocol (NEW)
+- `.claude/lib/intelligence/tournament/elo_engine.py` — Elo math only (NEW)
+
+**Scope boundaries (what is NOT in this plan):**
+- ~~Hunt pipeline integration~~ — Hunt produces AnomalyCards, not hypotheses. Architecturally incompatible. Separate plan if needed.
+- ~~DuckDB Elo persistence~~ — YAGNI. Each session analyzes different topics. Add after 20+ runs prove hypotheses recur.
+- ~~Evolution/Recombination~~ — Premature for MVP. Business hypotheses aren't composable like chemical compounds. Add after proving debate+rank works.
+- ~~Swiss tournament pairing~~ — Over-engineered for N≤15. Round-robin is 2 min max.
+
+**What does NOT change:**
+- Phase 0-2.5C pipeline (research stays parallel, evidence vault unchanged)
+- Kill gate mechanism (moves to post-tournament, still explicit)
+- Compound learning loop (tournament feeds INTO it, not replaces)
+
+## Phases
+
+| Phase | Name | Status | Effort | Priority |
+|-------|------|--------|--------|----------|
+| 1 | [Architecture and Protocol Design](./phase-01-research-and-architecture.md) | Pending | 3h | P1 |
+| 2 | [Tournament Core (Debate + Elo Scoring)](./phase-02-tournament-core-elo-pairwise-debate.md) | Pending | 5h | P1 |
+| 3 | [Pipeline Integration (Stage0 Phase 2.7)](./phase-03-pipeline-integration.md) | Pending | 4h | P1 |
+| 4 | [Tests and Validation](./phase-04-tests-and-validation.md) | Pending | 3h | P1 |
+
+**Total estimated effort:** ~15h (2 focused days)
+
+## Architecture Summary
+
+```
+CURRENT PIPELINE (actual SKILL.md phases):
+  Phase 0: Intent Classification
+  Phase 1: Signal Scan
+  Phase 2: Research (deep-researcher, intel agents, expansion tracks)
+  Phase 2.5A: Evidence Vault (aggregated markdown)
+  Phase 2.5B: Reasoning Chain
+  Phase 2.5C: Pattern Matching → top_5 patterns → feeds Phase 4
+  Phase 3: Lens Analysis (6 core + 1-3 conditional, reads evidence vault + reasoning chain)
+  Phase 4: Vision Gate (reads 2.5C top_5) + Synthesis + Verdict
+
+WITH TOURNAMENT:
+  Phase 0-2.5C: (unchanged)
+  
+  Phase 2.7 [NEW]: TOURNAMENT (only when >= 3 hypotheses)
+    Step T1: HARVEST — LLM extracts N distinct opportunities from evidence vault + pattern matcher top_5
+    Step T2: CLUSTER — Keyword-based business model classification
+    Step T3: DEBATE — Round-robin pairwise debates (advocate/attack/judge per pair)
+    Step T4: RANK — Elo scores computed, sorted
+    Step T5: DIVERSITY CHECK — Ensure top-5 spans 3+ clusters
+    → Output: tournament_context (ranked hypotheses + debate highlights)
+    
+  Phase 3: (unchanged — still reads evidence vault + reasoning chain)
+  Phase 4: Vision Gate receives tournament_context IF populated, else falls back to 2.5C top_5 (unchanged behavior for < 3 hypotheses)
+```
+
+**Null-check pattern:** `tournament_context` is either populated (≥ 3 hypotheses) or null (< 3). Phase 4 checks for it — fallback to current behavior when null. No regression for simple queries.
+
+## Budget Impact (Honest Estimate)
+
+| Component | Current | With Tournament (worst case) | Delta |
+|-----------|---------|------------------------------|-------|
+| LLM calls | ~40-60 | ~80-105 | +25-45 |
+| Web calls | 75 | 75 (unchanged) | 0 |
+| Token overhead | ~50K | ~100K | +50K |
+| Wall time | 3-5 min | 5-8 min | +2-3 min |
+
+**Breakdown of tournament LLM calls (N=10 hypotheses, round-robin, hard cap):**
+- Harvest extraction: 1 call
+- Round-robin debates: 45 calls (10 choose 2)
+- Debate retries (marginal < 5% + malformed JSON): ~5-9 calls (20% retry rate, max 1 retry/debate)
+- Diversity classification fallback: 1-3 calls
+- **Total: ~52-58 calls**
+
+**For N=5 (more common):** 10 debates + 1 harvest + 2 retries = ~13 calls. Much cheaper.
+
+**Hard cap: N=10.** If harvest produces >10 hypotheses, pre-filter by keyword relevance before tournament. N=15 dropped to keep wall time under 3 min.
+
+**Activation gate (zero LLM cost, dual condition):** Keyword pre-filter counts distinct opportunity mentions in Phase 2.5C output. Tournament activates ONLY when keyword count >= 3 AND pattern matcher found >= 3 distinct patterns. Both conditions required.
+
+## Dependencies
+
+- Requires existing `evidence-vault-protocol.md` pattern (SHIPPED)
+- Requires existing `reasoning-chain-protocol.md` pattern (SHIPPED)
+- Python Elo engine: pure math, no external dependencies
+- No new package installs
+
+## Red Team Review
+
+### Session — 2026-05-27
+**Findings:** 15 total (13 accepted, 2 rejected)
+**Severity breakdown:** 4 Critical, 5 High, 4 Medium
+
+| # | Finding | Severity | Disposition | Applied To |
+|---|---------|----------|-------------|------------|
+| 1 | Python module for prompt-orchestrated pipeline | Critical | Accept | plan.md, all phases |
+| 2 | "Wave 1/2" terminology doesn't exist | Critical | Accept | plan.md, all phases |
+| 3 | Hunt pipeline incompatible — drop from scope | Critical | Accept | plan.md (scope cut) |
+| 4 | MoneyFlowGraph has no DuckDB persistence | Critical | Accept | plan.md (scope cut) |
+| 5 | Phase 2.5C output flow misidentified | High | Accept | Phase 3 (integration) |
+| 6 | Existing Hypothesis model incompatible | High | Accept | Phase 1 (architecture) |
+| 7 | DuckDB Elo persistence is YAGNI | High | Accept | plan.md (scope cut) |
+| 8 | Evolution/Recombination is premature | High | Accept | plan.md (Phase 3 cut) |
+| 9 | Ground-truth replay data doesn't exist | High | Accept | Phase 4 (tests) |
+| 10 | Budget underestimated by ~2x | High | Accept | plan.md (budget) |
+| 11 | Activation gate wastes LLM on skip case | Medium | Accept | Phase 3 (integration) |
+| 12 | Swiss tournament over-engineered | Medium | Accept | Phase 2 (round-robin) |
+| 13 | Phase 3/4 modification not self-contained | Medium | Accept | Phase 3 (null-check) |
+| 14 | Semantic fingerprinting false matches | Medium | Reject (moot) | N/A (persistence dropped) |
+| 15 | controller/models.py doesn't exist | Medium | Accept | Phase 1 |
+
+### Whole-Plan Consistency Sweep (Red Team)
+- Files reread: plan.md, phase-01 through phase-04
+- Decision deltas checked: 13
+- Reconciled stale references: Wave→Phase terminology, Hunt removed, DuckDB removed, Evolution removed, Swiss→round-robin, budget recalculated, architecture shifted to prompt protocol
+- Unresolved contradictions: 0
+
+## Validation Log
+
+### Session 1 — 2026-05-27
+**Trigger:** Post-red-team validation interview
+**Questions asked:** 4
+
+### Verification Results
+- **Tier:** Standard (4 phases)
+- **Claims checked:** 12
+- **Verified:** 12 | **Failed:** 0 | **Unverified:** 0
+- Note: Red Team Review already verified core claims. Validation focused on residual checks (protocol file paths, SKILL.md line numbers, Hypothesis class location).
+
+#### Questions & Answers
+
+1. **[Scope]** The plan caps hypotheses at N=15 (105 debates, ~6 min). Should the tournament enforce a lower cap?
+   - Options: Keep N=15 | Cap at N=10 (Recommended) | Cap at N=8
+   - **Answer:** Cap at N=10
+   - **Rationale:** 45 debates max (~2.5 min) keeps wall time under 3 min. If >10 hypotheses, pre-filter by keyword relevance. N=15 dropped.
+
+2. **[Architecture]** Where should pytest discover Elo engine tests?
+   - Options: Inside tournament package (Recommended) | Top-level tests directory
+   - **Answer:** Inside tournament package
+   - **Rationale:** Co-located with source at `.claude/lib/intelligence/tournament/tests/`, matches existing `controller/tests/` pattern.
+
+3. **[Tradeoffs]** When LLM judge returns malformed JSON, should it retry or score as DRAW immediately?
+   - Options: Retry once then DRAW (Recommended) | Immediate DRAW | Retry twice then DRAW
+   - **Answer:** Retry once, then DRAW
+   - **Rationale:** One retry with stricter prompt balances accuracy vs latency. Max 1 retry per debate for malformed JSON (separate from marginal-score retry).
+
+4. **[Assumptions]** Should activation gate require keyword count >= 3 alone, or also require pattern count >= 3?
+   - Options: Keyword AND pattern count >= 3 (Recommended) | Keyword count >= 3 only
+   - **Answer:** Keyword count AND pattern count >= 3
+   - **Rationale:** Dual condition prevents tournament activation on thin evidence. If pattern matcher found < 3 distinct patterns, skip even if keywords match.
+
+#### Confirmed Decisions
+- N=10 hard cap: pre-filter if >10 hypotheses — wall time under 3 min
+- Tests co-located: `.claude/lib/intelligence/tournament/tests/` — matches existing pattern
+- Malformed JSON: retry once then DRAW — max 1 retry per debate
+- Dual activation gate: keyword >= 3 AND pattern count >= 3 — both required
+
+#### Action Items
+- [x] Update plan.md budget table for N=10 cap
+- [x] Update phase-02 round-robin math table (remove N=15 row)
+- [x] Update phase-02 harvest step (cap at 10)
+- [x] Update phase-02 error handling (retry once then DRAW)
+- [x] Update phase-03 activation gate (dual condition)
+- [x] Update phase-01 activation gate description (dual condition)
+- [x] Update phase-04 test cases (add harvest cap test)
+
+#### Impact on Phases
+- Phase 1: Activation gate description updated to dual condition
+- Phase 2: N=10 hard cap, pre-filter step, malformed JSON retry logic
+- Phase 3: Activation gate now dual condition (keyword + pattern count)
+- Phase 4: Added `test_harvest_cap_at_10` test case
+
+### Whole-Plan Consistency Sweep (Validation)
+- Files reread: plan.md, phase-01, phase-02, phase-03, phase-04
+- Decision deltas checked: 4 (N=10 cap, dual gate, retry-then-DRAW, test location)
+- Reconciled stale references: N=15→N=10 in budget, math table, harvest cap, risk note, timeout description
+- Unresolved contradictions: 0

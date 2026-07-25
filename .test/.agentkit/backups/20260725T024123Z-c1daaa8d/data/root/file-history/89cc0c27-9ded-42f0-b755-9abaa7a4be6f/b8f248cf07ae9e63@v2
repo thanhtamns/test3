@@ -1,0 +1,98 @@
+package clickhouse
+
+import "time"
+
+type ProvenanceRow struct {
+	TenantID        string
+	Timestamp       time.Time
+	SessionID       string
+	ProjectDir      string
+	MachineID       string
+	FilePath        string
+	CodeHash        string
+	ModelID         string
+	ModelVersion    string
+	ContributorType string
+	StartLine       uint32
+	EndLine         uint32
+	AttestationSig  string
+	DeveloperID     string
+	PromptHash      string
+	CLIVersion      string
+}
+
+type CostRow struct {
+	TenantID        string
+	Timestamp       time.Time
+	SessionID       string
+	ProjectDir      string
+	MachineID       string
+	ModelID         string
+	InputTokens     uint64
+	OutputTokens    uint64
+	CacheReadTokens uint64
+	CacheWriteTokens uint64
+	CostUSD         float64
+	PRRef           string
+	FeatureTag      string
+	DeveloperID     string
+	CLIVersion      string
+}
+
+type GovernanceRow struct {
+	TenantID     string
+	Timestamp    time.Time
+	SessionID    string
+	ProjectDir   string
+	PolicyID     string
+	Scope        string
+	Action       string
+	BudgetLimit  float64
+	BudgetSpent  float64
+	DeveloperID  string
+	CLIVersion   string
+}
+
+type QualityRow struct {
+	TenantID   string
+	Timestamp  time.Time
+	SessionID  string
+	ProjectDir string
+	CheckType  string
+	Severity   string
+	Finding    string
+	FilePath   string
+	LineNumber uint32
+	Blocked    bool
+	CLIVersion string
+}
+
+type ProvenanceSummary struct {
+	TotalRecords int    `json:"total_records"`
+	UniqueFiles  int    `json:"unique_files"`
+	UniqueModels int    `json:"unique_models"`
+	AIPercentage float64 `json:"ai_percentage"`
+}
+
+type CostByPR struct {
+	PRRef       string  `json:"pr_ref"`
+	TotalCost   float64 `json:"total_cost_usd"`
+	InputTokens uint64  `json:"input_tokens"`
+	OutputTokens uint64 `json:"output_tokens"`
+	RecordCount uint64  `json:"record_count"`
+}
+
+type BudgetSummary struct {
+	TotalSpent   float64 `json:"total_spent_usd"`
+	BudgetLimit  float64 `json:"budget_limit_usd"`
+	Action       string  `json:"latest_action"`
+	PolicyCount  uint64  `json:"policy_count"`
+}
+
+type QualitySummary struct {
+	TotalFindings uint64  `json:"total_findings"`
+	BlockedCount  uint64  `json:"blocked_count"`
+	PassRate      float64 `json:"pass_rate"`
+	BySeverity    map[string]uint64 `json:"by_severity"`
+	ByCheckType   map[string]uint64 `json:"by_check_type"`
+}

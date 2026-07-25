@@ -1,0 +1,34 @@
+---
+title: "Local-First Intelligence Architecture"
+description: ""
+status: pending
+priority: P2
+branch: "master"
+tags: []
+blockedBy: []
+blocks: []
+created: "2026-05-10T02:57:31.574Z"
+createdBy: "ck:plan"
+source: skill
+---
+
+# Local-First Intelligence Architecture
+
+## Overview
+
+<!-- Brief description -->
+
+## Phases
+
+| Phase | Name | Status |
+|-------|------|--------|
+| 1 | [LLM Provider Abstraction + Anti-Hallucination](./phase-01-llm-provider-abstraction-anti-hallucination.md) | Pending |
+| 2 | [Coverage Tracker + Gap Detector](./phase-02-coverage-tracker-gap-detector.md) | Pending |
+| 3 | [Reasoning Chain Engine](./phase-03-reasoning-chain-engine.md) | Pending |
+| 4 | [Evolution Triggers (Session + Outcome + Continuous)](./phase-04-evolution-triggers-session-outcome-continuous.md) | Pending |
+| 5 | [Autonomy Governor](./phase-05-autonomy-governor.md) | Pending |
+| 6 | [Integration Test + Calibration](./phase-06-integration-test-calibration.md) | Pending |
+
+## Dependencies
+
+<!-- Cross-plan dependencies -->

@@ -1,0 +1,22 @@
+{
+  "type": "failure_observation",
+  "description": "Template for Failure Journal entries (Phase 1 Failure Archaeology)",
+  "required_fields": ["company", "root_cause", "failure_pattern"],
+  "template": {
+    "id": "fail-YYMMDD-NNNN",
+    "type": "failure_observation",
+    "company": "",
+    "sector": "",
+    "founded": "",
+    "died": "",
+    "total_invested_vnd": 0,
+    "root_cause": "",
+    "failure_pattern": "cashflow|market|team|regulation|fraud|competition|timing",
+    "could_middleman_prevent": {
+      "answer": "yes|no|partially",
+      "explanation": ""
+    },
+    "source_urls": [],
+    "learnings": ""
+  }
+}

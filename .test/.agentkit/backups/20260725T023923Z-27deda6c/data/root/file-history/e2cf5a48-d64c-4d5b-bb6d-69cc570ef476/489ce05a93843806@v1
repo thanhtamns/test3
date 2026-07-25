@@ -1,0 +1,283 @@
+{
+  "version": 1,
+  "created_at": "2026-05-16T15:41:00Z",
+  "description": "Structured mechanism knobs extracted from stage0.md v25. Meta-editable by meta_edit_controller.",
+  "knobs": {
+    "mountain_threshold_monthly": {
+      "value": 10000,
+      "type": "int",
+      "range": [
+        3000,
+        50000
+      ],
+      "unit": "USD/month",
+      "step_ref": "stage0.md:line58",
+      "category": "scoring",
+      "description": "Minimum NET $/mo for Mountain classification"
+    },
+    "mountain_timeline_months": {
+      "value": 12,
+      "type": "int",
+      "range": [
+        6,
+        24
+      ],
+      "unit": "months",
+      "step_ref": "stage0.md:line58",
+      "category": "scoring",
+      "description": "Maximum months to achieve mountain threshold (repeatable)"
+    },
+    "confidence_gate_minimum": {
+      "value": 0.7,
+      "type": "float",
+      "range": [
+        0.5,
+        0.95
+      ],
+      "unit": "probability",
+      "step_ref": "stage0.md:Step9",
+      "category": "threshold",
+      "description": "Minimum confidence for non-exempt verdict persistence"
+    },
+    "agents_fired_minimum": {
+      "value": 8,
+      "type": "int",
+      "range": [
+        4,
+        16
+      ],
+      "unit": "count",
+      "step_ref": "stage0.md:line17",
+      "category": "threshold",
+      "description": "Minimum agents that must respond for non-exempt verdicts"
+    },
+    "local_kill_confidence": {
+      "value": 0.8,
+      "type": "float",
+      "range": [
+        0.7,
+        0.95
+      ],
+      "unit": "probability",
+      "step_ref": "stage0.md:Step1.8",
+      "category": "threshold",
+      "description": "Confidence threshold for local knowledge pre-screen to short-circuit KILL"
+    },
+    "session_trigger_coverage_threshold": {
+      "value": 0.8,
+      "type": "float",
+      "range": [
+        0.5,
+        0.95
+      ],
+      "unit": "ratio",
+      "step_ref": "session_trigger.py:line41",
+      "category": "evolution",
+      "description": "Coverage score above which session trigger skips gap-filling"
+    },
+    "session_trigger_max_llm_calls": {
+      "value": 3,
+      "type": "int",
+      "range": [
+        1,
+        10
+      ],
+      "unit": "count",
+      "step_ref": "session_trigger.py:line40",
+      "category": "budget",
+      "description": "Max LLM calls per session trigger invocation"
+    },
+    "continuous_trigger_max_llm_calls": {
+      "value": 5,
+      "type": "int",
+      "range": [
+        2,
+        15
+      ],
+      "unit": "count",
+      "step_ref": "continuous_trigger.py:line38",
+      "category": "budget",
+      "description": "Max LLM calls per continuous (daily) trigger run"
+    },
+    "accuracy_drop_retrain_threshold": {
+      "value": 0.7,
+      "type": "float",
+      "range": [
+        0.5,
+        0.9
+      ],
+      "unit": "accuracy",
+      "step_ref": "auto_trainer.py:line23",
+      "category": "evolution",
+      "description": "Accuracy threshold below which retraining is triggered"
+    },
+    "forum_preflight_timeout_ms": {
+      "value": 90000,
+      "type": "int",
+      "range": [
+        30000,
+        180000
+      ],
+      "unit": "milliseconds",
+      "step_ref": "stage0.md:line792",
+      "category": "budget",
+      "description": "Hard timeout for forum preflight ladder research"
+    },
+    "kb_retrieval_timeout_ms": {
+      "value": 30000,
+      "type": "int",
+      "range": [
+        10000,
+        60000
+      ],
+      "unit": "milliseconds",
+      "step_ref": "stage0.md:line1432",
+      "category": "budget",
+      "description": "KB semantic retrieval timeout before skip"
+    },
+    "wave1_base_agent_count": {
+      "value": 8,
+      "type": "int",
+      "range": [
+        4,
+        12
+      ],
+      "unit": "count",
+      "step_ref": "stage0.md:line1445",
+      "category": "composition",
+      "description": "Number of base agents in Wave 1 dispatch"
+    },
+    "wave2_min_agents": {
+      "value": 4,
+      "type": "int",
+      "range": [
+        2,
+        8
+      ],
+      "unit": "count",
+      "step_ref": "stage0.md:line14",
+      "category": "composition",
+      "description": "Minimum Wave 2 agents that must be spawned"
+    },
+    "classifier_unknown_confidence": {
+      "value": 0.35,
+      "type": "float",
+      "range": [
+        0.2,
+        0.5
+      ],
+      "unit": "probability",
+      "step_ref": "stage0.md:line392",
+      "category": "threshold",
+      "description": "Below this confidence, query-intent classifier returns 'unknown'"
+    },
+    "premise_challenge_skip_threshold": {
+      "value": 5000,
+      "type": "int",
+      "range": [
+        2000,
+        10000
+      ],
+      "unit": "USD/month",
+      "step_ref": "stage0.md:Step2.45",
+      "category": "scoring",
+      "description": "Target below this skips premise challenge (most vehicles work at low scale)"
+    },
+    "stale_mountain_days": {
+      "value": 90,
+      "type": "int",
+      "range": [
+        60,
+        180
+      ],
+      "unit": "days",
+      "step_ref": "meta-evolution:phase-03",
+      "category": "evolution",
+      "description": "Days before unactioned MOUNTAIN verdict is flagged as implicitly rejected"
+    },
+    "meta_edit_trigger_interval": {
+      "value": 5,
+      "type": "int",
+      "range": [
+        3,
+        10
+      ],
+      "unit": "outcomes",
+      "step_ref": "meta-evolution:phase-04",
+      "category": "meta",
+      "description": "Number of outcomes between meta-edit controller runs"
+    },
+    "meta_edit_segment_size": {
+      "value": 5,
+      "type": "int",
+      "range": [
+        3,
+        10
+      ],
+      "unit": "verdicts",
+      "step_ref": "meta-evolution:phase-04",
+      "category": "meta",
+      "description": "Verdicts to evaluate after a meta-edit before deciding keep/revert"
+    },
+    "meta_edit_min_errors_to_propose": {
+      "value": 3,
+      "type": "int",
+      "range": [
+        2,
+        7
+      ],
+      "unit": "errors",
+      "step_ref": "meta-evolution:phase-04",
+      "category": "meta",
+      "description": "Minimum mechanism errors attributed to a knob before proposing edit"
+    },
+    "meta_edit_max_pct_change": {
+      "value": 0.2,
+      "type": "float",
+      "range": [
+        0.05,
+        0.4
+      ],
+      "unit": "ratio",
+      "step_ref": "meta-evolution:phase-05",
+      "category": "safety",
+      "description": "Maximum percentage change per knob per meta-edit cycle"
+    },
+    "meta_edit_max_per_week": {
+      "value": 3,
+      "type": "int",
+      "range": [
+        1,
+        7
+      ],
+      "unit": "edits",
+      "step_ref": "meta-evolution:phase-05",
+      "category": "safety",
+      "description": "Maximum knob edits allowed per calendar week"
+    },
+    "meta_edit_revert_threshold": {
+      "value": 0.1,
+      "type": "float",
+      "range": [
+        0.05,
+        0.25
+      ],
+      "unit": "ratio",
+      "step_ref": "meta-evolution:phase-05",
+      "category": "safety",
+      "description": "Brier regression percentage that triggers auto-rollback"
+    },
+    "meta_edit_max_total_drift_pct": {
+      "value": 0.3,
+      "type": "float",
+      "range": [
+        0.15,
+        0.5
+      ],
+      "unit": "ratio",
+      "step_ref": "meta-evolution:phase-05",
+      "category": "safety",
+      "description": "Maximum total drift from original value across all edits"
+    }
+  }
+}

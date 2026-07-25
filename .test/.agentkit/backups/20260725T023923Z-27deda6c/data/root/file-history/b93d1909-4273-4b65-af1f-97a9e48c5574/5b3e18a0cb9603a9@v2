@@ -1,0 +1,109 @@
+{
+  "type": "invest",
+  "trigger_patterns": ["/invest", "investment analysis", "## Investment", "ROI", "portfolio", "due diligence", "valuation"],
+  "min_length": 1000,
+  "dimensions": {
+    "completeness": {
+      "weight": 0.25,
+      "checks": [
+        {
+          "id": "inv_thesis",
+          "rule": "section_exists('thesis|opportunity|proposition|case')",
+          "severity": "critical",
+          "description": "No investment thesis section",
+          "fix": "Add clear investment thesis with specific opportunity description",
+          "fix_cost": "medium"
+        },
+        {
+          "id": "inv_risk",
+          "rule": "section_exists('risk|downside|danger|threat')",
+          "severity": "critical",
+          "description": "No risk assessment section",
+          "fix": "Add comprehensive risk assessment with severity and mitigation",
+          "fix_cost": "medium"
+        },
+        {
+          "id": "inv_financials",
+          "rule": "contains('revenue|margin|cost|profit|cash flow|ROI|IRR|NPV|payback')",
+          "severity": "major",
+          "description": "No financial analysis or projections",
+          "fix": "Add financial metrics: revenue model, margins, unit economics, or ROI",
+          "fix_cost": "large"
+        }
+      ]
+    },
+    "evidence": {
+      "weight": 0.3,
+      "checks": [
+        {
+          "id": "inv_failure_arch",
+          "rule": "contains('fail|bankrupt|closed|collapsed|shut down|lost|write-off')",
+          "severity": "critical",
+          "description": "No failure cases or downside scenarios examined",
+          "fix": "Run failure archaeology: search '[industry] failed startup' and include findings",
+          "fix_cost": "large"
+        },
+        {
+          "id": "inv_zone_tags",
+          "rule": "zone_tag_ratio() >= 0.2",
+          "severity": "major",
+          "description": "Insufficient confidence tagging on claims",
+          "fix": "Add [K]/[T]/[?] zone tags to factual claims",
+          "fix_cost": "auto"
+        },
+        {
+          "id": "inv_competitors",
+          "rule": "contains('competitor|alternative|market share|incumbent|rival')",
+          "severity": "major",
+          "description": "No competitive landscape analysis",
+          "fix": "Add competitor analysis with named players and positioning",
+          "fix_cost": "large"
+        }
+      ]
+    },
+    "depth": {
+      "weight": 0.25,
+      "checks": [
+        {
+          "id": "inv_mechanism",
+          "rule": "contains('because|mechanism|works by|caused by|driven by|moat')",
+          "severity": "major",
+          "description": "No mechanism explanation for why this investment works",
+          "fix": "Explain the causal mechanism: why does this opportunity exist and persist?",
+          "fix_cost": "medium"
+        },
+        {
+          "id": "inv_moat",
+          "rule": "contains('moat|defensibility|barrier|switching cost|network effect|lock-in')",
+          "severity": "major",
+          "description": "No moat/defensibility analysis",
+          "fix": "Analyze defensibility: what prevents competitors from replicating?",
+          "fix_cost": "medium"
+        }
+      ]
+    },
+    "actionability": {
+      "weight": 0.2,
+      "checks": [
+        {
+          "id": "inv_decision",
+          "rule": "contains('recommend|verdict|\\bGO\\b|\\bKILL\\b|\\bPASS\\b|\\bBUY\\b|\\bSELL\\b|\\bHOLD\\b|decision.*:|conclude')",
+          "severity": "critical",
+          "description": "No clear investment decision or recommendation",
+          "fix": "Add explicit GO/KILL/HOLD recommendation with conditions",
+          "fix_cost": "auto"
+        },
+        {
+          "id": "inv_next_steps",
+          "rule": "contains('next step|action|validate|verify|due diligence|check')",
+          "severity": "major",
+          "description": "No actionable next steps",
+          "fix": "Add specific validation steps or due diligence checklist",
+          "fix_cost": "auto"
+        }
+      ]
+    }
+  },
+  "pass_criteria": { "critical": 0, "major": 0 },
+  "max_iterations": 4
+}

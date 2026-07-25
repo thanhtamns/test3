@@ -1,0 +1,35 @@
+---
+title: "Productivity Measurement Engine (PROVES)"
+description: ""
+status: pending
+priority: P2
+branch: "master"
+tags: []
+blockedBy: []
+blocks: []
+created: "2026-06-05T07:04:16.088Z"
+createdBy: "ck:plan"
+source: skill
+---
+
+# Productivity Measurement Engine (PROVES)
+
+## Overview
+
+<!-- Brief description -->
+
+## Phases
+
+| Phase | Name | Status |
+|-------|------|--------|
+| 1 | [Git Metrics Collector](./phase-01-git-metrics-collector.md) | Pending |
+| 2 | [ClickHouse Schema and API](./phase-02-clickhouse-schema-and-api.md) | Pending |
+| 3 | [Dashboard Productivity Pages](./phase-03-dashboard-productivity-pages.md) | Pending |
+| 4 | [Session Efficiency Metrics](./phase-04-session-efficiency-metrics.md) | Pending |
+| 5 | [ROI Report Generator](./phase-05-roi-report-generator.md) | Pending |
+| 6 | [CLI Productivity Command](./phase-06-cli-productivity-command.md) | Pending |
+| 7 | [Integration Testing](./phase-07-integration-testing.md) | Pending |
+
+## Dependencies
+
+<!-- Cross-plan dependencies -->

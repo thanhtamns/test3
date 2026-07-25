@@ -1,0 +1,138 @@
+---
+phase: 4
+title: "Ra Mắt & Bán Hàng Đầu Tiên"
+status: pending
+priority: P1
+effort: "15 giờ (Tuần 4-5)"
+dependencies: [3]
+---
+
+# Giai đoạn 4: Ra Mắt & Bán Hàng Đầu Tiên
+
+## Tổng quan
+
+Có người trả tiền đầu tiên thông qua nội dung giá-trị-trước trong cộng đồng builder. KHÔNG quảng cáo trả phí. Chiến lược phân phối: thực hành những gì chúng ta giảng — dùng chính gợi ý của công cụ để phân phối chính nó.
+
+## Yêu cầu
+
+- Chức năng: 50+ đăng ký, 3+ người trả tiền trước Ngày 45
+- Phi chức năng: Theo dõi chuyển đổi mỗi kênh để xây dựng dữ liệu tích luỹ
+
+## Các bước thực hiện
+
+### Tuần 4, Ngày 1-2: Nội dung trước ra mắt (6 giờ)
+
+1. **Tạo bài phân tích "meta":**
+   - Chạy công cụ của mình trên 50 sản phẩm indie hacker thật từ r/SideProject
+   - Tổng hợp: "Tôi phân tích tiềm năng phân phối của 50 sản phẩm indie — đây là kết quả"
+   - Bao gồm dữ liệu thật: kênh nào ít được dùng, kênh nào quá đông
+   - Đây là nội dung GIÁ TRỊ TRƯỚC, không phải quảng cáo
+
+2. **Chuẩn bị phiên bản theo nền tảng:**
+
+   | Nền tảng | Định dạng | Độ dài | CTA |
+   |----------|-----------|--------|-----|
+   | Reddit r/SideProject | Bài text với bảng dữ liệu | 500 từ | "Tôi xây tool tự động hoá việc này — link trong comment" |
+   | Reddit r/SaaS | Bài phân tích | 400 từ | CTA nhẹ tương tự |
+   | IndieHackers | Bài blog | 800 từ | "Dùng thử miễn phí: [link]" |
+   | Twitter/X | Thread (10 tweet) | 10×280 ký tự | Thread kết thúc với link tool |
+   | Hacker News | Show HN | 200 từ | Link đến tool |
+
+### Tuần 4, Ngày 3-4: Chuỗi ra mắt (6 giờ)
+
+3. **Ngày 3 — Ra mắt Reddit (buổi sáng):**
+   - Đăng bài phân tích lên r/SideProject (Thứ 3-5, 9-11 giờ sáng EST)
+   - KHÔNG đăng nhiều subreddit cùng ngày (tín hiệu spam)
+   - Tương tác với MỌI bình luận trong 2 giờ
+   - Theo dõi: upvote, bình luận, click-through đến tool
+
+4. **Ngày 3 — Thread Twitter (buổi chiều):**
+   - Đăng thread dữ liệu: "Tôi phân tích 50 sản phẩm indie..."
+   - Tag 5-10 indie hackers có sản phẩm được phân tích (có sự đồng ý)
+   - Họ retweet → đối tượng của họ thấy → tiếp cận tự nhiên
+
+5. **Ngày 4 — IndieHackers + HN:**
+   - Đăng phiên bản blog trên IndieHackers
+   - Gửi Show HN (sáng Thứ 4 EST là tối ưu)
+   - Liên kết chéo giữa các nền tảng
+
+6. **Ngày 4 — Tái kết nối DM:**
+   - Nhắn 10 người từ DM Giai đoạn 1: "Đã xây xong thứ chúng ta thảo luận. Dùng thử miễn phí: [link]"
+   - Đây là khách hàng NÓNG NHẤT — họ đã bày tỏ nỗi đau
+
+### Tuần 5, Ngày 1-3: Theo dõi & Chuyển đổi (3 giờ)
+
+7. **Giám sát & tương tác:**
+   - Trả lời mọi bình luận/câu hỏi trong 4 giờ
+   - Đề nghị phân tích đầy đủ miễn phí cho 10 người đầu tiên hỏi
+   - Thu thập phản hồi: "Thiếu gì? Cần gì để bạn trả tiền?"
+
+8. **Chuỗi email (cho người đăng ký):**
+   - Ngày 0: Chào mừng + phân tích miễn phí đầu tiên
+   - Ngày 3: "Dữ liệu từ 50 sản phẩm cho thấy gì" (email giá trị)
+   - Ngày 7: "Bản dùng thử gồm 3 phân tích — nâng cấp để không giới hạn" (bán nhẹ)
+
+9. **Ra mắt Product Hunt (tùy chọn, ít công sức):**
+   - Đăng sản phẩm trên PH
+   - Không đầu tư quá nhiều vào PH — đây là đỉnh nhất thời, không bền vững
+   - Tập trung r/SideProject và Twitter có tiềm năng tích luỹ
+
+### Theo dõi (QUAN TRỌNG cho tích luỹ dữ liệu)
+
+10. **Thiết lập phân tích:**
+    ```
+    Cho mỗi kênh chúng ta đăng bài:
+    - UTM: ?utm_source={platform}&utm_medium={post_type}&utm_campaign=launch
+    - Theo dõi: lượt truy cập, đăng ký, chuyển đổi trả phí
+    - Dữ liệu này trở thành tri thức CỦA CHÚNG TA (tích luỹ Option B)
+    ```
+
+11. **Lưu vào DB:**
+    ```sql
+    CREATE TABLE distribution_experiments (
+      id TEXT PRIMARY KEY,
+      channel TEXT NOT NULL,
+      platform TEXT,
+      post_url TEXT,
+      post_date DATETIME,
+      impressions INTEGER,
+      clicks INTEGER,
+      signups INTEGER,
+      paid_conversions INTEGER,
+      notes TEXT
+    );
+    ```
+
+## Cổng tiêu chí huỷ (Ngày 45)
+
+| Chỉ số | TIẾN | ĐIỀU CHỈNH | HUỶ |
+|--------|------|-------------|-----|
+| Tổng đăng ký | >50 | 20-50 | <20 |
+| Người trả tiền | **>3** | 1-2 | **0 → HUỶ** |
+| Tỷ lệ tương tác | >5% bình luận/lượt xem | 2-5% | <2% |
+| Chất lượng phản hồi | "Tôi cần cái này" | "Hay nhưng..." | "Bình thường" |
+
+**Nếu kích hoạt HUỶ:** Giữ lại kho kênh + dữ liệu phân tích làm tài sản. Chuyển hướng sang friction khác HOẶC ecosystem khác. Viết bài rút kinh nghiệm.
+
+**Nếu kích hoạt ĐIỀU CHỈNH:** Phỏng vấn người không chuyển đổi. Các điều chỉnh phổ biến:
+- Giá quá cao → thử $4.99 một lần
+- Giá trị không rõ → viết lại trang landing bằng ngôn ngữ người dùng
+- Sai đối tượng → thử subreddit/cộng đồng khác
+
+## Tiêu chí thành công
+
+- [ ] Nội dung phân tích đăng trên 4+ nền tảng
+- [ ] 50+ đăng ký trong 14 ngày sau ra mắt
+- [ ] 3+ người trả tiền trước Ngày 45
+- [ ] Theo dõi chuyển đổi hoạt động (UTM + DB)
+- [ ] 10+ phản hồi người dùng được thu thập
+- [ ] Quyết định Huỷ/Tiến được đưa ra và ghi nhận
+
+## Đánh giá rủi ro
+
+| Rủi ro | Xác suất | Cách giảm thiểu |
+|--------|----------|-----------------|
+| Bài Reddit bị xoá (tự quảng cáo) | 25% | Dẫn bằng giá trị, link tool chỉ trong comment |
+| HN không upvote | 50% | HN là xổ số; không phụ thuộc. Reddit + Twitter là chính |
+| 0 trả tiền sau đỉnh ra mắt | 30% | Bình thường — chuyển đổi cần thời gian. Theo dõi qua email |
+| Phản hồi tiêu cực | 20% | Cơ hội vàng — dùng để cải thiện. Phản hồi công khai, sửa nhanh |

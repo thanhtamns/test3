@@ -1,0 +1,260 @@
+"""
+TemplateEvolver — tracks per-template metrics and evolves dimension weights.
+Max 10% weight change per cycle for stability. SQLite-backed.
+"""
+
+import sqlite3
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+ROOT = Path(__file__).resolve().parents[4]
+DEFAULT_DB = ROOT / ".claude" / "data" / "decomposition" / "evolution.db"
+
+WEIGHT_CAP = 0.1
+MIN_PARSE_SUCCESS = 0.7
+MIN_YIELD = 0.2
+
+
+class TemplateEvolver:
+    def __init__(self, db_path: Optional[Path] = None):
+        self.db_path = db_path or DEFAULT_DB
+        self._ensure_tables()
+
+    def record_run(
+        self, query: str, query_type: str,
+        dimensions_used: int, queries_fired: int,
+        facts_added: int, facts_reused: int,
+        overall_score: float, duration_ms: int,
+    ) -> int:
+        with self._conn() as conn:
+            cursor = conn.execute(
+                "INSERT INTO decomposition_runs "
+                "(run_date, query, query_type, dimensions_used, queries_fired, "
+                "facts_added, facts_reused, overall_score, duration_ms) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    datetime.now(timezone.utc).isoformat(),
+                    query, query_type, dimensions_used, queries_fired,
+                    facts_added, facts_reused, overall_score, duration_ms,
+                ),
+            )
+            return cursor.lastrowid
+
+    def record_template_usage(
+        self, dimension: str, template_text: str,
+        facts_produced: int, avg_confidence: float, parse_success: float,
+    ) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._conn() as conn:
+            existing = conn.execute(
+                "SELECT times_used, facts_produced, avg_confidence, parse_success_rate "
+                "FROM template_metrics WHERE dimension=? AND template_text=?",
+                (dimension, template_text),
+            ).fetchone()
+
+            if existing:
+                old_used, old_facts, old_conf, old_parse = existing
+                new_used = old_used + 1
+                new_facts = old_facts + facts_produced
+                new_conf = (old_conf * old_used + avg_confidence) / new_used
+                new_parse = (old_parse * old_used + parse_success) / new_used
+                conn.execute(
+                    "UPDATE template_metrics SET times_used=?, facts_produced=?, "
+                    "avg_confidence=?, parse_success_rate=?, last_used=? "
+                    "WHERE dimension=? AND template_text=?",
+                    (new_used, new_facts, round(new_conf, 4), round(new_parse, 4),
+                     now, dimension, template_text),
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO template_metrics "
+                    "(dimension, template_text, times_used, facts_produced, "
+                    "avg_confidence, parse_success_rate, current_weight, last_used) "
+                    "VALUES (?, ?, 1, ?, ?, ?, 1.0, ?)",
+                    (dimension, template_text, facts_produced,
+                     round(avg_confidence, 4), round(parse_success, 4), now),
+                )
+
+    def evolve_weights(self) -> dict[str, float]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT dimension, SUM(facts_produced) as total_facts, "
+                "SUM(times_used) as total_used, AVG(current_weight) as avg_weight "
+                "FROM template_metrics GROUP BY dimension"
+            ).fetchall()
+
+        if not rows:
+            return {}
+
+        yields = {}
+        for dim, total_facts, total_used, avg_weight in rows:
+            yields[dim] = (total_facts / max(total_used, 1), avg_weight)
+
+        avg_yield = sum(y for y, _ in yields.values()) / max(len(yields), 1)
+
+        evolved = {}
+        with self._conn() as conn:
+            for dim, (dim_yield, current_weight) in yields.items():
+                delta = (dim_yield - avg_yield) * WEIGHT_CAP
+                delta = max(-WEIGHT_CAP, min(WEIGHT_CAP, delta))
+                new_weight = max(0.1, current_weight * (1.0 + delta))
+                evolved[dim] = round(new_weight, 4)
+                conn.execute(
+                    "UPDATE template_metrics SET current_weight=? WHERE dimension=?",
+                    (new_weight, dim),
+                )
+
+        return evolved
+
+    def get_evolved_weights(self) -> dict[str, float]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT dimension, AVG(current_weight) FROM template_metrics "
+                "GROUP BY dimension"
+            ).fetchall()
+        return {dim: round(w, 4) for dim, w in rows}
+
+    def flag_poor_templates(self) -> list[dict]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT dimension, template_text, parse_success_rate, "
+                "CAST(facts_produced AS REAL) / MAX(times_used, 1) as yield_rate "
+                "FROM template_metrics WHERE times_used >= 3"
+            ).fetchall()
+
+        flagged = []
+        for dim, tmpl, parse_rate, yield_rate in rows:
+            reasons = []
+            if parse_rate < MIN_PARSE_SUCCESS:
+                reasons.append(f"parse_success={parse_rate:.2f}<{MIN_PARSE_SUCCESS}")
+            if yield_rate < MIN_YIELD:
+                reasons.append(f"yield={yield_rate:.2f}<{MIN_YIELD}")
+            if reasons:
+                flagged.append({
+                    "dimension": dim,
+                    "template": tmpl,
+                    "reasons": reasons,
+                })
+        return flagged
+
+    def seed_ground_truth(
+        self, topic: str, path: str, prediction: str,
+        confidence: float, due_date: str,
+    ) -> int:
+        with self._conn() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS ground_truth_predictions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_date TEXT NOT NULL,
+                    topic TEXT NOT NULL,
+                    path TEXT NOT NULL,
+                    prediction TEXT NOT NULL,
+                    confidence REAL NOT NULL,
+                    due_date TEXT NOT NULL,
+                    actual_outcome TEXT,
+                    outcome_date TEXT,
+                    correct INTEGER
+                )
+            """)
+            cursor = conn.execute(
+                "INSERT INTO ground_truth_predictions "
+                "(created_date, topic, path, prediction, confidence, due_date) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (datetime.now(timezone.utc).isoformat(), topic, path,
+                 prediction, confidence, due_date),
+            )
+            return cursor.lastrowid
+
+    def record_outcome(self, prediction_id: int, actual_outcome: str, correct: bool) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE ground_truth_predictions SET actual_outcome=?, outcome_date=?, correct=? "
+                "WHERE id=?",
+                (actual_outcome, datetime.now(timezone.utc).isoformat(), int(correct), prediction_id),
+            )
+
+    def get_pending_predictions(self) -> list[dict]:
+        with self._conn() as conn:
+            try:
+                rows = conn.execute(
+                    "SELECT id, topic, path, prediction, confidence, due_date "
+                    "FROM ground_truth_predictions WHERE actual_outcome IS NULL"
+                ).fetchall()
+            except sqlite3.OperationalError:
+                return []
+        return [{"id": r[0], "topic": r[1], "path": r[2], "prediction": r[3],
+                 "confidence": r[4], "due_date": r[5]} for r in rows]
+
+    def record_dimension_quality(
+        self, dimension: str, query_type: str,
+        facts_in_zone_k: int, facts_in_zone_t: int, facts_in_zone_q: int,
+    ) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._conn() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS dimension_quality (
+                    dimension TEXT NOT NULL,
+                    query_type TEXT NOT NULL,
+                    k_facts INTEGER DEFAULT 0,
+                    t_facts INTEGER DEFAULT 0,
+                    q_facts INTEGER DEFAULT 0,
+                    sessions INTEGER DEFAULT 1,
+                    last_updated TEXT,
+                    PRIMARY KEY (dimension, query_type)
+                )
+            """)
+            existing = conn.execute(
+                "SELECT 1 FROM dimension_quality WHERE dimension=? AND query_type=?",
+                (dimension, query_type),
+            ).fetchone()
+
+            if existing:
+                conn.execute(
+                    "UPDATE dimension_quality SET k_facts=k_facts+?, t_facts=t_facts+?, "
+                    "q_facts=q_facts+?, sessions=sessions+1, last_updated=? "
+                    "WHERE dimension=? AND query_type=?",
+                    (facts_in_zone_k, facts_in_zone_t, facts_in_zone_q,
+                     now, dimension, query_type),
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO dimension_quality VALUES (?, ?, ?, ?, ?, 1, ?)",
+                    (dimension, query_type, facts_in_zone_k, facts_in_zone_t,
+                     facts_in_zone_q, now),
+                )
+
+    def _conn(self) -> sqlite3.Connection:
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        return sqlite3.connect(str(self.db_path))
+
+    def _ensure_tables(self) -> None:
+        with self._conn() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS decomposition_runs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_date TEXT NOT NULL,
+                    query TEXT NOT NULL,
+                    query_type TEXT NOT NULL,
+                    dimensions_used INTEGER,
+                    queries_fired INTEGER,
+                    facts_added INTEGER,
+                    facts_reused INTEGER,
+                    overall_score REAL,
+                    duration_ms INTEGER
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS template_metrics (
+                    dimension TEXT NOT NULL,
+                    template_text TEXT NOT NULL,
+                    times_used INTEGER DEFAULT 0,
+                    facts_produced INTEGER DEFAULT 0,
+                    avg_confidence REAL DEFAULT 0.0,
+                    parse_success_rate REAL DEFAULT 1.0,
+                    current_weight REAL DEFAULT 1.0,
+                    last_used TEXT,
+                    PRIMARY KEY (dimension, template_text)
+                )
+            """)

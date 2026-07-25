@@ -1,0 +1,72 @@
+---
+title: "Meta-Evolution Layer for master_investments (AEVO-inspired)"
+description: "Add outer-loop meta-edit capability — system evolves its own mechanism, not just data"
+status: pending
+priority: P1
+branch: "master"
+tags: [evolution, meta-edit, aevo, intelligence]
+blockedBy: []
+blocks: []
+created: "2026-05-16T10:41:12.838Z"
+createdBy: "ck:plan"
+source: skill
+---
+
+# Meta-Evolution Layer for master_investments (AEVO-inspired)
+
+## Overview
+
+The system currently evolves DATA (signal weights, patterns, KB) but NOT MECHANISM (prompts, gates, scoring rubrics, agent composition). 19 major versions (V1→V19) were all manual rewrites.
+
+This plan adds an **outer loop** inspired by AEVO/EvoX papers that:
+1. Extracts mechanism into structured knobs (not prose)
+2. Traces verdict errors to specific mechanism steps
+3. Auto-detects outcomes without manual `/log-outcome`
+4. Runs a meta-edit controller that modifies knobs based on accumulated evidence
+5. Protects against reward-hacking with safety harness + auto-rollback
+
+**Target repo:** `D:/code/invesments/master_investments` (all code changes there, plan lives in _mmo)
+
+**AEVO Architecture Reference:**
+```
+┌──────────────────────────────────────────────┐
+│  Meta-Controller (OUTER LOOP — NEW)          │
+│  Observe → Meta-Edit → Run Segment → Eval   │
+└──────────────────────────────────────────────┘
+                    ↕
+┌──────────────────────────────────────────────┐
+│  Inner Loop (EXISTING stage0 pipeline)       │
+│  Profile → Classify → Wave1 → Wave2 → Verd  │
+└──────────────────────────────────────────────┘
+```
+
+**Estimated effort:** ~22 days total | **Prerequisite:** ≥49 cases (met), ideally 100+
+
+## Phases
+
+| Phase | Name | Status | Effort | Dependencies |
+|-------|------|--------|--------|--------------|
+| 1 | [Mechanism Knob Extraction](./phase-01-mechanism-knob-extraction.md) | Pending | 3d | None |
+| 2 | [Causal Error Attribution](./phase-02-causal-error-attribution.md) | Pending | 4d | Phase 1 |
+| 3 | [Auto-Outcome Detection](./phase-03-auto-outcome-detection.md) | Pending | 2d | None (parallel w/ P1) |
+| 4 | [Meta-Edit Controller](./phase-04-meta-edit-controller.md) | Pending | 5d | Phase 1, 2, 3 |
+| 5 | [Safety Harness and Rollback](./phase-05-safety-harness-and-rollback.md) | Pending | 3d | Phase 4 |
+| 6 | [Integration and Wiring](./phase-06-integration-and-wiring.md) | Pending | 3d | Phase 4, 5 |
+| 7 | [Validation and Calibration](./phase-07-validation-and-calibration.md) | Pending | 2d | Phase 6 |
+
+**Critical path:** P1 → P2 → P4 → P5 → P6 → P7 (17 days)
+**Parallel track:** P3 runs alongside P1-P2 (saves 2 days)
+
+## Key Design Decisions
+
+1. **Knobs, not full code rewrite** — AEVO modifies code; we modify JSON config that controls agent behavior. Safer, auditable, rollbackable.
+2. **Bayesian meta-edit, not gradient descent** — With ~50 cases, gradient is noisy. Bayesian posterior update on knob effectiveness is more sample-efficient.
+3. **Max 20% change per cycle** — AEVO's harness concept adapted: no single meta-edit can change any knob by more than 20%.
+4. **Existing evolution infra reused** — OutcomeTrigger, DistillationBridge, WeightUpdater all get wired into meta-edit loop, not replaced.
+
+## Dependencies
+
+- Brainstorm report: `plans/reports/brainstorm-260516-1511-system-evolution-audit.md`
+- Existing evolution: `.claude/lib/intelligence/evolution/` (3 triggers + bridge)
+- Existing feedback: `.claude/skills/business/feedback_loop/` (55 scripts)
+- Stage0 spec: `.claude/commands/stage0.md` (2953 lines, v25)

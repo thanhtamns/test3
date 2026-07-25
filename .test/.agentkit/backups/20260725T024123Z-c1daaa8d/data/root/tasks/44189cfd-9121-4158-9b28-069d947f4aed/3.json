@@ -1,0 +1,17 @@
+{
+  "id": "3",
+  "subject": "Phase 4: Learning Loop — 3 knobs + verdict persistence + auto-evolve correlation",
+  "description": "Add structural_leverage_weight, exit_score_weight, topology_bonus_weight to mechanism-knobs.json. Update persist-verdict.py to store structural_analysis. Add structural correlation check to auto-evolve.py. Meta-edit evaluates after 5 verdicts.",
+  "activeForm": "Integrating learning loop",
+  "status": "pending",
+  "blocks": [],
+  "blockedBy": [
+    "2"
+  ],
+  "metadata": {
+    "phase": 4,
+    "effort": "0.5d",
+    "planDir": "plans/260517-1934-money-architecture-layer-upgrade",
+    "phaseFile": "phase-04-learning-loop-integration.md"
+  }
+}

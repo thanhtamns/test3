@@ -1,0 +1,64 @@
+---
+title: "Stage0 Leverage-First Scoring Redesign"
+description: "Add leverage/asset scoring across all 3 scoring layers — Mountain Test, quality-score.py, audit schema — to penalize labor models and prioritize asset/leverage models"
+status: completed
+priority: P1
+branch: "master"
+tags: [stage0, leverage, scoring, philosophy-fix]
+blockedBy: [260518-stage0-leverage-entry-routing-redesign]
+blocks: []
+created: "2026-05-18T07:21:30.911Z"
+createdBy: "ck:plan"
+source: skill
+---
+
+# Stage0 Leverage-First Scoring Redesign
+
+## Overview
+
+Stage0 scoring measures ANALYSIS QUALITY (agents fired, URLs cited, zone tags) but NOT BUSINESS MODEL QUALITY. A labor-only model ("visit factories for commission") can score Grade A. This plan adds leverage classification across all 3 scoring layers so labor models are hard-capped at SIDE_HUSTLE and asset/leverage models are prioritized.
+
+**Brainstorm:** `plans/reports/brainstorm-260518-1419-stage0-leverage-first-scoring-redesign.md`
+**Dependency:** Builds on completed `260518-stage0-leverage-entry-routing-redesign` (routing fix). This plan fixes SCORING.
+**Target repo:** `D:\code\invesments\master_investments` (NOT _mmo)
+
+## Design Summary
+
+5 changes across 8 files:
+1. Mountain Test v23 → v24: add Q4-SLEEP + Q5-LEVERAGE
+2. `stage0-quality-score.py`: add `check_leverage_classification()` dimension (max 15 pts, new total 175)
+3. `audit-schemas/stage0.json`: add `leverage` dimension group (weight 0.15)
+4. `tier-adjusted-dq-generator.py`: add LEVERAGE question type
+5. `stage0.md` Step 7: add leverage fields to verdict output format
+
+**Policy:** Labor models (Q4=NO + Q5=LABOR) hard-capped at SIDE_HUSTLE. No exceptions.
+
+## Phases
+
+| Phase | Name | Status | Effort | Dependencies |
+|-------|------|--------|--------|--------------|
+| 1 | [Mountain Test v24](./phase-01-mountain-test-v24.md) | Completed | 2h | None |
+| 2 | [Quality Score Leverage Dimension](./phase-02-quality-score-leverage-dimension.md) | Completed | 1.5h | None |
+| 3 | [Audit Schema Leverage Group](./phase-03-audit-schema-leverage-group.md) | Completed | 1h | None |
+| 4 | [Decision Question Generator](./phase-04-decision-question-generator.md) | Completed | 1h | None |
+| 5 | [Verdict Output Format](./phase-05-verdict-output-format.md) | Completed | 1h | Phase 1 |
+| 6 | [Tests and Validation](./phase-06-tests-and-validation.md) | Completed | 2h | Phase 1-5 |
+
+**Total estimated effort:** ~8.5h
+**Phases 1-4 are independent — can run in parallel.**
+
+## Success Criteria
+
+1. `/stage0 "vietnam sourcing agent"` → SIDE_HUSTLE (Q4=NO, Q5=LABOR)
+2. `/stage0 "supplier directory SaaS"` → MOUNTAIN_CANDIDATE (Q4=YES, Q5=CODE)
+3. `/stage0 "ESG audit → template SaaS"` → SIDE_HUSTLE_WITH_STAIRCASE (Q5=HYBRID)
+4. Old verdicts without leverage section → quality score drops 10-15 pts
+5. New verdicts with leverage section → dimension scores 10-15/15
+
+## Risks
+
+| Risk | Mitigation |
+|------|-----------|
+| Hard cap kills $50K+/mo consulting | Acceptable: consulting IS still a job |
+| Backward compat with existing case JSONs | Leverage fields optional, default null |
+| Audit hook rejects old verdicts | Leverage checks severity=major (not critical) initially |

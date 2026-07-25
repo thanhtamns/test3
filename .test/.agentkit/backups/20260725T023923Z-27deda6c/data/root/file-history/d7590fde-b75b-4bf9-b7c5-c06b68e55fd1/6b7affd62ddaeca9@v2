@@ -1,0 +1,103 @@
+---
+phase: 3
+title: "Mountain Test v25"
+status: pending
+priority: P1
+effort: "2h"
+dependencies: []
+---
+
+# Phase 3: Mountain Test v25
+
+## Overview
+
+Upgrade Mountain Test from v24 (measures leverage AFTER analysis) to v25 (Sleep Test + ROI as FIRST FILTER). Add Q6-ROI and Q7-PORTFOLIO questions. Restructure deterministic rules so capital-deployment models get priority over labor models.
+
+## Requirements
+
+- Functional: Q4-SLEEP becomes a FIRST-PASS filter — any model failing Q4 is immediately classified, not just penalized
+- Functional: Add Q6-ROI: "ROI% = (monthly_passive / deploy_cost) * 100. Is ROI > 20%/mo?"
+- Functional: Add Q7-PORTFOLIO: "Can this asset be part of a 3-5 asset portfolio with independent failure modes?"
+- Functional: New verdict path: Q4=YES + Q6-ROI>20% + Q7=YES → DEPLOY_CANDIDATE (new verdict class)
+- Non-functional: Existing v24 Q1-Q5 + Compounding + Asymmetry unchanged for TIER_2/3
+
+## Architecture
+
+Mountain Test v25 question sequence:
+
+```
+# Existing (unchanged for TIER_2/3)
+Q1: Real founder URL proving >=10K/mo NET? (yes/no)
+Q2: KG cohort confirms? (yes/no)
+Q3-LINDY: Business model age >=50 years? (yes/no)
+Q4-SLEEP: Revenue continues when founder does zero work for 30 days? (YES/NO/PARTIAL)
+Q5-LEVERAGE: Primary leverage type (Naval hierarchy): CODE/MEDIA/CAPITAL/LABOR/HYBRID
+
+# NEW for TIER_0/1 capital-deployment models
+Q6-ROI: Monthly ROI% = (expected_monthly_passive / deploy_cost) * 100
+    >40%/mo = EXCELLENT (micro-SaaS, digital products)
+    20-40%/mo = GOOD (content assets, template catalogs)
+    5-20%/mo = MODERATE (expired domains, ad arbitrage)
+    <5%/mo = LOW (physical assets, inventory)
+    0% = FAIL (labor model disguised as asset)
+
+Q7-PORTFOLIO: Independent failure mode?
+    YES: asset failure doesn't kill other assets in portfolio
+    NO: correlated risk (all assets on same platform, same customer)
+
+Compounding: (unchanged)
+Asymmetry ratio: (unchanged)
+```
+
+New deterministic verdict rules (TIER_0/1 only):
+
+```
+# Capital-deployment verdicts (NEW — checked BEFORE labor verdicts)
+Q4=YES + Q5!=LABOR + Q6-ROI>=20% + Q7=YES → DEPLOY_CANDIDATE
+Q4=YES + Q5!=LABOR + Q6-ROI>=20% + Q7=NO → DEPLOY_CANDIDATE (with CONCENTRATION_WARNING)
+Q4=YES + Q5!=LABOR + Q6-ROI<20% → SIDE_HUSTLE_WITH_STAIRCASE (low ROI but has asset)
+Q4=PARTIAL + Q5!=LABOR + Q6-ROI>=20% → DEPLOY_CANDIDATE (with MAINTENANCE_WARNING)
+
+# Existing labor verdicts (unchanged)
+Q4=NO + Q5=LABOR → SIDE_HUSTLE (HARD CAP)
+Q4=NO + Q5=HYBRID → SIDE_HUSTLE_WITH_STAIRCASE
+```
+
+Add DEPLOY_CANDIDATE to valid verdict classes everywhere:
+- `stage0-quality-score.py` VALID_VERDICTS
+- `persist-verdict.py` normalize_verdict_class() + EXEMPT_CLASSES
+- `audit-schemas/stage0.json`
+
+## Related Code Files
+
+- Modify: `.claude/commands/stage0.md` — Step 6 Mountain Test section (lines 1828-1900)
+- Modify: `.claude/skills/business/transaction-layer/nui-hunter/scripts/stage0-quality-score.py` — add DEPLOY_CANDIDATE to VALID_VERDICTS
+- Modify: `.claude/skills/business/transaction-layer/nui-hunter/scripts/persist-verdict.py` — add DEPLOY_CANDIDATE to normalize + EXEMPT_CLASSES
+- Modify: `.claude/hooks/lib/audit-schemas/stage0.json` — add DEPLOY_CANDIDATE as valid verdict
+
+## Implementation Steps
+
+1. In `stage0.md` Step 6, add Q6-ROI and Q7-PORTFOLIO after existing Q5-LEVERAGE
+2. Add new deterministic verdict rules for DEPLOY_CANDIDATE path
+3. Add DEPLOY_CANDIDATE to `stage0-quality-score.py` VALID_VERDICTS set
+4. Add DEPLOY_CANDIDATE to `persist-verdict.py`:
+   - `normalize_verdict_class()` tag list (BEFORE MOUNTAIN_CANDIDATE for priority)
+   - `EXEMPT_CLASSES` set
+   - `memory.jsonl` writer tag list
+5. Verify existing Q1-Q5 + Compounding + Asymmetry rules unchanged for TIER_2/3
+6. Add condition: Q6-ROI and Q7-PORTFOLIO only evaluated when routing_context.tier in {TIER_0, TIER_1}
+
+## Success Criteria
+
+- [ ] Q6-ROI and Q7-PORTFOLIO present in Mountain Test v25 spec
+- [ ] DEPLOY_CANDIDATE verdict fires when Q4=YES + Q6>=20% + Q7=YES
+- [ ] DEPLOY_CANDIDATE in VALID_VERDICTS, normalize_verdict_class(), EXEMPT_CLASSES
+- [ ] TIER_2/3 Mountain Test path unchanged (Q6/Q7 skipped)
+- [ ] Existing labor hard-cap (Q4=NO + Q5=LABOR → SIDE_HUSTLE) still enforced
+- [ ] Version label in stage0.md header updated to v25
+
+## Risk Assessment
+
+- **New verdict class breaks downstream:** persist-verdict + quality-score + audit-schema all get DEPLOY_CANDIDATE added. Case JSON output shape unchanged
+- **ROI calculation gaming:** LLM could inflate ROI estimates. Mitigated by requiring calc-dispatcher P10/P50/P90 for ROI claims (existing infrastructure)
+- **Q6/Q7 add complexity to already-complex Mountain Test:** Scoped to TIER_0/1 only. TIER_2/3 skip entirely

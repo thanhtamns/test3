@@ -1,0 +1,180 @@
+use anyhow::Result;
+use codeflow_core::events::EventBuffer;
+use codeflow_core::proto;
+use flate2::write::GzEncoder;
+use flate2::Compression;
+use prost::Message;
+use std::io::Write;
+use std::time::{Duration, Instant};
+
+use crate::paths;
+
+const BATCH_MAX_EVENTS: usize = 50;
+const BATCH_MAX_BYTES: usize = 512 * 1024;
+const BATCH_FLUSH_INTERVAL: Duration = Duration::from_secs(30);
+const MAX_RETRIES: u32 = 8;
+const CIRCUIT_BREAKER_THRESHOLD: u32 = 5;
+const CIRCUIT_BREAKER_COOLDOWN: Duration = Duration::from_secs(600);
+
+pub struct SyncConfig {
+    pub api_url: String,
+    pub api_key: Option<String>,
+    pub one_shot: bool,
+}
+
+impl Default for SyncConfig {
+    fn default() -> Self {
+        Self {
+            api_url: std::env::var("CODEFLOW_API_URL")
+                .unwrap_or_else(|_| "http://localhost:8080".to_string()),
+            api_key: std::env::var("CODEFLOW_API_KEY").ok(),
+            one_shot: false,
+        }
+    }
+}
+
+pub fn run(config: SyncConfig) -> Result<()> {
+    let db_path = paths::db_path();
+    if !db_path.exists() {
+        println!("No events to sync.");
+        return Ok(());
+    }
+
+    let event_buf = EventBuffer::open(&db_path)?;
+    let pending = event_buf.pending_count()?;
+    println!("Pending events: {}", pending);
+
+    if pending == 0 {
+        println!("Nothing to sync.");
+        return Ok(());
+    }
+
+    let mut circuit_failures: u32 = 0;
+    let mut circuit_open_until: Option<Instant> = None;
+
+    loop {
+        if let Some(open_until) = circuit_open_until {
+            if Instant::now() < open_until {
+                if config.one_shot {
+                    eprintln!("Circuit breaker open. Retry later.");
+                    return Ok(());
+                }
+                let remaining = open_until - Instant::now();
+                tracing::warn!(secs = remaining.as_secs(), "circuit breaker open, waiting");
+                std::thread::sleep(remaining.min(Duration::from_secs(10)));
+                continue;
+            }
+            circuit_open_until = None;
+            circuit_failures = 0;
+        }
+
+        let batch = event_buf.consume_batch(BATCH_MAX_EVENTS)?;
+        if batch.is_empty() {
+            if config.one_shot {
+                println!("All events synced.");
+                return Ok(());
+            }
+            std::thread::sleep(BATCH_FLUSH_INTERVAL);
+            continue;
+        }
+
+        let ids: Vec<i64> = batch.iter().map(|(id, _)| *id).collect();
+        let events: Vec<proto::Event> = batch.into_iter().map(|(_, e)| e).collect();
+
+        let payload = encode_batch(&events, &config)?;
+
+        if payload.len() > BATCH_MAX_BYTES {
+            tracing::warn!(
+                size = payload.len(),
+                "batch exceeds max bytes, splitting not implemented — sending anyway"
+            );
+        }
+
+        match send_batch(&config, &payload) {
+            Ok(()) => {
+                event_buf.mark_consumed(&ids)?;
+                event_buf.purge_consumed()?;
+                circuit_failures = 0;
+                tracing::info!(count = ids.len(), "batch synced");
+                println!("  Synced {} events", ids.len());
+            }
+            Err(e) => {
+                circuit_failures += 1;
+                tracing::error!(err = %e, failures = circuit_failures, "sync failed");
+                eprintln!("  Sync failed: {} (attempt {}/{})", e, circuit_failures, CIRCUIT_BREAKER_THRESHOLD);
+
+                if circuit_failures >= CIRCUIT_BREAKER_THRESHOLD {
+                    circuit_open_until = Some(Instant::now() + CIRCUIT_BREAKER_COOLDOWN);
+                    tracing::warn!("circuit breaker opened");
+                    eprintln!("  Circuit breaker opened — will retry in {}s", CIRCUIT_BREAKER_COOLDOWN.as_secs());
+                }
+
+                if config.one_shot {
+                    return Err(e);
+                }
+
+                let backoff = Duration::from_secs(2u64.pow(circuit_failures.min(MAX_RETRIES)));
+                std::thread::sleep(backoff);
+            }
+        }
+    }
+}
+
+fn encode_batch(events: &[proto::Event], config: &SyncConfig) -> Result<Vec<u8>> {
+    let batch = proto::EventBatch {
+        cli_version: env!("CARGO_PKG_VERSION").to_string(),
+        machine_id: machine_id(),
+        events: events.to_vec(),
+    };
+
+    let mut proto_buf = Vec::with_capacity(batch.encoded_len());
+    batch.encode(&mut proto_buf)?;
+
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
+    encoder.write_all(&proto_buf)?;
+    let compressed = encoder.finish()?;
+
+    tracing::debug!(
+        proto_size = proto_buf.len(),
+        gzip_size = compressed.len(),
+        ratio = format!("{:.1}%", (1.0 - compressed.len() as f64 / proto_buf.len() as f64) * 100.0),
+        "batch encoded"
+    );
+
+    let _ = config; // config used for future auth headers
+    Ok(compressed)
+}
+
+fn send_batch(config: &SyncConfig, payload: &[u8]) -> Result<()> {
+    let url = format!("{}/v1/events", config.api_url);
+
+    let mut req = ureq::post(&url)
+        .header("Content-Type", "application/x-protobuf")
+        .header("Content-Encoding", "gzip");
+
+    if let Some(key) = &config.api_key {
+        req = req.header("Authorization", &format!("Bearer {}", key));
+    }
+
+    let mut resp = req.send(payload)
+        .map_err(|e| anyhow::anyhow!("ingest API request failed: {}", e))?;
+
+    let status = resp.status().as_u16();
+    if status >= 400 {
+        let body = resp.body_mut().read_to_string()
+            .unwrap_or_default();
+        anyhow::bail!("ingest API returned {}: {}", status, body);
+    }
+
+    Ok(())
+}
+
+fn machine_id() -> String {
+    std::env::var("CODEFLOW_MACHINE_ID").unwrap_or_else(|_| {
+        let hostname = hostname::get()
+            .map(|h| h.to_string_lossy().to_string())
+            .unwrap_or_else(|_| "unknown".to_string());
+        let hash = blake3::hash(hostname.as_bytes());
+        hash.to_hex()[..16].to_string()
+    })
+}

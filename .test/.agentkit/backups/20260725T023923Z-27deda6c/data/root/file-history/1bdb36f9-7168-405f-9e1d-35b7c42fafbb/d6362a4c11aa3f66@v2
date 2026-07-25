@@ -1,0 +1,230 @@
+---
+phase: 4
+title: "Evolution Triggers (Session + Outcome + Continuous)"
+status: complete
+priority: P1
+effort: "3-4d"
+dependencies: [phase-01, phase-02]
+---
+
+# Phase 4: Evolution Triggers (Session + Outcome + Continuous)
+
+## Overview
+
+Wire 3 parallel evolution triggers that continuously feed local knowledge DB with quality data from LLM. System gets smarter every session, every outcome, and every day — without manual intervention.
+
+## Requirements
+
+- Functional: 3 triggers running independently. Each produces distilled knowledge → SQLite. Dedup across triggers. Quality gate: only store verified facts.
+- Non-functional: Session trigger < 30s overhead. Outcome trigger < 60s after recording. Continuous trigger runs as background cron.
+
+## Architecture
+
+```
+┌─────────────────┐   ┌──────────────────┐   ┌─────────────────┐
+│ SESSION TRIGGER  │   │ OUTCOME TRIGGER  │   │ CONTINUOUS      │
+│                  │   │                  │   │ TRIGGER         │
+│ On: every query  │   │ On: outcome      │   │ On: daily cron  │
+│ Detect: gaps     │   │ recorded         │   │ Scan: trending  │
+│ Action: fill     │   │ Analyze: WHY     │   │ topics, stale   │
+│ gaps via LLM     │   │ wrong/right      │   │ facts, new      │
+│ → distill        │   │ → update weights │   │ domains         │
+│ → store          │   │ → fill blindspot │   │ → research      │
+│                  │   │ → distill        │   │ → distill       │
+└────────┬────────┘   └────────┬─────────┘   └────────┬────────┘
+         │                     │                       │
+         └─────────────────────┼───────────────────────┘
+                               ▼
+                    ┌──────────────────────┐
+                    │ DISTILLATION PIPELINE │
+                    │ (from KDE plan)       │
+                    │ verify → encode →    │
+                    │ dedup → store         │
+                    └──────────────────────┘
+```
+
+## Related Code Files
+
+**Create:**
+- `.claude/lib/intelligence/evolution/session-trigger.py`
+- `.claude/lib/intelligence/evolution/outcome-trigger.py`
+- `.claude/lib/intelligence/evolution/continuous-trigger.py`
+- `.claude/lib/intelligence/evolution/distillation-bridge.py` — connects triggers to KDE distillation pipeline
+- `.claude/lib/intelligence/evolution/__init__.py`
+
+**Modify:**
+- `.claude/skills/business/deep-intelligence/stage0_integration.py` — hook session trigger
+- `.claude/skills/business/feedback_loop/stage0-outcomes-db-writer.py` — hook outcome trigger
+- `.claude/skills/business/compound/scheduled-evolution-loop.py` — replace with continuous trigger
+
+## Implementation Steps
+
+### Step 1: Session Trigger (~1d)
+
+Fires on every stage0 query. Uses gap detector (P2) to find missing knowledge. Fills gaps via LLM. Distills results.
+
+```python
+class SessionTrigger:
+    def __init__(self, coverage_tracker, gap_detector, intelligence_llm, distiller):
+        self.coverage = coverage_tracker
+        self.gaps = gap_detector
+        self.llm = intelligence_llm
+        self.distiller = distiller
+
+    def on_query(self, query_features: dict) -> SessionEvolution:
+        coverage = self.coverage.check(query_features)
+        if coverage.score >= 0.8:
+            return SessionEvolution(gaps_filled=0, new_vectors=0)
+
+        gaps = self.gaps.identify_gaps(query_features, coverage)
+        # Budget: max 3 LLM calls per session trigger
+        top_gaps = sorted(gaps, key=lambda g: g.priority)[:3]
+
+        new_knowledge = []
+        for gap in top_gaps:
+            result = self.llm.query(gap.suggested_query, gap.schema, gap.domain)
+            if result.verified:
+                vectors = self.distiller.distill(result)
+                new_knowledge.extend(vectors)
+
+        return SessionEvolution(
+            gaps_filled=len(top_gaps),
+            new_vectors=len(new_knowledge),
+            domains_improved=[g.domain for g in top_gaps],
+        )
+```
+
+### Step 2: Outcome Trigger (~1d)
+
+Fires when real outcome recorded (via /log-outcome). Analyzes WHY system was right/wrong. Extracts learnable pattern.
+
+```python
+class OutcomeTrigger:
+    def __init__(self, chain_tracer, intelligence_llm, distiller, weight_updater):
+        self.tracer = chain_tracer
+        self.llm = intelligence_llm
+        self.distiller = distiller
+        self.weights = weight_updater
+
+    def on_outcome(self, case_id: str, actual_outcome: str, predicted_verdict: str):
+        # 1. Load chain trace for this case
+        trace = self.tracer.load(case_id)
+
+        # 2. Compare prediction vs outcome
+        correct = (predicted_verdict == actual_outcome)
+
+        # 3. Update weights (existing calibration system)
+        self.weights.update(trace, correct)
+
+        if not correct:
+            # 4. Analyze WHY wrong
+            # Find which atom in chain was incorrect
+            wrong_atoms = self._find_wrong_atoms(trace, actual_outcome)
+
+            # 5. Generate targeted research for wrong atoms
+            for atom in wrong_atoms:
+                research_query = f"Why does {atom.question} lead to {actual_outcome} instead of {atom.answer}?"
+                result = self.llm.query(research_query, CORRECTION_SCHEMA, trace.domain)
+                if result.verified:
+                    # 6. Distill corrected knowledge
+                    self.distiller.distill_correction(result, original=atom)
+
+        # 7. Log evolution event
+        return OutcomeEvolution(
+            case_id=case_id,
+            correct=correct,
+            wrong_atoms=len(wrong_atoms) if not correct else 0,
+            corrections_distilled=len(wrong_atoms) if not correct else 0,
+        )
+```
+
+### Step 3: Continuous Trigger (~1d)
+
+Background job (daily/weekly). Proactively expands knowledge.
+
+```python
+class ContinuousTrigger:
+    def __init__(self, staleness_monitor, coverage_tracker, intelligence_llm, distiller):
+        self.staleness = staleness_monitor
+        self.coverage = coverage_tracker
+        self.llm = intelligence_llm
+        self.distiller = distiller
+
+    def run_daily(self) -> ContinuousEvolution:
+        results = ContinuousEvolution()
+
+        # 1. Refresh stale facts (highest priority)
+        stale = self.staleness.scan()
+        for fact in stale[:5]:  # max 5 per run
+            refreshed = self.llm.query(fact.original_query, fact.schema, fact.domain)
+            if refreshed.verified:
+                self.staleness.mark_refreshed(fact.id, refreshed.confidence)
+                results.refreshed += 1
+
+        # 2. Fill lowest-coverage domains
+        report = self.coverage.domain_report()
+        weakest = sorted(report.items(), key=lambda x: x[1]["coverage_pct"])[:3]
+        for domain, stats in weakest:
+            if stats["coverage_pct"] < 50:
+                # Research this domain broadly
+                broad_result = self.llm.query(
+                    f"What are the top 10 failure patterns and success factors for {domain}?",
+                    DOMAIN_RESEARCH_SCHEMA,
+                    domain,
+                )
+                if broad_result.verified:
+                    vectors = self.distiller.distill(broad_result)
+                    results.new_vectors += len(vectors)
+
+        # 3. Scan trending topics (optional, lower priority)
+        # Uses market-pulse signals if available
+
+        return results
+```
+
+### Step 4: Distillation Bridge (~0.5d)
+
+Connects all triggers to the KDE distillation pipeline (from prerequisite plan).
+
+```python
+class DistillationBridge:
+    """Unified interface for all triggers to distill LLM output → local DB."""
+
+    def distill(self, verified_result: VerifiedResult) -> list[DecisionVector]:
+        # 1. Extract features from verified facts
+        # 2. Encode as decision vector (same schema as KDE)
+        # 3. Dedup against existing vectors
+        # 4. Store in decision-vectors.db
+        # 5. Update kill-signals.json if applicable
+        # 6. Return new vectors for tracking
+
+    def distill_correction(self, correction: VerifiedResult, original: Resolution):
+        # 1. Mark original vector as CORRECTED
+        # 2. Store correction as new vector with higher confidence
+        # 3. Update pattern rules if applicable
+```
+
+### Step 5: Wire + Scheduling (~0.5d)
+
+- Session trigger: hook into `stage0_integration.py` post-analysis
+- Outcome trigger: hook into `stage0-outcomes-db-writer.py` on write
+- Continuous trigger: add to `scheduled-evolution-loop.py` or create CronCreate job
+
+## Success Criteria
+
+- [ ] Session trigger fills 1-3 gaps per query (when coverage < 80%)
+- [ ] Outcome trigger produces corrected vector on every wrong prediction
+- [ ] Continuous trigger refreshes 3-5 stale facts daily
+- [ ] All distilled knowledge passes anti-hallucination verification
+- [ ] Dedup prevents duplicate vectors (< 1% duplication rate)
+- [ ] Budget cap enforced: max $1/day across all triggers combined
+- [ ] Evolution metrics tracked: vectors_added_per_day, domains_improved, accuracy_trend
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|---|---|
+| Triggers over-query LLM (cost) | Hard budget cap in llm-config.json ($10/day), per-trigger limits |
+| Distilled corrections introduce noise | Quality gate: only store verified facts with confidence >= 0.7 |
+| Session trigger slows down stage0 | Async: fire-and-forget, don't block verdict |
+| Continuous trigger runs on stale topics | Coverage tracker prioritizes low-coverage + recent-query domains |

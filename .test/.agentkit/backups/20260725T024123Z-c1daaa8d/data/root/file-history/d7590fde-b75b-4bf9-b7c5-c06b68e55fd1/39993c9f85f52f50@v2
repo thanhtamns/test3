@@ -1,0 +1,118 @@
+---
+phase: 2
+title: "Quality Score Leverage Dimension"
+status: pending
+priority: P1
+effort: "1.5h"
+dependencies: []
+---
+
+# Phase 2: Quality Score Leverage Dimension
+
+## Overview
+
+Add `check_leverage_classification()` as 12th dimension in `stage0-quality-score.py`. Max 15 pts. New total max = 175. Grade thresholds adjusted proportionally.
+
+## Related Code Files
+
+- Modify: `D:\code\invesments\master_investments\.claude\skills\business\transaction-layer\nui-hunter\scripts\stage0-quality-score.py`
+
+## Implementation Steps
+
+1. Add new function `check_leverage_classification(text: str) -> dict` after existing dimension functions (~line 370). Logic:
+
+```python
+def check_leverage_classification(text: str) -> dict:
+    score = 0
+    details = []
+
+    # Sleep test present (+5)
+    sleep_patterns = [
+        r'Q4[_-]?SLEEP', r'sleep\s+test', r'revenue\s+continues?\s+when\s+founder',
+        r'passive\s+income', r'recurring\s+(revenue|subscription)',
+        r'founder\s+does\s+zero\s+work'
+    ]
+    if any(re.search(p, text, re.IGNORECASE) for p in sleep_patterns):
+        score += 5
+        details.append("sleep test present")
+
+    # Leverage classification found (+5)
+    leverage_patterns = [
+        r'Q5[_-]?LEVERAGE', r'leverage[_:\s]+(CODE|MEDIA|CAPITAL|LABOR|HYBRID)',
+        r'Naval\s+hierarchy', r'leverage\s+class',
+        r'(CODE|MEDIA|CAPITAL|LABOR|HYBRID)\s+leverage'
+    ]
+    if any(re.search(p, text, re.IGNORECASE) for p in leverage_patterns):
+        score += 5
+        details.append("leverage classification found")
+
+    # Asset identification (+5)
+    asset_patterns = [
+        r'asset\s+at\s+M?12', r'founder\s+owns?\s+after',
+        r'owns?\s+at\s+month\s+12', r'asset\s+after\s+12\s+months?',
+        r'sellable\s+asset', r'transferable\s+asset'
+    ]
+    if any(re.search(p, text, re.IGNORECASE) for p in asset_patterns):
+        score += 5
+        details.append("asset identification present")
+
+    # PENALTY: labor recommendation without staircase (-5)
+    is_labor = bool(re.search(r'LABOR', text)) and not re.search(r'HYBRID', text)
+    has_staircase = bool(re.search(
+        r'stair[_-]?step|transition\s+path|bootstrap.*to.*product|labor.*to.*(code|media|saas)',
+        text, re.IGNORECASE
+    ))
+    if is_labor and not has_staircase:
+        score -= 5
+        details.append("PENALTY: labor model without staircase path")
+
+    return {"score": max(score, 0), "max": 15, "detail": "; ".join(details) or "no leverage signals"}
+```
+
+2. In `score_verdict()` function, add call after existing dimensions (~line 375):
+```python
+d_leverage = check_leverage_classification(text)
+```
+
+3. Add to `total` calculation:
+```python
+total = (d_agent["score"] + d_comp["score"] + d_evid["score"] + d_verd["score"]
+         + d_pipe["score"] + d_side["score"] + d_orth["score"] + d_voice["score"]
+         + d_wound["score"] + d_compound["score"] + d_instance["score"]
+         + d_leverage["score"])
+```
+
+4. Add to dimensions dict in return:
+```python
+"leverage_classification": d_leverage,
+```
+
+5. Update grade map and docstring:
+   - Docstring: `"""Stage0 verdict quality scorer. Reads verdict markdown, outputs JSON score 0-175."""`
+   - Grade thresholds (proportional ~9% increase):
+     - A = 136+ (was 125)
+     - B = 120+ (was 110)
+     - C = 93+ (was 85)
+     - D = 71+ (was 65)
+     - F = <71 (was <65)
+   - `grade_map` string: `"A=136+ B=120+ C=93+ D=71+ F=<71 (max=175)"`
+
+6. Update `grade()` function thresholds to match.
+
+## Success Criteria
+
+- [ ] `check_leverage_classification()` function added
+- [ ] Sleep test detection: +5 when present
+- [ ] Leverage class detection: +5 when present
+- [ ] Asset identification: +5 when present
+- [ ] Labor penalty: -5 when labor without staircase
+- [ ] Total max = 175, grade thresholds adjusted
+- [ ] Old verdicts without leverage section lose 10-15 pts (dimension scores 0/15)
+- [ ] New verdicts with leverage section gain 10-15/15
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|------|-----------|
+| Regex false positives | Patterns target stage0-specific terms (Q4-SLEEP, Q5-LEVERAGE), not generic words |
+| Backward compat | Score of 0/15 for old verdicts = grade drops ~1 letter. Acceptable — forces upgrade. |

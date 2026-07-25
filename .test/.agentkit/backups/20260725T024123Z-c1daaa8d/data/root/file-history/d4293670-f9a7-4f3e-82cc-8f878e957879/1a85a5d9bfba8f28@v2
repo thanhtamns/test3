@@ -1,0 +1,141 @@
+---
+phase: 4
+title: "Quality Gate — Dependency + Hallucination Detection"
+status: complete
+priority: P1
+effort: "2w"
+dependencies: [1]
+---
+
+# Phase 4: Quality Gate — Dependency + Hallucination Detection
+
+## Overview
+
+Pre-commit quality enforcement for AI-generated code. Detect hallucinated dependencies, vulnerable patterns, and license risks. `codeflow gate` command for CI/CD integration. Can run in parallel with Phases 2-3 since it only depends on provenance data from Phase 1.
+
+## Requirements
+
+- Functional: detect hallucinated npm/PyPI/crates.io packages; scan AI code for vulnerability patterns; license compliance; `codeflow gate` as CI/CD pre-merge check; `codeflow scan` for ad-hoc scanning
+- Non-functional: scan <10s for typical PR (~500 LOC); offline mode (cache registry data); exit code 0/1 for CI
+
+## Architecture
+
+```
+codeflow gate (or pre-commit hook)
+    ↓
+1. Identify AI-generated files (from provenance DB, Phase 1)
+    ↓
+2. Extract dependencies: parse import/require/use statements
+    ↓
+3. Validate against registries:
+   npm:      GET https://registry.npmjs.org/{pkg}
+   PyPI:     GET https://pypi.org/pypi/{pkg}/json
+   crates.io: GET https://crates.io/api/v1/crates/{pkg}
+    ↓
+4. Scan code patterns (NEW quality rules module — discover/rules.rs is a static command-rewrite table, NOT extensible):
+   - Known vulnerability patterns (regex-based)
+   - Suspicious API usage (eval, exec, child_process)
+   - Hardcoded secrets
+    ↓
+5. QualityEvent { check_type, severity, file_path, finding, blocked }
+    ↓
+Exit code: 0 (pass) | 1 (blocked findings) | 2 (error)
+```
+
+## Related Code Files
+
+- ~~Modify: `src/discover/rules.rs`~~ — NOT a rule engine, it's a static command-rewrite table. Quality rules built from scratch in new modules.
+- Modify: `src/main.rs` — add `gate` and `scan` subcommands
+- Create: `src/core/quality_gate.rs` — orchestrator: runs all checks, aggregates findings
+- Create: `src/core/dep_validator.rs` — dependency existence validation against registries
+- Create: `src/core/hallucination_detector.rs` — AI-specific hallucination patterns
+- Create: `src/core/license_checker.rs` — license compliance scanning
+- Create: `src/cmds/gate_cmd.rs` — `codeflow gate` CI/CD command
+- Create: `src/cmds/scan_cmd.rs` — `codeflow scan` ad-hoc command
+- Create: `data/quality-rules.toml` — configurable quality thresholds
+- Create: `data/top-packages-npm.txt` — top 1000 npm packages for typosquat Levenshtein comparison
+- Create: `data/top-packages-pypi.txt` — top 1000 PyPI packages
+- Create: `data/top-packages-crates.txt` — top 1000 crates.io packages
+
+## Implementation Steps
+
+1. **Create `src/core/dep_validator.rs`**
+   - Parse import statements per language:
+     - JS/TS: `import ... from 'pkg'`, `require('pkg')`
+     - Python: `import pkg`, `from pkg import ...`
+     - Rust: `use pkg::...` (check Cargo.toml deps)
+     - Go: `import "pkg"` (check go.mod)
+   - Registry validation (existence + reputation — existence alone misses typosquats):
+     - `fn validate_npm(pkg: &str) -> ValidationResult` — GET registry JSON, check download count + age + known-malicious via OSV.dev
+     - `fn validate_pypi(pkg: &str) -> ValidationResult` — GET JSON, check download count + first published date
+     - `fn validate_crates(pkg: &str) -> ValidationResult` — GET API, check download count + age
+   - Cache results in SQLite (package_name → exists/not_found, checked_at)
+   - Rate limiting: max 10 req/s per registry
+   - Offline mode: cache only, warn on miss
+
+2. **Create `src/core/hallucination_detector.rs`**
+   - Non-existent API methods on well-known libraries
+   - Fabricated URL endpoints
+   - Typosquat detection: Levenshtein distance against **bundled top-1000 packages allowlist per ecosystem** (npm, PyPI, crates.io). Without this allowlist, Levenshtein has nothing to compare against.
+   - Integrate with OSV.dev API for known-malicious package detection
+   - Severity: critical (known-malicious or definitely hallucinated), high (likely hallucinated or typosquat), medium (suspicious)
+
+3. **Create `src/core/license_checker.rs`**
+   - Extract license from registry metadata (npm `license`, PyPI classifiers)
+   - Flag copyleft (GPL, AGPL) in permissive-licensed projects
+   - Configurable allowed/denied lists in `quality-rules.toml`
+
+4. **Create `src/core/quality_gate.rs`**
+   - Orchestrator: runs dep_validator + hallucination_detector + license_checker
+   - `fn run_gate(files: &[PathBuf], config: &QualityConfig) -> GateResult`
+   - `struct GateResult { findings: Vec<Finding>, passed: bool, stats: GateStats }`
+   - Blocking threshold: configurable (default block on critical+high)
+
+5. **Create `src/cmds/gate_cmd.rs`**
+   - `codeflow gate` — scan staged files (git diff --staged)
+   - `codeflow gate --all` — scan all AI-generated files in project
+   - `codeflow gate --pr <ref>` — scan files changed in PR
+   - `codeflow gate --json` — machine-readable CI output
+   - Exit codes: 0 = pass, 1 = blocked, 2 = error
+
+6. **Create `src/cmds/scan_cmd.rs`**
+   - `codeflow scan <file>` — ad-hoc scan of specific file
+   - `codeflow scan --deps` — dependency-only
+   - `codeflow scan --security` — security-only
+
+7. **Create `data/quality-rules.toml`**
+   ```toml
+   [thresholds]
+   block_on = ["critical", "high"]
+   warn_on = ["medium", "low"]
+
+   [licenses]
+   denied = ["GPL-3.0", "AGPL-3.0"]
+   allowed = ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC"]
+
+   [registries]
+   cache_ttl_hours = 24
+   offline_mode = false
+   ```
+
+8. **Wire into main.rs** — add `Gate` and `Scan` variants
+
+9. **Tests** — 15+ tests covering dep_validator (mock HTTP), hallucination_detector, license_checker, gate_cmd exit codes
+
+## Success Criteria
+
+- [x] Hallucinated npm/PyPI/crates.io packages detected via registry validation + typosquat detection
+- [x] Registry results cached in SQLite (dep_cache.db) with configurable TTL
+- [x] `codeflow gate` blocks PRs with critical/high findings (exit code 1)
+- [x] `codeflow gate --json` outputs CI-compatible JSON
+- [x] License compliance flags copyleft in permissive projects (LicenseViolation check type)
+- [x] Offline mode works with cached registry data (cache-only, warn on miss)
+- [x] 32 new tests (dep_validator 6, hallucination_detector 7, license_checker 5, quality_gate 6, gate_cmd 3, scan_cmd 3, misc 2)
+
+## Risk Assessment
+
+| Risk | Severity | Mitigation |
+|------|----------|------------|
+| Registry rate limits in CI | MEDIUM | Aggressive caching (24h TTL); batch requests; respect 429 |
+| False positives on valid but rare packages | MEDIUM | Allowlist in quality-rules.toml; `--ignore <pkg>` flag |
+| Import parsing misses edge cases | LOW | Start with common patterns; iterate |

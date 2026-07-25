@@ -1,0 +1,120 @@
+"""Unit tests for salience_weighter primitive."""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1] / "scripts"
+sys.path.insert(0, str(ROOT))
+
+from primitives.salience_weighter import (
+    compute_salience,
+    compute_salience_detailed,
+    SALIENCE_FLOOR,
+    SALIENCE_CAP,
+    FINANCIAL_CAP,
+    URGENCY_BOOST,
+    IRREVERSIBILITY_BOOST,
+)
+
+
+class TestBasicSalience:
+    def test_zero_stakes_returns_floor(self):
+        s = compute_salience(dollars_at_stake=0)
+        assert s >= SALIENCE_FLOOR
+
+    def test_high_stakes_returns_higher(self):
+        low = compute_salience(dollars_at_stake=100)
+        high = compute_salience(dollars_at_stake=5000)
+        assert high > low
+
+    def test_capped_at_maximum(self):
+        s = compute_salience(
+            dollars_at_stake=1_000_000,
+            deadline_miss=True,
+            irreversible=True,
+            recurrence_probability=1.0,
+        )
+        assert s <= SALIENCE_CAP
+
+    def test_never_below_floor(self):
+        s = compute_salience(
+            dollars_at_stake=0,
+            deadline_miss=False,
+            irreversible=False,
+            recurrence_probability=0.0,
+        )
+        assert s >= SALIENCE_FLOOR
+
+
+class TestFactorImpact:
+    def test_urgency_increases_salience(self):
+        base = compute_salience(dollars_at_stake=1000)
+        urgent = compute_salience(dollars_at_stake=1000, deadline_miss=True)
+        assert urgent > base
+
+    def test_irreversibility_increases_salience(self):
+        base = compute_salience(dollars_at_stake=1000)
+        irreversible = compute_salience(dollars_at_stake=1000, irreversible=True)
+        assert irreversible > base
+
+    def test_recurrence_scales_linearly(self):
+        low_r = compute_salience(dollars_at_stake=5000, recurrence_probability=0.2)
+        high_r = compute_salience(dollars_at_stake=5000, recurrence_probability=0.9)
+        assert high_r > low_r
+
+    def test_all_factors_compound(self):
+        minimal = compute_salience(dollars_at_stake=100)
+        maximal = compute_salience(
+            dollars_at_stake=10000,
+            deadline_miss=True,
+            irreversible=True,
+            recurrence_probability=1.0,
+        )
+        assert maximal > minimal * 3
+
+
+class TestDetailedOutput:
+    def test_detailed_returns_all_factors(self):
+        result = compute_salience_detailed(
+            dollars_at_stake=5000,
+            deadline_miss=True,
+            irreversible=True,
+            recurrence_probability=0.8,
+        )
+        assert result.financial > 0
+        assert result.urgency == URGENCY_BOOST
+        assert result.irreversibility == IRREVERSIBILITY_BOOST
+        assert result.recurrence == 0.8
+        assert result.raw_product > 0
+        assert SALIENCE_FLOOR <= result.clamped <= SALIENCE_CAP
+
+    def test_detailed_matches_simple(self):
+        kwargs = dict(
+            dollars_at_stake=3000,
+            deadline_miss=False,
+            irreversible=True,
+            recurrence_probability=0.6,
+        )
+        simple = compute_salience(**kwargs)
+        detailed = compute_salience_detailed(**kwargs)
+        assert simple == pytest.approx(detailed.clamped)
+
+
+class TestBoundaryValues:
+    def test_negative_dollars_treated_as_zero(self):
+        s = compute_salience(dollars_at_stake=-500)
+        assert s >= SALIENCE_FLOOR
+
+    def test_recurrence_above_one_clamped(self):
+        s = compute_salience(recurrence_probability=5.0)
+        s_one = compute_salience(recurrence_probability=1.0)
+        assert s == s_one
+
+    def test_financial_cap_reached(self):
+        d1 = compute_salience_detailed(dollars_at_stake=50000)
+        d2 = compute_salience_detailed(dollars_at_stake=100000)
+        assert d1.financial == FINANCIAL_CAP
+        assert d2.financial == FINANCIAL_CAP

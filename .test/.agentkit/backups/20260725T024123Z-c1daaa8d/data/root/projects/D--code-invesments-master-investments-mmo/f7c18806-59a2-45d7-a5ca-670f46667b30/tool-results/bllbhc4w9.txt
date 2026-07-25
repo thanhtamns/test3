@@ -1,0 +1,498 @@
+Tuyệt vời! Dưới đây là phân tích chi tiết từng khung hình trong video, mô tả kiến trúc, các thành phần, số liệu và bố cục.
+
+---
+
+**Khung Hình 1: Tiêu đề "Thiết Kế High Availability"**
+
+1.  **Kiến trúc:**
+    *   Mô tả một kiến trúc hệ thống phân tán, có khả năng chịu lỗi, với các thành phần được nhân rộng và cân bằng tải.
+    *   Phía trên là một biểu tượng đám mây (cloud) tượng trưng cho môi trường đám mây hoặc lớp xử lý cấp cao.
+    *   Dưới đám mây, ba biểu tượng máy chủ (server racks) được kết nối với nhau qua các mũi tên uốn lượn phía trên, ngụ ý cân bằng tải hoặc phân phối công việc giữa chúng. Mỗi máy chủ chứa nhiều ô vuông nhỏ, có thể đại diện cho các module, dịch vụ hoặc tài nguyên bên trong.
+    *   Từ các máy chủ này, các mũi tên hướng xuống kết nối với một biểu tượng cơ sở dữ liệu hình trụ ở dưới cùng, cho thấy các máy chủ truy cập hoặc lưu trữ dữ liệu.
+    *   Bên trái của sơ đồ chính là một biểu tượng lá chắn màu hồng có dấu kiểm, tượng trưng cho sự bảo vệ, an toàn hoặc hệ thống đã được kiểm tra/xác nhận.
+    *   Phía bên phải của sơ đồ chính là hai biểu tượng máy chủ nhỏ hơn, có thể là các máy chủ phụ, dự phòng hoặc các thành phần khác có quy mô nhỏ hơn.
+    *   Các mũi tên xung quanh đám mây cho thấy luồng dữ liệu hoặc tương tác hai chiều.
+
+2.  **Thành phần:**
+    *   Tiêu đề: "Thiết Kế High Availability" (Thiết kế Tính sẵn sàng cao).
+    *   Biểu tượng đám mây (Cloud).
+    *   Ba biểu tượng máy chủ (Server Racks) lớn.
+    *   Hai biểu tượng máy chủ (Server Racks) nhỏ hơn.
+    *   Một biểu tượng cơ sở dữ liệu (Database Cylinder).
+    *   Lá chắn (Shield) với dấu kiểm.
+    *   Các mũi tên (Arrows): chỉ định luồng dữ liệu hoặc kết nối.
+    *   Các ô vuông nhỏ bên trong máy chủ (đại diện cho các thành phần con).
+    *   Tên thương hiệu ở cuối trang: "NotebookLM".
+
+3.  **Số liệu, số và tỷ lệ phần trăm:** Không có số liệu cụ thể, số hoặc tỷ lệ phần trăm được hiển thị trong khung hình này.
+
+4.  **Bố cục và hệ thống phân cấp trực quan:**
+    *   Tiêu đề chính "Thiết Kế High Availability" được đặt ở vị trí nổi bật, giữa phía trên màn hình, với phông chữ lớn và đậm, tạo điểm nhấn chính cho khung hình.
+    *   Sơ đồ kiến trúc chiếm phần lớn diện tích phía dưới tiêu đề, được bao quanh bởi một khung hình chữ nhật bo tròn màu hồng nhạt, tạo thành một khu vực nội dung riêng biệt.
+    *   Các thành phần trong sơ đồ được bố trí theo lớp: đám mây ở trên, các máy chủ ở giữa, và cơ sở dữ liệu ở dưới, thể hiện một luồng từ trên xuống dưới.
+    *   Biểu tượng lá chắn ở bên trái sơ đồ và các máy chủ nhỏ hơn ở bên phải đóng vai trò là các yếu tố hỗ trợ hoặc minh họa cho khái niệm chính.
+    *   Các đường và hình tròn màu hồng nhạt ở viền trái, phải và trên cùng của khung hình có tính chất trang trí, tạo cảm giác mềm mại và hiện đại.
+    *   Chân trang "NotebookLM" được đặt ở góc dưới cùng bên phải.
+
+---
+
+**Khung Hình 2: Câu hỏi "Cơ sở dữ liệu sập vào giờ cao điểm thì sao?"**
+
+1.  **Kiến trúc:**
+    *   Khung hình không trình bày một kiến trúc hệ thống cụ thể mà là một loạt các hình ảnh minh họa cho hậu quả hoặc lo ngại khi một cơ sở dữ liệu gặp sự cố.
+    *   Phía trên bên trái, một chồng ba máy chủ được minh họa đang bị nghiêng, đổ vỡ, với các mảnh vụn nhỏ bay ra xung quanh, tượng trưng cho sự sập đổ của hệ thống hoặc dữ liệu.
+    *   Phía dưới bên trái, một biểu tượng điện thoại thông minh hiển thị khuôn mặt buồn, với các mũi tên hướng ra một bong bóng suy nghĩ chứa các đường vẽ rối rắm, thể hiện sự bối rối, khó chịu của người dùng hoặc sự cố mạng.
+    *   Phía dưới bên phải, một nhóm ba biểu tượng khuôn mặt buồn, một biểu tượng đồng tiền đang rơi và một chồng tiền xu/tiền giấy, minh họa cho thiệt hại tài chính và sự không hài lòng của người dùng/khách hàng.
+
+2.  **Thành phần:**
+    *   Câu hỏi chính: "Cơ sở dữ liệu sập vào giờ cao điểm thì sao?"
+    *   Biểu tượng chồng máy chủ bị sập đổ.
+    *   Điện thoại thông minh với mặt buồn.
+    *   Bong bóng suy nghĩ rối rắm.
+    *   Ba khuôn mặt buồn (mặt giận dữ, mặt thất vọng, mặt buồn).
+    *   Biểu tượng đồng tiền (dollar sign) đang rơi và chồng tiền xu.
+    *   Dấu hỏi lớn màu hồng nhạt, mờ ở trung tâm làm nền.
+    *   Các nét vẽ trang trí, mảnh vụn, đường gạch đứt đoạn.
+    *   Tên thương hiệu ở cuối trang: "NotebookLM".
+
+3.  **Số liệu, số và tỷ lệ phần trăm:** Không có số liệu cụ thể, số hoặc tỷ lệ phần trăm được hiển thị.
+
+4.  **Bố cục và hệ thống phân cấp trực quan:**
+    *   Câu hỏi chính được đặt ở trung tâm, với phông chữ lớn và đậm, làm trọng tâm của khung hình, được nhấn mạnh bởi dấu hỏi lớn mờ phía sau.
+    *   Các hình ảnh minh họa được bố trí xung quanh câu hỏi, mỗi hình ảnh đại diện cho một khía cạnh của vấn đề hoặc hậu quả (sập hệ thống, khó chịu của người dùng, thiệt hại kinh tế).
+    *   Bố cục này tạo cảm giác lo lắng, khẩn cấp và đặt ra một vấn đề cần giải quyết, thu hút sự chú ý vào tầm quan trọng của tính sẵn sàng cao.
+    *   Chân trang "NotebookLM" ở góc dưới cùng bên phải.
+
+---
+
+**Khung Hình 3: Mục lục**
+
+1.  **Kiến trúc:**
+    *   Đây là một mục lục, trình bày cấu trúc và luồng nội dung của bài thuyết trình hoặc tài liệu.
+    *   Sáu thẻ nội dung được đánh số từ 01 đến 06, mỗi thẻ là một hình chữ nhật bo tròn màu trắng với viền xanh, chứa tiêu đề và một chấm tròn màu xanh ở dưới cùng.
+    *   Các mũi tên màu xanh cho thấy mối quan hệ và thứ tự liên kết giữa các chủ đề:
+        *   Mũi tên ngang từ 01 đến 02, từ 02 đến 03.
+        *   Mũi tên dọc từ 03 xuống 04.
+        *   Mũi tên ngang từ 04 đến 05, từ 05 đến 06.
+        *   Có một mũi tên từ 01 xuống 04, và một mũi tên khác từ dưới 04 lên 01 (tạo thành một vòng lặp hoặc kết nối chéo). Các mũi tên này có thể biểu thị mối quan hệ phụ thuộc hoặc liên kết không tuần tự.
+    *   Nền là các nét vẽ phác thảo mờ nhạt của các biểu tượng liên quan đến CNTT như đám mây, bánh răng, máy chủ, lá chắn, mũi tên, v.v., tạo không khí chuyên nghiệp và liên quan đến chủ đề.
+
+2.  **Thành phần:**
+    *   Các thẻ mục lục được đánh số:
+        *   "01 Sập Hệ Thống"
+        *   "02 Định Nghĩa HA"
+        *   "03 Thành Phần HA"
+        *   "04 Mô Hình Kiến Trúc"
+        *   "05 HA So Với DR"
+        *   "06 Thực Tế & Checklist"
+    *   Các mũi tên màu xanh.
+    *   Các chấm tròn màu xanh dưới mỗi thẻ.
+    *   Nền là các biểu tượng phác thảo mờ (đám mây, bánh răng, server, lá chắn, mũi tên).
+    *   Tên thương hiệu ở cuối trang: "NotebookLM".
+
+3.  **Số liệu, số và tỷ lệ phần trăm:** Các số thứ tự từ 01 đến 06.
+
+4.  **Bố cục và hệ thống phân cấp trực quan:**
+    *   Bố cục chính là dạng lưới 2x3 của các thẻ mục lục, tạo sự rõ ràng và dễ theo dõi.
+    *   Các mũi tên chỉ dẫn một luồng tuyến tính qua các chủ đề, nhưng cũng có các kết nối chéo gợi ý về mối liên hệ phức tạp hơn hoặc quay lại.
+    *   Các tiêu đề trong mỗi thẻ có phông chữ lớn và dễ đọc, làm nổi bật các chủ đề chính.
+    *   Nền mờ nhạt không làm phân tán sự chú ý khỏi nội dung chính mà còn tăng tính thẩm mỹ và chủ đề.
+    *   Chân trang "NotebookLM" ở góc dưới cùng bên phải.
+
+---
+
+**Khung Hình 4: Định nghĩa "High Availability (HA)"**
+
+1.  **Kiến trúc:**
+    *   Khung hình này tập trung vào định nghĩa của High Availability (HA) và các yếu tố liên quan đến thời gian chết (downtime).
+    *   Định nghĩa HA được đặt trong một hộp văn bản màu hồng lớn, bo tròn, làm trọng tâm.
+    *   Xung quanh hộp định nghĩa là các biểu tượng minh họa:
+        *   Phía trên bên phải là một đám mây có dấu "X" và một tia sét, biểu thị sự cố hoặc gián đoạn.
+        *   Phía trên bên trái là hai bánh răng lồng vào nhau, tượng trưng cho hoạt động của hệ thống.
+        *   Một mũi tên tròn lớn bao quanh hộp định nghĩa, gợi ý về sự liên tục và chu kỳ.
+        *   Phía dưới là một "dòng thời gian" hoặc "thanh tiến trình" chia thành các loại thời gian chết: "PLANNED DOWNTIME" (thời gian chết theo kế hoạch) với biểu tượng cờ lê, "UNPLANNED DOWNTIME" (thời gian chết không theo kế hoạch) với biểu tượng máy chủ hỏng, và "DOWNTIME" (thời gian chết nói chung) với dấu "X" lớn.
+    *   Các đám mây và bánh răng mờ nhạt được rải rác trong nền.
+
+2.  **Thành phần:**
+    *   Tiêu đề: "High Availability (HA)"
+    *   Định nghĩa: "Đảm bảo hệ thống hoạt động liên tục, giảm thiểu tối đa thời gian chết theo một tỷ lệ nhất định."
+    *   Kính lúp (Magnifying glass) bên cạnh "HA".
+    *   Biểu tượng đám mây có dấu "X" và tia sét.
+    *   Hai bánh răng lồng vào nhau.
+    *   Mũi tên tròn lớn.
+    *   Cờ lê (Wrench) cho "PLANNED DOWNTIME".
+    *   Máy chủ hỏng (Broken server) cho "UNPLANNED DOWNTIME".
+    *   Dấu "X" lớn cho "DOWNTIME".
+    *   Các văn bản phụ: "PLANNED DOWNTIME", "UNPLANNED DOWNTIME", "DOWNTIME".
+    *   Các nét vẽ đám mây, bánh răng mờ nhạt trong nền.
+    *   Tên thương hiệu ở cuối trang: "NotebookLM".
+
+3.  **Số liệu, số và tỷ lệ phần trăm:** Không có số liệu cụ thể, số hoặc tỷ lệ phần trăm được hiển thị, ngoài việc đề cập đến "một tỷ lệ nhất định" trong định nghĩa.
+
+4.  **Bố cục và hệ thống phân cấp trực quan:**
+    *   Hộp định nghĩa màu hồng là trọng tâm, thu hút sự chú ý ngay lập tức.
+    *   Các biểu tượng xung quanh hỗ trợ trực quan cho định nghĩa và các khái niệm liên quan đến HA, tạo nên một sơ đồ thông tin mạch lạc.
+    *   Dòng thời gian downtime ở phía dưới cung cấp một phân loại rõ ràng về các loại thời gian chết, giúp người xem hiểu rõ hơn về mục tiêu của HA.
+    *   Bố cục cân đối, với các yếu tố được sắp xếp hài hòa xung quanh trung tâm.
+    *   Chân trang "NotebookLM" ở góc dưới cùng bên phải.
+
+---
+
+**Khung Hình 5: Các yếu tố của HA (minh họa)**
+
+1.  **Kiến trúc:**
+    *   Khung hình này trình bày ba khái niệm hoặc yếu tố quan trọng liên quan đến việc thiết kế và triển khai tính sẵn sàng cao, thông qua các biểu tượng minh họa. Mỗi khái niệm được đặt trong một khung hình chữ nhật bo tròn màu hồng nhạt riêng biệt.
+    *   **Khung trái:** Liên quan đến giá trị, chi phí hoặc cam kết.
+    *   **Khung giữa:** Liên quan đến mục tiêu, sự cân bằng hoặc đánh đổi.
+    *   **Khung phải:** Liên quan đến thời gian, bảo trì hoặc sự cố.
+
+2.  **Thành phần:**
+    *   **Khung trái:**
+        *   Một cuộn giấy/văn bản được buộc bằng ruy băng và có con dấu (có thể tượng trưng cho hợp đồng, thỏa thuận, SLA hoặc giá trị).
+        *   Một túi tiền (money bag) với dấu đô la.
+        *   Một vài đồng xu.
+    *   **Khung giữa:**
+        *   Một bia mục tiêu (target) với một mũi tên cắm vào tâm.
+        *   Một bập bênh (seesaw) cân bằng, đỡ bia mục tiêu.
+    *   **Khung phải:**
+        *   Một đồng hồ tròn với kim chỉ thời gian.
+        *   Một bánh răng bị vỡ một phần.
+        *   Một chiếc cờ lê.
+    *   Tên thương hiệu ở cuối trang: "NotebookLM".
+
+3.  **Số liệu, số và tỷ lệ phần trăm:** Không có số liệu, số hoặc tỷ lệ phần trăm được hiển thị.
+
+4.  **Bố cục và hệ thống phân cấp trực quan:**
+    *   Ba khung hình chữ nhật bo tròn màu hồng nhạt được đặt cạnh nhau theo chiều dọc, tạo thành một bố cục rõ ràng, tách biệt từng khái niệm.
+    *   Mỗi khung có một nhóm biểu tượng liên quan đến một chủ đề cụ thể, không có văn bản giải thích, khuyến khích người xem suy luận ý nghĩa.
+    *   Bố cục đơn giản, tập trung vào các hình ảnh minh họa.
+    *   Chân trang "NotebookLM" ở góc dưới cùng bên phải.
+
+---
+
+**Khung Hình 6: Thời gian Downtime "5.26 Phút"**
+
+1.  **Kiến trúc:**
+    *   Khung hình này nổi bật với một con số cụ thể về thời gian, được bao quanh bởi các biểu tượng liên quan đến hệ thống, sự cố và thời gian.
+    *   Nó không mô tả một kiến trúc hệ thống mà là một minh họa về một con số quan trọng, có thể là thời gian chết trung bình hoặc mục tiêu về downtime.
+
+2.  **Thành phần:**
+    *   Số lớn: "5.26".
+    *   Đơn vị: "Phút" (Minutes).
+    *   Biểu tượng đồng hồ (Clock) ở phía trên bên trái.
+    *   Các bánh răng (Gears) ở nhiều vị trí, một số có tia sét (Lightning bolts) tượng trưng cho sự cố hoặc hoạt động điện.
+    *   Một biểu đồ tăng trưởng có dấu "X" ở đỉnh (Graph with X mark), biểu thị sự thất bại hoặc mục tiêu không đạt được.
+    *   Một người đang suy nghĩ/phân vân với dấu hỏi trên đầu (Person thinking with question mark).
+    *   Các tia sét nhỏ rải rác xung quanh.
+    *   Tên thương hiệu ở cuối trang: "NotebookLM".
+
+3.  **Số liệu, số và tỷ lệ phần trăm:** "5.26 Phút".
+
+4.  **Bố cục và hệ thống phân cấp trực quan:**
+    *   Con số "5.26 Phút" được đặt ở trung tâm khung hình với kích thước rất lớn, là trọng tâm không thể bỏ qua.
+    *   Các biểu tượng xung quanh được bố trí rải rác, tạo cảm giác động và minh họa cho bối cảnh của con số (thời gian, hệ thống, vấn đề).
+    *   Bố cục này nhấn mạnh một cách mạnh mẽ tầm quan trọng của con số này, có thể là một mục tiêu, một đo lường hiệu suất hoặc một hậu quả cần xem xét trong thiết kế HA.
+    *   Chân trang "NotebookLM" ở góc dưới cùng bên phải.
+
+---
+
+**Khung Hình 7: Định nghĩa "SPOF" (Single Point of Failure)**
+
+1.  **Kiến trúc:**
+    *   Khung hình này định nghĩa và minh họa khái niệm "Single Point of Failure" (SPOF - Điểm lỗi đơn).
+    *   Phía bên phải, định nghĩa SPOF được đặt trong một hộp văn bản màu hồng lớn, bo tròn.
+    *   Phía bên trái, một sơ đồ minh họa hình ảnh về SPOF:
+        *   Phía trên là các biểu tượng tài nguyên IT (chồng server, cơ sở dữ liệu, router, máy chủ) được kết nối bằng đường chấm chấm tới một ổ khóa vàng bị khóa ở trung tâm, tượng trưng cho một điểm phụ thuộc duy nhất.
+        *   Phía dưới là một cây cầu bắc qua một khe núi, nối liền hai thành phố. Phần giữa của cây cầu bị sập, xe cộ rơi xuống dòng sông bên dưới, minh họa sinh động việc một điểm duy nhất bị hỏng có thể làm sập toàn bộ hệ thống.
+
+2.  **Thành phần:**
+    *   Tiêu đề: "SPOF"
+    *   Định nghĩa: "Thành phần không có dự phòng, nếu hỏng sẽ làm toàn bộ hệ thống ngừng hoạt động."
+    *   Kính lúp (Magnifying glass) bên cạnh "SPOF".
+    *   Các biểu tượng tài nguyên IT: chồng server, cơ sở dữ liệu hình trụ, router, máy chủ hộp.
+    *   Ổ khóa vàng bị khóa (Padlock).
+    *   Cây cầu bị sập (Broken bridge).
+    *   Xe cộ (Cars) đang rơi.
+    *   Khe núi với dòng sông.
+    *   Hai tòa nhà thành phố.
+    *   Các đường chấm chấm kết nối.
+    *   Tên thương hiệu ở cuối trang: "NotebookLM".
+
+3.  **Số liệu, số và tỷ lệ phần trăm:** Không có số liệu, số hoặc tỷ lệ phần trăm được hiển thị.
+
+4.  **Bố cục và hệ thống phân cấp trực quan:**
+    *   Hộp định nghĩa màu hồng ở bên phải là điểm nhấn chính về thông tin văn bản.
+    *   Hình ảnh minh họa ở bên trái chiếm một phần lớn diện tích, tạo một ví dụ trực quan mạnh mẽ và dễ hiểu về SPOF. Hình ảnh cây cầu bị sập đặc biệt hiệu quả trong việc truyền tải hậu quả của SPOF.
+    *   Bố cục chia hai rõ ràng giữa văn bản và hình ảnh, nhưng chúng bổ trợ cho nhau để giải thích cùng một khái niệm.
+    *   Chân trang "NotebookLM" ở góc dưới cùng bên phải.
+
+---
+
+**Khung Hình 8: Sơ đồ kiến trúc tổng quan**
+
+1.  **Kiến trúc:**
+    *   Đây là một sơ đồ kiến trúc ứng dụng web đa lớp điển hình, được thiết kế để có tính sẵn sàng cao.
+    *   **Lớp 1 (Load Balancer):** Khách hàng (Client) truy cập qua Internet, sau đó yêu cầu được chuyển đến một Load Balancer (biểu tượng đám mây). Load Balancer có chức năng "Phân phối tải".
+    *   **Lớp 2 (Web Servers):** Load Balancer phân phối tải đến nhiều Web Servers. Sơ đồ minh họa ba máy chủ Web Servers được sắp xếp theo chiều dọc, sau đó được mở rộng sang mô hình "Multi-AZ" (Multi-Availability Zone) với hai nhóm "Web Servers (Multi-AZ)" được kết nối bằng mũi tên uốn lượn, cho thấy sự cân bằng tải và chịu lỗi giữa các vùng sẵn sàng. Các máy chủ web này có chức năng "Xử lý".
+    *   **Lớp 3 (Database):** Các Web Servers truy cập vào cơ sở dữ liệu. Sơ đồ minh họa ba cơ sở dữ liệu hình trụ được kết nối theo hình tam giác ở bên trái (có thể là một cụm) và một cụm ba cơ sở dữ liệu khác ở bên phải, được dán nhãn "Database (Synchronized)" với các mũi tên tròn chỉ ra việc đồng bộ hóa liên tục. Cơ sở dữ liệu có chức năng "Đồng bộ liên tục".
+
+2.  **Thành phần:**
+    *   "Client" (Khách hàng) và "Internet" (mạng).
+    *   Bảng mô tả kiến trúc với các cột "Lớp", "Thành phần", "Chức năng":
+        *   Lớp 1: "Load Balancer" (biểu tượng đám mây), "Phân phối tải".
+        *   Lớp 2: "Web Servers" (biểu tượng chồng server), "Xử lý (Multi-AZ)".
+        *   Lớp 3: "Database" (biểu tượng cylinder), "Đồng bộ liên tục".
+    *   Các biểu tượng: đám mây, chồng server, cylinder cơ sở dữ liệu.
+    *   Mũi tên chỉ dẫn luồng.
+    *   Các nhãn: "Web Servers (Multi-AZ)", "Database (Synchronized)".
+    *   Tên thương hiệu ở cuối trang: "NotebookLM".
+
+3.  **Số liệu, số và tỷ lệ phần trăm:** Các số "1", "2", "3" cho các lớp kiến trúc.
+
+4.  **Bố cục và hệ thống phân cấp trực quan:**
+    *   Bố cục chia thành hai phần chính: bảng mô tả kiến trúc ở bên trái và sơ đồ trực quan ở bên phải.
+    *   Phần "Client" và "Internet" ở trên cùng, thể hiện điểm bắt đầu của luồng yêu cầu.
+    *   Bảng ở bên trái cung cấp thông tin chi tiết, có cấu trúc về từng lớp.
+    *   Sơ đồ ở bên phải trình bày một cách trực quan, rõ ràng các thành phần và mối quan hệ giữa chúng, đặc biệt nhấn mạnh các khía cạnh Multi-AZ và Synchronized để đạt được HA.
+    *   Các mũi tên giúp người xem theo dõi luồng dữ liệu và tương tác trong hệ thống.
+    *   Chân trang "NotebookLM" ở góc dưới cùng bên phải.
+
+---
+
+**Khung Hình 9: Chuyển đổi dự phòng cơ sở dữ liệu (Database Failover)**
+
+1.  **Kiến trúc:**
+    *   Khung hình này minh họa quá trình theo dõi sức khỏe hệ thống và chuyển đổi dự phòng (failover) của cơ sở dữ liệu khi có sự cố.
+    *   Phía trên là một sơ đồ trừu tượng về các thành phần được kết nối (hình tròn, hình lập phương, hình tam giác, hình cầu), có thể đại diện cho các dịch vụ hoặc module trong một hệ thống phân tán, gợi ý về việc giám sát tổng thể.
+    *   Phía bên trái là một máy chủ với vẻ mặt buồn và ống nghe (stethoscope) được đặt lên nó, tượng trưng cho việc kiểm tra, chẩn đoán hoặc giám sát sức khỏe của máy chủ.
+    *   Phía bên phải mô tả kịch bản chuyển đổi dự phòng cơ sở dữ liệu:
+        *   Một mũi tên chỉ từ một cơ sở dữ liệu có dấu "X" đỏ (cơ sở dữ liệu bị lỗi) sang một cơ sở dữ liệu có vẻ mặt vui vẻ (cơ sở dữ liệu đang hoạt động/chuyển đổi thành công).
+        *   Bên dưới, hai cơ sở dữ liệu được kết nối bởi một mũi tên tròn lớn hai chiều, minh họa cơ chế sao chép và chuyển đổi giữa chúng.
+
+2.  **Thành phần:**
+    *   Sơ đồ trừu tượng các thành phần hệ thống (hình tròn, lập phương, tam giác, cầu).
+    *   Máy chủ có khuôn mặt buồn và ống nghe.
+    *   Cơ sở dữ liệu có dấu "X" (Failed Database).
+    *   Cơ sở dữ liệu có khuôn mặt vui vẻ (Active Database).
+    *   Hai cơ sở dữ liệu được kết nối bằng mũi tên tròn hai chiều (Replicating/Failover Databases).
+    *   Các mũi tên chỉ dẫn luồng.
+    *   Tên thương hiệu ở cuối trang: "NotebookLM".
+
+3.  **Số liệu, số và tỷ lệ phần trăm:** Không có số liệu, số hoặc tỷ lệ phần trăm được hiển thị.
+
+4.  **Bố cục và hệ thống phân cấp trực quan:**
+    *   Bố cục chia thành ba khu vực chính: giám sát hệ thống tổng thể (trên cùng), chẩn đoán máy chủ (bên trái), và cơ chế chuyển đổi dự phòng cơ sở dữ liệu (bên phải).
+    *   Hình ảnh máy chủ buồn và cơ sở dữ liệu vui/buồn mang tính ẩn dụ, giúp người xem dễ dàng đồng cảm và hiểu được tình trạng của các thành phần hệ thống.
+    *   Các mũi tên rõ ràng trong phần chuyển đổi dự phòng minh họa luồng hoạt động khi có lỗi xảy ra.
+    *   Chân trang "NotebookLM" ở góc dưới cùng bên phải.
+
+---
+
+**Khung Hình 10: Phân bổ máy chủ qua Availability và Fault Domains**
+
+1.  **Kiến trúc:**
+    *   Khung hình này minh họa cách phân bổ máy chủ trên các "Availability Domains" (Vùng sẵn sàng) hoặc "Fault Domains" (Miền lỗi) để loại bỏ "Single Point of Failure" (SPOF).
+    *   Phía trên là biểu tượng đám mây được dán nhãn "Cloud Infrastructure" (Cơ sở hạ tầng đám mây), với các mũi tên hướng xuống.
+    *   Từ đám mây, các đường nét đứt dẫn đến hai biểu tượng sự cố: một tia sét và máy chủ có dấu "X" (lỗi máy chủ) ở bên trái, và một bông tuyết và máy chủ có dấu "X" (lỗi môi trường/lạnh) ở bên phải. Điều này gợi ý rằng cơ sở hạ tầng đám mây có thể gặp các loại lỗi khác nhau.
+    *   Phía dưới là ba hình bầu dục lớn, mỗi hình có thể đại diện cho một Availability Zone (AZ) hoặc Fault Domain riêng biệt. Mỗi hình bầu dục chứa nhiều ô vuông nhỏ (có thể là máy chủ ảo hoặc instance): các ô vuông màu xanh lam có thể là các instance đang hoạt động, và các ô vuông màu cam có thể là các instance dự phòng hoặc standby.
+    *   Mỗi hình bầu dục đều có một biểu tượng chồng máy chủ bên dưới, biểu thị các tài nguyên vật lý hoặc logic thuộc về miền đó.
+    *   Văn bản phía dưới giải thích mục đích của kiến trúc này.
+
+2.  **Thành phần:**
+    *   Biểu tượng đám mây "Cloud Infrastructure".
+    *   Biểu tượng lỗi máy chủ/tia sét.
+    *   Biểu tượng lỗi môi trường/bông tuyết.
+    *   Ba hình bầu dục lớn (Availability Zones/Fault Domains).
+    *   Các ô vuông màu xanh lam và màu cam (Server Instances).
+    *   Ba biểu tượng chồng máy chủ (Server Racks).
+    *   Văn bản: "Phân bổ máy chủ qua Availability và Fault Domains loại bỏ SPOF."
+    *   Các đường nét đứt và mũi tên.
+    *   Tên thương hiệu ở cuối trang: "NotebookLM".
+
+3.  **Số liệu, số và tỷ lệ phần trăm:** Không có số liệu, số hoặc tỷ lệ phần trăm cụ thể, ngoài việc đề cập đến các "Domains" (số lượng 3 được minh họa).
+
+4.  **Bố cục và hệ thống phân cấp trực quan:**
+    *   Văn bản giải thích chính được đặt ở phía dưới cùng, làm rõ mục tiêu của sơ đồ.
+    *   Sơ đồ trực quan chiếm phần lớn không gian, với "Cloud Infrastructure" ở trên cùng, dẫn đến các khả năng lỗi, và sau đó là sự phân bổ tài nguyên trên ba vùng riêng biệt.
+    *   Việc sử dụng các màu sắc khác nhau (xanh và cam) cho các instance giúp phân biệt trạng thái hoặc vai trò của chúng.
+    *   Bố cục này nhấn mạnh nguyên tắc phân tán và cô lập lỗi để đạt được tính sẵn sàng cao, tránh SPOF.
+    *   Chân trang "NotebookLM" ở góc dưới cùng bên phải.
+
+---
+
+**Khung Hình 11 & 12 (giống nhau): HA so với DR - Phần 1**
+
+1.  **Kiến trúc:**
+    *   Khung hình này so sánh hai khái niệm: "High Availability" (HA) và "Disaster Recovery" (DR) thông qua hai hình ảnh minh họa độc lập. Mỗi hình ảnh được đặt trong một khung hình chữ nhật bo tròn màu hồng nhạt riêng biệt.
+    *   **Khung trái (Minh họa HA):** Một máy chủ hình hộp màu xanh đang được nâng đỡ bởi một chồng các máy chủ hình hộp nhỏ hơn màu vàng. Có các tia sét xung quanh máy chủ màu xanh, tượng trưng cho hoạt động năng động, sức mạnh và khả năng chịu tải cao. Điều này gợi ý một hệ thống có tính sẵn sàng cao, hoạt động liên tục với nhiều bản sao dự phòng.
+    *   **Khung phải (Minh họa DR):** Một máy chủ hình hộp màu xanh đang cố gắng kéo lê một máy chủ hình hộp khác màu xanh nhạt hơn, bị phủ đầy mạng nhện và đang ngủ. Một đồng hồ cát ở phía trên, biểu thị sự chậm trễ hoặc mất thời gian. Điều này gợi ý một hệ thống dự phòng thụ động, cần thời gian để khởi động và phục hồi sau thảm họa.
+
+2.  **Thành phần:**
+    *   **Khung trái:**
+        *   Máy chủ hình hộp màu xanh (Main/Active Server).
+        *   Các máy chủ hình hộp màu vàng xếp chồng lên nhau (Backup/Redundant Servers).
+        *   Các tia sét màu vàng (Lightning bolts), biểu thị hoạt động hoặc năng lượng.
+    *   **Khung phải:**
+        *   Máy chủ hình hộp màu xanh đang kéo (Active/Recovery Server).
+        *   Máy chủ hình hộp màu xanh nhạt bị phủ mạng nhện và biểu tượng ngủ (Dormant/Standby Server).
+        *   Đồng hồ cát (Hourglass), biểu thị thời gian trôi qua.
+    *   Tên thương hiệu ở cuối trang: "NotebookLM".
+
+3.  **Số liệu, số và tỷ lệ phần trăm:** Không có số liệu, số hoặc tỷ lệ phần trăm được hiển thị.
+
+4.  **Bố cục và hệ thống phân cấp trực quan:**
+    *   Hai khung hình chữ nhật bo tròn màu hồng nhạt được đặt cạnh nhau, tạo sự tương phản rõ ràng giữa hai khái niệm.
+    *   Mỗi hình ảnh là một phép ẩn dụ trực quan mạnh mẽ, giúp người xem dễ dàng hình dung sự khác biệt giữa tính sẵn sàng cao (hoạt động liên tục, mạnh mẽ) và phục hồi sau thảm họa (cần thời gian để hồi phục, dự phòng thụ động).
+    *   Bố cục đơn giản, tập trung vào các hình ảnh minh họa.
+    *   Chân trang "NotebookLM" ở góc dưới cùng bên phải.
+
+---
+
+**Khung Hình 13: HA so với DR - Phần 2**
+
+1.  **Kiến trúc:**
+    *   Khung hình này tiếp tục so sánh "High Availability" (HA) và "Disaster Recovery" (DR) thông qua hai hình ảnh minh họa độc lập, nhấn mạnh phạm vi và tính chất của sự cố mà mỗi giải pháp xử lý. Mỗi hình ảnh được đặt trong một khung hình chữ nhật bo tròn màu hồng nhạt riêng biệt.
+    *   **Khung trái (Minh họa HA):** Ba máy chủ hình hộp được sắp xếp cạnh nhau. Máy chủ ở giữa có một lá chắn bao quanh nó và một vụ nổ nhỏ bên trong lá chắn. Điều này tượng trưng cho việc bảo vệ cục bộ, khả năng chịu lỗi của một thành phần hoặc một nhóm thành phần trong một trung tâm dữ liệu, giúp hệ thống tiếp tục hoạt động mặc dù có sự cố cục bộ.
+    *   **Khung phải (Minh họa DR):** Một cơn lốc xoáy đang phá hủy các tòa nhà. Một mũi tên chỉ từ khu vực bị phá hủy, qua biểu tượng địa cầu, đến một nhóm máy chủ ở một địa điểm khác. Điều này minh họa một thảm họa trên diện rộng (như thiên tai) và việc chuyển đổi sang một trung tâm dữ liệu hoặc khu vực địa lý hoàn toàn khác để phục hồi.
+
+2.  **Thành phần:**
+    *   **Khung trái:**
+        *   Ba máy chủ hình hộp (Server Racks).
+        *   Lá chắn (Shield) bao quanh máy chủ giữa.
+        *   Biểu tượng vụ nổ/sự cố nhỏ (Explosion icon).
+    *   **Khung phải:**
+        *   Cơn lốc xoáy (Tornado).
+        *   Các tòa nhà bị phá hủy (Destroyed buildings).
+        *   Địa cầu (Globe).
+        *   Hai máy chủ hình hộp ở vị trí mới.
+        *   Mũi tên (Arrow) chỉ dẫn quá trình chuyển đổi.
+    *   Tên thương hiệu ở cuối trang: "NotebookLM".
+
+3.  **Số liệu, số và tỷ lệ phần trăm:** Không có số liệu, số hoặc tỷ lệ phần trăm được hiển thị.
+
+4.  **Bố cục và hệ thống phân cấp trực quan:**
+    *   Hai khung hình chữ nhật bo tròn màu hồng nhạt được đặt cạnh nhau, tiếp tục tạo sự tương phản rõ ràng giữa hai khái niệm HA và DR.
+    *   Hình ảnh bên trái tập trung vào khả năng phục hồi trong một phạm vi nhỏ (lỗi cục bộ), trong khi hình ảnh bên phải minh họa phục hồi sau thảm họa quy mô lớn (lỗi toàn vùng/địa lý).
+    *   Bố cục đơn giản, tập trung vào các hình ảnh minh họa giúp truyền tải sự khác biệt về phạm vi và bản chất của các giải pháp.
+    *   Chân trang "NotebookLM" ở góc dưới cùng bên phải.
+
+---
+
+**Khung Hình 14: Giá trị/Chi phí của HA/DR**
+
+1.  **Kiến trúc:**
+    *   Khung hình này không mô tả một kiến trúc hệ thống mà là một phép ẩn dụ trực quan về giá trị, bảo vệ và hậu quả tài chính.
+    *   Phía trên là hai tòa nhà giống ngân hàng hoặc cơ quan tài chính, với nhiều đồng tiền vàng (dấu đô la) được rải đều giữa chúng và phía dưới, tượng trưng cho tài sản, giá trị kinh tế hoặc dòng tiền.
+    *   Phía dưới là một hàng domino, với quân domino đầu tiên đang đổ và một lá chắn phát sáng được đặt ở giữa để ngăn chặn chuỗi phản ứng đổ sập của các quân domino còn lại.
+
+2.  **Thành phần:**
+    *   Hai tòa nhà giống ngân hàng/cơ quan tài chính.
+    *   Nhiều đồng tiền vàng (Gold coins) với dấu đô la.
+    *   Một hàng quân domino.
+    *   Lá chắn phát sáng (Glowing shield).
+    *   Các nét vẽ ngôi sao và đường xoắn ốc trang trí.
+    *   Tên thương hiệu ở cuối trang: "NotebookLM".
+
+3.  **Số liệu, số và tỷ lệ phần trăm:** Không có số liệu, số hoặc tỷ lệ phần trăm được hiển thị.
+
+4.  **Bố cục và hệ thống phân cấp trực quan:**
+    *   Bố cục chia thành hai phần chính, phần trên thể hiện giá trị tài chính và phần dưới minh họa hành động bảo vệ.
+    *   Hình ảnh đồng tiền và tòa nhà gợi lên ý nghĩa về sự giàu có, kinh doanh và lợi nhuận.
+    *   Hình ảnh domino và lá chắn là một ẩn dụ mạnh mẽ cho việc phòng ngừa các lỗi lan truyền và bảo vệ hệ thống khỏi sự sụp đổ.
+    *   Sự kết hợp của hai phần này ngụ ý rằng việc đầu tư vào HA/DR (lá chắn) là để bảo vệ giá trị kinh tế (tiền, ngân hàng) khỏi các sự cố (domino đổ).
+    *   Chân trang "NotebookLM" ở góc dưới cùng bên phải.
+
+---
+
+**Khung Hình 15: "Chạy theo năm chín..." (Chi phí và độ phức tạp)**
+
+1.  **Kiến trúc:**
+    *   Khung hình này trình bày một câu trích dẫn quan trọng về chi phí và độ phức tạp khi cố gắng đạt được các mức độ sẵn sàng cực cao ("năm chín").
+    *   Câu trích dẫn được đặt trong một bong bóng lời nói lớn ở trung tâm.
+    *   Phía trên bên phải là một chiếc bẫy gấu với dấu "X" đỏ trên đó, kèm theo một bong bóng nhỏ chứa "99.999%", tượng trưng cho cạm bẫy hoặc rủi ro khi theo đuổi độ sẵn sàng quá cao.
+    *   Phía trên bên trái là một mớ hỗn độn các bánh răng và dây điện rối rắm, dẫn đến một túi tiền với dấu đô la, minh họa sự phức tạp và chi phí tăng vọt.
+    *   Phía dưới bên trái là một dấu kiểm màu xanh lá cây bên cạnh một chồng ba khối hình chữ nhật, có thể tượng trưng cho việc xây dựng một nền tảng vững chắc hoặc một cách tiếp cận có hệ thống, hợp lý.
+
+2.  **Thành phần:**
+    *   Câu trích dẫn: "“Chạy theo năm chín thường dẫn đến chi phí và độ phức tạp tăng vọt.”"
+    *   Bong bóng nhỏ với: "99.999%".
+    *   Chiếc bẫy gấu với dấu "X".
+    *   Các bánh răng và dây điện rối rắm.
+    *   Túi tiền (money bag) với dấu đô la.
+    *   Dấu kiểm (Checkmark) màu xanh lá cây.
+    *   Ba khối hình chữ nhật xếp chồng.
+    *   Tên thương hiệu ở cuối trang: "NotebookLM".
+
+3.  **Số liệu, số và tỷ lệ phần trăm:** "99.999%".
+
+4.  **Bố cục và hệ thống phân cấp trực quan:**
+    *   Bong bóng lời nói chứa câu trích dẫn là trọng tâm chính, thu hút sự chú ý vào thông điệp.
+    *   Các hình ảnh minh họa xung quanh bổ trợ cho ý nghĩa của câu trích dẫn: bẫy gấu và tỷ lệ phần trăm cao tượng trưng cho mục tiêu đầy thử thách, mớ hỗn độn và túi tiền tượng trưng cho chi phí/phức tạp, và chồng khối với dấu kiểm tượng trưng cho sự cân nhắc và thực hiện hợp lý.
+    *   Bố cục này cảnh báo về việc theo đuổi các mục tiêu sẵn sàng quá mức mà không xem xét kỹ lưỡng chi phí và độ phức tạp đi kèm.
+    *   Chân trang "NotebookLM" ở góc dưới cùng bên phải.
+
+---
+
+**Khung Hình 16: "Checklist Triển Khai" (Deployment Checklist)**
+
+1.  **Kiến trúc:**
+    *   Khung hình này trình bày một quy trình triển khai HA theo dạng checklist với bốn bước chính, mỗi bước đi kèm với một sơ đồ minh họa.
+    *   **1. Bản đồ SPOF:** Xác định các điểm độc lập tác trong hệ thống. Minh họa bằng một sơ đồ mạng lưới với các nút (hình tròn) và đường kết nối, một số đường chấm chấm, dẫn đến một hộp "SPOF" ở cuối.
+    *   **2. Dự phòng (Multi-AZ):** Triển khai hệ thống đa vùng. Minh họa bằng một biểu tượng đám mây lớn, từ đó phân nhánh thành hai đám mây nhỏ hơn được dán nhãn "AZ1" và "AZ2", mỗi đám mây chứa các chồng máy chủ nhỏ. Mũi tên chỉ ra luồng giữa các AZ.
+    *   **3. Giám sát:** Thiết lập Health Check và failover tự động. Minh họa bằng biểu tượng con mắt (monitoring), một biểu đồ hiển thị trạng thái "OK" và "FAILOVER", một máy chủ cơ sở dữ liệu và nhãn "SLO" (Service Level Objective).
+    *   **4. Kiểm thử (Chaos Engineering):** Sử dụng Chaos Engineering để kiểm chứng. Minh họa bằng một quả bom với ngòi nổ đang cháy, được dán nhãn "Chaos Engineering", tác động đến các chồng máy chủ và cơ sở dữ liệu, gây ra "vụ nổ" tượng trưng cho việc kiểm thử phá hoại.
+
+2.  **Thành phần:**
+    *   Tiêu đề: "Checklist Triển Khai".
+    *   Bốn bước checklist:
+        *   "Bản đồ SPOF": Văn bản "Xác định các điểm độc tác trong hệ thống." Sơ đồ mạng lưới, nút tròn, hộp "SPOF".
+        *   "Dự phòng": Văn bản "Triển khai hệ thống đa vùng (Multi-AZ)." Biểu tượng đám mây lớn, đám mây "AZ1", đám mây "AZ2", chồng máy chủ.
+        *   "Giám sát": Văn bản "Thiết lập Health Check và failover tự động." Biểu tượng con mắt, biểu đồ "OK/FAILOVER", máy chủ cơ sở dữ liệu, nhãn "SLO".
+        *   "Kiểm thử": Văn bản "Sử dụng Chaos Engineering để kiểm chứng." Quả bom, nhãn "Chaos Engineering", chồng máy chủ, cơ sở dữ liệu.
+    *   Các mũi tên chỉ dẫn luồng giữa các bước.
+    *   Tên thương hiệu ở cuối trang: "NotebookLM".
+
+3.  **Số liệu, số và tỷ lệ phần trăm:** Không có số liệu, số hoặc tỷ lệ phần trăm được hiển thị, ngoài các nhãn "AZ1", "AZ2".
+
+4.  **Bố cục và hệ thống phân cấp trực quan:**
+    *   Tiêu đề "Checklist Triển Khai" ở trên cùng làm rõ mục đích của khung hình.
+    *   Bốn bước được bố trí theo chiều ngang, tạo thành một quy trình tuần tự. Mỗi bước có tiêu đề, mô tả ngắn gọn và một hình ảnh minh họa tương ứng.
+    *   Các mũi tên màu đen chỉ dẫn luồng từ trái sang phải, tạo một lộ trình rõ ràng cho việc triển khai.
+    *   Các sơ đồ minh họa trực quan giúp người xem dễ dàng nắm bắt các khái niệm phức tạp của từng bước.
+    *   Chân trang "NotebookLM" ở góc dưới cùng bên phải.
+
+---
+
+**Khung Hình 17: "Người dùng có biết nếu Database chính bị sập lúc này?"**
+
+1.  **Kiến trúc:**
+    *   Khung hình này đặt ra một câu hỏi tập trung vào trải nghiệm người dùng (UX) trong trường hợp cơ sở dữ liệu chính gặp sự cố, trong bối cảnh một hệ thống có tính sẵn sàng cao.
+    *   Nó minh họa kịch bản lỗi cơ sở dữ liệu và cơ chế phục hồi.
+    *   Phía trên là biểu tượng đám mây với tia sét (sự cố) kết nối với một chồng cơ sở dữ liệu.
+    *   Phía giữa bên trái, một mũi tên chỉ từ một cơ sở dữ liệu có dấu "X" (cơ sở dữ liệu chính bị sập) đến một cơ sở dữ liệu khác, và một mũi tên tròn lớn hai chiều giữa hai cơ sở dữ liệu, biểu thị cơ chế sao chép và chuyển đổi dự phòng.
+    *   Phía dưới bên phải là một người đang mỉm cười và giơ ngón cái lên ("OK"), tượng trưng cho trải nghiệm người dùng tích cực hoặc không bị ảnh hưởng bởi sự cố.
+    *   Câu hỏi chính được đặt ở trung tâm.
+
+2.  **Thành phần:**
+    *   Câu hỏi chính: "Người dùng có biết nếu Database chính bị sập lúc này?"
+    *   Cụm từ được tô sáng: "Database chính bị sập".
+    *   Dấu hỏi lớn màu hồng nhạt, mờ ở trung tâm làm nền.
+    *   Biểu tượng đám mây với tia sét.
+    *   Chồng cơ sở dữ liệu.
+    *   Cơ sở dữ liệu có dấu "X" (Failed Database).
+    *   Cơ sở dữ liệu dự phòng/chuyển đổi.
+    *   Mũi tên chỉ dẫn.
+    *   Mũi tên tròn hai chiều (Replication/Failover).
+    *   Người đang mỉm cười giơ ngón cái ("OK").
+    *   Tên thương hiệu ở cuối trang: "NotebookLM".
+
+3.  **Số liệu, số và tỷ lệ phần trăm:** Không có số liệu, số hoặc tỷ lệ phần trăm được hiển thị.
+
+4.  **Bố cục và hệ thống phân cấp trực quan:**
+    *   Câu hỏi chính được đặt ở trung tâm, nổi bật với phông chữ lớn và cụm từ được tô sáng, thu hút sự chú ý. Dấu hỏi lớn mờ phía sau càng làm tăng tính chất vấn đề.
+    *   Các hình ảnh minh họa xung quanh hỗ trợ cho câu hỏi:
+        *   Phía trên là nguyên nhân gây lỗi (cloud/lightning to database).
+        *   Phía giữa là cơ chế xử lý lỗi (database failover).
+        *   Phía dưới là kết quả mong muốn (người dùng không bị ảnh hưởng, "OK").
+    *   Bố cục này thúc đẩy người xem suy nghĩ về mục tiêu cuối cùng của HA là duy trì trải nghiệm liền mạch cho người dùng.
+    *   Chân trang "NotebookLM" ở góc dưới cùng bên phải.

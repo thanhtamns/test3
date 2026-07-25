@@ -1,0 +1,106 @@
+---
+phase: 5
+title: "E2E Verification"
+status: pending
+priority: P1
+effort: "1h"
+dependencies:
+  - 1
+  - 2
+  - 3
+  - 4
+---
+
+# Phase 5: E2E Verification
+
+## Overview
+
+Verify the complete investor demo flow end-to-end: docker compose up → seed data → dashboard displays metrics → CLI sync works → live updates appear. Produce a verification checklist.
+
+## Requirements
+
+- Functional: Full flow works from cold start (no prior state)
+- Functional: All 7 dashboard pages render with data
+- Non-functional: Full stack starts in <90s, dashboard loads in <3s
+
+## Implementation Steps
+
+1. **Clean start:**
+   ```bash
+   docker compose down -v  # remove all containers and volumes
+   docker compose up -d --build  # rebuild and start fresh
+   ```
+
+2. **Wait for services:**
+   ```bash
+   # Watch logs until all healthy
+   docker compose logs -f  # look for "ingest API listening"
+   ```
+
+3. **Seed data:**
+   ```bash
+   docker compose --profile seed up seed
+   # Expected: "Seeding 570 events... Response: 202 {"accepted":570}"
+   ```
+
+4. **Verify API:**
+   ```bash
+   curl -s http://localhost:8080/healthz
+   # Expected: {"status":"ok"}
+   
+   curl -s -H "X-Tenant-ID: demo-tenant" http://localhost:8080/v1/overview | head -c 200
+   # Expected: JSON with total_saved > 0
+   
+   curl -s -H "X-Tenant-ID: demo-tenant" http://localhost:8080/v1/projects | head -c 200
+   # Expected: JSON array with 3 projects
+   ```
+
+5. **Verify Dashboard (browser):**
+   Open `http://localhost:3000` and check each page:
+   
+   - [ ] **Overview** — 4 metric cards (tokens saved, savings rate, events, input tokens), trend chart, top commands table
+   - [ ] **Projects** — 3 projects listed with savings percentages
+   - [ ] **Project Detail** — Click a project → daily chart + filter breakdown
+   - [ ] **Waste** — Waste report page loads (may be empty for seed data — acceptable)
+   - [ ] **ROI** — ROI calculator with monthly breakdown chart
+   - [ ] **Security** — Security alerts page loads (empty for seed data — acceptable)
+   - [ ] **Billing** — Shows "free" plan status
+   - [ ] **Settings** — Settings page loads
+
+6. **Verify CLI sync (optional, requires Rust build):**
+   ```bash
+   cd /tmp/test-project
+   codeflow init
+   codeflow wrap git status
+   codeflow wrap ls -la
+   CODEFLOW_API_URL=http://localhost:8080 CODEFLOW_API_KEY="" codeflow sync --once
+   # Expected: "Synced N events"
+   ```
+   Then refresh dashboard — new events should appear.
+
+7. **Verify WebSocket live metrics:**
+   - Open browser devtools → Network → WS tab
+   - Should see WebSocket connection to `ws://localhost:8080/v1/ws`
+   - "Live" indicator should appear in dashboard header
+
+8. **Produce verification report:**
+   Document pass/fail for each check. Screenshot dashboard pages for investor deck.
+
+## Success Criteria
+
+- [ ] `docker compose up` starts all services without errors
+- [ ] `docker compose --profile seed up seed` exits 0 with 570 accepted
+- [ ] `/healthz` returns 200
+- [ ] `/v1/overview` returns data with `total_saved > 0`
+- [ ] Dashboard loads at `localhost:3000` (200, not 500)
+- [ ] All 7 dashboard pages render without errors
+- [ ] Overview shows ~52% savings rate
+- [ ] Trend chart has 14 days of data
+- [ ] Top commands table shows 10 commands
+- [ ] Projects page shows 3 projects
+
+## Risk Assessment
+
+- **Cold start timing:** ClickHouse startup + migration + seed can take 30-60s. Acceptable.
+- **Browser cache:** If previously visited dashboard with 500 errors, clear cache.
+- **Seed data twice:** If seed runs twice, data doubles. Clean with `docker compose down -v` for fresh start.

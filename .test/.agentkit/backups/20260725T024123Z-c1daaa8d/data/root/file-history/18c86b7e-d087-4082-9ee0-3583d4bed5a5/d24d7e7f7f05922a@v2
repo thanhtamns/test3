@@ -1,0 +1,24 @@
+strip_ansi = true
+on_empty = "(build succeeded)"
+
+[command]
+name = "cargo"
+args_contain = ["build"]
+
+[[strip_lines]]
+pattern = '^\s+Compiling '
+
+[[strip_lines]]
+pattern = '^\s+Downloading '
+
+[[strip_lines]]
+pattern = '^\s+Downloaded '
+
+[[strip_lines]]
+pattern = '^\s*$'
+
+[[replace]]
+pattern = '\d+\.\d+s'
+replacement = 'X.Xs'
+
+max_lines = 100

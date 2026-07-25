@@ -1,0 +1,51 @@
+{
+  "type": "code-impl",
+  "trigger_patterns": ["```", "function ", "class ", "export ", "import ", "const ", "module.exports"],
+  "min_length": 500,
+  "dimensions": {
+    "completeness": {
+      "weight": 0.4,
+      "checks": [
+        {
+          "id": "code_no_todo",
+          "rule": "not_contains('TODO|FIXME|PLACEHOLDER|not implemented|HACK')",
+          "severity": "critical",
+          "description": "Contains unfinished TODO/FIXME/PLACEHOLDER markers",
+          "fix": "Complete all TODO/FIXME items with actual implementation"
+        },
+        {
+          "id": "code_no_stub",
+          "rule": "not_contains('stub|skeleton|boilerplate.*replace|pass$|\\.\\.\\.')",
+          "severity": "major",
+          "description": "Contains stub/skeleton code without implementation",
+          "fix": "Replace stubs with actual working implementation"
+        }
+      ]
+    },
+    "logic": {
+      "weight": 0.3,
+      "checks": [
+        {
+          "id": "code_no_debug",
+          "rule": "not_contains('console\\.log\\(|debugger;|print\\(\"debug')",
+          "severity": "major",
+          "description": "Debug statements left in production code",
+          "fix": "Remove console.log/debugger statements from production code"
+        }
+      ]
+    },
+    "actionability": {
+      "weight": 0.3,
+      "checks": [
+        {
+          "id": "code_has_exports",
+          "rule": "contains('export|module\\.exports|return|class |function ')",
+          "severity": "minor",
+          "description": "No clear entry points or exports in code"
+        }
+      ]
+    }
+  },
+  "pass_criteria": { "critical": 0, "major": 0 },
+  "max_iterations": 3
+}

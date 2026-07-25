@@ -1,0 +1,112 @@
+"""
+ContinuousTrigger — background daily/weekly job. Refreshes stale facts,
+fills lowest-coverage domains, proactively expands knowledge base.
+Budget: max 5 LLM calls per run.
+"""
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
+
+import sys
+LIB_DIR = Path(__file__).resolve().parents[2]
+if str(LIB_DIR) not in sys.path:
+    sys.path.insert(0, str(LIB_DIR))
+
+from intelligence.coverage.tracker import CoverageTracker
+from intelligence.coverage.staleness_monitor import StalenessMonitor
+from .distillation_bridge import DistillationBridge
+
+
+@dataclass
+class ContinuousEvolution:
+    refreshed: int = 0
+    new_vectors: int = 0
+    domains_expanded: int = 0
+    budget_spent: int = 0
+
+    def to_dict(self) -> dict:
+        return {
+            "refreshed": self.refreshed,
+            "new_vectors": self.new_vectors,
+            "domains_expanded": self.domains_expanded,
+            "budget_spent": self.budget_spent,
+        }
+
+
+class ContinuousTrigger:
+    MAX_LLM_CALLS = 5
+    MAX_STALE_REFRESH = 3
+    MAX_WEAK_DOMAINS = 2
+    WEAK_DOMAIN_THRESHOLD = 50
+
+    def __init__(
+        self,
+        coverage_tracker: Optional[CoverageTracker] = None,
+        staleness_monitor: Optional[StalenessMonitor] = None,
+        distiller: Optional[DistillationBridge] = None,
+        llm_query_fn=None,
+    ):
+        self.coverage = coverage_tracker or CoverageTracker()
+        self.staleness = staleness_monitor or StalenessMonitor()
+        self.distiller = distiller or DistillationBridge()
+        self.llm_query_fn = llm_query_fn
+
+    def run_daily(self) -> ContinuousEvolution:
+        result = ContinuousEvolution()
+
+        if not self.llm_query_fn:
+            return result
+
+        self._refresh_stale(result)
+        if result.budget_spent < self.MAX_LLM_CALLS:
+            self._expand_weak_domains(result)
+
+        return result
+
+    def _refresh_stale(self, result: ContinuousEvolution) -> None:
+        stale = self.staleness.scan()
+        for record in stale[:self.MAX_STALE_REFRESH]:
+            if result.budget_spent >= self.MAX_LLM_CALLS:
+                break
+            try:
+                fact_text = getattr(record, "fact_text", None) or getattr(record, "domain", "unknown")
+                query = f"Current status and latest data for: {fact_text}"
+                llm_result = self.llm_query_fn(query)
+                result.budget_spent += 1
+                if llm_result:
+                    fact_id = getattr(record, "id", None)
+                    if fact_id:
+                        self.staleness.mark_refreshed(fact_id, 0.8)
+                    result.refreshed += 1
+            except Exception:
+                result.budget_spent += 1
+                continue
+
+    def _expand_weak_domains(self, result: ContinuousEvolution) -> None:
+        report = self.coverage.domain_report()
+        if not report:
+            return
+
+        weak = sorted(report.items(), key=lambda x: x[1].get("coverage_pct", 0))
+        expanded = 0
+        for domain, stats in weak:
+            if expanded >= self.MAX_WEAK_DOMAINS:
+                break
+            if result.budget_spent >= self.MAX_LLM_CALLS:
+                break
+            if stats.get("coverage_pct", 0) >= self.WEAK_DOMAIN_THRESHOLD:
+                continue
+
+            try:
+                query = f"Top 10 failure patterns and success factors for {domain} businesses"
+                llm_result = self.llm_query_fn(query)
+                result.budget_spent += 1
+                if llm_result and isinstance(llm_result, list):
+                    vectors = self.distiller.distill(llm_result, domain, source="continuous_expansion")
+                    result.new_vectors += len(vectors)
+                    result.domains_expanded += 1
+                    expanded += 1
+            except Exception:
+                result.budget_spent += 1
+                continue

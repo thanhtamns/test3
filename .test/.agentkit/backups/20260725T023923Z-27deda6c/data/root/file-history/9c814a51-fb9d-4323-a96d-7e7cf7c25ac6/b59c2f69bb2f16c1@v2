@@ -1,0 +1,100 @@
+#!/usr/bin/env node
+/**
+ * hunger-session-start.cjs — SessionStart hook
+ * Runs micro hunger cycle (top 3 domains, 10 call cap) if >6 hours since last feed.
+ * Fail-open: errors never block session.
+ */
+
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const { execFileSync } = require('child_process');
+
+let isHookEnabled;
+try {
+  ({ isHookEnabled } = require('./lib/ck-config-utils.cjs'));
+} catch {
+  isHookEnabled = () => true;
+}
+
+if (!isHookEnabled('hunger-session-start')) {
+  process.exit(0);
+}
+
+const REPO_ROOT = path.resolve(__dirname, '..', '..');
+const PYTHON_EXE = path.join(REPO_ROOT, '.claude', 'skills', '.venv', 'Scripts', 'python.exe');
+const DB_PATH = path.join(REPO_ROOT, '.claude', 'data', 'knowledge-distillation', 'decision-vectors.db');
+const COOLDOWN_HOURS = 6;
+
+function main() {
+  try {
+    if (!fs.existsSync(DB_PATH)) {
+      process.exit(0);
+    }
+
+    const lastFed = getLastFedTimestamp();
+    if (lastFed) {
+      const hoursSince = (Date.now() - new Date(lastFed).getTime()) / 3600000;
+      if (hoursSince < COOLDOWN_HOURS) {
+        process.exit(0);
+      }
+    }
+
+    const script = `
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(r'${REPO_ROOT}') / '.claude' / 'lib'))
+from intelligence.hunger import HungerLog
+log = HungerLog()
+summary = log.get_coverage_summary()
+domains = len(summary)
+avg_cov = sum(s.get('avg_confidence', 0) for s in summary.values()) / max(domains, 1) * 100
+print(f'Knowledge: {domains} domains tracked, avg confidence {avg_cov:.0f}%')
+`;
+
+    const result = execFileSync(PYTHON_EXE, ['-c', script], {
+      timeout: 25000,
+      encoding: 'utf-8',
+      cwd: REPO_ROOT,
+    }).trim();
+
+    if (result) {
+      process.stdout.write(result + '\n');
+    }
+  } catch (err) {
+    // fail-open
+    if (process.env.CK_DEBUG) {
+      process.stderr.write(`hunger-session-start: ${err.message}\n`);
+    }
+  }
+  process.exit(0);
+}
+
+function getLastFedTimestamp() {
+  try {
+    const script = `
+import sys, sqlite3
+from pathlib import Path
+db = Path(r'${DB_PATH}')
+if not db.exists():
+    print('')
+    exit()
+conn = sqlite3.connect(str(db))
+try:
+    row = conn.execute('SELECT MAX(cycle_date) FROM hunger_log').fetchone()
+    print(row[0] or '')
+except:
+    print('')
+conn.close()
+`;
+    return execFileSync(PYTHON_EXE, ['-c', script], {
+      timeout: 5000,
+      encoding: 'utf-8',
+    }).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+main();

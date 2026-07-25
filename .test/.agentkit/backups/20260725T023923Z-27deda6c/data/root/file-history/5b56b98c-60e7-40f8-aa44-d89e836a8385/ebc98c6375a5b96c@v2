@@ -1,0 +1,165 @@
+"""Tests for Phase 02-06 wiring: techniques→reasoner→output→personas."""
+
+import json
+from unittest.mock import MagicMock
+
+import pytest
+
+from ..strategic_reasoner import StrategicReasoner, StrategicInsight
+from ..output_formatter import OutputFormatter
+from ..persona_debate import PersonaDebate
+from ..adversarial_orchestrator import AdversarialOrchestrator
+
+
+MOCK_TECHNIQUE_RESULTS = {
+    "consensus": "GO",
+    "techniques_agreeing_go": 10,
+    "techniques_agreeing_kill": 2,
+    "results": {
+        "T00_gold_rush_law": {
+            "verdict": "GO",
+            "reasoning_chain": ["Market is early-stage with low competition"],
+            "confidence": 0.8,
+            "zone_tag": "K",
+        },
+        "T03_adversarial_debate": {
+            "verdict": "KILL",
+            "reasoning_chain": ["Market too competitive for solo operator"],
+            "confidence": 0.6,
+            "zone_tag": "T",
+            "metadata": {"bear_score": 5, "contradictions": []},
+        },
+        "T05_moat_tester": {
+            "verdict": "GO",
+            "reasoning_chain": ["Data moat possible via sourcing network"],
+            "confidence": 0.7,
+            "zone_tag": "T",
+        },
+        "T08_staircase": {
+            "verdict": "GO",
+            "reasoning_chain": ["Capital gap solvable via staged entry"],
+            "confidence": 0.75,
+            "zone_tag": "K",
+        },
+        "T09_durability": {
+            "verdict": "CAUTION",
+            "reasoning_chain": ["Revenue depends on 2 clients"],
+            "confidence": 0.5,
+            "zone_tag": "T",
+        },
+    },
+    "fragile_block": False,
+    "staircase_override": True,
+}
+
+
+class TestTechniqueCompression:
+    def test_compress_produces_consensus_line(self):
+        compressed = StrategicReasoner._compress_technique_results(MOCK_TECHNIQUE_RESULTS)
+        assert "GO" in compressed
+        assert "GO=10" in compressed
+        assert "KILL=2" in compressed
+
+    def test_compress_includes_contrarian_signals(self):
+        compressed = StrategicReasoner._compress_technique_results(MOCK_TECHNIQUE_RESULTS)
+        assert "CONTRARIAN T03" in compressed
+
+    def test_compress_includes_staircase_override(self):
+        compressed = StrategicReasoner._compress_technique_results(MOCK_TECHNIQUE_RESULTS)
+        assert "Staircase override" in compressed
+
+    def test_compress_handles_empty(self):
+        assert StrategicReasoner._compress_technique_results({}) == ""
+        assert StrategicReasoner._compress_technique_results(None) == ""
+
+    def test_compress_handles_error(self):
+        assert StrategicReasoner._compress_technique_results({"error": "failed"}) == ""
+
+
+class TestOutputFormatterTechnique:
+    def _make_result(self, technique_results=None, strategic_insight=None):
+        result = MagicMock()
+        result.technique_results = technique_results
+        result.strategic_insight = strategic_insight or {}
+        result.overall_score = 0.65
+        result.facts_used = 15
+        result.facts_by_zone = {"K": 5, "T": 7, "?": 3}
+        result.query = "test query"
+        result.query_type = "custom"
+        result.dimension_scores = {}
+        result.gaps = []
+        result.path = []
+        result.llm_calls_made = 5
+        return result
+
+    def test_technique_section_renders(self):
+        result = self._make_result(technique_results=MOCK_TECHNIQUE_RESULTS)
+        formatter = OutputFormatter()
+        output = formatter.format(result)
+        assert "Multi-Dimensional Analysis" in output
+        assert "GO" in output
+        assert "T03_adversarial_debate" in output
+
+    def test_technique_section_absent_when_empty(self):
+        result = self._make_result(technique_results=None)
+        formatter = OutputFormatter()
+        output = formatter.format(result)
+        assert "Multi-Dimensional Analysis" not in output
+
+    def test_technique_section_absent_on_error(self):
+        result = self._make_result(technique_results={"error": "test", "status": "failed"})
+        formatter = OutputFormatter()
+        output = formatter.format(result)
+        assert "Multi-Dimensional Analysis" not in output
+
+    def test_local_verdict_in_output(self):
+        si = {"local_verdict": {"verdict": "WEAK_PASS", "score": 0.45, "confidence": 0.7}}
+        result = self._make_result(technique_results=MOCK_TECHNIQUE_RESULTS, strategic_insight=si)
+        formatter = OutputFormatter()
+        output = formatter.format(result)
+        assert "Local evidence verdict" in output
+        assert "WEAK_PASS" in output
+
+
+class TestPersonaDebateTechnique:
+    def test_technique_summary_in_prompts(self):
+        tr_output = {"dimension_scores": {}, "overall_score": 0.5}
+        debate = PersonaDebate("test query", "custom", tr_output, technique_results=MOCK_TECHNIQUE_RESULTS)
+        summary = debate._compress_technique_summary()
+        assert "GO" in summary
+        assert "GO=10" in summary
+
+    def test_technique_summary_fallback(self):
+        tr_output = {"dimension_scores": {}, "overall_score": 0.5}
+        debate = PersonaDebate("test query", "custom", tr_output, technique_results=None)
+        summary = debate._compress_technique_summary()
+        assert "no technique data" in summary
+
+
+class TestAdversarialOrchestratorTechnique:
+    def test_technique_block_in_analyst_prompt(self):
+        tr_output = {"dimension_scores": {}, "overall_score": 0.5}
+        orch = AdversarialOrchestrator(tr_output, "test query", technique_results=MOCK_TECHNIQUE_RESULTS)
+        prompt = orch.generate_analyst_prompt()
+        assert "Technique Pre-Analysis" in prompt
+        assert "GO" in prompt
+
+    def test_no_technique_block_when_none(self):
+        tr_output = {"dimension_scores": {}, "overall_score": 0.5}
+        orch = AdversarialOrchestrator(tr_output, "test query")
+        prompt = orch.generate_analyst_prompt()
+        assert "Technique Pre-Analysis" not in prompt
+
+
+class TestStrategicInsightLocalVerdict:
+    def test_local_verdict_in_to_dict(self):
+        insight = StrategicInsight(causal_chain="test")
+        insight.local_verdict = {"verdict": "KILL", "score": 0.2, "confidence": 0.8}
+        d = insight.to_dict()
+        assert "local_verdict" in d
+        assert d["local_verdict"]["verdict"] == "KILL"
+
+    def test_local_verdict_absent_when_empty(self):
+        insight = StrategicInsight(causal_chain="test")
+        d = insight.to_dict()
+        assert "local_verdict" not in d

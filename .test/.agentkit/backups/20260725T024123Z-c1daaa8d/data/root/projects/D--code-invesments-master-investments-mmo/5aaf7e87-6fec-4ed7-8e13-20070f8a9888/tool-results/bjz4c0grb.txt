@@ -1,0 +1,1069 @@
+On branch master
+Your branch and 'origin/master' have diverged,
+and have 8 and 176 different commits each, respectively.
+  (use "git pull" if you want to integrate the remote branch with yours)
+
+Changes not staged for commit:
+  (use "git add/rm <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .claude/.ck.json
+	modified:   .claude/.ckignore
+	modified:   .claude/.env.example
+	modified:   .claude/.mcp.json.example
+	modified:   .claude/agents/brainstormer.md
+	modified:   .claude/agents/code-reviewer.md
+	modified:   .claude/agents/code-simplifier.md
+	modified:   .claude/agents/debugger.md
+	modified:   .claude/agents/docs-manager.md
+	modified:   .claude/agents/fullstack-developer.md
+	modified:   .claude/agents/git-manager.md
+	modified:   .claude/agents/journal-writer.md
+	deleted:    .claude/agents/mcp-manager.md
+	modified:   .claude/agents/personas/_persona-template.md
+	modified:   .claude/agents/planner.md
+	modified:   .claude/agents/project-manager.md
+	modified:   .claude/agents/researcher.md
+	modified:   .claude/agents/tester.md
+	modified:   .claude/agents/ui-ux-designer.md
+	deleted:    .claude/commands/ask.md
+	deleted:    .claude/commands/bootstrap.md
+	deleted:    .claude/commands/bootstrap/auto.md
+	deleted:    .claude/commands/bootstrap/auto/fast.md
+	deleted:    .claude/commands/bootstrap/auto/parallel.md
+	deleted:    .claude/commands/ck-help.md
+	deleted:    .claude/commands/code/auto.md
+	deleted:    .claude/commands/code/no-test.md
+	deleted:    .claude/commands/code/parallel.md
+	deleted:    .claude/commands/coding-level.md
+	deleted:    .claude/commands/content/cro.md
+	deleted:    .claude/commands/content/enhance.md
+	deleted:    .claude/commands/content/fast.md
+	deleted:    .claude/commands/content/good.md
+	deleted:    .claude/commands/cook/auto.md
+	deleted:    .claude/commands/cook/auto/fast.md
+	deleted:    .claude/commands/cook/auto/parallel.md
+	deleted:    .claude/commands/design/3d.md
+	deleted:    .claude/commands/design/describe.md
+	deleted:    .claude/commands/design/fast.md
+	deleted:    .claude/commands/design/good.md
+	deleted:    .claude/commands/design/screenshot.md
+	deleted:    .claude/commands/design/video.md
+	deleted:    .claude/commands/docs/init.md
+	deleted:    .claude/commands/docs/summarize.md
+	deleted:    .claude/commands/docs/update.md
+	deleted:    .claude/commands/fix/ci.md
+	deleted:    .claude/commands/fix/fast.md
+	deleted:    .claude/commands/fix/hard.md
+	deleted:    .claude/commands/fix/logs.md
+	deleted:    .claude/commands/fix/parallel.md
+	deleted:    .claude/commands/fix/test.md
+	deleted:    .claude/commands/fix/types.md
+	deleted:    .claude/commands/fix/ui.md
+	deleted:    .claude/commands/git/cm.md
+	deleted:    .claude/commands/git/cp.md
+	deleted:    .claude/commands/git/pr.md
+	deleted:    .claude/commands/integrate/polar.md
+	deleted:    .claude/commands/integrate/sepay.md
+	deleted:    .claude/commands/journal.md
+	deleted:    .claude/commands/kanban.md
+	deleted:    .claude/commands/plan.md
+	deleted:    .claude/commands/plan/archive.md
+	deleted:    .claude/commands/plan/ci.md
+	deleted:    .claude/commands/plan/cro.md
+	deleted:    .claude/commands/plan/fast.md
+	deleted:    .claude/commands/plan/hard.md
+	deleted:    .claude/commands/plan/parallel.md
+	deleted:    .claude/commands/plan/two.md
+	deleted:    .claude/commands/plan/validate.md
+	deleted:    .claude/commands/preview.md
+	deleted:    .claude/commands/review/codebase.md
+	deleted:    .claude/commands/review/codebase/parallel.md
+	deleted:    .claude/commands/scout/ext.md
+	deleted:    .claude/commands/skill/add.md
+	deleted:    .claude/commands/skill/create.md
+	deleted:    .claude/commands/skill/fix-logs.md
+	deleted:    .claude/commands/skill/optimize.md
+	deleted:    .claude/commands/skill/optimize/auto.md
+	modified:   .claude/commands/startup.md
+	deleted:    .claude/commands/test.md
+	deleted:    .claude/commands/test/ui.md
+	deleted:    .claude/commands/use-mcp.md
+	deleted:    .claude/commands/watzup.md
+	deleted:    .claude/commands/worktree.md
+	modified:   .claude/hooks/__tests__/ck-config-utils.test.cjs
+	modified:   .claude/hooks/__tests__/dev-rules-reminder.test.cjs
+	modified:   .claude/hooks/__tests__/integration/path-resolution.test.cjs
+	modified:   .claude/hooks/__tests__/session-init.test.cjs
+	modified:   .claude/hooks/__tests__/subagent-init.test.cjs
+	deleted:    .claude/hooks/abde-session-init.cjs
+	deleted:    .claude/hooks/cook-after-plan-reminder.cjs
+	modified:   .claude/hooks/descriptive-name.cjs
+	deleted:    .claude/hooks/dev-rules-reminder.cjs
+	modified:   .claude/hooks/docs/README.md
+	modified:   .claude/hooks/lib/__tests__/README.md
+	modified:   .claude/hooks/lib/__tests__/ck-config-utils.test.cjs
+	modified:   .claude/hooks/lib/__tests__/context-builder.test.cjs
+	modified:   .claude/hooks/lib/__tests__/statusline-integration.test.cjs
+	modified:   .claude/hooks/lib/__tests__/statusline.test.cjs
+	modified:   .claude/hooks/lib/ck-config-utils.cjs
+	deleted:    .claude/hooks/lib/ck-paths.cjs
+	modified:   .claude/hooks/lib/colors.cjs
+	modified:   .claude/hooks/lib/context-builder.cjs
+	deleted:    .claude/hooks/lib/context-tracker.cjs
+	modified:   .claude/hooks/lib/hook-logger.cjs
+	modified:   .claude/hooks/lib/project-detector.cjs
+	modified:   .claude/hooks/lib/scout-checker.cjs
+	modified:   .claude/hooks/lib/transcript-parser.cjs
+	deleted:    .claude/hooks/notifications/discord_notify.sh
+	modified:   .claude/hooks/notifications/docs/discord-hook-setup.md
+	modified:   .claude/hooks/notifications/docs/telegram-hook-setup.md
+	deleted:    .claude/hooks/notifications/send-discord.sh
+	deleted:    .claude/hooks/notifications/telegram_notify.sh
+	deleted:    .claude/hooks/post-edit-simplify-reminder.cjs
+	modified:   .claude/hooks/privacy-block.cjs
+	modified:   .claude/hooks/scout-block.cjs
+	modified:   .claude/hooks/scout-block/broad-pattern-detector.cjs
+	modified:   .claude/hooks/scout-block/error-formatter.cjs
+	modified:   .claude/hooks/scout-block/path-extractor.cjs
+	modified:   .claude/hooks/scout-block/pattern-matcher.cjs
+	modified:   .claude/hooks/scout-block/tests/test-error-formatter.cjs
+	deleted:    .claude/hooks/session-end.cjs
+	deleted:    .claude/hooks/session-init.cjs
+	modified:   .claude/hooks/skill-dedup.cjs
+	deleted:    .claude/hooks/subagent-init.cjs
+	deleted:    .claude/hooks/tests/test-context-tracker.cjs
+	modified:   .claude/hooks/tests/test-scout-block.cjs
+	deleted:    .claude/hooks/tests/test-scout-block.js
+	deleted:    .claude/hooks/usage-context-awareness.cjs
+	deleted:    .claude/hooks/write-compact-marker.cjs
+	modified:   .claude/knowledge-state.yaml
+	modified:   .claude/metadata.json
+	modified:   .claude/rules/development-rules.md
+	modified:   .claude/rules/orchestration-protocol.md
+	modified:   .claude/rules/primary-workflow.md
+	modified:   .claude/schemas/ck-config.schema.json
+	modified:   .claude/scripts/README.md
+	deleted:    .claude/scripts/commands_data.yaml
+	deleted:    .claude/scripts/fix-shebang-permissions.sh
+	deleted:    .claude/scripts/generate_catalogs.py
+	modified:   .claude/scripts/resolve_env.py
+	modified:   .claude/scripts/scan_commands.py
+	modified:   .claude/scripts/scan_skills.py
+	modified:   .claude/scripts/set-active-plan.cjs
+	deleted:    .claude/scripts/skills_data.yaml
+	deleted:    .claude/scripts/test_ck_help.py
+	deleted:    .claude/scripts/test_ck_help_integration.py
+	modified:   .claude/scripts/worktree.cjs
+	modified:   .claude/scripts/worktree.test.cjs
+	modified:   .claude/settings.json
+	modified:   .claude/settings.local.json
+	modified:   .claude/skills/.env.example
+	modified:   .claude/skills/README.md
+	modified:   .claude/skills/agent-browser/SKILL.md
+	modified:   .claude/skills/agent-browser/references/agent-browser-vs-chrome-devtools.md
+	modified:   .claude/skills/agent_skills_spec.md
+	modified:   .claude/skills/ai-artist/SKILL.md
+	modified:   .claude/skills/ai-artist/scripts/generate.py
+	modified:   .claude/skills/ai-multimodal/.env.example
+	modified:   .claude/skills/ai-multimodal/SKILL.md
+	modified:   .claude/skills/ai-multimodal/references/audio-processing.md
+	modified:   .claude/skills/ai-multimodal/references/image-generation.md
+	modified:   .claude/skills/ai-multimodal/references/video-analysis.md
+	modified:   .claude/skills/ai-multimodal/scripts/check_setup.py
+	modified:   .claude/skills/ai-multimodal/scripts/gemini_batch_process.py
+	modified:   .claude/skills/ai-multimodal/scripts/requirements.txt
+	modified:   .claude/skills/ai-multimodal/scripts/tests/requirements.txt
+	modified:   .claude/skills/ai-multimodal/scripts/tests/test_gemini_batch_process.py
+	modified:   .claude/skills/backend-development/SKILL.md
+	modified:   .claude/skills/better-auth/SKILL.md
+	modified:   .claude/skills/brainstorm/SKILL.md
+	modified:   .claude/skills/brainstorm/references/deep-analysis-mode.md
+	deleted:    .claude/skills/business/factors/factor-calibration-engine.py
+	deleted:    .claude/skills/business/factors/factor-db-schema-init.py
+	deleted:    .claude/skills/business/factors/multidisciplinary-factor-engine.py
+	deleted:    .claude/skills/business/factors/simple-yaml-serializer.py
+	deleted:    .claude/skills/business/factors/test-mfe-system.py
+	modified:   .claude/skills/business/personas/alex-hormozi/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/andrew-grove/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/brian-chesky/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/brian-tracy/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/charlie-munger/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/chinese-export-seller/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/chris-voss/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/cold-email-king/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/dan-kennedy/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/daniel-kahneman/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/david-sandler/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/elon-musk/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/gary-vaynerchuk/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/george-soros/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/grant-cardone/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/indian-it-outsourcing/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/jack-ma/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/jamie-dimon/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/jeff-bezos/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/jeffrey-gitomer/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/jensen-huang/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/john-d-rockefeller/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/mark-cuban/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/masayoshi-son/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/nassim-taleb/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/neil-rackham/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/noah-kagan/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/peter-thiel/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/pham-nhat-vuong/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/philip-kotler/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/pony-ma/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/ray-dalio/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/reid-hoffman/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/richard-branson/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/robert-cialdini/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/russell-brunson/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/sam-altman/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/satya-nadella/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/thai-van-linh/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/tim-cook/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/upwork-top-rated/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/vietnamese-freelancer-success/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/warren-buffett/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/business/personas/zig-ziglar/knowledge-base-skill/SKILL.md
+	modified:   .claude/skills/chrome-devtools/SKILL.md
+	modified:   .claude/skills/chrome-devtools/scripts/aria-snapshot.js
+	modified:   .claude/skills/chrome-devtools/scripts/click.js
+	modified:   .claude/skills/chrome-devtools/scripts/console.js
+	modified:   .claude/skills/chrome-devtools/scripts/evaluate.js
+	modified:   .claude/skills/chrome-devtools/scripts/fill.js
+	modified:   .claude/skills/chrome-devtools/scripts/import-cookies.js
+	modified:   .claude/skills/chrome-devtools/scripts/inject-auth.js
+	modified:   .claude/skills/chrome-devtools/scripts/lib/browser.js
+	modified:   .claude/skills/chrome-devtools/scripts/navigate.js
+	modified:   .claude/skills/chrome-devtools/scripts/network.js
+	modified:   .claude/skills/chrome-devtools/scripts/performance.js
+	modified:   .claude/skills/chrome-devtools/scripts/screenshot.js
+	modified:   .claude/skills/chrome-devtools/scripts/select-ref.js
+	modified:   .claude/skills/chrome-devtools/scripts/snapshot.js
+	modified:   .claude/skills/code-review/SKILL.md
+	modified:   .claude/skills/code-review/references/edge-case-scouting.md
+	modified:   .claude/skills/code-review/references/requesting-code-review.md
+	modified:   .claude/skills/common/api_key_rotator.py
+	modified:   .claude/skills/context-engineering/SKILL.md
+	modified:   .claude/skills/context-engineering/references/runtime-awareness.md
+	modified:   .claude/skills/cook/README.md
+	modified:   .claude/skills/cook/SKILL.md
+	modified:   .claude/skills/cook/references/intent-detection.md
+	modified:   .claude/skills/cook/references/subagent-patterns.md
+	modified:   .claude/skills/cook/references/workflow-steps.md
+	modified:   .claude/skills/copywriting/SKILL.md
+	modified:   .claude/skills/copywriting/references/workflow-cro.md
+	modified:   .claude/skills/copywriting/references/workflow-enhance.md
+	modified:   .claude/skills/copywriting/references/workflow-fast.md
+	modified:   .claude/skills/copywriting/references/workflow-good.md
+	modified:   .claude/skills/copywriting/references/writing-styles.md
+	modified:   .claude/skills/databases/SKILL.md
+	deleted:    .claude/skills/debug/SKILL.md
+	deleted:    .claude/skills/debug/references/defense-in-depth.md
+	deleted:    .claude/skills/debug/references/root-cause-tracing.md
+	deleted:    .claude/skills/debug/references/systematic-debugging.md
+	deleted:    .claude/skills/debug/references/verification.md
+	deleted:    .claude/skills/debug/scripts/find-polluter.sh
+	deleted:    .claude/skills/debug/scripts/find-polluter.test.md
+	modified:   .claude/skills/devops/SKILL.md
+	modified:   .claude/skills/docs-seeker/SKILL.md
+	modified:   .claude/skills/document-skills/docx/SKILL.md
+	modified:   .claude/skills/document-skills/pdf/SKILL.md
+	modified:   .claude/skills/document-skills/pptx/SKILL.md
+	modified:   .claude/skills/document-skills/xlsx/SKILL.md
+	modified:   .claude/skills/find-skills/SKILL.md
+	modified:   .claude/skills/fix/SKILL.md
+	modified:   .claude/skills/fix/references/complexity-assessment.md
+	modified:   .claude/skills/fix/references/parallel-exploration.md
+	modified:   .claude/skills/fix/references/skill-activation-matrix.md
+	modified:   .claude/skills/fix/references/workflow-deep.md
+	modified:   .claude/skills/fix/references/workflow-logs.md
+	modified:   .claude/skills/fix/references/workflow-quick.md
+	modified:   .claude/skills/fix/references/workflow-standard.md
+	modified:   .claude/skills/fix/references/workflow-test.md
+	modified:   .claude/skills/fix/references/workflow-ui.md
+	modified:   .claude/skills/frontend-design/SKILL.md
+	modified:   .claude/skills/frontend-design/references/ai-multimodal-overview.md
+	modified:   .claude/skills/frontend-design/references/asset-generation.md
+	modified:   .claude/skills/frontend-design/references/visual-analysis-overview.md
+	modified:   .claude/skills/frontend-design/references/workflow-3d.md
+	modified:   .claude/skills/frontend-design/references/workflow-describe.md
+	modified:   .claude/skills/frontend-design/references/workflow-immersive.md
+	modified:   .claude/skills/frontend-design/references/workflow-quick.md
+	modified:   .claude/skills/frontend-design/references/workflow-screenshot.md
+	modified:   .claude/skills/frontend-design/references/workflow-video.md
+	modified:   .claude/skills/frontend-development/SKILL.md
+	modified:   .claude/skills/git/SKILL.md
+	modified:   .claude/skills/gkg/SKILL.md
+	modified:   .claude/skills/google-adk-python/SKILL.md
+	modified:   .claude/skills/install.ps1
+	modified:   .claude/skills/install.sh
+	modified:   .claude/skills/knowledge-syncer/SKILL.md
+	modified:   .claude/skills/markdown-novel-viewer/SKILL.md
+	modified:   .claude/skills/markdown-novel-viewer/assets/reader.js
+	modified:   .claude/skills/markdown-novel-viewer/assets/styles/novel-theme-components.css
+	modified:   .claude/skills/markdown-novel-viewer/assets/styles/novel-theme-content.css
+	modified:   .claude/skills/markdown-novel-viewer/assets/styles/novel-theme-mermaid.css
+	modified:   .claude/skills/markdown-novel-viewer/assets/styles/novel-theme-sidebar.css
+	modified:   .claude/skills/markdown-novel-viewer/scripts/lib/http-server.cjs
+	modified:   .claude/skills/markdown-novel-viewer/scripts/lib/plan-navigator.cjs
+	modified:   .claude/skills/markdown-novel-viewer/scripts/tests/server.test.cjs
+	modified:   .claude/skills/mcp-builder/SKILL.md
+	modified:   .claude/skills/mcp-management/SKILL.md
+	modified:   .claude/skills/mcp-management/references/gemini-cli-integration.md
+	modified:   .claude/skills/media-processing/SKILL.md
+	modified:   .claude/skills/mermaidjs-v11/SKILL.md
+	modified:   .claude/skills/mintlify/SKILL.md
+	modified:   .claude/skills/mintlify/references/deployment-and-continuous-integration-reference.md
+	modified:   .claude/skills/mobile-development/SKILL.md
+	modified:   .claude/skills/payment-integration/SKILL.md
+	modified:   .claude/skills/plans-kanban/SKILL.md
+	modified:   .claude/skills/plans-kanban/package.json
+	deleted:    .claude/skills/plans-kanban/scripts/lib/dashboard-renderer.cjs
+	deleted:    .claude/skills/plans-kanban/scripts/lib/http-server.cjs
+	modified:   .claude/skills/plans-kanban/scripts/lib/plan-metadata-extractor.cjs
+	modified:   .claude/skills/plans-kanban/scripts/lib/plan-parser.cjs
+	deleted:    .claude/skills/plans-kanban/scripts/lib/port-finder.cjs
+	deleted:    .claude/skills/plans-kanban/scripts/lib/process-mgr.cjs
+	deleted:    .claude/skills/plans-kanban/scripts/server.cjs
+	modified:   .claude/skills/problem-solving/SKILL.md
+	modified:   .claude/skills/react-best-practices/SKILL.md
+	modified:   .claude/skills/remotion/SKILL.md
+	modified:   .claude/skills/repomix/SKILL.md
+	modified:   .claude/skills/research/SKILL.md
+	modified:   .claude/skills/scout/SKILL.md
+	modified:   .claude/skills/scout/references/external-scouting.md
+	modified:   .claude/skills/sequential-thinking/SKILL.md
+	modified:   .claude/skills/shader/SKILL.md
+	modified:   .claude/skills/shopify/SKILL.md
+	modified:   .claude/skills/skill-creator/SKILL.md
+	modified:   .claude/skills/skill-creator/references/metadata-quality-criteria.md
+	modified:   .claude/skills/skill-creator/references/plugin-marketplace-hosting.md
+	modified:   .claude/skills/skill-creator/references/plugin-marketplace-overview.md
+	modified:   .claude/skills/skill-creator/references/plugin-marketplace-schema.md
+	modified:   .claude/skills/skill-creator/references/plugin-marketplace-sources.md
+	modified:   .claude/skills/skill-creator/references/plugin-marketplace-troubleshooting.md
+	modified:   .claude/skills/skill-creator/references/structure-organization-criteria.md
+	modified:   .claude/skills/skill-creator/references/token-efficiency-criteria.md
+	modified:   .claude/skills/skill-creator/references/validation-checklist.md
+	modified:   .claude/skills/skill-creator/scripts/init_skill.py
+	modified:   .claude/skills/skill-creator/scripts/package_skill.py
+	modified:   .claude/skills/skill-creator/scripts/quick_validate.py
+	modified:   .claude/skills/template-skill/SKILL.md
+	modified:   .claude/skills/threejs/SKILL.md
+	modified:   .claude/skills/ui-styling/SKILL.md
+	modified:   .claude/skills/ui-ux-pro-max/SKILL.md
+	modified:   .claude/skills/ui-ux-pro-max/data/charts.csv
+	modified:   .claude/skills/ui-ux-pro-max/data/colors.csv
+	modified:   .claude/skills/ui-ux-pro-max/data/icons.csv
+	modified:   .claude/skills/ui-ux-pro-max/data/landing.csv
+	modified:   .claude/skills/ui-ux-pro-max/data/products.csv
+	modified:   .claude/skills/ui-ux-pro-max/data/styles.csv
+	modified:   .claude/skills/ui-ux-pro-max/data/typography.csv
+	modified:   .claude/skills/ui-ux-pro-max/data/ui-reasoning.csv
+	modified:   .claude/skills/ui-ux-pro-max/scripts/core.py
+	modified:   .claude/skills/ui-ux-pro-max/scripts/design_system.py
+	modified:   .claude/skills/ui-ux-pro-max/scripts/search.py
+	modified:   .claude/skills/web-design-guidelines/SKILL.md
+	modified:   .claude/skills/web-frameworks/SKILL.md
+	modified:   .claude/skills/web-testing/SKILL.md
+	modified:   .claude/statusline.cjs
+	deleted:    .claude/statusline.ps1
+	deleted:    .claude/statusline.sh
+	modified:   .claude/workflows/business-workflow.md
+	modified:   .claude/workflows/orchestration-protocol.md
+	modified:   .claude/workflows/primary-workflow.md
+	modified:   .gitignore
+	modified:   .opencode/.env.example
+	modified:   .opencode/agents/brainstormer.md
+	modified:   .opencode/agents/code-reviewer.md
+	modified:   .opencode/agents/code-simplifier.md
+	modified:   .opencode/agents/debugger.md
+	modified:   .opencode/agents/docs-manager.md
+	modified:   .opencode/agents/fullstack-developer.md
+	modified:   .opencode/agents/git-manager.md
+	modified:   .opencode/agents/journal-writer.md
+	modified:   .opencode/agents/mcp-manager.md
+	modified:   .opencode/agents/planner.md
+	modified:   .opencode/agents/project-manager.md
+	modified:   .opencode/agents/researcher.md
+	modified:   .opencode/agents/tester.md
+	modified:   .opencode/agents/ui-ux-designer.md
+	modified:   .opencode/plugin/lib/ck-config-utils.cjs
+	modified:   .opencode/plugin/lib/colors.cjs
+	modified:   .opencode/plugin/lib/context-builder.cjs
+	modified:   .opencode/plugin/lib/project-detector.cjs
+	modified:   .opencode/plugin/lib/scout-checker.cjs
+	modified:   .opencode/plugin/scout-block.ts
+	modified:   .opencode/plugin/scout-block/broad-pattern-detector.cjs
+	modified:   .opencode/plugin/scout-block/error-formatter.cjs
+	modified:   .opencode/plugin/scout-block/path-extractor.cjs
+	modified:   .opencode/plugin/scout-block/pattern-matcher.cjs
+	modified:   .opencode/plugin/scout-block/tests/test-error-formatter.cjs
+	modified:   .opencode/scripts/README.md
+	modified:   .opencode/scripts/resolve_env.py
+	modified:   .opencode/scripts/scan_commands.py
+	modified:   .opencode/scripts/scan_skills.py
+	modified:   .opencode/scripts/set-active-plan.cjs
+	modified:   .opencode/scripts/skills_data.yaml
+	modified:   .opencode/scripts/worktree.cjs
+	modified:   .opencode/scripts/worktree.test.cjs
+	modified:   .opencode/skills/agent-browser/SKILL.md
+	modified:   .opencode/skills/ai-artist/SKILL.md
+	modified:   .opencode/skills/ai-artist/scripts/generate.py
+	modified:   .opencode/skills/ai-multimodal/.env.example
+	modified:   .opencode/skills/ai-multimodal/SKILL.md
+	modified:   .opencode/skills/ai-multimodal/references/image-generation.md
+	modified:   .opencode/skills/ai-multimodal/scripts/gemini_batch_process.py
+	modified:   .opencode/skills/backend-development/SKILL.md
+	modified:   .opencode/skills/better-auth/SKILL.md
+	modified:   .opencode/skills/brainstorm/SKILL.md
+	modified:   .opencode/skills/chrome-devtools/SKILL.md
+	modified:   .opencode/skills/chrome-devtools/scripts/aria-snapshot.js
+	modified:   .opencode/skills/chrome-devtools/scripts/click.js
+	modified:   .opencode/skills/chrome-devtools/scripts/console.js
+	modified:   .opencode/skills/chrome-devtools/scripts/evaluate.js
+	modified:   .opencode/skills/chrome-devtools/scripts/fill.js
+	modified:   .opencode/skills/chrome-devtools/scripts/import-cookies.js
+	modified:   .opencode/skills/chrome-devtools/scripts/inject-auth.js
+	modified:   .opencode/skills/chrome-devtools/scripts/lib/browser.js
+	modified:   .opencode/skills/chrome-devtools/scripts/navigate.js
+	modified:   .opencode/skills/chrome-devtools/scripts/network.js
+	modified:   .opencode/skills/chrome-devtools/scripts/performance.js
+	modified:   .opencode/skills/chrome-devtools/scripts/screenshot.js
+	modified:   .opencode/skills/chrome-devtools/scripts/select-ref.js
+	modified:   .opencode/skills/chrome-devtools/scripts/snapshot.js
+	modified:   .opencode/skills/code-review/SKILL.md
+	modified:   .opencode/skills/code-review/references/edge-case-scouting.md
+	modified:   .opencode/skills/code-review/references/requesting-code-review.md
+	modified:   .opencode/skills/context-engineering/SKILL.md
+	modified:   .opencode/skills/context-engineering/references/runtime-awareness.md
+	modified:   .opencode/skills/cook/README.md
+	modified:   .opencode/skills/cook/SKILL.md
+	modified:   .opencode/skills/cook/references/intent-detection.md
+	modified:   .opencode/skills/cook/references/subagent-patterns.md
+	modified:   .opencode/skills/cook/references/workflow-steps.md
+	modified:   .opencode/skills/copywriting/SKILL.md
+	modified:   .opencode/skills/copywriting/references/workflow-cro.md
+	modified:   .opencode/skills/copywriting/references/workflow-enhance.md
+	modified:   .opencode/skills/copywriting/references/workflow-fast.md
+	modified:   .opencode/skills/copywriting/references/workflow-good.md
+	modified:   .opencode/skills/copywriting/references/writing-styles.md
+	modified:   .opencode/skills/databases/SKILL.md
+	modified:   .opencode/skills/devops/SKILL.md
+	modified:   .opencode/skills/docs-seeker/SKILL.md
+	modified:   .opencode/skills/find-skills/SKILL.md
+	modified:   .opencode/skills/fix/SKILL.md
+	modified:   .opencode/skills/fix/references/complexity-assessment.md
+	modified:   .opencode/skills/fix/references/parallel-exploration.md
+	modified:   .opencode/skills/fix/references/skill-activation-matrix.md
+	modified:   .opencode/skills/fix/references/workflow-deep.md
+	modified:   .opencode/skills/fix/references/workflow-logs.md
+	modified:   .opencode/skills/fix/references/workflow-quick.md
+	modified:   .opencode/skills/fix/references/workflow-standard.md
+	modified:   .opencode/skills/fix/references/workflow-test.md
+	modified:   .opencode/skills/fix/references/workflow-ui.md
+	modified:   .opencode/skills/frontend-design/SKILL.md
+	modified:   .opencode/skills/frontend-design/references/ai-multimodal-overview.md
+	modified:   .opencode/skills/frontend-design/references/asset-generation.md
+	modified:   .opencode/skills/frontend-design/references/visual-analysis-overview.md
+	modified:   .opencode/skills/frontend-design/references/workflow-3d.md
+	modified:   .opencode/skills/frontend-design/references/workflow-describe.md
+	modified:   .opencode/skills/frontend-design/references/workflow-immersive.md
+	modified:   .opencode/skills/frontend-design/references/workflow-quick.md
+	modified:   .opencode/skills/frontend-design/references/workflow-screenshot.md
+	modified:   .opencode/skills/frontend-design/references/workflow-video.md
+	modified:   .opencode/skills/frontend-development/SKILL.md
+	modified:   .opencode/skills/git/SKILL.md
+	modified:   .opencode/skills/gkg/SKILL.md
+	modified:   .opencode/skills/google-adk-python/SKILL.md
+	modified:   .opencode/skills/markdown-novel-viewer/SKILL.md
+	modified:   .opencode/skills/markdown-novel-viewer/assets/reader.js
+	modified:   .opencode/skills/markdown-novel-viewer/assets/styles/novel-theme-components.css
+	modified:   .opencode/skills/markdown-novel-viewer/assets/styles/novel-theme-content.css
+	modified:   .opencode/skills/markdown-novel-viewer/assets/styles/novel-theme-mermaid.css
+	modified:   .opencode/skills/markdown-novel-viewer/assets/styles/novel-theme-sidebar.css
+	modified:   .opencode/skills/markdown-novel-viewer/scripts/lib/http-server.cjs
+	modified:   .opencode/skills/markdown-novel-viewer/scripts/lib/plan-navigator.cjs
+	modified:   .opencode/skills/markdown-novel-viewer/scripts/tests/server.test.cjs
+	modified:   .opencode/skills/mcp-builder/SKILL.md
+	modified:   .opencode/skills/mcp-management/SKILL.md
+	modified:   .opencode/skills/media-processing/SKILL.md
+	modified:   .opencode/skills/mermaidjs-v11/SKILL.md
+	modified:   .opencode/skills/mintlify/SKILL.md
+	modified:   .opencode/skills/mintlify/references/deployment-and-continuous-integration-reference.md
+	modified:   .opencode/skills/mobile-development/SKILL.md
+	modified:   .opencode/skills/payment-integration/SKILL.md
+	modified:   .opencode/skills/plans-kanban/SKILL.md
+	modified:   .opencode/skills/plans-kanban/scripts/lib/plan-metadata-extractor.cjs
+	modified:   .opencode/skills/plans-kanban/scripts/lib/plan-parser.cjs
+	modified:   .opencode/skills/problem-solving/SKILL.md
+	modified:   .opencode/skills/react-best-practices/SKILL.md
+	modified:   .opencode/skills/remotion/SKILL.md
+	modified:   .opencode/skills/repomix/SKILL.md
+	modified:   .opencode/skills/research/SKILL.md
+	modified:   .opencode/skills/scout/SKILL.md
+	modified:   .opencode/skills/sequential-thinking/SKILL.md
+	modified:   .opencode/skills/shader/SKILL.md
+	modified:   .opencode/skills/shopify/SKILL.md
+	modified:   .opencode/skills/skill-creator/SKILL.md
+	modified:   .opencode/skills/skill-creator/references/metadata-quality-criteria.md
+	modified:   .opencode/skills/skill-creator/references/plugin-marketplace-hosting.md
+	modified:   .opencode/skills/skill-creator/references/plugin-marketplace-overview.md
+	modified:   .opencode/skills/skill-creator/references/plugin-marketplace-schema.md
+	modified:   .opencode/skills/skill-creator/references/plugin-marketplace-sources.md
+	modified:   .opencode/skills/skill-creator/references/plugin-marketplace-troubleshooting.md
+	modified:   .opencode/skills/skill-creator/references/structure-organization-criteria.md
+	modified:   .opencode/skills/skill-creator/references/token-efficiency-criteria.md
+	modified:   .opencode/skills/skill-creator/references/validation-checklist.md
+	modified:   .opencode/skills/skill-creator/scripts/init_skill.py
+	modified:   .opencode/skills/skill-creator/scripts/package_skill.py
+	modified:   .opencode/skills/skill-creator/scripts/quick_validate.py
+	modified:   .opencode/skills/template-skill/SKILL.md
+	modified:   .opencode/skills/threejs/SKILL.md
+	modified:   .opencode/skills/ui-styling/SKILL.md
+	modified:   .opencode/skills/ui-ux-pro-max/SKILL.md
+	modified:   .opencode/skills/ui-ux-pro-max/data/charts.csv
+	modified:   .opencode/skills/ui-ux-pro-max/data/colors.csv
+	modified:   .opencode/skills/ui-ux-pro-max/data/icons.csv
+	modified:   .opencode/skills/ui-ux-pro-max/data/landing.csv
+	modified:   .opencode/skills/ui-ux-pro-max/data/products.csv
+	modified:   .opencode/skills/ui-ux-pro-max/data/styles.csv
+	modified:   .opencode/skills/ui-ux-pro-max/data/typography.csv
+	modified:   .opencode/skills/ui-ux-pro-max/data/ui-reasoning.csv
+	modified:   .opencode/skills/ui-ux-pro-max/scripts/core.py
+	modified:   .opencode/skills/ui-ux-pro-max/scripts/design_system.py
+	modified:   .opencode/skills/ui-ux-pro-max/scripts/search.py
+	modified:   .opencode/skills/web-design-guidelines/SKILL.md
+	modified:   .opencode/skills/web-frameworks/SKILL.md
+	modified:   .opencode/skills/web-testing/SKILL.md
+	modified:   .startup-context.json
+	modified:   AGENTS.md
+	deleted:    BUSINESS_CALCULATION_ENGINES_TEST_REPORT.md
+	deleted:    METAPHYSICS-TECHNICAL-SUMMARY.md
+	deleted:    METAPHYSICS-TEST-MANIFEST.md
+	deleted:    METAPHYSICS-TEST-REPORT.md
+	deleted:    METAPHYSICS-TESTING-COMPLETE.md
+	deleted:    METAPHYSICS-TESTING-INDEX.md
+	deleted:    README.md
+	modified:   docs/codebase-summary.md
+	modified:   docs/project-changelog.md
+	modified:   docs/project-roadmap.md
+	modified:   docs/system-architecture.md
+	deleted:    plans/260406-1127-pipeline-v17-anti-bias-intelligence-engine/phase-01-multi-language-source-parity.md
+	deleted:    plans/260406-1127-pipeline-v17-anti-bias-intelligence-engine/phase-02-platform-normalized-engagement.md
+	deleted:    plans/260406-1127-pipeline-v17-anti-bias-intelligence-engine/phase-03-evidence-based-risk-assessment.md
+	deleted:    plans/260406-1127-pipeline-v17-anti-bias-intelligence-engine/phase-04-leverage-bonus-expansion.md
+	deleted:    plans/260406-1127-pipeline-v17-anti-bias-intelligence-engine/phase-05-build-threshold-money-flow-maps.md
+	deleted:    plans/260406-1127-pipeline-v17-anti-bias-intelligence-engine/phase-06-deep-mining-intelligence.md
+	deleted:    plans/260406-1127-pipeline-v17-anti-bias-intelligence-engine/plan.md
+	deleted:    plans/260406-1154-v17-gap-fixes/audit-results/build-threshold-audit.md
+	deleted:    plans/260406-1154-v17-gap-fixes/phase-01-learned-rule-cleanup.md
+	deleted:    plans/260406-1154-v17-gap-fixes/phase-02-deep-reasoner-contract.md
+	deleted:    plans/260406-1154-v17-gap-fixes/phase-03-pattern-library-wiring.md
+	deleted:    plans/260406-1154-v17-gap-fixes/phase-04-calibration-schema-v2.md
+	deleted:    plans/260406-1154-v17-gap-fixes/phase-05-leverage-bonus-stacking.md
+	deleted:    plans/260406-1154-v17-gap-fixes/phase-06-build-threshold-audit.md
+	deleted:    plans/260406-1154-v17-gap-fixes/phase-07-v17-plan-rewrite.md
+	deleted:    plans/260406-1154-v17-gap-fixes/plan.md
+	deleted:    plans/260412-1550-stage0-pipeline-overhaul/phase-01-topic-disambiguation.md
+	deleted:    plans/260412-1550-stage0-pipeline-overhaul/phase-02-agent-dispatch-enforcer.md
+	deleted:    plans/260412-1550-stage0-pipeline-overhaul/phase-03-ladder-integration.md
+	deleted:    plans/260412-1550-stage0-pipeline-overhaul/phase-04-financial-triangulator-gate.md
+	deleted:    plans/260412-1550-stage0-pipeline-overhaul/phase-05-content-extraction-enforcer.md
+	deleted:    plans/260412-1550-stage0-pipeline-overhaul/phase-06-alternative-quality-gate.md
+	deleted:    plans/260412-1550-stage0-pipeline-overhaul/phase-07-spec-consistency.md
+	deleted:    plans/260412-1550-stage0-pipeline-overhaul/plan.md
+	deleted:    plans/260412-1919-claim-expansion-engine/phase-01-claim-extractor.md
+	deleted:    plans/260412-1919-claim-expansion-engine/phase-02-research-queries.md
+	deleted:    plans/260412-1919-claim-expansion-engine/phase-03-pipeline-integration.md
+	deleted:    plans/260412-1919-claim-expansion-engine/phase-04-verification-hook.md
+	deleted:    plans/260412-1919-claim-expansion-engine/plan.md
+	modified:   release-manifest.json
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	.claude/agents/core/focus/prompt-decomposer.md
+	.claude/agents/startup-orchestrator.md
+	.claude/command-archive/
+	.claude/commands/coffee-meeting.md
+	.claude/commands/dream5.md
+	.claude/commands/failure.md
+	.claude/commands/observe.md
+	.claude/commands/phase-check.md
+	.claude/commands/synthesis.md
+	.claude/data/agent-ledger/
+	.claude/hooks/.logs/
+	.claude/hooks/__tests__/advisory-boundary-policy.test.cjs
+	.claude/hooks/__tests__/hook-logger.test.cjs
+	.claude/hooks/__tests__/plan-format-kanban.test.cjs
+	.claude/hooks/__tests__/session-state-lock.test.cjs
+	.claude/hooks/__tests__/session-state.test.cjs
+	.claude/hooks/__tests__/simplify-gate.test.cjs
+	.claude/hooks/__tests__/task-completed-handler.test.cjs
+	.claude/hooks/__tests__/team-context-inject.test.cjs
+	.claude/hooks/__tests__/teammate-idle-handler.test.cjs
+	.claude/hooks/__tests__/usage-quota-cache-refresh.test.cjs
+	.claude/hooks/agent-io-complete.cjs
+	.claude/hooks/auto-outcome-detector.cjs
+	.claude/hooks/correction-capture.cjs
+	.claude/hooks/knowledge-auto-refresh.cjs
+	.claude/hooks/lib/__tests__/project-detector.test.cjs
+	.claude/hooks/lib/__tests__/statusline-scenarios.test.cjs
+	.claude/hooks/lib/__tests__/statusline-suite.cjs
+	.claude/hooks/lib/__tests__/usage-limits-cache.test.cjs
+	.claude/hooks/lib/experience-constants.cjs
+	.claude/hooks/lib/experience-extractor.cjs
+	.claude/hooks/lib/experience-retriever.cjs
+	.claude/hooks/lib/git-info-cache.cjs
+	.claude/hooks/lib/ledger-utils.cjs
+	.claude/hooks/lib/session-state-manager.cjs
+	.claude/hooks/lib/statusline-activity-renderers.cjs
+	.claude/hooks/lib/statusline-render-modes.cjs
+	.claude/hooks/lib/statusline-section-registry.cjs
+	.claude/hooks/lib/statusline-session-cache.cjs
+	.claude/hooks/lib/statusline-string-utils.cjs
+	.claude/hooks/lib/usage-limits-cache.cjs
+	.claude/hooks/node-hook-runner.sh
+	.claude/hooks/research-output-validator.cjs
+	.claude/hooks/simplify-gate.cjs
+	.claude/hooks/stage0-ladder-autofire.cjs
+	.claude/hooks/task-completed-handler.cjs
+	.claude/hooks/teammate-idle-handler.cjs
+	.claude/hooks/tests/scout-block/
+	.claude/hooks/tool-exhaustion-guard.cjs
+	.claude/rules/learned-rules.md
+	.claude/rules/research-verification.md
+	.claude/rules/review-audit-self-decision.md
+	.claude/rules/skill-domain-routing.md
+	.claude/rules/skill-workflow-routing.md
+	.claude/rules/team-coordination-rules.md
+	.claude/scheduled_tasks.lock
+	.claude/schemas/skill-schema.json
+	.claude/scripts/scan_skills.test.cjs
+	.claude/scripts/score-skill-description.py
+	.claude/scripts/validate-skill-crossrefs.py
+	.claude/scripts/validate-skill-frontmatter.py
+	.claude/session-state/
+	.claude/skills/.install-state.json
+	.claude/skills/_shared/
+	.claude/skills/agent-report/
+	.claude/skills/agentize/
+	.claude/skills/ai-artist/scripts/tests/
+	.claude/skills/ai-multimodal/.startup-context.json
+	.claude/skills/ai-multimodal/plans/
+	.claude/skills/ai-multimodal/references/minimax-generation.md
+	.claude/skills/ai-multimodal/scripts/minimax_api_client.py
+	.claude/skills/ai-multimodal/scripts/minimax_cli.py
+	.claude/skills/ai-multimodal/scripts/minimax_generate.py
+	.claude/skills/ai-multimodal/scripts/openrouter_generate.py
+	.claude/skills/ai-multimodal/scripts/tests/test_minimax_api_client.py
+	.claude/skills/ai-multimodal/scripts/tests/test_minimax_cli.py
+	.claude/skills/ai-multimodal/scripts/tests/test_minimax_generate.py
+	.claude/skills/ai-multimodal/scripts/tests/test_openrouter_generate.py
+	.claude/skills/ask/
+	.claude/skills/bootstrap/
+	.claude/skills/business/factors/factor_calibration_engine.py
+	.claude/skills/business/factors/factor_db_schema_init.py
+	.claude/skills/business/factors/multidisciplinary_factor_engine.py
+	.claude/skills/business/factors/simple_yaml_serializer.py
+	.claude/skills/business/factors/test_mfe_system.py
+	.claude/skills/business/feedback_loop/auto-evolution-engine.py
+	.claude/skills/business/feedback_loop/data/accuracy/alex-hormozi.json
+	.claude/skills/business/feedback_loop/data/accuracy/sam-altman.json
+	.claude/skills/business/feedback_loop/data/accuracy/system.json
+	.claude/skills/business/feedback_loop/data/accuracy/warren-buffett.json
+	.claude/skills/business/feedback_loop/data/evolution-log.jsonl
+	.claude/skills/business/feedback_loop/data/kb-index-cache.json
+	.claude/skills/business/feedback_loop/data/weights/
+	.claude/skills/business/feedback_loop/intelligent-kb-loader.py
+	.claude/skills/business/log-outcome/
+	.claude/skills/business/personas/_templates/
+	.claude/skills/business/personas/alex-hormozi/INDEX.md
+	.claude/skills/business/personas/alex-hormozi/PHASE-COMPLETION-REPORT.md
+	.claude/skills/business/personas/alex-hormozi/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/alex-hormozi/knowledge/market-awareness.json
+	.claude/skills/business/personas/alex-hormozi/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/alex-hormozi/knowledge/trend-signals.json
+	.claude/skills/business/personas/andrew-grove/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/andrew-grove/knowledge/market-awareness.json
+	.claude/skills/business/personas/andrew-grove/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/andrew-grove/knowledge/trend-signals.json
+	.claude/skills/business/personas/brian-chesky/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/brian-chesky/knowledge/market-awareness.json
+	.claude/skills/business/personas/brian-chesky/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/brian-chesky/knowledge/trend-signals.json
+	.claude/skills/business/personas/brian-tracy/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/brian-tracy/knowledge/market-awareness.json
+	.claude/skills/business/personas/brian-tracy/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/brian-tracy/knowledge/trend-signals.json
+	.claude/skills/business/personas/charlie-munger/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/charlie-munger/knowledge/market-awareness.json
+	.claude/skills/business/personas/charlie-munger/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/charlie-munger/knowledge/trend-signals.json
+	.claude/skills/business/personas/chinese-export-seller/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/chinese-export-seller/knowledge/market-awareness.json
+	.claude/skills/business/personas/chinese-export-seller/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/chinese-export-seller/knowledge/trend-signals.json
+	.claude/skills/business/personas/chris-voss/EXECUTION_REPORT.txt
+	.claude/skills/business/personas/chris-voss/PERSONA_AUTHENTICITY_SUMMARY.md
+	.claude/skills/business/personas/chris-voss/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/chris-voss/knowledge/market-awareness.json
+	.claude/skills/business/personas/chris-voss/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/chris-voss/knowledge/trend-signals.json
+	.claude/skills/business/personas/cold-email-king/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/cold-email-king/knowledge/market-awareness.json
+	.claude/skills/business/personas/cold-email-king/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/cold-email-king/knowledge/trend-signals.json
+	.claude/skills/business/personas/dan-kennedy/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/dan-kennedy/knowledge/market-awareness.json
+	.claude/skills/business/personas/dan-kennedy/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/dan-kennedy/knowledge/trend-signals.json
+	.claude/skills/business/personas/daniel-kahneman/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/daniel-kahneman/knowledge/market-awareness.json
+	.claude/skills/business/personas/daniel-kahneman/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/daniel-kahneman/knowledge/trend-signals.json
+	.claude/skills/business/personas/david-sandler/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/david-sandler/knowledge/market-awareness.json
+	.claude/skills/business/personas/david-sandler/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/david-sandler/knowledge/trend-signals.json
+	.claude/skills/business/personas/elon-musk/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/elon-musk/knowledge/market-awareness.json
+	.claude/skills/business/personas/elon-musk/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/elon-musk/knowledge/trend-signals.json
+	.claude/skills/business/personas/gary-vaynerchuk/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/gary-vaynerchuk/knowledge/market-awareness.json
+	.claude/skills/business/personas/gary-vaynerchuk/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/gary-vaynerchuk/knowledge/trend-signals.json
+	.claude/skills/business/personas/george-soros/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/george-soros/knowledge/market-awareness.json
+	.claude/skills/business/personas/george-soros/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/george-soros/knowledge/trend-signals.json
+	.claude/skills/business/personas/grant-cardone/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/grant-cardone/knowledge/market-awareness.json
+	.claude/skills/business/personas/grant-cardone/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/grant-cardone/knowledge/trend-signals.json
+	.claude/skills/business/personas/indian-it-outsourcing/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/indian-it-outsourcing/knowledge/market-awareness.json
+	.claude/skills/business/personas/indian-it-outsourcing/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/indian-it-outsourcing/knowledge/trend-signals.json
+	.claude/skills/business/personas/jack-ma/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/jack-ma/knowledge/market-awareness.json
+	.claude/skills/business/personas/jack-ma/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/jack-ma/knowledge/trend-signals.json
+	.claude/skills/business/personas/jamie-dimon/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/jamie-dimon/knowledge/market-awareness.json
+	.claude/skills/business/personas/jamie-dimon/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/jamie-dimon/knowledge/trend-signals.json
+	.claude/skills/business/personas/jeff-bezos/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/jeff-bezos/knowledge/market-awareness.json
+	.claude/skills/business/personas/jeff-bezos/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/jeff-bezos/knowledge/trend-signals.json
+	.claude/skills/business/personas/jeffrey-gitomer/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/jeffrey-gitomer/knowledge/market-awareness.json
+	.claude/skills/business/personas/jeffrey-gitomer/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/jeffrey-gitomer/knowledge/trend-signals.json
+	.claude/skills/business/personas/jensen-huang/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/jensen-huang/knowledge/market-awareness.json
+	.claude/skills/business/personas/jensen-huang/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/jensen-huang/knowledge/trend-signals.json
+	.claude/skills/business/personas/john-d-rockefeller/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/john-d-rockefeller/knowledge/market-awareness.json
+	.claude/skills/business/personas/john-d-rockefeller/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/john-d-rockefeller/knowledge/trend-signals.json
+	.claude/skills/business/personas/justin-welsh/
+	.claude/skills/business/personas/leila-hormozi/
+	.claude/skills/business/personas/mark-cuban/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/mark-cuban/knowledge/market-awareness.json
+	.claude/skills/business/personas/mark-cuban/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/mark-cuban/knowledge/trend-signals.json
+	.claude/skills/business/personas/masayoshi-son/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/masayoshi-son/knowledge/market-awareness.json
+	.claude/skills/business/personas/masayoshi-son/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/masayoshi-son/knowledge/trend-signals.json
+	.claude/skills/business/personas/matt-diggity/
+	.claude/skills/business/personas/nassim-taleb/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/nassim-taleb/knowledge/market-awareness.json
+	.claude/skills/business/personas/nassim-taleb/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/nassim-taleb/knowledge/trend-signals.json
+	.claude/skills/business/personas/nathan-barry/
+	.claude/skills/business/personas/naval-ravikant/
+	.claude/skills/business/personas/neil-rackham/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/neil-rackham/knowledge/market-awareness.json
+	.claude/skills/business/personas/neil-rackham/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/neil-rackham/knowledge/trend-signals.json
+	.claude/skills/business/personas/noah-kagan/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/noah-kagan/knowledge/market-awareness.json
+	.claude/skills/business/personas/noah-kagan/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/noah-kagan/knowledge/trend-signals.json
+	.claude/skills/business/personas/pat-flynn/
+	.claude/skills/business/personas/peter-thiel/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/peter-thiel/knowledge/market-awareness.json
+	.claude/skills/business/personas/peter-thiel/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/peter-thiel/knowledge/trend-signals.json
+	.claude/skills/business/personas/pham-nhat-vuong/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/pham-nhat-vuong/knowledge/market-awareness.json
+	.claude/skills/business/personas/pham-nhat-vuong/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/pham-nhat-vuong/knowledge/trend-signals.json
+	.claude/skills/business/personas/philip-kotler/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/philip-kotler/knowledge/market-awareness.json
+	.claude/skills/business/personas/philip-kotler/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/philip-kotler/knowledge/trend-signals.json
+	.claude/skills/business/personas/pieter-levels/
+	.claude/skills/business/personas/pony-ma/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/pony-ma/knowledge/market-awareness.json
+	.claude/skills/business/personas/pony-ma/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/pony-ma/knowledge/trend-signals.json
+	.claude/skills/business/personas/ray-dalio/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/ray-dalio/knowledge/market-awareness.json
+	.claude/skills/business/personas/ray-dalio/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/ray-dalio/knowledge/trend-signals.json
+	.claude/skills/business/personas/reid-hoffman/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/reid-hoffman/knowledge/market-awareness.json
+	.claude/skills/business/personas/reid-hoffman/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/reid-hoffman/knowledge/trend-signals.json
+	.claude/skills/business/personas/richard-branson/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/richard-branson/knowledge/market-awareness.json
+	.claude/skills/business/personas/richard-branson/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/richard-branson/knowledge/trend-signals.json
+	.claude/skills/business/personas/rob-walling/
+	.claude/skills/business/personas/robert-cialdini/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/robert-cialdini/knowledge/market-awareness.json
+	.claude/skills/business/personas/robert-cialdini/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/robert-cialdini/knowledge/trend-signals.json
+	.claude/skills/business/personas/russell-brunson/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/russell-brunson/knowledge/market-awareness.json
+	.claude/skills/business/personas/russell-brunson/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/russell-brunson/knowledge/trend-signals.json
+	.claude/skills/business/personas/sam-altman/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/sam-altman/knowledge/market-awareness.json
+	.claude/skills/business/personas/sam-altman/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/sam-altman/knowledge/trend-signals.json
+	.claude/skills/business/personas/satya-nadella/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/satya-nadella/knowledge/market-awareness.json
+	.claude/skills/business/personas/satya-nadella/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/satya-nadella/knowledge/trend-signals.json
+	.claude/skills/business/personas/spencer-haws/
+	.claude/skills/business/personas/tim-cook/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/tim-cook/knowledge/market-awareness.json
+	.claude/skills/business/personas/tim-cook/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/tim-cook/knowledge/trend-signals.json
+	.claude/skills/business/personas/tim-ferriss/
+	.claude/skills/business/personas/upwork-top-rated/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/upwork-top-rated/knowledge/market-awareness.json
+	.claude/skills/business/personas/upwork-top-rated/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/upwork-top-rated/knowledge/trend-signals.json
+	.claude/skills/business/personas/vietnamese-freelancer-success/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/vietnamese-freelancer-success/knowledge/market-awareness.json
+	.claude/skills/business/personas/vietnamese-freelancer-success/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/vietnamese-freelancer-success/knowledge/trend-signals.json
+	.claude/skills/business/personas/warren-buffett/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/warren-buffett/knowledge/market-awareness.json
+	.claude/skills/business/personas/warren-buffett/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/warren-buffett/knowledge/trend-signals.json
+	.claude/skills/business/personas/zig-ziglar/knowledge/competitive-landscape.json
+	.claude/skills/business/personas/zig-ziglar/knowledge/market-awareness.json
+	.claude/skills/business/personas/zig-ziglar/knowledge/tool-ecosystem.json
+	.claude/skills/business/personas/zig-ziglar/knowledge/trend-signals.json
+	.claude/skills/ck-autoresearch/
+	.claude/skills/ck-debug/
+	.claude/skills/ck-graphify/
+	.claude/skills/ck-loop/
+	.claude/skills/ck-plan/
+	.claude/skills/ck-predict/
+	.claude/skills/ck-scenario/
+	.claude/skills/ck-security/
+	.claude/skills/code-review/references/adversarial-review.md
+	.claude/skills/code-review/references/checklist-workflow.md
+	.claude/skills/code-review/references/checklists/
+	.claude/skills/code-review/references/codebase-scan-workflow.md
+	.claude/skills/code-review/references/input-mode-resolution.md
+	.claude/skills/code-review/references/parallel-review-workflow.md
+	.claude/skills/code-review/references/spec-compliance-review.md
+	.claude/skills/code-review/references/task-management-reviews.md
+	.claude/skills/coding-level/
+	.claude/skills/cti-expert/
+	.claude/skills/deploy/
+	.claude/skills/design/
+	.claude/skills/docs/
+	.claude/skills/excalidraw/
+	.claude/skills/fix/references/diagnosis-protocol.md
+	.claude/skills/fix/references/prevention-gate.md
+	.claude/skills/fix/references/task-orchestration.md
+	.claude/skills/frontend-design/references/anti-slop-rules.md
+	.claude/skills/frontend-design/references/bento-motion-engine.md
+	.claude/skills/frontend-design/references/magicui-components.md
+	.claude/skills/frontend-design/references/performance-guardrails.md
+	.claude/skills/frontend-design/references/premium-design-patterns.md
+	.claude/skills/frontend-design/references/redesign-audit-checklist.md
+	.claude/skills/journal/
+	.claude/skills/kanban/
+	.claude/skills/llms/
+	.claude/skills/markdown-novel-viewer/bun.lock
+	.claude/skills/mm10_calc.py
+	.claude/skills/plans-kanban/deprecated/
+	.claude/skills/plans-kanban/scripts/open-dashboard.cjs
+	.claude/skills/preview/
+	.claude/skills/project-management/
+	.claude/skills/project-organization/
+	.claude/skills/reflect/
+	.claude/skills/retro/
+	.claude/skills/scout/references/task-management-scouting.md
+	.claude/skills/security-scan/
+	.claude/skills/ship/
+	.claude/skills/show-off/
+	.claude/skills/skill-creator/agents/
+	.claude/skills/skill-creator/assets/
+	.claude/skills/skill-creator/eval-viewer/
+	.claude/skills/skill-creator/references/benchmark-optimization-guide.md
+	.claude/skills/skill-creator/references/distribution-guide.md
+	.claude/skills/skill-creator/references/eval-infrastructure-guide.md
+	.claude/skills/skill-creator/references/eval-schemas.md
+	.claude/skills/skill-creator/references/mcp-skills-integration.md
+	.claude/skills/skill-creator/references/skill-anatomy-and-requirements.md
+	.claude/skills/skill-creator/references/skill-creation-workflow.md
+	.claude/skills/skill-creator/references/skill-design-patterns.md
+	.claude/skills/skill-creator/references/skillmark-benchmark-criteria.md
+	.claude/skills/skill-creator/references/testing-and-iteration.md
+	.claude/skills/skill-creator/references/troubleshooting-guide.md
+	.claude/skills/skill-creator/references/writing-effective-instructions.md
+	.claude/skills/skill-creator/references/yaml-frontmatter-reference.md
+	.claude/skills/skill-creator/scripts/aggregate_benchmark.py
+	.claude/skills/skill-creator/scripts/debug.zip
+	.claude/skills/skill-creator/scripts/generate_report.py
+	.claude/skills/skill-creator/scripts/improve_description.py
+	.claude/skills/skill-creator/scripts/run_eval.py
+	.claude/skills/skill-creator/scripts/run_loop.py
+	.claude/skills/skill-creator/scripts/utils.py
+	.claude/skills/stitch/
+	.claude/skills/tanstack/
+	.claude/skills/team/
+	.claude/skills/tech-graph/
+	.claude/skills/test/
+	.claude/skills/ui-ux-pro-max/data/_sync_all.py
+	.claude/skills/ui-ux-pro-max/data/app-interface.csv
+	.claude/skills/ui-ux-pro-max/data/design.csv
+	.claude/skills/ui-ux-pro-max/data/draft.csv
+	.claude/skills/ui-ux-pro-max/data/google-fonts.csv
+	.claude/skills/use-mcp/
+	.claude/skills/watzup/
+	.claude/skills/worktree/
+	.claude/skills/xia/
+	.claude/skills/xskill/
+	.opencode/skills/ai-multimodal/references/minimax-generation.md
+	.opencode/skills/ai-multimodal/scripts/minimax_api_client.py
+	.opencode/skills/ai-multimodal/scripts/minimax_cli.py
+	.opencode/skills/ai-multimodal/scripts/minimax_generate.py
+	.opencode/skills/ai-multimodal/scripts/tests/test_minimax_api_client.py
+	.opencode/skills/ai-multimodal/scripts/tests/test_minimax_cli.py
+	.opencode/skills/ai-multimodal/scripts/tests/test_minimax_generate.py
+	.opencode/skills/ask/
+	.opencode/skills/bootstrap/
+	.opencode/skills/ck-autoresearch/
+	.opencode/skills/ck-debug/
+	.opencode/skills/ck-loop/
+	.opencode/skills/ck-plan/
+	.opencode/skills/ck-predict/
+	.opencode/skills/ck-scenario/
+	.opencode/skills/ck-security/
+	.opencode/skills/code-review/references/adversarial-review.md
+	.opencode/skills/code-review/references/checklist-workflow.md
+	.opencode/skills/code-review/references/checklists/
+	.opencode/skills/code-review/references/codebase-scan-workflow.md
+	.opencode/skills/code-review/references/input-mode-resolution.md
+	.opencode/skills/code-review/references/parallel-review-workflow.md
+	.opencode/skills/code-review/references/spec-compliance-review.md
+	.opencode/skills/code-review/references/task-management-reviews.md
+	.opencode/skills/coding-level/
+	.opencode/skills/deploy/
+	.opencode/skills/design/
+	.opencode/skills/docs/
+	.opencode/skills/fix/references/diagnosis-protocol.md
+	.opencode/skills/fix/references/prevention-gate.md
+	.opencode/skills/fix/references/task-orchestration.md
+	.opencode/skills/frontend-design/references/anti-slop-rules.md
+	.opencode/skills/frontend-design/references/bento-motion-engine.md
+	.opencode/skills/frontend-design/references/magicui-components.md
+	.opencode/skills/frontend-design/references/performance-guardrails.md
+	.opencode/skills/frontend-design/references/premium-design-patterns.md
+	.opencode/skills/frontend-design/references/redesign-audit-checklist.md
+	.opencode/skills/journal/
+	.opencode/skills/kanban/
+	.opencode/skills/llms/
+	.opencode/skills/markdown-novel-viewer/bun.lock
+	.opencode/skills/preview/
+	.opencode/skills/project-management/
+	.opencode/skills/project-organization/
+	.opencode/skills/retro/
+	.opencode/skills/scout/references/task-management-scouting.md
+	.opencode/skills/security-scan/
+	.opencode/skills/ship/
+	.opencode/skills/skill-creator/agents/
+	.opencode/skills/skill-creator/assets/
+	.opencode/skills/skill-creator/eval-viewer/
+	.opencode/skills/skill-creator/references/benchmark-optimization-guide.md
+	.opencode/skills/skill-creator/references/distribution-guide.md
+	.opencode/skills/skill-creator/references/eval-infrastructure-guide.md
+	.opencode/skills/skill-creator/references/eval-schemas.md
+	.opencode/skills/skill-creator/references/mcp-skills-integration.md
+	.opencode/skills/skill-creator/references/skill-anatomy-and-requirements.md
+	.opencode/skills/skill-creator/references/skill-creation-workflow.md
+	.opencode/skills/skill-creator/references/skill-design-patterns.md
+	.opencode/skills/skill-creator/references/skillmark-benchmark-criteria.md
+	.opencode/skills/skill-creator/references/testing-and-iteration.md
+	.opencode/skills/skill-creator/references/troubleshooting-guide.md
+	.opencode/skills/skill-creator/references/writing-effective-instructions.md
+	.opencode/skills/skill-creator/references/yaml-frontmatter-reference.md
+	.opencode/skills/skill-creator/scripts/aggregate_benchmark.py
+	.opencode/skills/skill-creator/scripts/debug.zip
+	.opencode/skills/skill-creator/scripts/generate_report.py
+	.opencode/skills/skill-creator/scripts/improve_description.py
+	.opencode/skills/skill-creator/scripts/run_eval.py
+	.opencode/skills/skill-creator/scripts/run_loop.py
+	.opencode/skills/skill-creator/scripts/utils.py
+	.opencode/skills/stitch/
+	.opencode/skills/tanstack/
+	.opencode/skills/team/
+	.opencode/skills/test/
+	.opencode/skills/ui-ux-pro-max/data/_sync_all.py
+	.opencode/skills/ui-ux-pro-max/data/app-interface.csv
+	.opencode/skills/ui-ux-pro-max/data/design.csv
+	.opencode/skills/ui-ux-pro-max/data/draft.csv
+	.opencode/skills/ui-ux-pro-max/data/google-fonts.csv
+	.opencode/skills/use-mcp/
+	.opencode/skills/watzup/
+	.opencode/skills/worktree/
+	"C\357\200\272UsersphamtAppDataLocalTemptuan_com98_full.json"
+	data/pho_smalljobs/
+	data/task-registry.json
+	docs/journals/2026-04-24-analysis-safety-skill.md
+	docs/journals/260421-1443-cash-flow-intelligence-team-complete.md
+	docs/journals/260422-money-mastery-curriculum-plan.md
+	docs/journals/260427-billionaire-knowledge-pipeline-plan.md
+	docs/journals/260428-phuoc-tonyle-vibemastery-cross-test.md
+	docs/journals/260510-1100-local-first-intelligence-lfi-completion.md
+	docs/journals/260510-1440-local-reasoning-engine-architecture-audit.md
+	docs/journals/260510-1552-micro-decomposition-engine-critical-bugs-and-data-flow-lesson.md
+	docs/journals/260511-1049-intelligence-architecture-upgrade.md
+	docs/journals/260511-1351-output-intelligence-upgrade.md
+	docs/journals/260513-1646-system-upgrade-cloakbrowser-agentmemory-memory-tree.md
+	docs/journals/260513-1652-thinking-evolution-adversarial-causal-brainstorm.md
+	docs/journals/260517-1934-money-architecture-layer-upgrade.md
+	docs/journals/deep-intelligence-layer2-sidedoor-engine-260510.md
+	docs/transaction-layer.md
+	generate_pdfs.py
+	hermes1_analysis.md
+	ok-testing/
+	scripts/generate-scribd-pdfs.py
+	temp-analysis2/
+	temp-operator-input.json
+	temp/
+	tmp/
+	tmp_ainius_posts.json
+	tmp_tikwm.json
+	v5-sections/
+
+no changes added to commit (use "git add" and/or "git commit -a")
+Dropped refs/stash@{0} (f8ed167e4c09a9a919f5f86f0c6e141d742f61c6)

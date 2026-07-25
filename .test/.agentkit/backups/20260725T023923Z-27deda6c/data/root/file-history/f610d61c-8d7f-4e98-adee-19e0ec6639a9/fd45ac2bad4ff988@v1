@@ -1,0 +1,113 @@
+"""
+DomainPrioritizer — ranks domains by knowledge hunger score.
+hunger_score = query_frequency × (1 - coverage) × staleness_factor
+"""
+
+import sqlite3
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional, Union
+
+ROOT = Path(__file__).resolve().parents[4]
+VECTORS_DB = ROOT / ".claude" / "data" / "knowledge-distillation" / "decision-vectors.db"
+
+VALID_DIMENSIONS = [
+    "failure_rates",
+    "unit_economics",
+    "competitive_landscape",
+    "moat_patterns",
+    "founder_paths",
+    "timing_windows",
+    "regulatory_risks",
+    "compounding_mechanisms",
+]
+
+
+def _staleness_factor(last_fed: Optional[str]) -> float:
+    """Returns 1.0 if never fed, scales up with age (max 2.0)."""
+    if not last_fed:
+        return 2.0
+    try:
+        fed_dt = datetime.fromisoformat(last_fed)
+        if fed_dt.tzinfo is None:
+            fed_dt = fed_dt.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        days_old = (now - fed_dt).days
+        return min(2.0, 1.0 + days_old / 90.0)
+    except (ValueError, TypeError):
+        return 1.5
+
+
+class DomainPrioritizer:
+    def __init__(self, db_path: Optional[Path] = None):
+        self.db_path = db_path or VECTORS_DB
+
+    def prioritize(
+        self,
+        query_freq: Optional[Union[dict, str, Path]] = None,
+    ) -> list[tuple[str, str, float]]:
+        """
+        Returns sorted list of (domain, dimension, hunger_score) tuples.
+        query_freq: dict of {domain: count}, file path to JSON, or None (equal priority).
+        """
+        freq_map = self._load_freq(query_freq)
+        coverage_rows = self._load_coverage()
+
+        if not coverage_rows:
+            return self._cold_start(freq_map)
+
+        results = []
+        for row in coverage_rows:
+            domain = row["domain"]
+            dims_total = max(1, row["dimensions_total"] or len(VALID_DIMENSIONS))
+            dims_filled = row["dimensions_filled"] or 0
+            avg_conf = row["avg_confidence"] or 0.0
+            last_fed = row["last_fed"]
+
+            coverage = min(1.0, dims_filled / dims_total)
+            staleness = _staleness_factor(last_fed)
+            freq = freq_map.get(domain, 1)
+
+            base_score = freq * (1.0 - coverage) * staleness
+
+            for dim in VALID_DIMENSIONS:
+                dim_score = round(base_score * (1.0 - avg_conf), 4)
+                results.append((domain, dim, dim_score))
+
+        results.sort(key=lambda x: x[2], reverse=True)
+        return results
+
+    def _cold_start(self, freq_map: dict) -> list[tuple[str, str, float]]:
+        """Equal priority when no domain_coverage rows exist."""
+        domains = list(freq_map.keys()) if freq_map else ["general"]
+        results = []
+        for domain in domains:
+            for dim in VALID_DIMENSIONS:
+                results.append((domain, dim, 1.0))
+        return results
+
+    def _load_freq(self, query_freq) -> dict:
+        if query_freq is None:
+            return {}
+        if isinstance(query_freq, dict):
+            return query_freq
+        path = Path(query_freq)
+        if path.exists():
+            import json
+            return json.loads(path.read_text(encoding="utf-8"))
+        return {}
+
+    def _load_coverage(self) -> list[dict]:
+        if not self.db_path.exists():
+            return []
+        try:
+            with sqlite3.connect(str(self.db_path)) as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute("""
+                    SELECT domain, query_count, dimensions_total, dimensions_filled,
+                           avg_confidence, last_fed, last_gap_check
+                    FROM domain_coverage
+                """).fetchall()
+                return [dict(r) for r in rows]
+        except sqlite3.OperationalError:
+            return []

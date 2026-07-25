@@ -1,0 +1,42 @@
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+
+export interface OverviewStats {
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_saved: number;
+  savings_pct: number;
+  event_count: number;
+  top_commands: CommandStat[];
+}
+
+export interface CommandStat {
+  command: string;
+  saved: number;
+  count: number;
+}
+
+export async function fetchOverview(
+  tenantId: string = "default"
+): Promise<OverviewStats> {
+  const res = await fetch(
+    `${API_URL}/v1/overview?tenant_id=${tenantId}`,
+    { cache: "no-store" }
+  );
+  if (!res.ok) {
+    throw new Error(`API error: ${res.status}`);
+  }
+  return res.json();
+}
+
+export function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return n.toString();
+}
+
+export function estimateCost(tokens: number): string {
+  const costPer1k = 0.003;
+  const cost = (tokens / 1000) * costPer1k;
+  if (cost < 0.01) return "<$0.01";
+  return `$${cost.toFixed(2)}`;
+}

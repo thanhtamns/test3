@@ -1,0 +1,74 @@
+---
+phase: 6
+title: "Command Spec + Output"
+status: pending
+priority: P1
+effort: "1-2d"
+dependencies: [1, 2, 3, 4, 5]
+---
+
+# Phase 6: Command Spec + Output
+
+## Overview
+
+Write the new `hunt.md` (V5 spec) and `hunt-checklist.md` that orchestrate the 3 brains + graph engine + anomaly store into a single `/hunt` execution flow. Define the output format: Money Flow Map + ranked Anomaly Cards.
+
+## Requirements
+
+- Functional: /hunt command spec with 9-step execution flow, output format with money flow map + anomaly cards, budget allocation across brains
+- Non-functional: spec must be self-contained (reader doesn't need to open brain engine source), checklist must be step-by-step executable
+
+## Related Code Files
+
+- Create: `.claude/commands/hunt.md` — V5 spec (replaces archived v4)
+- Create: `.claude/commands/hunt-checklist.md` — V5 checklist
+- Read: `.claude/commands/archive/hunt-v4.md` — reference for modes to preserve/drop
+
+## Implementation Steps
+
+1. Write `hunt.md` V5 spec:
+   - **Purpose:** 1 mode only — anomaly-first intelligence. Kill --pain, --flow, --asym modes (all merged into unified flow)
+   - **Inputs:** `/hunt <topic>` or `/hunt` (interactive 3-question prompt from v4)
+   - **Execution contract:** Follow hunt-checklist.md step by step
+   - **Step 1: LOAD** — founder profile from kb/profiles/, historical anomalies from DuckDB
+   - **Step 2: SEED** — extract products/markets/industries from topic + founder + history
+   - **Step 3: BRAIN 1** — Price Delta Engine (30 calls max)
+   - **Step 4: BRAIN 2** — Forced Flow Engine (30 calls max)
+   - **Step 5: GRAPH** — Build MoneyFlowGraph with anomaly overlay (15 calls max)
+   - **Step 6: BRAIN 3** — Cross-Reference (0 web calls)
+   - **Step 7: OUTPUT** — Money Flow Map + Top 5-10 Anomaly Cards
+   - **Step 8: PERSIST** — Save to DuckDB + data/hunts/
+   - **Step 9: STOP** — No chaining to other commands
+   - **Budget:** 75 web calls total (30+30+15)
+   - **Anti-patterns:** list of 10+ things /hunt must NOT do (generic lists, build recommendations, etc.)
+2. Write `hunt-checklist.md` V5:
+   - Step-by-step checklist with checkboxes
+   - Each step: what agent/engine runs, expected output, quality gate
+   - Quality gates: Brain 1 must produce >=1 delta >30%, Brain 2 must produce >=1 forced flow, Brain 3 must produce >=3 anomaly cards
+3. Define output format:
+   - **Page 1: Money Flow Map** — ASCII graph showing entities, flows, and anomaly overlays
+   - **Page 2: Anomaly Cards** — Top 5-10 cards sorted by final_rank, each containing:
+     - Title + type + score
+     - Delta calculation (if applicable): price A vs price B, spread, bridge cost, net margin
+     - Forced flow (if applicable): regulation, deadline, forced spend
+     - Position design: type, supply side, demand side, channel
+     - Economics: price/cost/margin per unit, monthly income estimate
+     - Action: 5 contacts, outreach script, deadline, kill criteria
+   - **Page 3: Persistence summary** — how many new/updated/unchanged anomalies, delta trends
+4. Define `data/hunts/` output structure:
+   - `HUNT-<YYMMDD-HHMM>/report.md` — human-readable report
+   - `HUNT-<YYMMDD-HHMM>/anomalies.json` — machine-readable cards
+   - `HUNT-<YYMMDD-HHMM>/graph.json` — serialized MoneyFlowGraph
+
+## Success Criteria
+
+- [ ] hunt.md is self-contained: reader understands the full flow without reading engine source
+- [ ] hunt-checklist.md has step-by-step checkboxes with quality gates
+- [ ] Output format produces specific anomaly cards, not generic model lists
+- [ ] Budget allocation clearly specified: 30+30+15 = 75 max
+- [ ] Anti-patterns list prevents regression to v4 behavior
+- [ ] Output structure defined for data/hunts/
+
+## Risk Assessment
+
+- **Mode consolidation:** Removing --pain/--flow/--asym may lose useful v4 patterns. Mitigation: review v4 modes for any unique value; absorb into unified flow or document why dropped.

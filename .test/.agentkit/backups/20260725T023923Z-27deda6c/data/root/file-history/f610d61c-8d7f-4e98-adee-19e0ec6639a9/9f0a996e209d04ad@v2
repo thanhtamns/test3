@@ -1,0 +1,165 @@
+"""Surprise-driven exploration — large prediction errors trigger knowledge hunger.
+
+When error_magnitude_learning detects a large surprise (error > threshold),
+this module flags related domains for urgent exploration via the hunger loop.
+Analogous to dopaminergic prediction error signaling: unexpected outcomes
+drive exploration of the surprising domain.
+
+Usage:
+    from primitives.surprise_exploration import check_surprise, get_pending_explorations
+    action = check_surprise(node_id="xyz", error=0.7, domain="vn-tiktok-finance")
+    # Returns exploration action if error exceeds threshold, None otherwise
+"""
+from __future__ import annotations
+
+import json
+import sqlite3
+import threading
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+from typing import Optional
+
+from .paths import SURPRISE_DB
+SURPRISE_THRESHOLD = 0.5
+COOLDOWN_HOURS = 24
+MAX_PENDING = 20
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS explorations (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    node_id     TEXT NOT NULL,
+    domain      TEXT NOT NULL,
+    error       REAL NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'pending',
+    created_at  TEXT NOT NULL,
+    resolved_at TEXT,
+    resolution  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_expl_status ON explorations(status);
+CREATE INDEX IF NOT EXISTS idx_expl_domain ON explorations(domain, created_at);
+"""
+
+_lock = threading.Lock()
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _connect() -> sqlite3.Connection:
+    conn = sqlite3.connect(str(SURPRISE_DB), timeout=30.0)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    return conn
+
+
+def init_db() -> None:
+    with _lock, _connect() as conn:
+        conn.executescript(_SCHEMA)
+        conn.commit()
+
+
+def _in_cooldown(conn: sqlite3.Connection, domain: str) -> bool:
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=COOLDOWN_HOURS)).isoformat(
+        timespec="seconds"
+    )
+    row = conn.execute(
+        "SELECT COUNT(*) FROM explorations WHERE domain = ? AND created_at > ?",
+        (domain, cutoff),
+    ).fetchone()
+    return (row[0] or 0) > 0
+
+
+def check_surprise(
+    node_id: str,
+    error: float,
+    domain: str,
+    threshold: float = SURPRISE_THRESHOLD,
+) -> Optional[dict]:
+    """Check if prediction error warrants exploration. Returns action dict or None.
+
+    Only triggers if:
+    1. error > threshold (large surprise)
+    2. domain not in cooldown (avoid spam)
+    3. pending count < MAX_PENDING (backpressure)
+    """
+    if error <= threshold:
+        return None
+
+    init_db()
+
+    with _lock, _connect() as conn:
+        if _in_cooldown(conn, domain):
+            return None
+
+        pending_count = conn.execute(
+            "SELECT COUNT(*) FROM explorations WHERE status = 'pending'"
+        ).fetchone()[0]
+        if pending_count >= MAX_PENDING:
+            return None
+
+        now = _now()
+        conn.execute(
+            "INSERT INTO explorations (node_id, domain, error, status, created_at) "
+            "VALUES (?, ?, ?, 'pending', ?)",
+            (node_id, domain, error, now),
+        )
+        conn.commit()
+
+    return {
+        "action": "explore_domain",
+        "domain": domain,
+        "trigger_node": node_id,
+        "trigger_error": error,
+        "priority": min(error * 2.0, 3.0),
+        "suggested_mode": "micro",
+        "created_at": now,
+    }
+
+
+def get_pending_explorations() -> list[dict]:
+    """Return all pending exploration actions, sorted by priority (error) descending."""
+    init_db()
+    with _lock, _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, node_id, domain, error, created_at "
+            "FROM explorations WHERE status = 'pending' "
+            "ORDER BY error DESC"
+        ).fetchall()
+    return [
+        {
+            "id": r[0],
+            "node_id": r[1],
+            "domain": r[2],
+            "error": r[3],
+            "priority": min(r[3] * 2.0, 3.0),
+            "created_at": r[4],
+        }
+        for r in rows
+    ]
+
+
+def resolve_exploration(
+    exploration_id: int,
+    resolution: str = "completed",
+) -> bool:
+    """Mark an exploration as resolved."""
+    init_db()
+    with _lock, _connect() as conn:
+        cur = conn.execute(
+            "UPDATE explorations SET status = 'resolved', resolved_at = ?, resolution = ? "
+            "WHERE id = ? AND status = 'pending'",
+            (_now(), resolution, exploration_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+
+
+def count_pending() -> int:
+    """Count pending explorations."""
+    init_db()
+    with _lock, _connect() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM explorations WHERE status = 'pending'"
+        ).fetchone()
+        return row[0] or 0

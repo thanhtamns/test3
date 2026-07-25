@@ -1,0 +1,17 @@
+{
+  "id": "1",
+  "subject": "Phase 1: CLI Fix & Standardize (P0+P1)",
+  "description": "Extract 3 duplicated functions to shared util.rs, remove OptionalRow trait, fix pre_id race condition (SQLite), fix wrap dedup semantic mismatch, fix event type collision, standardize logging. See phase-01-cli-fix-standardize-p0-p1.md",
+  "status": "pending",
+  "blocks": [
+    "2"
+  ],
+  "blockedBy": [],
+  "metadata": {
+    "phase": 1,
+    "priority": "P1",
+    "effort": "4h",
+    "planDir": "plans/260604-full-system-review",
+    "phaseFile": "phase-01-cli-fix-standardize-p0-p1.md"
+  }
+}

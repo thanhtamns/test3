@@ -1,0 +1,430 @@
+# Mental Models — Channel/Founder Analysis Discipline
+
+These 6 models prevent LLM rationalization spirals during channel/founder analysis. Each has explicit trigger conditions and forced actions.
+
+---
+
+## Model 1 — Identification Firewall
+
+**Trigger:** Analyst feels emotional resonance with founder content (vulnerability storytelling, struggle narrative, founder confessions)
+
+**Action:** Apply 2x skepticism multiplier. Explicitly separate two questions:
+- "Do I empathize with this person?" (emotional)
+- "Is this business actually viable?" (analytical)
+
+**Why:** Vulnerability content creates Stockholm-syndrome-style identification. LLMs (and humans) suspend critical analysis when they emotionally identify with the narrator. The firewall is the explicit separation.
+
+**Detection cue:** When you find yourself defending the founder's choices in your own narrative, the firewall has been breached.
+
+**Repair:** Stop. Re-run analysis WITHOUT founder narrative as data. Compare results. Gap = bias amount.
+
+---
+
+## Model 2 — Founder/Business Separation
+
+**Trigger:** Any analysis where the founder is the primary data source (interviews, vlogs, confessions, biographies)
+
+**Action:** Run TWO parallel analyses:
+- Track A: Business viability using ONLY external signals (revenue triangulation, market base rates, competitor analysis, registry data)
+- Track B: Business viability using ONLY founder-provided narrative
+- Compare. Track A is the ground truth. Track B reveals the marketing layer.
+
+**Why:** Founder pain ≠ business value. Founder honesty ≠ business viability. Founder skill ≠ business model viability. These are independent dimensions.
+
+**Output:** Always state both tracks in verdict. The gap between them IS the analysis result.
+
+---
+
+## Model 3 — Triangulation Gate (Forcing Function)
+
+**Trigger:** Any revenue/scale claim from founder (e.g., "1000 orders/day", "multi-billion revenue", "million followers")
+
+**Action:** Triangulate from minimum 3 independent signals:
+- Engagement metrics → revenue estimate
+- Comparable creator base rates
+- Public financial data (job posts, ad spend, app store data, SKU count)
+- Cross-platform footprint
+
+If triangulated max < $5K NET/month → AUTO-KILL Q1 regardless of claim. NO RATIONALIZATION ALLOWED.
+
+**Why:** This is the single most powerful anti-bias gate. Without it, LLMs rationalize ("but maybe in a good month..."). With it, math is binary.
+
+**Code pattern:**
+```python
+if triangulated_max_usd < 5000:
+    q1_answer = "no"
+    print(f"Q1 OVERRIDDEN: triangulated max ${triangulated_max_usd}/mo < $5K floor. Claim rejected.")
+```
+
+---
+
+## Model 4 — Munger 10-Condition Inversion
+
+**Trigger:** Any "is X sustainable?" question
+
+**Action:** Don't ask "what makes this sustainable?". Ask "what would CERTAIN failure look like?". List 10 specific conditions for certain failure. Count how many are present.
+
+**Decision rule:**
+- 0-3 conditions present → may be sustainable, continue analysis
+- 4-6 conditions present → flagged, requires structural pivot to survive
+- 7-10 conditions present → AUTO-KILL with HIGH confidence
+
+**Standard 10 conditions for VN D2C fashion brand analysis (adapt per industry):**
+1. Founder lacks business operational experience
+2. Solo founder without co-founder/team
+3. Single channel dependency (e.g., only TikTok Shop)
+4. Return rate > 25%
+5. Inventory > cash position
+6. Per-order economics negative
+7. Prior bankruptcies or lifestyle inflation history
+8. Lifestyle inflation pattern in past
+9. Tax exposure or compliance gap
+10. Red ocean competition (>100K active competitors)
+
+**Why:** Inversion forces concrete failure modes. Forward analysis tends to find positives because LLMs look for what's asked.
+
+---
+
+## Model 5 — Hormozi Pivot Detection
+
+**Trigger:** Vulnerability content + audience building format + niche-specific pain narrative
+
+**Action:** Predict info-product / course / community launch in 12-18 months. The REAL business model is the pivot, not the current product.
+
+**Pattern:** Founder fails at X but builds audience around X niche → real business model = info-product to OTHER failing X founders.
+
+**Canonical examples (public record):**
+- Hormozi: majority of net worth from "Gym Launch System" sales, not from gym operations
+- Course creators with failing agencies monetizing via SMMA training
+- Funnel software founders monetizing via funnel training courses
+
+**Detection signals:**
+- Cliffhanger format (teaser phrases like "next part is the most painful") repeated ≥5 episodes
+- Series numbering suggesting structured curriculum (P1, P2, ...)
+- Vulnerability hooks aimed at specific demographic
+- "Comment để..." / "Follow kênh để..." engagement bait CTAs
+- Bio link to Telegram/Zalo/Discord community
+
+**Output prediction:** "Founder will launch course/community within 6-18 months. Real money mountain is info-product, not current product."
+
+---
+
+## Model 6 — DeMarco CENTS Score
+
+**Trigger:** Any business model evaluation
+
+**Action:** Score each dimension 0-1:
+- **C**ontrol: Does founder control distribution, pricing, supply? (platform dependency = 0)
+- **E**ntry: Is barrier to entry high? (commodity D2C = 0, anyone can start)
+- **N**eed: Does it solve urgent unmet need? (commodity product = 0)
+- **T**ime: Is income decoupled from active hours? (solo founder = 0, time-bound)
+- **S**cale: Can it grow without proportional founder work? (single facility = 0)
+
+**Decision rule:**
+- 0-2/5 = Slowlane trap (unsustainable, time-for-money)
+- 3/5 = Marginal, needs structural improvement
+- 4-5/5 = Fastlane potential (compounding, decoupled, defensible)
+
+**Why:** CENTS catches the fundamental unsustainability of solopreneur traps. Many "successful" founders are running Slowlane businesses that look like Fastlane in viral moments.
+
+---
+
+## How to use these models in sequence
+
+```
+1. Identification Firewall → check emotional bias FIRST (before reading content)
+2. Founder/Business Separation → split analysis tracks
+3. Triangulation Gate → apply on every revenue claim (FORCED KILL if < $5K)
+4. Munger Inversion → list 10 failure conditions, count present
+5. Hormozi Pivot Detection → identify hidden real business model
+6. DeMarco CENTS → score current model viability
+```
+
+**Order matters.** Each model upstream prevents biases that would corrupt downstream models.
+
+---
+
+---
+
+### MM-07 — Cui Bono (Incentive Mapping)
+**Order:** Fires FIRST when external content/source analyzed (before MM-01)
+**Trigger condition:** Any source shares a "method", "system", "opportunity", or "how to make money" content.
+**Forced action:** Before evaluating content claims, answer 5 questions:
+1. Who profits from this information being PUBLIC? (creator → course sales? affiliate? attention?)
+2. Who LOSES if many people follow this? (existing practitioners → oversaturation?)
+3. Who funds/sponsors the source? (platform? advertiser? self-funded?)
+4. What does the source NOT mention? (costs? risks? legal? failure rate?)
+5. What specific ACTION does it push you toward? (buy course? sign up? invest?)
+
+**Output:** `incentive_map` with: source_incentive, information_cost, omitted_risks[], pushed_action, cui_bono_verdict.
+**Integration:** If cui_bono_verdict = "source profits from your ATTEMPT, not your success" → apply 2x skepticism to all claims from that source before MM-03 triangulation.
+
+---
+
+### MM-08 — Second-Order Effects (Crowding Analysis)
+**Order:** Fires when any method/model/opportunity described as "working"
+**Trigger condition:** Any business model, method, or opportunity is described as profitable or working.
+**Forced action:** Run 3-step crowding simulation:
+1. If 10 people do this: What happens to unit economics? (usually: unchanged)
+2. If 1,000 people do this: What happens? (usually: margins compress, platforms notice)
+3. If 100,000 people do this: What happens? (usually: method dies, platform cracks down, race to zero)
+
+**Output:** `crowding_analysis` with: crowd_resistance (HIGH/LOW/ZERO), critical_mass (at what N does method break), current_N_estimate (how many already doing this).
+**Kill condition:** If crowd_resistance = ZERO AND current_N_estimate > critical_mass × 0.5 → flag "method in terminal decline."
+
+---
+
+### MM-09 — Follow The Money (Value Chain Mapper)
+**Order:** Fires when any ecosystem or industry is evaluated
+**Trigger condition:** Any ecosystem, industry, or multi-party value chain is being analyzed.
+**Forced action:** Map COMPLETE value chain with actual dollar flows:
+```
+$ enters from: [end consumer / advertiser / subscriber]
+  → Platform takes: [X%] ($Y/unit)
+  → Infrastructure takes: [X%] ($Y/unit)
+  → Tool/service provider takes: [X%] ($Y/unit)
+  → Content creator takes: [X%] ($Y/unit)
+  → Farmer/participant takes: [remainder] ($Y/unit)
+```
+Must use REAL numbers from WebSearch/KB. Must identify WHERE founder would sit. Must compare optimal vs target position.
+
+**Output:** `value_chain_map` + `founder_position_assessment` with: optimal_position, current_target, position_mismatch (bool), levi_strauss_test ("Who sells jeans to miners here?").
+**Flag:** If founder targets bottom layer → explicit warning.
+
+---
+
+### MM-10 — Unit Economics Gate (ROI Calculator)
+**Order:** Fires AFTER MM-03 triangulation (needs triangulated revenue figure)
+**Trigger condition:** Any revenue claim with specific numbers OR any business model evaluation.
+**Forced action:** Calculate ALL 10 fields (no skipping):
+1. Total investment (hardware + software + subs + time-cost + opportunity-cost)
+2. Monthly revenue REALISTIC (from MM-03 triangulated figure, NOT claimed)
+3. Monthly costs (hosting + tools + proxies + accounts + electricity + labor)
+4. NET monthly profit (revenue - costs)
+5. Monthly ROI % (NET / total_investment × 100)
+6. Annualized ROI % (monthly × 12)
+7. Risk-free rate comparison (VN bank deposit ~6%/yr, US T-bill ~5%/yr)
+8. Risk-adjusted ROI (ROI × (1 - P(total_loss)) from MM-04)
+9. Breakeven months (total_investment / NET_monthly)
+10. Verdict: risk-adjusted ROI vs risk-free rate
+
+**Output:** `unit_economics` JSON with all 10 fields calculated.
+**Kill condition:** If risk-adjusted ROI < risk-free rate → "WORSE THAN BANK DEPOSIT — negative expected value."
+**Rule:** Show the math. Every number must be sourced or calculated, never estimated without [ESTIMATED] tag.
+
+---
+
+### MM-11 — Cross-Domain Pattern Match (Historical Precedent)
+**Order:** Fires when any business model is classified
+**Trigger condition:** Any business model or opportunity is being evaluated.
+**Forced action:** Search KB + WebSearch for historical parallels from built-in pattern library:
+
+| Pattern | Precedent | Outcome | Signal |
+|---|---|---|---|
+| Extractive farming | Gold rush 1849, crypto mining 2017, NFT 2021 | Toolmakers win, extractors lose | 95% participants lose |
+| Platform dependency | Zynga/Facebook 2012, Amazon affiliate cuts 2020 | Platform changes rules, dependent dies | 100% revenue from 1 platform |
+| Info-product funnel | MLM, course gurus, "teach how to teach" | Creator wins, follower loses | Free content → paid course → upsell |
+| Race to zero | Uber surge, Fiverr pricing, content mills | Margins compress to subsistence | Low barrier + high visibility |
+| Winner-take-all | Search, social networks, app stores | #1=70%+, #2=15%, rest die | Network effects present |
+
+Process: classify opportunity → find 3+ precedents → calculate MEDIAN participant outcome.
+**Output:** `pattern_match` with: matched_patterns[], precedent_cases[], median_outcome, confidence.
+
+---
+
+### MM-12 — Creative Reframe (Post-KILL Pivot Generator)
+**Order:** Fires ONLY after verdict = KILL or SIDE_HUSTLE
+**Trigger condition:** Verdict is KILL or SIDE_HUSTLE.
+**Forced action:** Apply 4 reframe lenses BEFORE proposing alternatives:
+1. **Same tools, legitimate application:** killed method → legitimate SaaS using same tech
+2. **Flip the value chain:** exploit platforms → build anti-fraud for platforms
+3. **Serve the crowd:** 1000 failing at X → sell tools/education/data to them (Levi Strauss)
+4. **Boring adjacent:** exciting dead method → boring stable business next door
+
+**Output:** 4 reframed opportunities, each with: lens_used, product_description, founder_skill_fit, precedent_url + revenue, kill_criteria.
+**Rule:** Reframes must be LEGITIMATE. No grey-hat pivot to another grey-hat.
+
+---
+
+### MM-13 — Operator Sophistication Assessment
+**Order:** Fires when grey-zone opportunity or operator-heavy ecosystem detected
+**Trigger condition:** Any competitor, target, or opportunity involves operators in grey zones, TOS-exposed methods, or regulatory grey areas.
+**Forced action:** Classify observed operators into 5 sophistication tiers based on markers, then assess whether the founder can match the required tier:
+
+| Tier | Description | Lifetime |
+|---|---|---|
+| 1 Amateur | Single account, no OPSEC, personal identity exposed, obvious violations | <3 months |
+| 2 Intermediate | Multi-account, basic proxy, anti-detect tools, personal identity partial | 3-9 months |
+| 3 Advanced | Entity structures (LLC/Ltd), dedicated infrastructure, transformation layers, jurisdictional awareness | 9-24 months |
+| 4 Professional Grey | Legal review, compliance layer, licensing relationships, regulatory arbitrage, documented exit strategy | 2-5 years before platform shift |
+| 5 Legitimate Aggressive | Fully legal but exploits every allowed edge: fair use, licensing, jurisdictional optimization | Sustainable long-term |
+
+**Key insight (from KB case data):** 9 prosecuted cases (Michael Smith $8M, MediaMuv $23.4M, Bulgarian Spotify, Danish music director, etc.) show Tier 1-3 operators get caught regardless of technical sophistication. Only Tier 4-5 achieve durable operation. Solo founders without legal/political/capital infrastructure cannot operate at Tier 4+ safely.
+
+**Output:** `sophistication_assessment` with: operator_tier, tier_markers_detected[], expected_operational_lifetime_months, founder_tier_match (below/at/above), sophistication_gap description.
+**Kill condition:** If founder_tier_match == 'below' AND target_tier < 4 → KILL (structural mismatch).
+
+---
+
+### MM-14 — Enforcement Landscape Mapping
+**Order:** Parallel with MM-04 (Munger inversion)
+**Trigger condition:** Any opportunity involves platform dependency, regulatory exposure, or legal grey zone.
+**Forced action:** Map REAL enforcement reality (not TOS/law text). Research these specific metrics:
+1. **Catch rate estimate**: what percentage of violators are actually caught in this jurisdiction?
+2. **Median time-to-enforcement**: days from violation start to action
+3. **Recovery rate**: what percentage of extracted funds get forfeit?
+4. **Detection triggers**: specific patterns that escalate enforcement from automated to manual to criminal
+5. **Criminal referral threshold**: dollar amount at which civil becomes criminal
+6. **Jurisdictional variance**: same rule, different enforcement across countries
+
+**Key insight:** TOS text is not enforcement reality. Example: Spotify TOS banned artificial streaming since inception, but catch rate jumped from <5% (pre-2023) to >80% (post-2024 unique listener gates). Same rules, different reality. Intelligence requires mapping the LAG between rule and enforcement.
+
+**Output:** `enforcement_landscape` with: enforcement_intensity (low/medium/high/extreme), catch_rate_estimate, median_time_to_enforcement_days, recovery_rate_pct, detection_triggers[], criminal_referral_threshold_usd, jurisdiction_variance, evidence_sources[].
+
+**Decision impact:** High-enforcement zones → KILL via MM-04. Low-enforcement zones require MM-16 exit timing analysis (enforcement always eventually catches up).
+
+---
+
+### MM-15 — Structural Arbitrage (Legitimate Gap Finder)
+**Order:** Pre-KILL final check (fires BEFORE accepting KILL verdict)
+**Trigger condition:** Any analysis where default verdict is KILL due to regulatory/legal/TOS barrier.
+**Forced action:** Before accepting KILL, search for LEGITIMATE structural gaps that achieve similar economic outcome without violation. Check 6 arbitrage dimensions:
+
+1. **Jurisdictional:** Different country allows what this one bans (legal)
+2. **Entity:** Corporate structure bypasses individual restriction (legal)
+3. **Platform:** Different platform permits what this one bans (legal)
+4. **Content:** Different content type is exempt (e.g., Creative Commons, public domain)
+5. **Licensing:** Paying for rights removes the barrier (legal)
+6. **Transformation:** Adding substantive value qualifies for fair use / derivative work protection (legal)
+
+**Important constraint:** This model finds LEGITIMATE gaps only. It does NOT generate TOS evasion techniques, identity concealment, or specific bypass instructions. Output is legal arbitrage opportunities that are non-obvious — the kind experienced operators exploit within the law.
+
+**Example:** Killed: TikTok reup farming (copyright violation). Legitimate arbitrage:
+- (a) Creative Commons libraries (Pexels, Mixkit) — same machine, legal
+- (b) AI narration over public domain content — 100% owned
+- (c) Licensed content deals direct with Douyin creators — legitimate distribution
+- (d) Transformation via substantive commentary — fair use qualifying
+
+**Output:** `structural_arbitrage` with: killed_variant description, violation_points[], legitimate_variants[] (each with arbitrage_type, variant_description, precedent, cost_to_implement, founder_skill_fit), recommended_variant.
+
+---
+
+### MM-16 — Exit Game Theory (Method Lifecycle Timing)
+**Order:** Fires when grey-zone opportunity detected, parallel with MM-13/MM-14
+**Trigger condition:** Any opportunity in a grey zone, hype cycle, or enforcement-exposed market.
+**Forced action:** Model the method lifecycle curve and identify optimal exit timing.
+
+**Lifecycle phases:**
+1. **Early adopter** — profit window, few operators, platform unaware
+2. **Mainstream** — method shared on forums, operator count rising
+3. **Saturation** — margins compress, platform begins detection
+4. **Enforcement** — active bans, RPM/payouts drop, first prosecutions
+5. **Terminal** — method dead, only legacy operators remain briefly
+
+**Process:**
+- Locate current opportunity on this curve
+- Identify exit signals (policy change, first prosecution, media coverage, detection capability deployed, regulatory announcement)
+- Plan capital rotation BEFORE peak enforcement
+- Document next opportunity pipeline
+
+**Key insight:** Smart operators do not die because they are caught. They die because they do not ROTATE OUT before peak enforcement. Michael Smith operated 8+ years before $8M prosecution — his mistake was scaling past detection threshold without an exit trigger. Warren Buffett / George Soros model: exit positions BEFORE peak, not at peak.
+
+**Integration with MM-04:** MM-04 kills because methods fail structurally. MM-16 times exits because even working methods are temporary in enforcement-exposed markets.
+
+**Output:** `exit_game_theory` with: lifecycle_phase, phase_evidence[], exit_signals_to_watch[], estimated_months_to_terminal, exit_trigger_conditions[], capital_rotation_strategy, next_opportunity_pipeline[].
+
+---
+
+### MM-17 — Article Narrative Firewall (Success Story Deconstruction)
+**Order:** Fires FIRST when user shares a news article about someone's success
+**Trigger condition:** User shares URL/content from news outlet (VnExpress, CafeF, Kenh14, Forbes, etc.) about a person described as successful, wealthy, or powerful.
+**Forced action:** 5-step deconstruction BEFORE any analysis of the subject:
+
+1. **Separate CLAIMS from NARRATIVE.** News articles about success are MARKETING for the subject (recruits talent, attracts deal flow, builds brand). Extract only verifiable claims: title, fund size, revenue, timeline, specific deals.
+2. **Triangulate ALL claims** via independent sources (MM-03). "Director of $450M fund" — verify: is this GP or scout? Decision power or brand? What is their actual income vs implied wealth?
+3. **Map ACTUAL value chain position.** Title ≠ function. "CEO" can mean owner or hired manager. "Director" can mean decision-maker or representative. Draw the org chart and place the subject in it.
+4. **Calculate ACTUAL economics.** What does this position ACTUALLY pay? Use: glassdoor, LinkedIn salary data, industry benchmarks, comparable roles. Never infer income from fund size or company valuation.
+5. **Ask: MECHANISM or NARRATIVE?** Is the user attracted to the MECHANISM (how money flows, what bottleneck was exploited) or the NARRATIVE (impressive title, big numbers, young age)? If narrative → MM-01 Identification Firewall has been breached.
+
+**Output:** `narrative_deconstruction` with: verified_claims[], unverified_claims[], actual_position_in_value_chain, estimated_actual_income, mechanism_extracted, narrative_attraction_flag (bool).
+**Kill condition:** If user's interest is PURELY narrative-driven (no mechanism interest) → redirect to mechanism extraction before proceeding.
+
+**Why this model exists:** Session 2026-05-10 failure. User shared VnExpress article about 25-year-old "Director of 10,000 tỷ fund." System treated narrative as ground truth, recommended "become like him" career paths without verifying: (a) subject is scout not GP, (b) income ~$3-5K/mo not $450M, (c) 8/10 Munger inversion conditions present for recommended path. Every recommendation was generic career coaching, not intelligence.
+
+---
+
+### MM-18 — Causal Money-Flow Trace (Mandatory Pre-Recommendation)
+**Order:** BLOCKING — fires BEFORE any path/opportunity/recommendation is proposed
+**Trigger condition:** Any business brainstorm, opportunity analysis, or "how to enter industry X" question.
+**Forced action:** Trace complete money flow BEFORE recommending anything:
+
+```
+Source of money → Who decides allocation → Intermediaries → Destination → Returns → Feedback
+```
+
+At EACH node, identify:
+- **Who decides?** (specific role/person level)
+- **What criteria?** (what makes them say yes)
+- **What bottleneck?** (what's scarce)
+- **What gatekeeper?** (who controls access)
+- **Cycle time?** (input to output duration)
+
+Then: find the bottleneck node where 1 person with user's SPECIFIC profile can insert themselves. If no bottleneck fits → the industry is WRONG for the user's profile, not the execution plan.
+
+**Output:** `money_flow_trace` with: nodes[], bottleneck_node, gatekeeper_analysis, cycle_time_total, founder_insertion_point (or null if none).
+**Kill condition:** If founder_insertion_point = null → DO NOT recommend entering this industry. Find a different industry where insertion point exists.
+
+**Why this model exists:** Same session. System proposed "Tech DD Consultant" without tracing that VC deal flow = 100 deals/year nationwide, cycle time = 5-10 years, gatekeeper = 3-5 people per fund. The math: 100 deals × 50% needing external DD × $5K fee ÷ N consultants = insufficient market. Money-flow trace would have caught this immediately.
+
+---
+
+### MM-19 — Asymmetric Entry Strategy (Cunning Operator Lens)
+**Order:** Fires AFTER MM-18 money-flow trace identifies bottleneck node
+**Trigger condition:** User asks how to enter a gatekept industry, achieve a position, or penetrate a cash flow they currently have zero access to.
+**Forced action:** Apply 5 asymmetric lenses to the bottleneck node:
+
+1. **Information Asymmetry Play:** What do insiders know that outsiders don't? Can the user CREATE information that insiders need but don't have? The power dynamic FLIPS when the user produces intelligence that gatekeepers cannot get elsewhere. **ANTI-COPY RULE:** Do NOT reuse any example from this model definition. If your output resembles "build newsletter/intelligence product for [industry]" — that's the DEFAULT answer this model already predicts. Generate a DIFFERENT asymmetric play that is specific to the user's profile, location, and constraints. Generic = failed.
+
+2. **Side Door Mapping:** Every gatekept system has informal entry points that bypass the front gate. List them:
+   - Scout/referral programs (VC scouts get carry without being hired)
+   - Platform-adjacent roles (event organizers meet everyone without being anyone)
+   - Content positioning (write about the industry → industry comes to you)
+   - Tool building (build something practitioners use → become embedded)
+   - Crisis response (solve a problem during a crisis → instant trust)
+
+3. **Reverse Leverage:** Instead of asking "how do I get access to powerful people?", ask "what can I build that makes powerful people need access to ME?" This is the fundamental frame flip. The user should never be in the position of asking for a meeting. They should be in the position of being asked.
+
+4. **Timing Exploitation:** What structural change is happening RIGHT NOW that disrupts existing hierarchies? New regulation, platform shift, technology change, market crash, generational transition. During disruption, gatekeepers lose control temporarily. This is the entry window.
+
+5. **Compound Asset Design:** Every action the user takes must produce TWO outputs: (a) the immediate result (revenue, connection, knowledge) and (b) a PERMANENT ASSET that compounds. A database of startup data that grows. A newsletter audience that compounds. A reputation score that accumulates. If an action produces only (a), it's labor. If it produces (a)+(b), it's strategy.
+
+**Anti-patterns (FORBIDDEN in output):**
+- "Get a degree/certification" → this is crowd thinking, takes 2-4 years, produces no compound asset
+- "Apply for internship at fund X" → this is asking permission, not creating leverage
+- "Build your network by attending events" → this is generic advice available in any LinkedIn post
+- "Get 5 years of experience first" → this is the slow lane, the user asked for CUNNING not patience
+- "Start from the bottom and work your way up" → this assumes the ladder is the only path
+
+**Required in output:** Each recommended action must pass the **"Would a cunning 25-year-old with nothing but brains do this?"** test. If a 45-year-old career advisor would give the same advice → it's not asymmetric enough.
+
+**SELF-CHECK (BLOCKING):** Before finalizing output, re-read your own M section. If it matches ANY of these patterns, REWRITE:
+- "Build a newsletter/content/database for [industry]" → this is "start a blog" in disguise
+- "Create intelligence product that [gatekeepers] need" → copied from this model's old example
+- "Become the infrastructure that everyone depends on" → vague, non-actionable
+- "Position yourself as [role] through [content]" → content marketing advice, not strategy
+The test: can you name the SPECIFIC PERSON who would pay, the EXACT AMOUNT, and WHY they can't get this from someone else? If not → rewrite.
+
+**Output:** `asymmetric_entry` with: information_asymmetry_play, side_doors[], reverse_leverage_mechanism, timing_window, compound_assets[], forbidden_generic_advice_filtered[].
+
+**Why this model exists:** Session 2026-05-10 v2 failure. User explicitly demanded "elite thinking, cunning, by any means necessary" but system produced mechanical VEMRA output that read like a McKinsey deck. Every recommendation was something a career counselor would say. The user's point: master_investments should think like a street-smart operator, not an analyst sitting in an office.
+
+---
+
+## Loading into stage0
+
+The schema-accumulator (read mode) doesn't auto-load this markdown. To use:
+1. Read this file at start of any channel/founder analysis
+2. Apply models at trigger conditions during analysis
+3. Cite which models fired in final verdict
+
+For machine-loadable version, see `mental-models.json` (sibling file).

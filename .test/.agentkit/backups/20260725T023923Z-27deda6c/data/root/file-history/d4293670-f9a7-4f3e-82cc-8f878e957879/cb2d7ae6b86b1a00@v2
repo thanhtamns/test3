@@ -1,0 +1,233 @@
+use anyhow::{Context, Result};
+use colored::Colorize;
+use std::path::PathBuf;
+
+use crate::core::dep_validator::{self, DepCache, Severity};
+use crate::core::hallucination_detector::{self, CheckType, Finding};
+use crate::core::quality_gate::QualityConfig;
+
+/// Run an ad-hoc scan on a specific file.
+/// `deps_only` — only run dependency checks.
+/// `security_only` — only run security/hallucination checks.
+pub fn run_scan(file: Option<&str>, deps_only: bool, security_only: bool) -> Result<i32> {
+    let config = QualityConfig::load();
+
+    let files: Vec<PathBuf> = match file {
+        Some(f) => {
+            let p = PathBuf::from(f);
+            if !p.exists() {
+                anyhow::bail!("file not found: {}", f);
+            }
+            vec![p]
+        }
+        None => {
+            anyhow::bail!("scan requires a file argument (e.g. rtk scan src/main.js)");
+        }
+    };
+
+    let mut all_findings: Vec<Finding> = Vec::new();
+
+    let cache = DepCache::new(config.cache_ttl_hours, config.offline_mode)
+        .context("failed to open dep cache")?;
+    let mut limiter = dep_validator::make_rate_limiter(config.rate_limit_per_sec);
+
+    for file_path in &files {
+        let path_str = file_path.to_string_lossy().to_string();
+        let content = std::fs::read_to_string(file_path)
+            .with_context(|| format!("cannot read {}", path_str))?;
+
+        let ext = file_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+
+        // Security/hallucination checks
+        if !deps_only {
+            let mut hall = hallucination_detector::detect_hallucinations(&content, &ext, &path_str);
+            all_findings.append(&mut hall);
+        }
+
+        // Dependency checks
+        if !security_only {
+            let pkgs = extract_packages(&content, &ext, file_path);
+            let (pkgs, registry) = pkgs;
+
+            if let Some(reg) = registry {
+                let ecosystem = match reg {
+                    dep_validator::Registry::Npm => "npm",
+                    dep_validator::Registry::PyPi => "pypi",
+                    dep_validator::Registry::Crates => "crates",
+                };
+
+                for pkg in pkgs {
+                    if config.ignore_packages.iter().any(|ig| ig == &pkg) {
+                        continue;
+                    }
+
+                    // Typosquat check
+                    if let Some(f) = hallucination_detector::check_typosquat(
+                        &pkg, ecosystem, &path_str, 0,
+                    ) {
+                        all_findings.push(f);
+                    }
+
+                    // Registry existence check
+                    let result = match reg {
+                        dep_validator::Registry::Npm => {
+                            dep_validator::validate_npm(&pkg, &cache, &mut limiter)
+                        }
+                        dep_validator::Registry::PyPi => {
+                            dep_validator::validate_pypi(&pkg, &cache, &mut limiter)
+                        }
+                        dep_validator::Registry::Crates => {
+                            dep_validator::validate_crates(&pkg, &cache, &mut limiter)
+                        }
+                    };
+
+                    match result {
+                        Ok(vr) if !vr.exists => {
+                            all_findings.push(Finding {
+                                check_type: CheckType::HallucinatedDep,
+                                severity: Severity::High,
+                                file_path: path_str.clone(),
+                                line: 0,
+                                message: format!(
+                                    "Package '{}' not found on {} — possible hallucination",
+                                    pkg, ecosystem
+                                ),
+                                suggestion: Some(format!(
+                                    "Verify '{}' exists on {}",
+                                    pkg, ecosystem
+                                )),
+                            });
+                        }
+                        Err(e) => {
+                            eprintln!("[rtk scan] registry error for {}: {}", pkg, e);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
+    print_scan_results(&all_findings, &config);
+    let blocking = all_findings.iter().filter(|f| config.is_blocking(f.severity)).count();
+    Ok(if blocking > 0 { 1 } else { 0 })
+}
+
+fn extract_packages(
+    content: &str,
+    ext: &str,
+    file_path: &PathBuf,
+) -> (Vec<String>, Option<dep_validator::Registry>) {
+    match ext {
+        "js" | "ts" | "jsx" | "tsx" | "mjs" | "cjs" => (
+            dep_validator::parse_js_imports(content),
+            Some(dep_validator::Registry::Npm),
+        ),
+        "py" => (
+            dep_validator::parse_python_imports(content),
+            Some(dep_validator::Registry::PyPi),
+        ),
+        "toml" => {
+            let name = file_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("");
+            if name == "Cargo.toml" {
+                (
+                    dep_validator::parse_cargo_deps(content),
+                    Some(dep_validator::Registry::Crates),
+                )
+            } else {
+                (vec![], None)
+            }
+        }
+        _ => (vec![], None),
+    }
+}
+
+fn print_scan_results(findings: &[Finding], config: &QualityConfig) {
+    if findings.is_empty() {
+        println!("{}", "SCAN CLEAN: no findings".green().bold());
+        return;
+    }
+
+    println!();
+    for f in findings {
+        let sev_label = match f.severity {
+            Severity::Critical => "[CRITICAL]".red().bold().to_string(),
+            Severity::High => "[HIGH]".yellow().bold().to_string(),
+            Severity::Medium => "[MEDIUM]".cyan().to_string(),
+            Severity::Low => "[LOW]".white().dimmed().to_string(),
+        };
+
+        let location = if f.line > 0 {
+            format!("{}:{}", f.file_path, f.line)
+        } else {
+            f.file_path.clone()
+        };
+
+        println!(
+            "{} [{}] {}",
+            sev_label,
+            f.check_type.as_str().dimmed(),
+            location.bold()
+        );
+        println!("  {}", f.message);
+        if let Some(ref sug) = f.suggestion {
+            println!("  {} {}", "hint:".dimmed(), sug.dimmed());
+        }
+    }
+
+    println!();
+
+    let blocking = findings.iter().filter(|f| config.is_blocking(f.severity)).count();
+    if blocking > 0 {
+        println!(
+            "{}",
+            format!("SCAN: {} finding(s), {} blocking", findings.len(), blocking)
+                .yellow()
+                .bold()
+        );
+    } else {
+        println!(
+            "{}",
+            format!(
+                "SCAN: {} finding(s), none blocking (use 'rtk gate' for CI enforcement)",
+                findings.len()
+            )
+            .cyan()
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scan_nonexistent_file_errors() {
+        let result = run_scan(Some("/nonexistent/path/file.py"), false, false);
+        assert!(result.is_err(), "should error on missing file");
+    }
+
+    #[test]
+    fn scan_clean_file_returns_zero() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("clean.rs");
+        std::fs::write(&file, "fn main() { println!(\"hello\"); }\n").unwrap();
+        let path_str = file.to_string_lossy().to_string();
+        let result = run_scan(Some(&path_str), false, true); // security only, offline
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[test]
+    fn scan_no_file_errors() {
+        let result = run_scan(None, false, false);
+        assert!(result.is_err(), "scan without file should error");
+    }
+}

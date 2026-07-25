@@ -1,0 +1,13 @@
+"""Shared path constants for cognitive primitives layer."""
+from __future__ import annotations
+
+from pathlib import Path
+
+# data/cognitive/
+COG_ROOT = Path(__file__).resolve().parents[2]
+CUSTOM_ROOT = COG_ROOT / "custom"
+CUSTOM_ROOT.mkdir(parents=True, exist_ok=True)
+
+BAYESIAN_DB = CUSTOM_ROOT / "bayesian.db"
+HEBBIAN_DB = CUSTOM_ROOT / "hebbian-edges.db"
+ARCHIVE_LOG = CUSTOM_ROOT / "archive-log.jsonl"

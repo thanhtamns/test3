@@ -1,0 +1,139 @@
+---
+phase: 1B
+title: "Reflection Agent (Pre-Tournament Self-Critique)"
+status: pending
+priority: P0
+effort: "3h"
+dependencies: [1]
+---
+
+# Phase 1B: Reflection Agent (Pre-Tournament Self-Critique)
+
+## Overview
+
+Add a Reflection step between hypothesis generation (Phase 2.6) and tournament (Phase 2.7). Every hypothesis self-critiques before entering debate — weak hypotheses get killed or refined BEFORE wasting tournament compute.
+
+Co-Scientist equivalent: the Reflection agent that performs self-critique on generated hypotheses, mimicking scientific peer review. Current Stage0 has adversarial_questioner.py but it runs AFTER evidence collection, not BEFORE tournament entry.
+
+**Key insight:** Tournament compute is expensive (N*(N-1)/2 pairwise debates). Filtering 13 candidates to 8 strong ones BEFORE tournament saves ~40% debate compute while improving debate quality (no time wasted debating obviously weak ideas).
+
+## Requirements
+
+- Functional: Each hypothesis receives 3-question self-critique before tournament entry
+- Functional: Self-critique questions are SPECIFIC to the hypothesis type (first-principles vs pattern-matcher)
+- Functional: Hypotheses scoring <3/10 on self-critique get KILLED (not entered into tournament)
+- Functional: Hypotheses scoring 3-5/10 get a REFINEMENT SUGGESTION attached (entered with flag)
+- Functional: Hypotheses scoring >5/10 pass through unchanged
+- Non-functional: Pure LLM reasoning — no web search (saves budget for refinement loop)
+- Non-functional: Total time budget: 60s max for all hypotheses (batch, not sequential)
+- Non-functional: Null-check fallback: if reflection fails, all hypotheses pass through (current behavior)
+
+## Architecture
+
+### Self-Critique Protocol
+
+```
+For each hypothesis, ask 3 questions:
+
+Q1 (MECHANISM TEST): "Can you trace the EXACT causal chain from
+    founder's first action to revenue? Name every step."
+    - Fail: hypothesis is hand-wavy about how value → money
+    - Pass: clear A → B → C → revenue chain
+
+Q2 (FALSIFICATION TEST): "What SPECIFIC, OBSERVABLE evidence would
+    prove this hypothesis WRONG within 2 weeks?"
+    - Fail: no concrete falsification criteria (unfalsifiable = worthless)
+    - Pass: names measurable conditions
+
+Q3 (NOVELTY/EVIDENCE TEST):
+    For first-principles: "Is this hypothesis a RESTATEMENT of an
+        obvious idea, or does it contain a non-obvious mechanism?"
+    For pattern-matcher: "Does the supporting evidence actually prove
+        THIS hypothesis, or could it support any vague positive conclusion?"
+    - Fail: generic idea / evidence doesn't specifically support
+    - Pass: specific mechanism + targeted evidence
+```
+
+### Scoring
+
+```python
+@dataclass
+class ReflectionScore:
+    hypothesis_id: str
+    mechanism_score: int       # 1-10
+    falsification_score: int   # 1-10
+    novelty_evidence_score: int # 1-10
+    aggregate: float           # weighted average
+    verdict: str               # PASS | REFINE | KILL
+    refinement_suggestion: str # only if verdict=REFINE
+    critique_text: str         # full self-critique reasoning
+
+    @property
+    def aggregate_score(self) -> float:
+        return (self.mechanism_score * 0.4 +
+                self.falsification_score * 0.3 +
+                self.novelty_evidence_score * 0.3)
+
+VERDICT_THRESHOLDS = {
+    "KILL": 3.0,      # <3.0 aggregate → removed from pool
+    "REFINE": 5.0,    # 3.0-5.0 → enters tournament with refinement flag
+    "PASS": 5.0,      # >5.0 → enters tournament clean
+}
+```
+
+### Integration Point
+
+```
+Phase 2.5C (Pattern Matcher) → top_5 patterns
+Phase 2.6 (First Principles) → 5-8 novel hypotheses
+                ↓
+Phase 2.6B: REFLECTION (NEW)
+  - Receives: all 10-13 candidates
+  - Self-critiques each (batched, 60s total)
+  - Output: filtered pool (typically 7-10 survive)
+  - KILLED hypotheses logged with reason
+                ↓
+Phase 2.7: Tournament (receives filtered, stronger pool)
+```
+
+## Related Code Files
+
+- Create: `.claude/lib/intelligence/hypothesis/reflection_scorer.py` (ReflectionScore, verdict logic)
+- Create: `.claude/lib/intelligence/hypothesis/tests/test_reflection_scorer.py`
+- Modify: `.claude/agents/core/intelligence/tournament-protocol.md` — note that input is now pre-filtered by reflection
+
+## Implementation Steps
+
+1. Create `reflection_scorer.py`:
+   - `ReflectionScore` dataclass with 3 scores + aggregate + verdict
+   - `score_verdict(aggregate)` — KILL/REFINE/PASS
+   - `batch_reflect(hypotheses, scores)` — filter pool by verdicts
+   - `to_dict()` / `from_dict()` for serialization
+2. Write unit tests:
+   - `test_kill_threshold` — aggregate <3.0 → KILL
+   - `test_refine_threshold` — aggregate 3.0-5.0 → REFINE
+   - `test_pass_threshold` — aggregate >5.0 → PASS
+   - `test_batch_filter_removes_kills` — KILL hypotheses removed from pool
+   - `test_batch_preserves_refine_flag` — REFINE hypotheses enter pool with flag
+   - `test_aggregate_weighted_correctly` — mechanism 40%, falsification 30%, novelty 30%
+   - `test_empty_input` — empty hypothesis list → empty output
+   - `test_all_killed` — all hypotheses below threshold → empty pool (edge case — fallback should catch this in SKILL.md)
+3. Create reflection protocol section in SKILL.md (Phase 5 integration):
+   - Protocol instructs LLM to batch-critique all candidates
+   - Output: `plans/{session_id}/reflection-scores.json`
+   - Null-check: if reflection fails, all candidates pass through
+
+## Success Criteria
+
+- [ ] ReflectionScore correctly classifies KILL/REFINE/PASS by aggregate threshold
+- [ ] Batch filter removes KILLED hypotheses from tournament pool
+- [ ] REFINE hypotheses carry refinement_suggestion into tournament
+- [ ] 8+ unit tests pass
+- [ ] Null fallback: if reflection fails, all hypotheses pass through unchanged
+
+## Risk Assessment
+
+- **Risk:** Reflection too aggressive — kills genuinely novel but poorly-articulated hypotheses
+  - Mitigation: KILL threshold is 3/10 — very low bar. Only truly unworkable hypotheses get killed. Novel ideas with mechanism but weak evidence get REFINE (3-5), not KILL.
+- **Risk:** 60s batch timeout too tight for 13 candidates
+  - Mitigation: Self-critique is fast (3 questions per hypothesis, no web search). 13 × 3 questions at ~1s each = ~40s. 60s has margin.

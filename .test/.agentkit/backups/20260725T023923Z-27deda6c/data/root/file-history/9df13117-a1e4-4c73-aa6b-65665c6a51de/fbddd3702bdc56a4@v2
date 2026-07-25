@@ -1,0 +1,234 @@
+# Chiến Lược: Đứng Giữa Dòng Tiền Chứng Khoán VN 2026 Bằng master_investments
+
+## BỐI CẢNH: DÒNG TIỀN NÀO ĐANG CHẢY?
+
+```
+╔══════════════════════════════════════════════════════════════╗
+║              CASHFLOW MAP — VN STOCK MARKET 2026            ║
+╠══════════════════════════════════════════════════════════════╣
+║                                                              ║
+║  [GLOBAL CAPITAL]                                            ║
+║       │                                                      ║
+║  ┌────┴───────────────────┐                                  ║
+║  │ FTSE Upgrade Sept 2026 │ $1.2-1.5B passive ETF            ║
+║  │ MSCI Watch → 2027-28   │ $6-10B active over 2-3 years     ║
+║  │ FDI → $28.5B/year      │ Samsung, Amkor, Intel, Nvidia    ║
+║  └────┬───────────────────┘                                  ║
+║       │                                                      ║
+║  ┌────┴───────────────────────────────────────────┐          ║
+║  │          VN STOCK MARKET ECOSYSTEM              │          ║
+║  ├─────────────────────────────────────────────────┤          ║
+║  │                                                 │          ║
+║  │  Layer 0: Regulators (SSC, SBV)       ← rules  │          ║
+║  │  Layer 1: Exchanges (HOSE, HNX)       ← infra  │          ║
+║  │  Layer 2: Brokerages (SSI, VND, HSC)  ← fees   │ ◄── $$$  ║
+║  │  Layer 3: Fund managers (Dragon, VinaC)← AUM   │ ◄── $$$  ║
+║  │  Layer 4: Listed companies (FPT, VCB) ← equity │          ║
+║  │  Layer 5: Retail investors (8.7M acc) ← risk   │          ║
+║  │  Layer 6: Data/Tool providers         ← SaaS   │ ◄── ??? ║
+║  │  Layer 7: Education/Content           ← media  │ ◄── ??? ║
+║  │                                                 │          ║
+║  └─────────────────────────────────────────────────┘          ║
+║                                                              ║
+║  YOUR QUESTION: How to sit at Layer 6-7 intersection         ║
+║  and capture value from Layer 2-5 traffic?                   ║
+╚══════════════════════════════════════════════════════════════╝
+```
+
+## NGUYÊN TẮC CỐT LÕI: ĐỨNG Ở ĐÂU TRONG DÒNG TIỀN?
+
+**Sai lầm phổ biến:** Nhảy vào Layer 5 (retail investor) → chịu risk, cần vốn lớn.
+**Sai lầm thứ 2:** Nhảy vào Layer 7 (content creator) → time treadmill, no moat.
+
+**Vị trí tối ưu:** Layer 6 — **Infrastructure/Tool Provider** — thu phí từ VOLUME giao dịch, không từ DIRECTION thị trường.
+
+> "In a gold rush, sell shovels." — Mark Twain
+> "During the California Gold Rush, Levi Strauss sold jeans, Samuel Brannan sold shovels, Wells Fargo moved the gold. All three got rich regardless of whether any miner found gold." [K]
+
+---
+
+## MASTER_INVESTMENTS CÓ GÌ ĐÃ SẴN SÀNG?
+
+| Capability | Location | Relevance |
+|------------|----------|-----------|
+| **44 analysis personas** | `.claude/agents/personas/` | Multi-perspective stock analysis |
+| **Stage0 pipeline** (25 steps) | `commands/stage0.md` | Opportunity hunting + Mountain Test |
+| **Transaction layer** (V19) | `skills/business/transaction-layer/` | Deal scoring, cashflow tracking |
+| **Cashflow machine orchestrator** | `agents/business/cashflow-machine-orchestrator.md` | Pipeline: signal → test → scale |
+| **Data intelligence scripts** | `skills/business/data-intelligence/` | Automated research |
+| **Calculation engines** | `skills/business/calculation-engines/` | Revenue projection, power-law sizing |
+| **Ground truth system** | `skills/business/ground-truth/` | Learning from real outcomes |
+| **Auto-evolution** | `skills/business/auto-evolution/` | Self-improving analysis |
+| **Knowledge graph** | `skills/business/knowledge/` | Cross-topic intelligence accumulation |
+| **Operator mastery** | `skills/business/money-intelligence/` | 5-layer intelligence (Timing, Reflexivity, Network, Cognitive, Deal) |
+| **Blueprint synthesizer** | `skills/business/blueprint-synthesizer/` | 5-section execution blueprint |
+| **Experience brain** | `skills/business/operator-experience/` | Day 1/3/7 action sequences |
+
+---
+
+## 4 STRATEGIES: TỪ THẤP ĐẾN CAO LEVERAGE
+
+### Strategy 1: INTELLIGENCE-AS-A-SERVICE (Fastest to Revenue)
+
+**Concept:** Dùng stage0 + 44 personas để phân tích cơ hội đầu tư, bán analysis reports.
+
+```
+Input: Stock/sector thesis (e.g. "AI chip VN")
+         ↓
+stage0 pipeline: 14+ agents parallel
+         ↓
+Output: Multi-perspective report
+  - Kiyosaki: asset/liability classification
+  - Munger: inversion + bias detection  
+  - Taleb: fragility assessment
+  - Buffett: moat analysis
+  - Dalio: macro cycle positioning
+  - Ground truth: VN-specific data
+         ↓
+Delivery: PDF/Web report → sell to investors/funds
+```
+
+**Revenue model:**
+- Individual report: 500K-2M VND/report
+- Subscription: 2-5M VND/month
+- Institutional: 20-50M VND/quarter
+
+**Timeline:** 2-4 weeks to MVP (pipeline exists, need frontend + delivery)
+
+**Stage0 Mountain Test:**
+- Control: 8/10 (own the engine)
+- Entry barrier: 6/10 (personas are unique)
+- Need: 8/10 (8.7M retail accounts, growing 244K/month)
+- Time: 7/10 (automated pipeline, not manual content)
+- Scale: 7/10 (SaaS model)
+- **CENTS: 36/50** → MOUNTAIN CANDIDATE
+
+---
+
+### Strategy 2: MARKET SIGNAL MONITOR (Highest Compound Value)
+
+**Concept:** Automate dòng tiền tracking → detect anomalies → alert subscribers.
+
+```
+Data sources (FREE):
+  - Vietstock API / cafef.vn scrape → price + volume
+  - SSC.gov.vn → insider trading disclosures
+  - theinvestor.vn → foreign flow data
+  - HOSE/HNX daily reports → institutional flow
+         ↓
+master_investments pipeline:
+  - market-pulse-monitor → detect anomalies
+  - cashflow-machine → map money flows
+  - competitive-intelligence → sector rotation signals
+  - operator-mastery → timing + reflexivity analysis
+         ↓
+Output: Daily/weekly intelligence alerts
+  - "Khối ngoại đang accumulate sector X (3-day stealth buy)"
+  - "Insider buying detected in Y (SSC filing)"  
+  - "Sector rotation signal: money flowing A → B"
+         ↓
+Delivery: Telegram bot / Zalo OA / Email newsletter
+```
+
+**Revenue model:**
+- Free tier: Weekly digest (audience building)
+- Premium: Daily alerts + full analysis = 500K-1M VND/month
+- Institutional: Custom signals = 10-30M VND/month
+
+**Compound advantage:** Data accumulates. Patterns compound. After 6 months, signal quality improves automatically via ground-truth feedback loop.
+
+---
+
+### Strategy 3: BROKER AFFILIATE INFRASTRUCTURE (Guaranteed Revenue Layer)
+
+**Concept:** Build free tools → funnel to broker signup → earn per-account commission.
+
+```
+Free tools (built with master_investments engine):
+  - Stock screener (AI-powered, VN-specific)
+  - Portfolio analyzer (upload holdings → get analysis)
+  - Risk calculator (position sizing, stop-loss)
+  - FTSE eligibility checker (which stocks will be in FTSE?)
+         ↓
+User acquisition: SEO + TikTok/YouTube content
+         ↓  
+Conversion: "Open account at SSI/VNDirect to use premium features"
+         ↓
+Revenue: Commission per new account
+  - VNDirect: ~500K-1M VND/account [T]
+  - SSI: similar range [T]
+  - + ongoing trading commission share [T]
+```
+
+**Why this works:** Brokerages spend 300-500 VND per click on Google Ads. A free tool with organic traffic = underpriced customer acquisition. You become the distribution layer.
+
+---
+
+### Strategy 4: FULL INFRASTRUCTURE PLAY (Longest, Highest Ceiling)
+
+**Concept:** Build the "Bloomberg Terminal for VN Retail" — comprehensive platform.
+
+This is Strategy 1 + 2 + 3 combined into a product:
+- AI analysis engine (from personas)
+- Real-time signal monitoring
+- Portfolio management
+- Broker integration
+- Community features
+
+**Revenue:** Freemium SaaS (200K-2M VND/month) + broker affiliate + data licensing.
+
+**Timeline:** 6-12 months to meaningful traction.
+
+---
+
+## RECOMMENDATION: PHASED APPROACH
+
+```
+Month 1-2: Strategy 1 (Intelligence Reports)
+  → Validate demand, get first paying customers
+  → Use stage0 to analyze top 20 FTSE-eligible stocks
+  → Sell via TikTok/Zalo audience building
+
+Month 3-4: + Strategy 2 (Signal Monitor)
+  → Add automated data pipeline
+  → Build Telegram bot for alerts
+  → Convert free users to paid subscribers
+
+Month 5-6: + Strategy 3 (Broker Affiliate)
+  → Build free stock screener tool
+  → Partner with 1-2 brokerages
+  → Add passive revenue stream
+
+Month 7-12: Strategy 4 (Full Platform)
+  → Only if Strategy 1-3 validated with real revenue
+  → Combine all components
+  → Seek institutional clients
+```
+
+## KEY INSIGHT: TẠI SAO MASTER_INVESTMENTS LÀ MOAT?
+
+| Competitor | What they have | What you have (master_investments) |
+|------------|---------------|-----------------------------------|
+| @giaimathitruongck | 1 person's opinion, manual content | 44 personas analyzing simultaneously |
+| Vietstock courses | Static education | Living intelligence that evolves |
+| Stock screener tools | Technical indicators only | Multi-framework analysis (value + tech + macro + behavioral) |
+| ChatGPT stock analysis | Generic, no VN context | VN-specific ground truth + learned rules + operator mastery |
+| Human analysts | 1 perspective, slow | 14+ agents in parallel, auto-verified |
+
+**The moat is the SYSTEM, not any single analysis.** Competitors can copy one report. They cannot copy 25-step pipeline + 44 personas + ground truth feedback loop + auto-evolution.
+
+---
+
+## NEXT STEPS (Immediate)
+
+1. **Chọn strategy nào bắt đầu?** (Recommend Strategy 1 → fastest validation)
+2. **Run `/stage0 "AI stock analysis SaaS for VN retail investors"`** trong master_investments repo → full Mountain Test
+3. **Build MVP:** stage0 output → formatted report → sell on Zalo/Telegram
+4. **First customer test:** Phân tích 5 cổ phiếu FTSE-eligible, post free → measure engagement
+
+## UNRESOLVED
+
+1. Bạn có muốn đầu tư trực tiếp (Layer 5) hay chỉ build tools (Layer 6)?
+2. Technical skill: Bạn có thể build web frontend không, hay cần no-code?
+3. Capital available cho MVP?
+4. Timeline expectation: khi nào cần first revenue?

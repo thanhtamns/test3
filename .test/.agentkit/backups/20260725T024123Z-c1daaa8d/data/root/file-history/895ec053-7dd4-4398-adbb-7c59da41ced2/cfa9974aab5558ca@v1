@@ -1,0 +1,101 @@
+---
+phase: 03
+status: pending
+priority: high
+solution: S-5, S-6
+---
+
+# Phase 03: ThinkRunner Iterative Deepening + Research Ladder
+
+## Overview
+Upgrade ThinkRunner from single-pass to multi-pass research with surprise detection and non-Google source integration.
+
+## Files to Modify
+- `D:/code/invesments/master_investments/.claude/lib/intelligence/decomposition/think_runner.py`
+- `D:/code/invesments/master_investments/.claude/lib/intelligence/decomposition/web_research_bridge.py`
+
+## Files to Create
+- `D:/code/invesments/master_investments/.claude/lib/intelligence/decomposition/iterative_deepener.py`
+- `D:/code/invesments/master_investments/.claude/lib/intelligence/decomposition/ladder_bridge.py`
+- `D:/code/invesments/master_investments/.claude/lib/intelligence/decomposition/tests/test_iterative_deepener.py`
+
+## Implementation Steps
+
+### S-5: iterative_deepener.py (~150 lines)
+
+1. `IterativeDeepener` class:
+   - `__init__(research_fn, max_rounds=2, max_deep_queries=6)`
+   - `deepen(dimension_scores, facts) -> list[MicroQueryResult]`
+
+2. `detect_surprises(facts)` — find facts that contradict expected patterns:
+   - Two facts in same dimension with contradicting values
+   - Confidence < 0.4 on high-weight dimension (weight >= 2.0)
+   - Returns list of (dimension, reason, priority)
+
+3. `detect_high_variance(dimension_scores)` — find dims with mixed zone tags:
+   - Has both [K] and [?] facts in same dimension
+   - Score between 0.3-0.6 (uncertain, not clearly pass or fail)
+
+4. `generate_deep_queries(target)` — LLM-free query refinement:
+   - Take original template queries that produced [?] results
+   - Append specificity modifiers: "site:reddit.com", "forum", "actual experience"
+   - Add negation queries: "why [topic] fails", "[topic] problems"
+   - Max 3 queries per target
+
+5. Wire into ThinkRunner.think():
+   - After initial MicroQueryRunner pass + gap analysis
+   - Call `deepener.deepen(scores, facts)`
+   - Merge new facts into existing fact set
+   - Recalculate dimension scores
+
+### S-6: ladder_bridge.py (~100 lines)
+
+1. `LadderBridge` class:
+   - `__init__(ladder_runner_path, route_key=None)`
+   - `should_escalate(search_results) -> bool` — detect SEO saturation
+   - `run_ladder(topic, route_key) -> list[MicroQueryResult]`
+   - `parse_ladder_results(raw) -> list[MicroQueryResult]`
+
+2. SEO saturation detection (`should_escalate`):
+   - Count results matching blog/SEO patterns (listicle titles, affiliate URLs)
+   - If >= 60% of top results are SEO-polluted → escalate
+   - Patterns: "top N", "best X for", "how to", ".com/blog/", affiliate params
+
+3. Route auto-detection from query context:
+   - VN keywords → vn_greyhat_mmo or vn_legitimate_business
+   - SaaS/bootstrap → western_bootstrap_saas
+   - VC/fund/investment → founder_due_diligence
+   - Fallback: None (skip ladder)
+
+4. Wire into ThinkRunner:
+   - After DuckDuckGo pass, check `ladder.should_escalate(results)`
+   - If escalated → run ladder → merge facts
+   - Track in output: `"research_tiers_fired": ["ddg", "ladder:<route>"]`
+
+### Modify think_runner.py
+
+1. Add `iterative_deepener` as optional dependency in ThinkRunner.__init__
+2. Add `ladder_bridge` as optional dependency
+3. In `think()` method, after initial research:
+   ```python
+   # Iterative deepening
+   if self.deepener:
+       new_facts = self.deepener.deepen(scores, facts)
+       facts.extend(new_facts)
+       scores = self.scorer.score_all(facts)  # recalculate
+   
+   # Ladder escalation
+   if self.ladder and self.ladder.should_escalate(raw_results):
+       ladder_facts = self.ladder.run_ladder(query, route)
+       facts.extend(ladder_facts)
+       scores = self.scorer.score_all(facts)
+   ```
+4. Add to output JSON: `"research_passes": N, "research_tiers": [...]`
+
+## Success Criteria
+- [ ] ThinkRunner runs 2-3 passes instead of 1 when gaps detected
+- [ ] SEO saturation triggers ladder escalation
+- [ ] Score improves from ~0.4 to 0.5+ on VC penetration query
+- [ ] Existing tests pass (deepener/ladder are optional deps)
+- [ ] New test files pass
+- [ ] Output JSON includes research_passes and research_tiers

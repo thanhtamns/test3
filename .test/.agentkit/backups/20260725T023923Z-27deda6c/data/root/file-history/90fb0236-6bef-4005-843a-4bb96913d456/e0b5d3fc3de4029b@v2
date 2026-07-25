@@ -1,0 +1,100 @@
+---
+phase: 1
+title: "Wound Extractor Module"
+status: completed
+priority: P1
+effort: "3h"
+dependencies: []
+completedAt: "2026-05-10T06:45:00.000Z"
+---
+
+# Phase 1: Wound Extractor Module
+
+## Overview
+
+Create `wound-extractor.py` — a script that runs BEFORE side-door agent spawning. Takes target context (topic, domain, kill mechanisms) and generates structured wound map via WebSearch research prompts. The wound map feeds into ALL downstream agent prompts so they design approaches around actual pain points, not generic value offers.
+
+Core insight: "Bạn không có vị trí mà họ cần nếu không hiểu vấn đề của họ." You have no position they need unless you understand their PROBLEMS.
+
+## Architecture
+
+```
+case JSON + profile JSON
+         ↓
+wound-extractor.py --case-file --profile-file
+         ↓
+Generates 5 research queries per target role:
+  1. "[role/company] challenges 2026" — current pain
+  2. "[role/company] failed" — past wounds  
+  3. "[role/company] hiring" — capability gaps
+  4. "[role/company] competitors" — threat landscape
+  5. "[role/company] criticism" — reputation wounds
+         ↓
+Outputs wound_map JSON:
+{
+  "targets": [
+    {
+      "role": "Fund Director, KVision",
+      "wounds": [
+        {
+          "type": "credibility_wound",
+          "evidence": "25yo managing $450M — LP confidence gap",
+          "research_queries": ["KVision LP complaints", "young fund manager credibility"],
+          "exploitation_angle": "Help prove competence, not challenge it",
+          "compound_value": "Solving this = loyalty + dependency"
+        }
+      ],
+      "needs_not_wants": ["validation from peers", "deal flow quality", "Vietnam intelligence"],
+      "anxiety_triggers": ["portfolio write-offs", "LP quarterly reviews", "peer fund outperformance"],
+      "giving_speed": "fast|slow|transactional"
+    }
+  ]
+}
+```
+
+## Related Code Files
+
+- Create: `.claude/skills/business/transaction-layer/nui-hunter/scripts/wound-extractor.py`
+- Modify: `.claude/skills/business/transaction-layer/nui-hunter/scripts/side-door-trigger.py` — add wound_map injection into agent prompts
+- Modify: `.claude/commands/stage0.md` — add Step 6.8.4 before Step 6.8.5
+
+## Implementation Steps
+
+1. Create `wound-extractor.py` with:
+   - `extract_target_roles(case)` — parse topic/domain into 2-3 target decision-maker roles
+   - `generate_research_queries(role)` — 5 query templates per role (pain, failure, gaps, threats, reputation)
+   - `build_wound_map(roles, research_results)` — structure wounds with type, evidence, exploitation angle
+   - `classify_wound_type(evidence)` — map to 6-wound framework: Loneliness, Legacy, Boredom, Paranoia, Rivalry, Nostalgia
+   - `infer_giving_speed(wound_types)` — fast (Lonely/Bored), slow (Paranoid/Rivalry), transactional (Legacy)
+   - CLI: `--case-file`, `--profile-file`, `--dry-run` (outputs queries without executing)
+
+2. Wound type taxonomy (from ego-leverage-specialist):
+   - `credibility_wound` — needs validation, fears being seen as amateur
+   - `isolation_wound` — lonely at top, can't show weakness
+   - `legacy_wound` — wants to be remembered, fears irrelevance
+   - `control_wound` — paranoid about betrayal, trust issues
+   - `rivalry_wound` — obsessed with competitor/rival, needs to win
+   - `boredom_wound` — successful but unfulfilled, seeks novelty
+
+3. Key design decisions:
+   - Script generates RESEARCH PROMPTS, not answers — stage0 orchestrator executes WebSearch
+   - Output format is agent-prompt-ready: can be directly injected as context block
+   - Wound map is SPECULATIVE by default — tagged [INFERRED] unless WebSearch confirms
+   - `needs_not_wants` distinguishes what target says they need vs what they actually need
+
+4. Add `--wound-map` parameter to `side-door-trigger.py`:
+   - When provided, inject wound_map into each agent's prompt as `WOUND INTELLIGENCE` block
+   - Each agent prompt gets the wounds RELEVANT to their function:
+     - power-cartographer gets all wounds (maps terrain)
+     - gate-broker gets giving_speed + anxiety_triggers (designs timing)
+     - tay-trang-positioner gets needs_not_wants (designs value)
+     - proximity-engineer gets anxiety_triggers (designs encounter timing)
+
+## Success Criteria
+
+- [x] wound-extractor.py runs without error on sample case JSON (198 lines, created)
+- [x] Generates ≥3 research queries per target role
+- [x] Output JSON validates against wound_map schema
+- [x] Each wound has exploitation_angle (not just description)
+- [x] side-door-trigger.py accepts --wound-map and injects into prompts
+- [x] Dry-run mode outputs queries without WebSearch dependency

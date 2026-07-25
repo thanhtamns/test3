@@ -1,0 +1,115 @@
+---
+phase: 7
+title: "OSS Polish + Launch Prep"
+status: pending
+priority: P2
+effort: "1w"
+dependencies: [6]
+---
+
+# Phase 7: OSS Polish + Launch Prep
+
+## Overview
+
+Polish CLI for public release, documentation, landing page, Product Hunt/HN launch preparation. Convert RTK repo from internal tool to public CODEFLOW product.
+
+## Requirements
+
+- Functional: rename CLI binary from `rtk` to `codeflow` (keep `rtk` as alias for backward compat); comprehensive README; docs site; landing page; Product Hunt listing draft; install scripts (brew, cargo, npm)
+- Non-functional: install from scratch in <2 minutes; first `codeflow blame` output in <30s after install
+
+## Related Code Files
+
+- Modify: `Cargo.toml` — rename package, update description/keywords/homepage
+- Modify: `src/main.rs` — update binary name, help text, about strings
+- Create: `README.md` — comprehensive project README
+- Create: `docs/` — documentation site content
+- Create: `website/` — landing page (static HTML or Next.js)
+- Create: `install.sh` — one-line install script
+- Create: `.github/workflows/release.yml` — CI/CD for cross-platform binaries
+
+## Implementation Steps
+
+0. **Verify name availability (BLOCKING — do this BEFORE Phase 1, not Phase 7)**
+   - Check crates.io: `codeflow` package name available?
+   - Check npm: `codeflow` package name available?
+   - Check Homebrew: `codeflow` formula exists?
+   - Check domain: `codeflow.dev` available?
+   - "CodeFlow" is a common term — high risk of collision
+   - If unavailable: prepare backup names before any implementation begins
+   - **This step should run as a pre-Phase-1 gate, listed here for completeness**
+
+1. **Rebrand CLI**
+   - Rename binary: `rtk` → `codeflow` (keep `rtk` symlink for migration)
+   - Update Cargo.toml: name, description, keywords, homepage, repository
+   - Update all help text and about strings in main.rs
+   - Update shell completions generation
+
+2. **README.md**
+   - Hero: one-line description + badges (CI, version, license)
+   - Problem statement: 42% AI code, zero traceability, cost blowouts
+   - Quick start: `cargo install codeflow && codeflow init && codeflow blame src/main.rs`
+   - Feature matrix: 4 pillars with status badges
+   - Comparison table vs Exceeds AI, Vantage, git-ai
+   - Architecture diagram (ASCII)
+   - Contributing guide link
+
+3. **Documentation site**
+   - Getting started guide
+   - CLI reference (all commands with examples)
+   - Configuration reference (TOML files)
+   - Integration guides: Claude Code, Cursor, Copilot, CI/CD
+   - API reference (cloud)
+   - Use Mintlify or plain markdown
+
+4. **Landing page**
+   - Above fold: problem + solution + CTA (install CLI)
+   - Social proof: Uber/Microsoft headlines as market proof
+   - Feature sections: 4 pillars with screenshots
+   - Pricing: Free CLI; cloud pricing TBD (cloud is separate future plan)
+   - Footer: docs, GitHub, Discord community link
+
+5. **Install scripts**
+   - `curl -sSf https://codeflow.dev/install.sh | sh` — detects OS/arch, downloads binary
+   - Homebrew formula: `brew install codeflow`
+   - Cargo: `cargo install codeflow`
+   - npm wrapper: `npx codeflow` (downloads binary, runs it)
+
+6. **CI/CD release pipeline**
+   - GitHub Actions: build on tag push
+   - Cross-compile: linux-x64, linux-arm64, macos-x64, macos-arm64, windows-x64
+   - Create GitHub release with binaries + checksums
+   - Publish to crates.io
+   - Update Homebrew formula
+
+7. **Launch preparation**
+   - Product Hunt: draft listing with screenshots, description, maker story
+   - Hacker News: draft Show HN post
+   - Dev.to / blog post: "We built the missing infrastructure layer for AI-generated code"
+   - Discord/community: create codeflow community server
+   - Twitter/LinkedIn: launch thread draft
+   - Beta outreach: identify 10 enterprise contacts via LinkedIn/network
+
+8. **Beta program**
+   - `codeflow feedback` — open feedback form / GitHub issue
+   - Usage telemetry (opt-in, anonymized)
+   - Cloud beta waitlist (link to landing page signup — cloud is separate future plan)
+
+## Success Criteria
+
+- [ ] `cargo install codeflow` works and produces working binary
+- [ ] `codeflow --help` shows all commands with clear descriptions
+- [ ] README has quick start that works end-to-end in <5 minutes
+- [ ] Landing page deployed with pricing + install CTA
+- [ ] Product Hunt listing draft ready for submission
+- [ ] Cross-platform binaries built in CI (Linux, macOS, Windows)
+- [ ] Install script works on macOS + Linux
+
+## Risk Assessment
+
+| Risk | Severity | Mitigation |
+|------|----------|------------|
+| "codeflow" name unavailable on crates.io/npm/domain | HIGH | Check BEFORE Phase 1; prepare 3 backup names |
+| Renaming breaks existing RTK users | LOW | Keep `rtk` as symlink/alias; deprecation notice |
+| Product Hunt launch timing | LOW | Launch independent of cloud readiness; CLI-only is valuable |
+| Enterprise beta recruitment | MEDIUM | Use EU AI Act deadline urgency; target compliance teams |

@@ -1,0 +1,470 @@
+use anyhow::Result;
+use rusqlite::{params, Connection};
+use serde::Serialize;
+use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+const DEFAULT_DEDUP_WINDOW_SECS: u64 = 300;
+
+pub struct SessionLog {
+    conn: Connection,
+    session_id: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SessionEntry {
+    pub id: i64,
+    pub session_id: String,
+    pub timestamp_ms: i64,
+    pub tool_name: String,
+    pub tool_input_json: String,
+    pub tool_input_hash: String,
+    pub file_path: Option<String>,
+    pub content_hash: Option<String>,
+    pub token_count: Option<i64>,
+    pub mtime_ns: Option<i64>,
+}
+
+impl SessionLog {
+    pub fn open(db_path: &Path, session_id: &str) -> Result<Self> {
+        let conn = Connection::open(db_path)?;
+        conn.execute_batch(
+            "PRAGMA journal_mode=WAL;
+             PRAGMA synchronous=NORMAL;
+             PRAGMA busy_timeout=5000;",
+        )?;
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS session_tool_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                timestamp_ms INTEGER NOT NULL,
+                tool_name TEXT NOT NULL,
+                tool_input_json TEXT NOT NULL,
+                tool_input_hash TEXT NOT NULL,
+                file_path TEXT,
+                content_hash TEXT,
+                token_count INTEGER,
+                mtime_ns INTEGER
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_session_tool_log_session_file
+                ON session_tool_log(session_id, file_path, timestamp_ms DESC);
+
+            CREATE INDEX IF NOT EXISTS idx_session_tool_log_session_time
+                ON session_tool_log(session_id, timestamp_ms DESC);
+
+            CREATE INDEX IF NOT EXISTS idx_session_tool_log_session_hash
+                ON session_tool_log(session_id, tool_input_hash);
+
+            CREATE TABLE IF NOT EXISTS pre_tool_state (
+                tool_name TEXT NOT NULL,
+                file_path TEXT NOT NULL DEFAULT '_',
+                session_id TEXT NOT NULL,
+                row_id INTEGER NOT NULL,
+                created_at INTEGER NOT NULL,
+                PRIMARY KEY (tool_name, file_path, session_id)
+            );",
+        )?;
+        Ok(Self {
+            conn,
+            session_id: session_id.to_string(),
+        })
+    }
+
+    pub fn record_pre(
+        &self,
+        tool_name: &str,
+        tool_input_json: &str,
+        file_path: Option<&str>,
+    ) -> Result<i64> {
+        let now = now_ms();
+        let input_hash = blake3::hash(tool_input_json.as_bytes())
+            .to_hex()
+            .to_string();
+        self.conn.execute(
+            "INSERT INTO session_tool_log
+             (session_id, timestamp_ms, tool_name, tool_input_json, tool_input_hash, file_path)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                self.session_id,
+                now,
+                tool_name,
+                tool_input_json,
+                input_hash,
+                file_path,
+            ],
+        )?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    pub fn record_post(
+        &self,
+        row_id: i64,
+        content_hash: &str,
+        token_count: i64,
+        mtime_ns: Option<i64>,
+    ) -> Result<()> {
+        self.conn.execute(
+            "UPDATE session_tool_log
+             SET content_hash = ?1, token_count = ?2, mtime_ns = ?3
+             WHERE id = ?4",
+            params![content_hash, token_count, mtime_ns, row_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn last_read(&self, file_path: &str) -> Result<Option<SessionEntry>> {
+        let result = self.conn.query_row(
+            "SELECT id, session_id, timestamp_ms, tool_name, tool_input_json,
+                    tool_input_hash, file_path, content_hash, token_count, mtime_ns
+             FROM session_tool_log
+             WHERE session_id = ?1 AND file_path = ?2 AND content_hash IS NOT NULL
+             ORDER BY timestamp_ms DESC LIMIT 1",
+            params![self.session_id, file_path],
+            |row| {
+                Ok(SessionEntry {
+                    id: row.get(0)?,
+                    session_id: row.get(1)?,
+                    timestamp_ms: row.get(2)?,
+                    tool_name: row.get(3)?,
+                    tool_input_json: row.get(4)?,
+                    tool_input_hash: row.get(5)?,
+                    file_path: row.get(6)?,
+                    content_hash: row.get(7)?,
+                    token_count: row.get(8)?,
+                    mtime_ns: row.get(9)?,
+                })
+            },
+        );
+        match result {
+            Ok(entry) => Ok(Some(entry)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    pub fn recent_identical(
+        &self,
+        tool_input_hash: &str,
+        within_secs: Option<u64>,
+    ) -> Result<Option<SessionEntry>> {
+        let window = within_secs.unwrap_or(DEFAULT_DEDUP_WINDOW_SECS);
+        let cutoff = now_ms() - (window as i64 * 1000);
+        let result = self.conn.query_row(
+            "SELECT id, session_id, timestamp_ms, tool_name, tool_input_json,
+                    tool_input_hash, file_path, content_hash, token_count, mtime_ns
+             FROM session_tool_log
+             WHERE session_id = ?1 AND tool_input_hash = ?2
+                   AND timestamp_ms >= ?3 AND content_hash IS NOT NULL
+             ORDER BY timestamp_ms DESC LIMIT 1",
+            params![self.session_id, tool_input_hash, cutoff],
+            |row| {
+                Ok(SessionEntry {
+                    id: row.get(0)?,
+                    session_id: row.get(1)?,
+                    timestamp_ms: row.get(2)?,
+                    tool_name: row.get(3)?,
+                    tool_input_json: row.get(4)?,
+                    tool_input_hash: row.get(5)?,
+                    file_path: row.get(6)?,
+                    content_hash: row.get(7)?,
+                    token_count: row.get(8)?,
+                    mtime_ns: row.get(9)?,
+                })
+            },
+        );
+        match result {
+            Ok(entry) => Ok(Some(entry)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    pub fn session_entries(&self) -> Result<Vec<SessionEntry>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, session_id, timestamp_ms, tool_name, tool_input_json,
+                    tool_input_hash, file_path, content_hash, token_count, mtime_ns
+             FROM session_tool_log
+             WHERE session_id = ?1
+             ORDER BY timestamp_ms ASC",
+        )?;
+        let entries = stmt
+            .query_map(params![self.session_id], |row| {
+                Ok(SessionEntry {
+                    id: row.get(0)?,
+                    session_id: row.get(1)?,
+                    timestamp_ms: row.get(2)?,
+                    tool_name: row.get(3)?,
+                    tool_input_json: row.get(4)?,
+                    tool_input_hash: row.get(5)?,
+                    file_path: row.get(6)?,
+                    content_hash: row.get(7)?,
+                    token_count: row.get(8)?,
+                    mtime_ns: row.get(9)?,
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+        Ok(entries)
+    }
+
+    pub fn cleanup_old_sessions(&self) -> Result<u64> {
+        let changes = self.conn.execute(
+            "DELETE FROM session_tool_log
+             WHERE session_id NOT IN (
+                 SELECT session_id FROM (
+                     SELECT session_id, MAX(timestamp_ms) as max_ts
+                     FROM session_tool_log
+                     GROUP BY session_id
+                     ORDER BY max_ts DESC
+                     LIMIT 2
+                 )
+             )",
+            [],
+        )?;
+        Ok(changes as u64)
+    }
+
+    pub fn session_id(&self) -> &str {
+        &self.session_id
+    }
+
+    pub fn write_pre_id(&self, tool_name: &str, file_path: Option<&str>, row_id: i64) {
+        let fp = file_path.unwrap_or("_");
+        let now = now_ms();
+        let _ = self.conn.execute(
+            "INSERT OR REPLACE INTO pre_tool_state (tool_name, file_path, session_id, row_id, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![tool_name, fp, self.session_id, row_id, now],
+        );
+    }
+
+    pub fn take_pre_id(&self, tool_name: &str, file_path: Option<&str>) -> Option<i64> {
+        let fp = file_path.unwrap_or("_");
+        let row_id: Option<i64> = self.conn.query_row(
+            "SELECT row_id FROM pre_tool_state
+             WHERE tool_name = ?1 AND file_path = ?2 AND session_id = ?3",
+            params![tool_name, fp, self.session_id],
+            |row| row.get(0),
+        ).ok();
+        if row_id.is_some() {
+            let _ = self.conn.execute(
+                "DELETE FROM pre_tool_state
+                 WHERE tool_name = ?1 AND file_path = ?2 AND session_id = ?3",
+                params![tool_name, fp, self.session_id],
+            );
+        }
+        row_id
+    }
+}
+
+pub fn extract_file_path(tool_name: &str, tool_input: &serde_json::Value) -> Option<String> {
+    match tool_name {
+        "Read" => tool_input
+            .get("file_path")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        "Grep" => tool_input
+            .get("path")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        "Glob" => tool_input
+            .get("path")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        "Bash" => {
+            let cmd = tool_input.get("command").and_then(|v| v.as_str())?;
+            let parts: Vec<&str> = cmd.split_whitespace().collect();
+            if parts.len() >= 2 {
+                let stem = std::path::Path::new(parts[0])
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or(parts[0]);
+                if matches!(stem, "cat" | "head" | "tail") {
+                    return Some(parts[1].to_string());
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn setup() -> (SessionLog, TempDir) {
+        let dir = TempDir::new().unwrap();
+        let db_path = dir.path().join("session.db");
+        let log = SessionLog::open(&db_path, "test-session").unwrap();
+        (log, dir)
+    }
+
+    #[test]
+    fn test_record_pre_and_post_then_last_read() {
+        let (log, _dir) = setup();
+        let row_id = log
+            .record_pre("Read", r#"{"file_path":"/src/auth.ts"}"#, Some("/src/auth.ts"))
+            .unwrap();
+        log.record_post(row_id, "abc123hash", 487, Some(1000000))
+            .unwrap();
+
+        let entry = log.last_read("/src/auth.ts").unwrap().unwrap();
+        assert_eq!(entry.tool_name, "Read");
+        assert_eq!(entry.content_hash.as_deref(), Some("abc123hash"));
+        assert_eq!(entry.token_count, Some(487));
+        assert_eq!(entry.mtime_ns, Some(1000000));
+    }
+
+    #[test]
+    fn test_last_read_returns_none_for_unknown() {
+        let (log, _dir) = setup();
+        assert!(log.last_read("/nonexistent.rs").unwrap().is_none());
+    }
+
+    #[test]
+    fn test_last_read_requires_content_hash() {
+        let (log, _dir) = setup();
+        log.record_pre("Read", r#"{"file_path":"/src/main.rs"}"#, Some("/src/main.rs"))
+            .unwrap();
+        // No record_post → content_hash is NULL → last_read should return None
+        assert!(log.last_read("/src/main.rs").unwrap().is_none());
+    }
+
+    #[test]
+    fn test_recent_identical_within_window() {
+        let (log, _dir) = setup();
+        let input_json = r#"{"pattern":"TODO","path":"/src"}"#;
+        let hash = blake3::hash(input_json.as_bytes()).to_hex().to_string();
+
+        let row_id = log.record_pre("Grep", input_json, Some("/src")).unwrap();
+        log.record_post(row_id, "resulthash", 100, None).unwrap();
+
+        let entry = log.recent_identical(&hash, Some(300)).unwrap();
+        assert!(entry.is_some());
+        assert_eq!(entry.unwrap().tool_name, "Grep");
+    }
+
+    #[test]
+    fn test_recent_identical_misses_without_post() {
+        let (log, _dir) = setup();
+        let input_json = r#"{"pattern":"TODO","path":"/src"}"#;
+        let hash = blake3::hash(input_json.as_bytes()).to_hex().to_string();
+
+        log.record_pre("Grep", input_json, Some("/src")).unwrap();
+        // No record_post → should not match
+        assert!(log.recent_identical(&hash, Some(300)).unwrap().is_none());
+    }
+
+    #[test]
+    fn test_session_entries_ordered() {
+        let (log, _dir) = setup();
+        let id1 = log
+            .record_pre("Read", r#"{"file_path":"/a.rs"}"#, Some("/a.rs"))
+            .unwrap();
+        log.record_post(id1, "h1", 100, None).unwrap();
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+
+        let id2 = log
+            .record_pre("Grep", r#"{"pattern":"fn"}"#, None)
+            .unwrap();
+        log.record_post(id2, "h2", 50, None).unwrap();
+
+        let entries = log.session_entries().unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].tool_name, "Read");
+        assert_eq!(entries[1].tool_name, "Grep");
+    }
+
+    #[test]
+    fn test_cleanup_old_sessions() {
+        let dir = TempDir::new().unwrap();
+        let db_path = dir.path().join("session.db");
+
+        // Create entries in 3 sessions
+        let log1 = SessionLog::open(&db_path, "old-session").unwrap();
+        let id = log1
+            .record_pre("Read", r#"{"file_path":"/old.rs"}"#, Some("/old.rs"))
+            .unwrap();
+        log1.record_post(id, "h", 10, None).unwrap();
+        drop(log1);
+
+        let log2 = SessionLog::open(&db_path, "prev-session").unwrap();
+        let id = log2
+            .record_pre("Read", r#"{"file_path":"/prev.rs"}"#, Some("/prev.rs"))
+            .unwrap();
+        log2.record_post(id, "h", 10, None).unwrap();
+        drop(log2);
+
+        let log3 = SessionLog::open(&db_path, "current-session").unwrap();
+        let id = log3
+            .record_pre("Read", r#"{"file_path":"/cur.rs"}"#, Some("/cur.rs"))
+            .unwrap();
+        log3.record_post(id, "h", 10, None).unwrap();
+
+        let cleaned = log3.cleanup_old_sessions().unwrap();
+        assert!(cleaned >= 1, "should clean at least the oldest session");
+    }
+
+    #[test]
+    fn test_different_sessions_isolated() {
+        let dir = TempDir::new().unwrap();
+        let db_path = dir.path().join("session.db");
+
+        let log1 = SessionLog::open(&db_path, "session-a").unwrap();
+        let id = log1
+            .record_pre("Read", r#"{"file_path":"/foo.rs"}"#, Some("/foo.rs"))
+            .unwrap();
+        log1.record_post(id, "hash1", 200, Some(999)).unwrap();
+        drop(log1);
+
+        let log2 = SessionLog::open(&db_path, "session-b").unwrap();
+        assert!(log2.last_read("/foo.rs").unwrap().is_none());
+    }
+
+    #[test]
+    fn test_extract_file_path_read() {
+        let input: serde_json::Value =
+            serde_json::from_str(r#"{"file_path":"/src/main.rs"}"#).unwrap();
+        assert_eq!(
+            extract_file_path("Read", &input),
+            Some("/src/main.rs".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_file_path_grep() {
+        let input: serde_json::Value =
+            serde_json::from_str(r#"{"pattern":"TODO","path":"/src"}"#).unwrap();
+        assert_eq!(
+            extract_file_path("Grep", &input),
+            Some("/src".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_file_path_bash_cat() {
+        let input: serde_json::Value =
+            serde_json::from_str(r#"{"command":"cat /etc/hosts"}"#).unwrap();
+        assert_eq!(
+            extract_file_path("Bash", &input),
+            Some("/etc/hosts".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_file_path_unknown_tool() {
+        let input: serde_json::Value = serde_json::from_str(r#"{"foo":"bar"}"#).unwrap();
+        assert_eq!(extract_file_path("Unknown", &input), None);
+    }
+}

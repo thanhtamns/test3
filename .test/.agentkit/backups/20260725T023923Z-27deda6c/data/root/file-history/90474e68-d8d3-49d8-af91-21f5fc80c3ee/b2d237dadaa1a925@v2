@@ -1,0 +1,61 @@
+{
+  "name": "codeflow",
+  "displayName": "CODEFLOW — AI Cost Intelligence",
+  "description": "See how many tokens and dollars your AI coding tools save via compression and deduplication",
+  "version": "0.1.0",
+  "publisher": "codeflow-dev",
+  "license": "Apache-2.0",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Machine Learning", "Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "codeflow.showStats",
+        "title": "CODEFLOW: Show Session Stats"
+      },
+      {
+        "command": "codeflow.refresh",
+        "title": "CODEFLOW: Refresh Stats"
+      }
+    ],
+    "configuration": {
+      "title": "CODEFLOW",
+      "properties": {
+        "codeflow.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable CODEFLOW status bar and tracking"
+        },
+        "codeflow.refreshInterval": {
+          "type": "number",
+          "default": 10,
+          "description": "Status bar refresh interval in seconds"
+        },
+        "codeflow.dbPath": {
+          "type": "string",
+          "default": "",
+          "description": "Override path to CODEFLOW SQLite database (auto-detected if empty)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify",
+    "watch": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --watch",
+    "package": "npx @vscode/vsce package --no-dependencies",
+    "lint": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "sql.js": "^1.11.0"
+  }
+}

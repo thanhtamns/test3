@@ -1,0 +1,150 @@
+use anyhow::{Context, Result};
+use ed25519_dalek::{Signer, SigningKey, Verifier, VerifyingKey};
+use rand::rngs::OsRng;
+use std::fs;
+use std::path::PathBuf;
+
+pub struct KeyPair {
+    signing_key: SigningKey,
+}
+
+impl KeyPair {
+    pub fn generate() -> Self {
+        let mut csprng = OsRng;
+        Self {
+            signing_key: SigningKey::generate(&mut csprng),
+        }
+    }
+
+    pub fn sign(&self, data: &[u8]) -> String {
+        let sig = self.signing_key.sign(data);
+        hex::encode(sig.to_bytes())
+    }
+
+    pub fn public_key_hex(&self) -> String {
+        hex::encode(self.signing_key.verifying_key().to_bytes())
+    }
+
+    pub fn to_bytes(&self) -> [u8; 32] {
+        self.signing_key.to_bytes()
+    }
+
+    pub fn from_bytes(bytes: &[u8; 32]) -> Self {
+        Self {
+            signing_key: SigningKey::from_bytes(bytes),
+        }
+    }
+}
+
+pub fn verify(pubkey_hex: &str, data: &[u8], sig_hex: &str) -> Result<bool> {
+    let pubkey_bytes: [u8; 32] = hex::decode(pubkey_hex)
+        .context("invalid pubkey hex")?
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("pubkey must be 32 bytes"))?;
+
+    let sig_bytes: [u8; 64] = hex::decode(sig_hex)
+        .context("invalid signature hex")?
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("signature must be 64 bytes"))?;
+
+    let verifying_key = VerifyingKey::from_bytes(&pubkey_bytes)
+        .context("invalid Ed25519 public key")?;
+    let signature = ed25519_dalek::Signature::from_bytes(&sig_bytes);
+
+    Ok(verifying_key.verify(data, &signature).is_ok())
+}
+
+fn keys_dir() -> Result<PathBuf> {
+    let data_dir = dirs::data_dir()
+        .context("could not determine platform data directory")?;
+    let keys_path = data_dir.join("codeflow").join("keys");
+    Ok(keys_path)
+}
+
+pub fn load_or_generate() -> Result<KeyPair> {
+    let dir = keys_dir()?;
+    fs::create_dir_all(&dir)
+        .with_context(|| format!("failed to create keys dir: {}", dir.display()))?;
+
+    let key_file = dir.join("ed25519.key");
+
+    match fs::read(&key_file) {
+        Ok(bytes) => {
+            let key_bytes: [u8; 32] = bytes
+                .try_into()
+                .map_err(|_| anyhow::anyhow!("key file corrupted: expected 32 bytes"))?;
+            return Ok(KeyPair::from_bytes(&key_bytes));
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e).context("failed to read key file"),
+    }
+
+    let kp = KeyPair::generate();
+
+    match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&key_file)
+    {
+        Ok(mut f) => {
+            use std::io::Write;
+            f.write_all(&kp.to_bytes())
+                .with_context(|| format!("failed to write key: {}", key_file.display()))?;
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            return load_or_generate();
+        }
+        Err(e) => return Err(e).context("failed to create key file"),
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&key_file, fs::Permissions::from_mode(0o600));
+    }
+
+    Ok(kp)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sign_verify_roundtrip() {
+        let kp = KeyPair::generate();
+        let data = b"test message";
+        let sig = kp.sign(data);
+        let pubkey = kp.public_key_hex();
+        assert!(verify(&pubkey, data, &sig).unwrap());
+    }
+
+    #[test]
+    fn verify_wrong_data_fails() {
+        let kp = KeyPair::generate();
+        let sig = kp.sign(b"original");
+        let pubkey = kp.public_key_hex();
+        assert!(!verify(&pubkey, b"tampered", &sig).unwrap());
+    }
+
+    #[test]
+    fn keypair_serialization_roundtrip() {
+        let kp = KeyPair::generate();
+        let bytes = kp.to_bytes();
+        let restored = KeyPair::from_bytes(&bytes);
+        let data = b"consistency check";
+        let sig = kp.sign(data);
+        let pubkey = restored.public_key_hex();
+        assert!(verify(&pubkey, data, &sig).unwrap());
+    }
+
+    #[test]
+    fn verify_invalid_hex_errors() {
+        assert!(verify("not_hex", b"data", "also_not_hex").is_err());
+    }
+
+    #[test]
+    fn verify_wrong_length_errors() {
+        assert!(verify("aabb", b"data", "ccdd").is_err());
+    }
+}

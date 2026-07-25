@@ -1,0 +1,35 @@
+---
+title: "CODEFLOW Gap Closure — All 12 Gaps, TDD"
+description: ""
+status: pending
+priority: P2
+branch: "master"
+tags: []
+blockedBy: []
+blocks: []
+created: "2026-06-08T12:36:49.428Z"
+createdBy: "ck:plan"
+source: skill
+---
+
+# CODEFLOW Gap Closure — All 12 Gaps, TDD
+
+## Overview
+
+<!-- Brief description -->
+
+## Phases
+
+| Phase | Name | Status |
+|-------|------|--------|
+| 1 | [Fix Foundations (model_id + attestation + blame + budget + router)](./phase-01-fix-foundations-model-id-attestation-blame-budget-router.md) | Pending |
+| 2 | [Quality Gate (codeflow gate + dep validation)](./phase-02-quality-gate-codeflow-gate-dep-validation.md) | Pending |
+| 3 | [Compliance Export (codeflow audit + SLSA + CycloneDX)](./phase-03-compliance-export-codeflow-audit-slsa-cyclonedx.md) | Pending |
+| 4 | [CLI Export + Serve (HTML dashboard)](./phase-04-cli-export-serve-html-dashboard.md) | Pending |
+| 5 | [Cloud Proto + API Sync](./phase-05-cloud-proto-api-sync.md) | Pending |
+| 6 | [Dashboard Pages (5 new pages)](./phase-06-dashboard-pages-5-new-pages.md) | Pending |
+| 7 | [Fix Plans + Integration Test + Demo](./phase-07-fix-plans-integration-test-demo.md) | Pending |
+
+## Dependencies
+
+<!-- Cross-plan dependencies -->

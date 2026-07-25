@@ -1,0 +1,282 @@
+"""
+ClaimParser — validates and extracts structured claims from agent output.
+JSON-first with prose fallback via AgentOutputAdapter.
+"""
+
+import json
+import re
+import sqlite3
+from dataclasses import dataclass, field
+from difflib import SequenceMatcher
+from pathlib import Path
+from typing import Optional
+
+ROOT = Path(__file__).resolve().parents[4]
+SCHEMA_PATH = Path(__file__).parent / "claim-schema.json"
+VECTORS_DB = ROOT / ".claude" / "data" / "knowledge-distillation" / "decision-vectors.db"
+
+VALID_DIMENSIONS = [
+    # Hunger system (original 8)
+    "failure_rates",
+    "unit_economics",
+    "competitive_landscape",
+    "moat_patterns",
+    "founder_paths",
+    "timing_windows",
+    "regulatory_risks",
+    "compounding_mechanisms",
+    # Decomposition system (extended)
+    "career_path",
+    "base_rates",
+    "network_access",
+    "execution_distance",
+    "capital_requirements",
+    "failure_patterns",
+    "deal_skills",
+    "leverage_type",
+    "founder_experience",
+    "indirect_entry",
+]
+
+VALID_ZONE_TAGS = {"K", "T", "?"}
+
+
+@dataclass
+class ParsedClaim:
+    fact: str
+    value: Optional[float] = None
+    dimension: str = "failure_rates"
+    source_url: Optional[str] = None
+    source_date: Optional[str] = None
+    mechanism: Optional[str] = None
+    confidence: float = 0.5
+    zone_tag: str = "T"
+    from_prose: bool = False
+
+    def to_dict(self) -> dict:
+        return {
+            "fact": self.fact,
+            "value": self.value,
+            "dimension": self.dimension,
+            "source_url": self.source_url,
+            "source_date": self.source_date,
+            "mechanism": self.mechanism,
+            "confidence": self.confidence,
+            "zone_tag": self.zone_tag,
+            "from_prose": self.from_prose,
+        }
+
+
+@dataclass
+class ParsedMechanism:
+    cause: str
+    effect: str
+    strength: float
+    evidence: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        return {
+            "cause": self.cause,
+            "effect": self.effect,
+            "strength": self.strength,
+            "evidence": self.evidence,
+        }
+
+
+@dataclass
+class ParsedContradiction:
+    claim_a: str
+    claim_b: str
+    resolution_needed: bool = True
+
+    def to_dict(self) -> dict:
+        return {
+            "claim_a": self.claim_a,
+            "claim_b": self.claim_b,
+            "resolution_needed": self.resolution_needed,
+        }
+
+
+@dataclass
+class StructuredOutput:
+    agent: str = ""
+    domain: str = ""
+    claims: list[ParsedClaim] = field(default_factory=list)
+    mechanisms: list[ParsedMechanism] = field(default_factory=list)
+    contradictions: list[ParsedContradiction] = field(default_factory=list)
+    gaps: list[str] = field(default_factory=list)
+    sources_checked: int = 0
+    sources_with_data: int = 0
+    parse_mode: str = "json"
+
+    def to_dict(self) -> dict:
+        return {
+            "agent": self.agent,
+            "domain": self.domain,
+            "claims": [c.to_dict() for c in self.claims],
+            "mechanisms": [m.to_dict() for m in self.mechanisms],
+            "contradictions": [c.to_dict() for c in self.contradictions],
+            "gaps": self.gaps,
+            "sources_checked": self.sources_checked,
+            "sources_with_data": self.sources_with_data,
+            "parse_mode": self.parse_mode,
+        }
+
+
+class ClaimParser:
+    def __init__(self, db_path: Optional[Path] = None):
+        self.db_path = db_path or VECTORS_DB
+
+    def parse_agent_output(self, raw_text: str, agent: str = "", domain: str = "") -> StructuredOutput:
+        data = self._try_json_parse(raw_text)
+        if data:
+            output = self._parse_json(data)
+            output.parse_mode = "json"
+        else:
+            from .agent_output_adapter import AgentOutputAdapter
+            adapter = AgentOutputAdapter()
+            output = adapter.extract_structured_output(raw_text)
+            output.parse_mode = "prose"
+
+        if agent:
+            output.agent = agent
+        if domain:
+            output.domain = domain
+
+        output.claims = self.validate_claims(output.claims)
+        return output
+
+    def validate_claims(self, claims: list[ParsedClaim]) -> list[ParsedClaim]:
+        valid = []
+        for claim in claims:
+            if not claim.fact or len(claim.fact.strip()) < 5:
+                continue
+            if claim.dimension not in VALID_DIMENSIONS:
+                claim.dimension = self._infer_dimension(claim.fact)
+            if claim.zone_tag not in VALID_ZONE_TAGS:
+                claim.zone_tag = "T"
+            claim.confidence = max(0.0, min(1.0, claim.confidence))
+            if claim.confidence >= 0.75:
+                claim.zone_tag = "K"
+            elif claim.confidence >= 0.5:
+                claim.zone_tag = "T"
+            else:
+                claim.zone_tag = "?"
+            valid.append(claim)
+        return valid
+
+    def deduplicate_claims(self, new_claims: list[ParsedClaim], threshold: float = 0.85) -> list[ParsedClaim]:
+        existing_facts = self._load_existing_facts()
+        unique = []
+        seen_facts = set()
+
+        for claim in new_claims:
+            norm = claim.fact.lower().strip()
+            if norm in seen_facts:
+                continue
+
+            is_dup = False
+            for existing in existing_facts:
+                sim = SequenceMatcher(None, norm, existing.lower()).ratio()
+                if sim >= threshold:
+                    is_dup = True
+                    break
+
+            if not is_dup:
+                unique.append(claim)
+                seen_facts.add(norm)
+
+        return unique
+
+    def _try_json_parse(self, raw_text: str) -> Optional[dict]:
+        text = raw_text.strip()
+        json_match = re.search(r'\{[\s\S]*\}', text)
+        if not json_match:
+            return None
+        try:
+            return json.loads(json_match.group())
+        except json.JSONDecodeError:
+            return None
+
+    def _parse_json(self, data: dict) -> StructuredOutput:
+        claims = []
+        for c in data.get("claims", []):
+            claims.append(ParsedClaim(
+                fact=c.get("fact", ""),
+                value=c.get("value"),
+                dimension=c.get("dimension", "failure_rates"),
+                source_url=c.get("source_url"),
+                source_date=c.get("source_date"),
+                mechanism=c.get("mechanism"),
+                confidence=c.get("confidence", 0.5),
+                zone_tag=c.get("zone_tag", "T"),
+            ))
+
+        mechanisms = []
+        for m in data.get("mechanisms", []):
+            mechanisms.append(ParsedMechanism(
+                cause=m.get("cause", ""),
+                effect=m.get("effect", ""),
+                strength=m.get("strength", 0.5),
+                evidence=m.get("evidence"),
+            ))
+
+        contradictions = []
+        for ct in data.get("contradictions", []):
+            contradictions.append(ParsedContradiction(
+                claim_a=ct.get("claim_a", ""),
+                claim_b=ct.get("claim_b", ""),
+                resolution_needed=ct.get("resolution_needed", True),
+            ))
+
+        return StructuredOutput(
+            agent=data.get("agent", ""),
+            domain=data.get("domain", ""),
+            claims=claims,
+            mechanisms=mechanisms,
+            contradictions=contradictions,
+            gaps=data.get("gaps", []),
+            sources_checked=data.get("sources_checked", 0),
+            sources_with_data=data.get("sources_with_data", 0),
+        )
+
+    def _infer_dimension(self, fact: str) -> str:
+        fact_lower = fact.lower()
+        patterns = {
+            "failure_patterns": ["fail", "die", "shut down", "close", "bankrupt", "mistake", "kill", "collapse"],
+            "failure_rates": ["% of", "never reach", "failure rate", "success rate", "survival rate"],
+            "unit_economics": ["margin", "cac", "ltv", "revenue", "cost", "price", "arpu", "mrr", "arr"],
+            "competitive_landscape": ["competitor", "market share", "dominant", "alternative", "vs"],
+            "moat_patterns": ["moat", "network effect", "switching cost", "lock-in", "defensible"],
+            "founder_paths": ["founder", "solo", "team", "bootstrap", "experience", "background"],
+            "career_path": ["career", "position", "role", "director", "manager", "salary", "compensation"],
+            "base_rates": ["base rate", "survival", "success rate", "median", "average"],
+            "network_access": ["network", "connection", "gatekeeper", "access", "community"],
+            "execution_distance": ["step", "prerequisite", "gap", "milestone", "timeline"],
+            "capital_requirements": ["capital", "investment", "fund", "funding", "budget"],
+            "deal_skills": ["deal", "due diligence", "valuation", "term sheet", "negotiat"],
+            "leverage_type": ["leverage", "code", "media", "scale", "permissionless"],
+            "timing_windows": ["window", "trend", "cycle", "seasonal", "timing", "wave", "peak"],
+            "regulatory_risks": ["regulation", "compliance", "legal", "license", "ban", "gdpr", "policy"],
+            "compounding_mechanisms": ["compound", "flywheel", "snowball", "accumulate"],
+        }
+        for dim, keywords in patterns.items():
+            if any(kw in fact_lower for kw in keywords):
+                return dim
+        return "failure_rates"
+
+    def _load_existing_facts(self) -> list[str]:
+        if not self.db_path.exists():
+            return []
+        try:
+            with sqlite3.connect(str(self.db_path)) as conn:
+                rows = conn.execute("SELECT features_json FROM decision_vectors").fetchall()
+                facts = []
+                for row in rows:
+                    features = json.loads(row[0])
+                    fact_text = features.get("fact", features.get("description", ""))
+                    if fact_text:
+                        facts.append(fact_text)
+                return facts
+        except (sqlite3.OperationalError, json.JSONDecodeError):
+            return []

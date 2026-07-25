@@ -1,0 +1,212 @@
+"""
+test_leverage_scoring.py — Tests for leverage classification in stage0 quality scorer.
+
+Validates:
+- check_leverage_classification() dimension (sleep test, leverage class, asset ID, labor penalty)
+- Grade thresholds updated for max=175
+- SIDE_HUSTLE_WITH_STAIRCASE in valid verdicts
+- Audit schema leverage group structure
+
+Usage:
+    pytest tests/stage0/test_leverage_scoring.py -v
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+import unittest
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+SCRIPTS_DIR = REPO_ROOT / ".claude" / "skills" / "business" / "transaction-layer" / "nui-hunter" / "scripts"
+AUDIT_SCHEMA_PATH = REPO_ROOT / ".claude" / "hooks" / "lib" / "audit-schemas" / "stage0.json"
+
+sys.path.insert(0, str(SCRIPTS_DIR))
+
+from importlib import import_module
+
+qs = import_module("stage0-quality-score")
+
+
+class TestLeverageClassification(unittest.TestCase):
+
+    def test_sleep_test_present_scores_5(self):
+        text = "Q4-SLEEP: YES\nRevenue continues when founder does zero work."
+        result = qs.check_leverage_classification(text)
+        self.assertGreaterEqual(result["score"], 5)
+        self.assertIn("sleep test present", result["detail"])
+
+    def test_leverage_class_present_scores_5(self):
+        text = "Q5-LEVERAGE: CODE\nNaval hierarchy classification."
+        result = qs.check_leverage_classification(text)
+        self.assertGreaterEqual(result["score"], 5)
+        self.assertIn("leverage classification found", result["detail"])
+
+    def test_asset_identification_scores_5(self):
+        text = "Asset at M12: SaaS codebase with 500 paying subscribers."
+        result = qs.check_leverage_classification(text)
+        self.assertGreaterEqual(result["score"], 5)
+        self.assertIn("asset identification present", result["detail"])
+
+    def test_full_leverage_section_scores_15(self):
+        text = (
+            "Q4-SLEEP: YES\n"
+            "Q5-LEVERAGE: CODE\n"
+            "Asset at M12: SaaS platform with recurring revenue."
+        )
+        result = qs.check_leverage_classification(text)
+        self.assertEqual(result["score"], 15)
+        self.assertEqual(result["max"], 15)
+
+    def test_labor_without_staircase_penalized(self):
+        text = "Q5-LEVERAGE: LABOR\nCommission-based sourcing agent."
+        result = qs.check_leverage_classification(text)
+        self.assertEqual(result["score"], 0)
+        self.assertIn("PENALTY", result["detail"])
+
+    def test_labor_with_staircase_no_penalty(self):
+        text = "leverage: LABOR model with stair-step transition path to SaaS product."
+        result = qs.check_leverage_classification(text)
+        self.assertNotIn("PENALTY", result["detail"])
+
+    def test_bare_labor_word_no_false_penalty(self):
+        text = "This CODE model requires minimal LABOR investment."
+        result = qs.check_leverage_classification(text)
+        self.assertNotIn("PENALTY", result["detail"])
+
+    def test_hybrid_not_penalized(self):
+        text = "Q5-LEVERAGE: HYBRID\nLabor phase with code transition."
+        result = qs.check_leverage_classification(text)
+        self.assertNotIn("PENALTY", result["detail"])
+
+    def test_old_verdict_no_leverage_scores_zero(self):
+        text = "Standard verdict without any leverage section. Q1=yes Q2=yes Q3=yes."
+        result = qs.check_leverage_classification(text)
+        self.assertEqual(result["score"], 0)
+
+    def test_max_is_15(self):
+        text = "Q4-SLEEP: YES\nQ5-LEVERAGE: CODE\nAsset at M12: codebase"
+        result = qs.check_leverage_classification(text)
+        self.assertEqual(result["max"], 15)
+
+
+class TestGradeThresholds(unittest.TestCase):
+
+    def test_grade_a_at_136(self):
+        self.assertEqual(qs.grade(136), "A")
+
+    def test_grade_b_at_135(self):
+        self.assertEqual(qs.grade(135), "B")
+
+    def test_grade_b_at_120(self):
+        self.assertEqual(qs.grade(120), "B")
+
+    def test_grade_c_at_119(self):
+        self.assertEqual(qs.grade(119), "C")
+
+    def test_grade_c_at_93(self):
+        self.assertEqual(qs.grade(93), "C")
+
+    def test_grade_d_at_71(self):
+        self.assertEqual(qs.grade(71), "D")
+
+    def test_grade_f_at_70(self):
+        self.assertEqual(qs.grade(70), "F")
+
+    def test_grade_a_at_max(self):
+        self.assertEqual(qs.grade(175), "A")
+
+
+class TestValidVerdicts(unittest.TestCase):
+
+    def test_side_hustle_with_staircase_valid(self):
+        self.assertIn("SIDE_HUSTLE_WITH_STAIRCASE", qs.VALID_VERDICTS)
+
+    def test_all_original_verdicts_present(self):
+        for v in ["KILL", "SIDE_HUSTLE", "MOUNTAIN_CANDIDATE", "INSUFFICIENT_SIGNAL"]:
+            self.assertIn(v, qs.VALID_VERDICTS)
+
+    def test_exploration_verdicts_present(self):
+        for v in ["EXPLORATION_COMPLETE", "EXPLORATION_ONGOING"]:
+            self.assertIn(v, qs.VALID_VERDICTS)
+
+
+class TestScoreVerdictIntegration(unittest.TestCase):
+
+    def test_leverage_dimension_in_output(self):
+        text = "Q4-SLEEP: YES\nQ5-LEVERAGE: CODE\nAsset at M12: SaaS"
+        result = qs.score_verdict(text)
+        self.assertIn("leverage_classification", result["dimensions"])
+
+    def test_grade_map_shows_175(self):
+        result = qs.score_verdict("minimal text")
+        self.assertIn("175", result["grade_map"])
+
+
+class TestAuditSchemaLeverage(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        with open(AUDIT_SCHEMA_PATH, encoding="utf-8") as f:
+            cls.schema = json.load(f)
+
+    def test_leverage_group_exists(self):
+        self.assertIn("leverage", self.schema["dimensions"])
+
+    def test_leverage_weight_015(self):
+        self.assertAlmostEqual(self.schema["dimensions"]["leverage"]["weight"], 0.15)
+
+    def test_weights_sum_to_one(self):
+        total = sum(d["weight"] for d in self.schema["dimensions"].values())
+        self.assertAlmostEqual(total, 1.0, places=2)
+
+    def test_sleep_test_is_critical(self):
+        checks = self.schema["dimensions"]["leverage"]["checks"]
+        sleep = next(c for c in checks if c["id"] == "s0_sleep_test")
+        self.assertEqual(sleep["severity"], "critical")
+
+    def test_four_leverage_checks(self):
+        checks = self.schema["dimensions"]["leverage"]["checks"]
+        self.assertEqual(len(checks), 4)
+        ids = {c["id"] for c in checks}
+        self.assertEqual(ids, {"s0_sleep_test", "s0_leverage_class", "s0_asset_at_m12", "s0_labor_staircase"})
+
+
+class TestDQGeneratorLeverage(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(SCRIPTS_DIR))
+        cls.dq = import_module("tier-adjusted-dq-generator")
+
+    def test_leverage_in_tier_0(self):
+        result = self.dq.generate("TIER_0")
+        codes = [q["code"] for q in result["questions"]]
+        self.assertIn("LEVERAGE", codes)
+
+    def test_leverage_in_tier_1(self):
+        result = self.dq.generate("TIER_1")
+        codes = [q["code"] for q in result["questions"]]
+        self.assertIn("LEVERAGE", codes)
+
+    def test_leverage_in_tier_2(self):
+        result = self.dq.generate("TIER_2")
+        codes = [q["code"] for q in result["questions"]]
+        self.assertIn("LEVERAGE", codes)
+
+    def test_leverage_in_tier_3(self):
+        result = self.dq.generate("TIER_3")
+        codes = [q["code"] for q in result["questions"]]
+        self.assertIn("LEVERAGE", codes)
+
+    def test_leverage_question_has_kill_signal(self):
+        q = self.dq.DECISION_QUESTIONS["LEVERAGE"]
+        self.assertIn("kill_signal", q)
+        self.assertIn("job", q["kill_signal"])
+
+
+if __name__ == "__main__":
+    if sys.platform == "win32":
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    unittest.main(verbosity=2)

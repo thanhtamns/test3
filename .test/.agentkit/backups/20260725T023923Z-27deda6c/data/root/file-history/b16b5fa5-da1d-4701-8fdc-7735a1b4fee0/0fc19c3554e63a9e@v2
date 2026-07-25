@@ -1,0 +1,181 @@
+"""
+GraphUpdater — parses search results into graph node/edge updates.
+Marks hypotheses as CONFIRMED/KILLED/INCONCLUSIVE based on evidence.
+"""
+
+import re
+from typing import Optional
+
+from .money_flow_graph import (
+    MoneyFlowGraph,
+    Hypothesis,
+    HYPOTHESIS_CONFIRMED,
+    HYPOTHESIS_KILLED,
+    HYPOTHESIS_INCONCLUSIVE,
+)
+from .seeder import MONEY_PATTERNS, _normalize_amount
+
+
+CONFIRMATION_SIGNALS = [
+    r'(?:according to|based on|reported|survey|study|data shows)',
+    r'(?:market size|revenue|worth|valued at|estimated)',
+    r'(?:charges?|costs?|pricing|fee|rate)\s+(?:of\s+)?\$',
+    r'(?:provides?|offers?|sells?|delivers?)\s+(?:to|for)',
+    r'(?:partners? with|works? with|contracts? with)',
+    r'(?:broker|agent|intermediary|referral|reseller)',
+]
+
+KILL_SIGNALS = [
+    r'(?:no longer|discontinued|shut down|closed|bankrupt)',
+    r'(?:free|open.?source|no cost|built.?in)',
+    r'(?:not (?:available|applicable|relevant))',
+    r'(?:does not exist|no such|no evidence)',
+]
+
+ENTITY_EXTRACT = re.compile(
+    r'(?:([A-Z][\w&\'-]+(?:\s+[A-Z][\w&\'-]+){0,4})\s*'
+    r'(?:Inc|LLC|Corp|Ltd|GmbH|SA|AG|Co\.?|Group|Platform|Solutions|Services)?)',
+)
+
+
+class GraphUpdater:
+    def update_from_result(
+        self,
+        graph: MoneyFlowGraph,
+        hypothesis: Hypothesis,
+        raw_text: str,
+        source_url: str = "",
+    ) -> dict:
+        if not raw_text or len(raw_text) < 30:
+            hypothesis.status = HYPOTHESIS_INCONCLUSIVE
+            return {"status": "inconclusive", "reason": "empty_response"}
+
+        confirmation_score = self._score_confirmation(raw_text)
+        kill_score = self._score_kill(raw_text)
+
+        entities = self._extract_entities(raw_text)
+        numbers = self._extract_numbers(raw_text)
+        relationships = self._extract_relationships(raw_text)
+
+        changes = {
+            "nodes_added": 0,
+            "nodes_updated": 0,
+            "edges_added": 0,
+            "edges_updated": 0,
+            "entities_found": len(entities),
+            "numbers_found": len(numbers),
+        }
+
+        for entity_name, entity_type in entities:
+            existing = self._find_existing_node(graph, entity_name)
+            if existing:
+                if existing.confidence < 0.7:
+                    existing.confidence = min(existing.confidence + 0.2, 0.9)
+                    if source_url:
+                        existing.source_url = source_url
+                    changes["nodes_updated"] += 1
+            else:
+                graph.add_node(entity_name, entity_type, confidence=0.5, source_url=source_url)
+                changes["nodes_added"] += 1
+
+        for subj, obj, flow_type, amount in relationships:
+            edge = graph.add_edge(
+                subj, obj, flow_type,
+                amount_per_tx=amount,
+                confidence=0.6,
+                verified_by=source_url or hypothesis.test_query,
+            )
+            changes["edges_added"] += 1
+
+        for affected_edge_id in hypothesis.affects_edges:
+            if affected_edge_id in graph.edges:
+                edge = graph.edges[affected_edge_id]
+                if confirmation_score > kill_score:
+                    edge.confidence = min(edge.confidence + 0.2, 0.95)
+                    changes["edges_updated"] += 1
+
+        if confirmation_score > kill_score and confirmation_score >= 0.5:
+            hypothesis.status = HYPOTHESIS_CONFIRMED
+            hypothesis.evidence_for.append(raw_text[:200])
+        elif kill_score > confirmation_score and kill_score >= 0.5:
+            hypothesis.status = HYPOTHESIS_KILLED
+            hypothesis.evidence_against.append(raw_text[:200])
+        else:
+            hypothesis.status = HYPOTHESIS_INCONCLUSIVE
+
+        changes["status"] = hypothesis.status
+        changes["confirmation_score"] = confirmation_score
+        changes["kill_score"] = kill_score
+        return changes
+
+    def _score_confirmation(self, text: str) -> float:
+        score = 0.0
+        for pattern in CONFIRMATION_SIGNALS:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            score += len(matches) * 0.5
+        return score
+
+    def _score_kill(self, text: str) -> float:
+        score = 0.0
+        for pattern in KILL_SIGNALS:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            score += len(matches) * 0.7
+        return score
+
+    def _extract_entities(self, text: str) -> list[tuple[str, str]]:
+        entities = []
+        seen = set()
+        for match in ENTITY_EXTRACT.finditer(text):
+            name = match.group(1).strip()
+            if name.lower() in seen or len(name) < 3 or len(name) > 50:
+                continue
+            seen.add(name.lower())
+
+            entity_type = "UNKNOWN"
+            context_start = max(0, match.start() - 60)
+            context = text[context_start:match.end() + 60].lower()
+            if any(w in context for w in ("pays", "buys", "spends", "customer", "client")):
+                entity_type = "PAYER"
+            elif any(w in context for w in ("provides", "sells", "offers", "vendor", "supplier")):
+                entity_type = "PROVIDER"
+            elif any(w in context for w in ("broker", "agent", "referral", "intermediary")):
+                entity_type = "BROKER"
+            elif any(w in context for w in ("platform", "marketplace", "app")):
+                entity_type = "PLATFORM"
+            elif any(w in context for w in ("regulator", "authority", "government", "compliance")):
+                entity_type = "REGULATOR"
+
+            entities.append((name, entity_type))
+        return entities[:10]
+
+    def _extract_numbers(self, text: str) -> list[dict]:
+        numbers = []
+        for pattern in MONEY_PATTERNS:
+            for match in re.finditer(pattern, text, re.IGNORECASE):
+                value = _normalize_amount(match.group())
+                if value:
+                    numbers.append({"raw": match.group(), "normalized": value})
+        return numbers
+
+    def _extract_relationships(self, text: str) -> list[tuple[str, str, str, Optional[float]]]:
+        rels = []
+        rel_patterns = [
+            (r'(\w[\w\s]{2,25})\s+(?:pays|charges)\s+(\w[\w\s]{2,25})\s+(\$[\d,.]+\w*)', "PAYS"),
+            (r'(\w[\w\s]{2,25})\s+(?:hires?|uses?|contracts?)\s+(\w[\w\s]{2,25})', "PAYS"),
+            (r'(\w[\w\s]{2,25})\s+(?:refers?|sends?)\s+(?:clients?|customers?)?\s*(?:to\s+)?(\w[\w\s]{2,25})', "REFERS"),
+        ]
+        for pattern, flow_type in rel_patterns:
+            for match in re.finditer(pattern, text, re.IGNORECASE):
+                subj = match.group(1).strip()[:30]
+                obj = match.group(2).strip()[:30]
+                amount = None
+                if match.lastindex >= 3:
+                    amount = _normalize_amount(match.group(3))
+                if subj and obj and subj.lower() != obj.lower():
+                    rels.append((subj, obj, flow_type, amount))
+        return rels[:5]
+
+    def _find_existing_node(self, graph: MoneyFlowGraph, entity_name: str):
+        from .money_flow_graph import _make_node_id
+        node_id = _make_node_id(entity_name)
+        return graph.nodes.get(node_id)

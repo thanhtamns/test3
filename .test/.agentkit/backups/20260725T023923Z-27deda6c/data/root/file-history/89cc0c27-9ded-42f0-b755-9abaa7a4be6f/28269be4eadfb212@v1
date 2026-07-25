@@ -1,0 +1,158 @@
+---
+phase: 1
+title: "Fix Foundations (model_id + attestation + blame + budget + router)"
+status: pending
+priority: P1
+effort: "3d"
+dependencies: []
+---
+
+# Phase 1: Fix Foundations
+
+## Overview
+
+Fix 6 partial implementations in existing CLI code. model_id extraction, full attestation envelope, line-level blame, team budget scope, router-budget integration, push alerts.
+
+## Requirements
+
+- Functional: model_id extracted from hook context, attestation signs all 6 fields, blame shows line ranges not whole-file, budget supports team scope, router checks budget before suggesting tier, webhook alerts on threshold
+- Non-functional: all existing tests pass, <5ms overhead per hook call
+
+## Architecture
+
+```
+Hook JSON → extract model_id → provenance.rs → detect_changes() with git diff lines
+                                     ↓
+                              sign full envelope (6 fields)
+                                     ↓
+                              blame shows per-line ranges
+                                     
+Budget TOML → team scope → PolicyEngine.evaluate() → Verdict
+                                     ↓
+                              router.rs consults budget → downgrade tier
+                                     ↓
+                              webhook POST on warn/block
+```
+
+## Related Code Files
+
+- Modify: `cli/crates/core/src/provenance.rs` — model_id, line ranges, envelope
+- Modify: `cli/crates/core/src/session.rs` — extract model_id from hook JSON
+- Modify: `cli/crates/core/src/budget_policy.rs` — add team scope
+- Modify: `cli/crates/core/src/router.rs` — add budget consultation
+- Modify: `cli/crates/cli/src/hooks.rs` — pass model_id through pipeline
+- Modify: `cli/crates/cli/src/budget_cmd.rs` — webhook alert dispatch
+
+## Implementation Steps
+
+### TDD Step A: Write tests for current behavior (lock regressions)
+
+1. Add test `test_detect_changes_preserves_existing_fields` in provenance.rs — verify session_id, file_path, code_hash, contributor_type, attestation_sig are all populated after detect_changes()
+2. Add test `test_budget_evaluate_developer_scope` — verify existing dev scope Allow/Warn/Block verdicts
+3. Add test `test_budget_evaluate_project_scope` — verify existing project scope verdicts
+4. Add test `test_router_classify_complexity_levels` — verify Low/Medium/High classification unchanged
+5. Add test `test_blame_output_format` — verify blame produces records with expected fields
+6. Run `cargo test` — all must pass. This locks current behavior.
+
+### TDD Step B: Write tests for NEW behavior (red tests)
+
+7. Add test `test_model_id_from_env_var` — set `CLAUDE_MODEL=claude-opus-4`, call extraction, expect "claude-opus-4"
+8. Add test `test_model_id_from_hook_json` — pass `{"model": "claude-sonnet-4"}` JSON, expect extraction
+9. Add test `test_model_id_fallback_unknown` — no env var, no JSON field → expect "unknown"
+10. Add test `test_attestation_signs_full_envelope` — verify signature covers prompt_hash, model_id, model_version, code_hash, timestamp, developer_id (all 6 fields)
+11. Add test `test_detect_changes_line_ranges` — create a file, change lines 5-10, verify start_line=5, end_line=10 (not 1 and total)
+12. Add test `test_budget_evaluate_team_scope` — scope="team", team_id="backend", budget $500, spent $400 → Warn
+13. Add test `test_router_with_budget_pressure` — budget at 90% → router downgrades from Opus to Sonnet
+14. Add test `test_router_without_budget_pressure` — budget at 30% → router keeps original tier
+15. Add test `test_webhook_alert_format` — verify POST body contains policy_id, action, spent, limit, percentage
+16. Run `cargo test` — new tests FAIL (red). This confirms they test unimplemented behavior.
+
+### TDD Step C: Implement changes (make tests green)
+
+17. **model_id extraction** — In hooks.rs or session.rs, add `extract_model_id()`:
+    ```rust
+    pub fn extract_model_id(hook_json: &serde_json::Value) -> String {
+        // 1. Check env var CLAUDE_MODEL
+        if let Ok(m) = std::env::var("CLAUDE_MODEL") { return m; }
+        // 2. Check hook JSON "model" field
+        if let Some(m) = hook_json.get("model").and_then(|v| v.as_str()) { return m.to_string(); }
+        // 3. Fallback
+        "unknown".to_string()
+    }
+    ```
+18. **Wire model_id into provenance** — In detect_changes() at provenance.rs:333, replace `"unknown".to_string()` with `model_id` parameter passed from hook pipeline
+19. **Full attestation envelope** — In detect_changes() at provenance.rs:324, change sign_data:
+    ```rust
+    let sign_data = format!("{}:{}:{}:{}:{}:{}", 
+        prompt_hash, model_id, model_version, current_hash, now, developer_id);
+    ```
+20. **Line-level blame** — In detect_changes(), replace `start_line: 1, end_line: line_count` with git diff parsing:
+    ```rust
+    // Run: git diff --unified=0 HEAD -- {file_path}
+    // Parse @@ -a,b +c,d @@ hunks to get actual changed line ranges
+    fn parse_diff_ranges(project_dir: &Path, rel_path: &str) -> Vec<(u32, u32)> { ... }
+    ```
+    If git diff unavailable (new file), fall back to 1..line_count.
+21. **Team scope** — In budget_policy.rs evaluate(), add match arm:
+    ```rust
+    "team" => {
+        // Match team_id from config against current team context
+        // Team context from env var CODEFLOW_TEAM or config file
+    }
+    ```
+22. **Router-budget integration** — In router.rs, add `classify_with_budget()`:
+    ```rust
+    pub fn classify_with_budget(input: &RoutingInput, budget_verdict: &Verdict) -> RoutingDecision {
+        let base = classify(input);
+        match budget_verdict {
+            Verdict::Warn(_) if base.tier == ModelTier::Opus => {
+                // Downgrade to Sonnet, update reason
+            }
+            Verdict::Block(_) => {
+                // Force Haiku, update reason
+            }
+            _ => base,
+        }
+    }
+    ```
+23. **Webhook alerts** — In budget_cmd.rs, add `dispatch_webhook()`:
+    ```rust
+    fn dispatch_webhook(url: &str, verdict: &Verdict, policy: &LimitRule, spent: f64) {
+        let body = serde_json::json!({
+            "policy_id": policy.name,
+            "action": match verdict { Warn(_) => "warn", Block(_) => "block", _ => "allow" },
+            "spent_usd": spent,
+            "limit_usd": policy.limit_usd,
+            "percentage": (spent / policy.limit_usd * 100.0),
+        });
+        ureq::post(url).send_json(&body).ok(); // fire-and-forget
+    }
+    ```
+
+### TDD Step D: Verify compile + all tests green
+
+24. Run `cargo test` — ALL tests must pass (old + new)
+25. Run `cargo clippy` — no warnings
+26. Manual test: `codeflow blame <file>` shows model_id (not "unknown") and line ranges
+27. Manual test: `codeflow budget status` with team config shows team scope
+28. Manual test: `codeflow route "complex command" --tokens 50000` with budget at 90% → shows downgraded tier
+
+## Success Criteria
+
+- [ ] model_id extracted from CLAUDE_MODEL env or hook JSON (not hardcoded "unknown")
+- [ ] Attestation signature covers all 6 fields
+- [ ] Blame shows actual changed line ranges (not 1..file_length)
+- [ ] Budget supports team scope alongside developer/project
+- [ ] Router downgrades model tier when budget is tight
+- [ ] Webhook fires on warn/block threshold
+- [ ] All existing + new tests pass
+- [ ] `cargo clippy` clean
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|---|---|
+| CLAUDE_MODEL env not set by all tools | Fallback chain: env → JSON → "unknown". Graceful degradation. |
+| git diff unavailable (new repo, detached HEAD) | Fallback to 1..line_count with contributor_type=Unknown |
+| Webhook endpoint unreachable | fire-and-forget with ureq timeout (2s). Never block hook pipeline. |
+| Team ID resolution ambiguous | Use CODEFLOW_TEAM env var as primary source, config file as fallback |

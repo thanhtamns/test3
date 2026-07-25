@@ -1,0 +1,190 @@
+"""
+LFI Integration Test — end-to-end test of full Local-First Intelligence stack.
+Tests: query → decompose → resolve → chain → verdict → govern.
+"""
+
+import json
+import sys
+import tempfile
+from pathlib import Path
+
+import pytest
+
+LIB = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(LIB))
+
+from intelligence.reasoning import (
+    ReasoningChainEngine,
+    ProblemDecomposer,
+    AtomicResolver,
+    ChainAssembler,
+    VerdictGenerator,
+    ContradictionDetector,
+    ChainTracer,
+)
+from intelligence.coverage.tracker import CoverageTracker
+from intelligence.coverage.gap_detector import GapDetector
+from intelligence.coverage.staleness_monitor import StalenessMonitor
+from intelligence.governance import AccuracyTracker, GraduationRules, AutonomyGovernor
+
+
+RICH_CONTEXT = {
+    "industry": "saas",
+    "business_model": "subscription",
+    "entry_capital": "5000",
+    "moat_type": ["switching_cost"],
+    "leverage_type": ["code", "media"],
+    "founder_type": "technical",
+    "time_horizon": "12_months",
+    "market_timing": "growing",
+}
+
+WEAK_CONTEXT = {
+    "industry": "unknown",
+    "business_model": "unknown",
+    "moat_type": ["none"],
+    "leverage_type": ["labor"],
+}
+
+EMPTY_CONTEXT = {}
+
+
+class TestFullPipeline:
+    def test_query_to_verdict_rich(self):
+        engine = ReasoningChainEngine()
+        verdict = engine.reason("SaaS for freelancers", RICH_CONTEXT, trace=False)
+        assert verdict.verdict in ("KILL", "PASS", "WEAK_PASS", "NEEDS_LLM")
+        assert verdict.confidence >= 0
+        assert verdict.score >= 0
+
+    def test_query_to_verdict_empty(self):
+        engine = ReasoningChainEngine()
+        verdict = engine.reason("Novel idea", EMPTY_CONTEXT, trace=False)
+        assert verdict.verdict == "NEEDS_LLM"
+
+    def test_query_to_verdict_weak(self):
+        engine = ReasoningChainEngine()
+        verdict = engine.reason("Labor business", WEAK_CONTEXT, trace=False)
+        assert verdict.verdict in ("KILL", "PASS", "WEAK_PASS", "NEEDS_LLM")
+
+    def test_explain_returns_full_chain(self):
+        engine = ReasoningChainEngine()
+        result = engine.explain("Test query", RICH_CONTEXT)
+        assert "verdict" in result
+        assert "chain" in result
+        assert "atoms" in result
+        assert result["chain"]["resolved_count"] > 0
+
+    def test_all_query_types(self):
+        engine = ReasoningChainEngine()
+        for qt in ("opportunity_analysis", "competitor_analysis", "pricing_analysis"):
+            verdict = engine.reason("Test", RICH_CONTEXT, query_type=qt, trace=False)
+            assert verdict.verdict in ("KILL", "PASS", "WEAK_PASS", "NEEDS_LLM")
+
+
+class TestPipelineWithGovernance:
+    def test_governed_verdict(self):
+        with tempfile.TemporaryDirectory() as td:
+            tracker = AccuracyTracker(Path(td) / "acc.json")
+            governor = AutonomyGovernor(tracker)
+
+            engine = ReasoningChainEngine()
+            verdict = engine.reason("SaaS test", RICH_CONTEXT, trace=False)
+
+            governed = governor.wrap_verdict(verdict, "saas")
+            assert governed.autonomy_level == "HUMAN_DECIDES"
+            assert governed.requires_confirmation is True
+
+    def test_promotion_after_correct_verdicts(self):
+        with tempfile.TemporaryDirectory() as td:
+            tracker = AccuracyTracker(Path(td) / "acc.json")
+            governor = AutonomyGovernor(tracker)
+
+            for _ in range(35):
+                tracker.record("saas", "KILL", "failure")
+
+            assert governor.get_mode("saas") == "FULL_AUTO"
+
+    def test_demotion_on_accuracy_drop(self):
+        with tempfile.TemporaryDirectory() as td:
+            tracker = AccuracyTracker(Path(td) / "acc.json")
+            governor = AutonomyGovernor(tracker)
+
+            for _ in range(30):
+                tracker.record("saas", "KILL", "failure")
+            assert governor.get_mode("saas") == "FULL_AUTO"
+
+            for _ in range(10):
+                tracker.record("saas", "PASS", "failure")
+            assert governor.get_mode("saas") != "FULL_AUTO"
+
+
+class TestCoverageIntegration:
+    def test_coverage_check(self):
+        tracker = CoverageTracker()
+        result = tracker.check({"industry": "saas", "business_model": "subscription"})
+        assert result.score >= 0
+        assert result.domain != ""
+
+    def test_gap_detection(self):
+        tracker = CoverageTracker()
+        detector = GapDetector()
+        coverage = tracker.check({"industry": "novel_domain_xyz"})
+        gaps = detector.identify_gaps({"industry": "novel_domain_xyz"}, coverage)
+        assert isinstance(gaps, list)
+
+
+class TestTraceAudit:
+    def test_trace_written_and_readable(self):
+        with tempfile.TemporaryDirectory() as td:
+            trace_path = Path(td) / "traces.jsonl"
+            engine = ReasoningChainEngine(trace_path=trace_path)
+            engine.reason("Audit test", RICH_CONTEXT, trace=True)
+
+            assert trace_path.exists()
+            lines = trace_path.read_text(encoding="utf-8").strip().split("\n")
+            assert len(lines) == 1
+            record = json.loads(lines[0])
+            assert record["verdict"] in ("KILL", "PASS", "WEAK_PASS", "NEEDS_LLM")
+            assert "chain_detail" in record
+            assert record["atoms_total"] == 15
+
+    def test_multiple_traces_accumulate(self):
+        with tempfile.TemporaryDirectory() as td:
+            trace_path = Path(td) / "traces.jsonl"
+            engine = ReasoningChainEngine(trace_path=trace_path)
+            engine.reason("Q1", RICH_CONTEXT, trace=True)
+            engine.reason("Q2", WEAK_CONTEXT, trace=True)
+            engine.reason("Q3", EMPTY_CONTEXT, trace=True)
+
+            lines = trace_path.read_text(encoding="utf-8").strip().split("\n")
+            assert len(lines) == 3
+
+
+class TestPerformance:
+    def test_reasoning_under_500ms(self):
+        import time
+        engine = ReasoningChainEngine()
+        start = time.perf_counter()
+        for _ in range(10):
+            engine.reason("Perf test", RICH_CONTEXT, trace=False)
+        elapsed = (time.perf_counter() - start) * 1000
+        avg_ms = elapsed / 10
+        assert avg_ms < 500, f"Average {avg_ms:.0f}ms exceeds 500ms target"
+
+
+class TestCalibrationConfig:
+    def test_config_exists_and_valid(self):
+        config_path = LIB / "intelligence" / "calibration" / "lfi_calibration_config.json"
+        assert config_path.exists()
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        assert "coverage" in config
+        assert "reasoning" in config
+        assert "evolution" in config
+        assert "autonomy" in config
+        assert config["autonomy"]["full_auto_accuracy"] == 0.85
+        assert config["autonomy"]["min_verdicts_for_promotion"] == 30
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

@@ -1,0 +1,9 @@
+# WorkOS AuthKit (get from https://dashboard.workos.com)
+WORKOS_CLIENT_ID="client_..."
+WORKOS_API_KEY="sk_test_..."
+WORKOS_COOKIE_PASSWORD="generate-with-openssl-rand-base64-24"
+NEXT_PUBLIC_WORKOS_REDIRECT_URI="http://localhost:3000/auth/callback"
+
+# CODEFLOW API
+NEXT_PUBLIC_API_URL="http://localhost:8080"
+NEXT_PUBLIC_TENANT_ID="your-tenant-id"  # Required — API calls fail without this

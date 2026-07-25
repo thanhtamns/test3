@@ -1,0 +1,120 @@
+---
+phase: 4
+title: "Tests and Validation"
+status: complete
+priority: P1
+effort: "3h"
+dependencies: [2, 3]
+---
+
+# Phase 4: Tests and Validation
+
+## Overview
+
+Test suite for the Python Elo engine + manual validation protocol for the tournament agent. Unit tests for Elo math and models; manual validation by running Stage0 once with tournament enabled and human-evaluating the ranking.
+
+## Requirements
+
+- Functional: Unit tests for Elo engine (all public methods)
+- Functional: Unit tests for models (serialization, validation)
+- Functional: Manual validation protocol documented
+- Non-functional: All Python tests pass with `pytest` from repo root
+- Non-functional: No synthetic "ground-truth" test — honest about what we can and cannot validate automatically
+
+## Architecture
+
+### Test Strategy
+
+| Test Type | What | Count | Automated |
+|-----------|------|-------|-----------|
+| Unit | Elo math: expected_score, elo_update, compute_rankings | ~10 | Yes |
+| Unit | Models: OpportunityHypothesis, DebateResult, TournamentResult serialization | ~6 | Yes |
+| Unit | Round-robin pair generation correctness (N=3,5,8,10 cap) | ~3 | Yes |
+| Unit | Diversity enforcement logic (keyword classification, promotion) | ~4 | Yes |
+| Manual | Run Stage0 with tournament, human-evaluate ranking quality | 1 | No |
+
+**What we are NOT testing automatically (honest limitations):**
+- Tournament agent output quality (LLM-dependent, non-deterministic)
+- Debate prompt effectiveness (requires human judgment)
+- ~~Ground-truth replay~~ (no historical data exists in `data/analysis-history/`)
+
+### Elo Engine Tests
+
+```python
+def test_equal_ratings_win():
+    """1500 vs 1500, A wins → A gains ~16, B loses ~16 (K=32)"""
+    new_a, new_b = elo_update(1500, 1500, "A", k=32)
+    assert abs(new_a - 1516) < 0.1
+    assert abs(new_b - 1484) < 0.1
+
+def test_underdog_win():
+    """1400 vs 1600, A wins → A gains more than 16 (upset bonus)"""
+    new_a, new_b = elo_update(1400, 1600, "A", k=32)
+    assert new_a > 1424  # More than equal-rating win
+    assert new_b < 1576
+
+def test_draw():
+    """1500 vs 1500, DRAW → both unchanged"""
+    new_a, new_b = elo_update(1500, 1500, "DRAW", k=32)
+    assert abs(new_a - 1500) < 0.1
+    assert abs(new_b - 1500) < 0.1
+
+def test_compute_rankings_preserves_all():
+    """All hypotheses present after ranking, sorted by Elo"""
+    ...
+```
+
+### Manual Validation Protocol
+
+After Phase 3 integration ships:
+1. Run `/startup` with a topic known to produce 3+ hypotheses (e.g., "passive income ideas for $5K budget")
+2. Verify tournament agent was spawned (check for "Phase 2.7" in output)
+3. Read `tournament-result.md` in session plan dir
+4. Human-evaluate: Does the #1 ranked hypothesis match your intuition? Are the debate arguments reasonable?
+5. Run same topic WITHOUT tournament (manually skip Phase 2.7) and compare verdicts
+6. Document findings in `plans/260527-idea-tournament-engine/validation-results.md`
+
+## Related Code Files
+
+- Create: `.claude/lib/intelligence/tournament/tests/__init__.py`
+- Create: `.claude/lib/intelligence/tournament/tests/test_elo_engine.py`
+- Create: `.claude/lib/intelligence/tournament/tests/test_models.py`
+- Read: `.claude/lib/intelligence/controller/tests/test_intelligence_controller.py` — existing test patterns
+
+## Implementation Steps
+
+1. Write `test_elo_engine.py`:
+   - `test_equal_ratings_win` — 1500 vs 1500, A wins
+   - `test_equal_ratings_b_wins` — 1500 vs 1500, B wins
+   - `test_underdog_win` — 1400 vs 1600, upset
+   - `test_favorite_win` — 1600 vs 1400, expected
+   - `test_draw_equal` — 1500 vs 1500, DRAW
+   - `test_draw_unequal` — 1600 vs 1400, DRAW (higher-rated loses points)
+   - `test_expected_score_symmetry` — ea + eb = 1.0
+   - `test_compute_rankings_all_present` — no hypotheses lost
+   - `test_compute_rankings_sorted` — output sorted descending by Elo
+   - `test_compute_rankings_empty_debates` — returns original ratings
+2. Write `test_models.py`:
+   - `test_hypothesis_creation` — all fields populated
+   - `test_hypothesis_to_dict_roundtrip` — to_dict → from_dict preserves data
+   - `test_debate_result_creation` — valid result
+   - `test_tournament_result_creation` — valid result with multiple debates
+   - `test_round_robin_pairs` — correct count for N=3,5,8,10 (hard cap)
+   - `test_harvest_cap_at_10` — >10 hypotheses pre-filtered to 10
+   - `test_diversity_keyword_classification` — known hypotheses classified correctly
+3. Run `pytest .claude/lib/intelligence/tournament/tests/` — all green
+4. Document manual validation protocol in `validation-protocol.md` in plan dir
+5. After Phase 3 ships: execute manual validation, record results
+
+## Success Criteria
+
+- [ ] 23+ unit tests covering Elo math, models, pair generation, diversity logic
+- [ ] All tests pass with `pytest`
+- [ ] No mock LLM needed (Elo engine is pure math, models are dataclasses)
+- [ ] Manual validation protocol documented
+- [ ] Manual validation executed post-integration (results recorded)
+
+## Risk Assessment
+
+- **Risk:** Pure math tests don't catch real-world issues (LLM output parsing, agent timeout)
+  - Mitigation: Manual validation protocol explicitly tests the full pipeline. Document failure modes discovered during manual test.

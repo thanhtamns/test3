@@ -1,0 +1,82 @@
+---
+title: "Knowledge Hunger Engine"
+description: "Continuous self-feeding knowledge loop. System detects gaps, demands data from LLM, verifies, stores locally, repeats until satiated. LLM = research tool, local = brain."
+status: pending
+priority: P1
+branch: "master"
+tags: [intelligence, evolution, local-first, hunger-loop, anti-hallucination]
+blockedBy: []
+blocks: []
+created: "2026-05-10T04:08:30.854Z"
+createdBy: "ck:plan"
+source: skill
+target_repo: D:/code/invesments/master_investments
+estimated_effort: "8-10 days"
+---
+
+# Knowledge Hunger Engine
+
+## Problem
+
+LFI infrastructure is deployed (81 tests passing) but the system is PASSIVE — only learns when user runs /stage0. Wave 1/2 agents return prose, not structured data. Post-verdict distillation doesn't extract claims. Gap detector exists but nothing feeds it research results. The evolution loop has no fuel.
+
+## Solution
+
+Build the missing fuel pipeline: agents output structured JSON → post-verdict extracts claims → hunger loop detects gaps → generates targeted questions → fires LLM research → verifies → stores → repeats until satiated. System actively DEMANDS knowledge instead of waiting.
+
+## Existing Infrastructure (in master_investments)
+
+| Component | Location | Status |
+|-----------|----------|--------|
+| Coverage tracker + gap detector | .claude/lib/intelligence/coverage/ | ✅ Deployed, 16 tests |
+| Reasoning chain engine | .claude/lib/intelligence/reasoning/ | ✅ Deployed, 28 tests |
+| Evolution triggers | .claude/lib/intelligence/evolution/ | ✅ Deployed, 15 tests |
+| Distillation bridge | .claude/lib/intelligence/evolution/distillation_bridge.py | ✅ Deployed |
+| Autonomy governor | .claude/lib/intelligence/governance/ | ✅ Deployed, 8 tests |
+| decision-vectors.db | .claude/data/knowledge-distillation/ | ✅ 205 vectors |
+| SessionStart hook | .claude/hooks/evolution-auto-runner.cjs | ✅ Wired |
+
+## What This Plan Adds
+
+1. **Structured agent output schema** — JSON format for all 14 Wave agents (fuel line)
+2. **Hunger loop orchestrator** — Gap→question→research→verify→store cycle
+3. **Post-verdict auto-distill** — Extract claims from every /stage0 run (free intelligence)
+4. **Feed command + hook wiring** — /feed trigger + SessionStart hunger cycle
+5. **Satiation calibration** — Stop conditions, domain priority, convergence testing
+
+## Phases
+
+| # | Phase | Effort | Status | Deps |
+|---|-------|--------|--------|------|
+| P1 | [Structured Agent Output Schema](./phase-01-structured-agent-output-schema.md) | 2d | Pending | None |
+| P2 | [Hunger Loop Orchestrator](./phase-02-hunger-loop-orchestrator.md) | 2-3d | Pending | P1 |
+| P3 | [Post-Verdict Auto-Distill](./phase-03-post-verdict-auto-distill.md) | 1-2d | Pending | P1 |
+| P4 | [Feed Command and Hook Wiring](./phase-04-feed-command-and-hook-wiring.md) | 1d | Pending | P2+P3 |
+| P5 | [Satiation Calibration and Testing](./phase-05-satiation-calibration-and-testing.md) | 1-2d | Pending | P2+P4 |
+
+- P2 and P3 can run in parallel after P1
+- P4 requires both P2 and P3
+- P5 is final integration + calibration
+
+## Dependencies
+
+- **Builds on:** LFI Architecture (260510-0952, COMPLETE)
+- **Builds on:** Knowledge Distillation Engine (260510-0914, COMPLETE — P3/P4 deferred)
+- **No blockers** — all prerequisites shipped
+
+## Success Criteria
+
+- [ ] All 14 Wave agents output structured JSON with claims array
+- [ ] Hunger loop processes ≥50 facts per cycle from gap-driven research
+- [ ] Post-verdict auto-distill extracts ≥5 claims per /stage0 run
+- [ ] /feed command triggers manual hunger cycle
+- [ ] SessionStart hook runs hunger cycle automatically
+- [ ] Satiation detector stops when coverage ≥90% AND no new facts 3 cycles
+- [ ] decision-vectors.db grows from 205 → 500+ within 10 /stage0 runs
+- [ ] Domain coverage tracked per user query frequency
+
+## Kill Criteria
+
+- Hunger loop produces <2 new verified facts per LLM call → question quality too low
+- Post-distill claims accuracy <60% when spot-checked → extraction schema broken
+- Satiation never triggers (infinite loop) → stop conditions miscalibrated

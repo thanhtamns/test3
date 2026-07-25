@@ -1,0 +1,183 @@
+"""
+Method Chain Fetcher — unified dispatcher across 8 escalation methods.
+
+Method order (spec §Method chain):
+  1. official_api        — platform API if available + rate allows
+  2. library_scraper     — yt-dlp / praw / instagrapi
+  3. polite_http         — httpx + UA rotation + delay
+  4. session_cookie_http — authenticated httpx using stored cookies
+  5. proxy_http          — polite HTTP through proxy pool
+  6. headless            — CloakBrowser stealth (source-level patches, fallback: Playwright)
+  7. headless_proxy      — CloakBrowser + proxy (fallback: Playwright + proxy)
+  8. manual_trigger      — emit task JSON (handled by RetryOrchestrator)
+
+Rate limits enforced at every method, even with proxies.
+Never raises — returns data dict or manual-trigger task.
+"""
+
+import asyncio
+import logging
+from typing import Any, Dict, Optional
+
+from .headless_fallback import HeadlessFallback
+from .platform_fetchers import (
+    httpx_get, youtube_api, reddit_json, ytdlp_scrape, tiktokapi_scrape,
+)
+from .proxy_pool_manager import ProxyPoolManager
+from .retry_orchestrator import RetryOrchestrator
+from .session_cookie_store import SessionCookieStore
+from .user_agent_rotator import UserAgentRotator
+
+logger = logging.getLogger(__name__)
+
+_POLITE_DELAY = 2.0   # seconds between polite requests
+_PROXY_DELAY = 1.5    # seconds between proxy requests
+
+_HAS_OFFICIAL_API = {"youtube", "reddit"}
+_HAS_LIBRARY_SCRAPER = {"youtube", "reddit", "tiktok"}
+
+
+class MethodChainFetcher:
+    """
+    Unified fetcher — tries each method in order, escalates on bot-block.
+    Instantiate once and reuse across requests.
+    """
+
+    def __init__(
+        self,
+        proxy_pool: Optional[ProxyPoolManager] = None,
+        cookie_store: Optional[SessionCookieStore] = None,
+        ua_rotator: Optional[UserAgentRotator] = None,
+        headless: Optional[HeadlessFallback] = None,
+        orchestrator: Optional[RetryOrchestrator] = None,
+    ) -> None:
+        self._proxy = proxy_pool or ProxyPoolManager()
+        self._cookies = cookie_store or SessionCookieStore()
+        self._ua = ua_rotator or UserAgentRotator()
+        self._headless = headless or HeadlessFallback()
+        self._orch = orchestrator or RetryOrchestrator()
+
+    def describe(self) -> str:
+        """Smoke-test hook — returns chain description string."""
+        return (
+            f"MethodChainFetcher(methods=8, "
+            f"proxy_pool_alive={self._proxy.alive_count}, "
+            f"headless_available={self._headless.available}, "
+            f"ua_pool={self._ua.pool_size})"
+        )
+
+    async def fetch(
+        self,
+        url: str,
+        platform: str,
+        expected_comments: int = 0,
+        start_method: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Fetch url for platform with full method escalation.
+        Returns dict: {success, method, data, stats} or {manual_task, ...}.
+        """
+        platform = platform.lower()
+        handlers = self._build_handlers(url, platform)
+
+        if start_method and start_method in handlers:
+            keys = list(handlers.keys())
+            skip_until = keys.index(start_method)
+            handlers = {k: v for k, v in handlers.items() if keys.index(k) >= skip_until}
+
+        return await self._orch.run(url, platform, handlers, expected_comments)
+
+    # ------------------------------------------------------------------
+    # Handler builders
+    # ------------------------------------------------------------------
+
+    def _build_handlers(self, url: str, platform: str) -> Dict[str, Any]:
+        handlers: Dict[str, Any] = {}
+
+        if platform in _HAS_OFFICIAL_API:
+            handlers["official_api"] = self._official_api_handler(platform)
+        if platform in _HAS_LIBRARY_SCRAPER:
+            handlers["library_scraper"] = self._library_scraper_handler(platform)
+
+        handlers["polite_http"] = self._polite_http_handler(platform)
+        handlers["session_cookie_http"] = self._session_cookie_handler(platform)
+        handlers["proxy_http"] = self._proxy_http_handler(platform)
+        handlers["headless"] = self._headless_handler(proxy=None)
+        handlers["headless_proxy"] = self._headless_handler(proxy="from_pool")
+        return handlers
+
+    def _official_api_handler(self, platform: str):
+        async def handler(url: str, _p: str) -> Dict[str, Any]:
+            if platform == "youtube":
+                return await youtube_api(url)
+            if platform == "reddit":
+                return await reddit_json(url)
+            return {"error": f"no official API for {platform}"}
+        return handler
+
+    def _library_scraper_handler(self, platform: str):
+        async def handler(url: str, _p: str) -> Dict[str, Any]:
+            if platform == "youtube":
+                return await ytdlp_scrape(url)
+            if platform == "reddit":
+                return await reddit_json(url)
+            if platform == "tiktok":
+                return await tiktokapi_scrape(url)
+            return {"error": f"no library scraper for {platform}"}
+        return handler
+
+    def _polite_http_handler(self, platform: str):
+        ua = self._ua
+
+        async def handler(url: str, _p: str) -> Dict[str, Any]:
+            await asyncio.sleep(_POLITE_DELAY)
+            return await httpx_get(url, headers=ua.headers(platform))
+        return handler
+
+    def _session_cookie_handler(self, platform: str):
+        cookies = self._cookies
+        ua = self._ua
+
+        async def handler(url: str, _p: str) -> Dict[str, Any]:
+            cookie_header = cookies.load_as_header(platform)
+            if not cookie_header:
+                return {"error": f"no valid cookies for {platform}"}
+            await asyncio.sleep(_POLITE_DELAY)
+            return await httpx_get(url, headers={**ua.headers(platform), **cookie_header})
+        return handler
+
+    def _proxy_http_handler(self, platform: str):
+        proxy_pool = self._proxy
+        ua = self._ua
+
+        async def handler(url: str, _p: str) -> Dict[str, Any]:
+            proxy = proxy_pool.next_proxy()
+            if not proxy:
+                return {"error": "proxy pool empty"}
+            await asyncio.sleep(_PROXY_DELAY)
+            result = await httpx_get(url, headers=ua.headers(platform), proxy=proxy.address)
+            if result.get("error") or (result.get("status", 200) or 0) >= 400:
+                proxy_pool.mark_failure(proxy)
+            else:
+                proxy_pool.mark_success(proxy)
+            return result
+        return handler
+
+    def _headless_handler(self, proxy: Optional[str]):
+        headless = self._headless
+        proxy_pool = self._proxy
+
+        async def handler(url: str, platform: str) -> Dict[str, Any]:
+            resolved_proxy = None
+            if proxy == "from_pool":
+                entry = proxy_pool.next_proxy()
+                resolved_proxy = entry.address if entry else None
+            result = await headless.fetch(url, platform=platform, proxy=resolved_proxy)
+            return {
+                "html": result.get("html", ""),
+                "text": result.get("html", ""),
+                "url": result.get("url", url),
+                "status": result.get("status", 0),
+                "error": result.get("error"),
+            }
+        return handler

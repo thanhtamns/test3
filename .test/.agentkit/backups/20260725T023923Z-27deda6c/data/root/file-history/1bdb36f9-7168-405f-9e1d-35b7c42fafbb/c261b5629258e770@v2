@@ -1,0 +1,125 @@
+"""
+VerdictGenerator — maps ChainResult to KILL/PASS/WEAK_PASS/NEEDS_LLM verdict.
+Score thresholds: <0.3+conf>=0.6=KILL, 0.3-0.6=WEAK_PASS, >0.6=PASS, conf<0.6=NEEDS_LLM.
+"""
+
+from dataclasses import dataclass, field
+from typing import Optional
+
+from .chain_assembler import ChainResult
+from .contradiction_detector import Contradiction
+
+
+@dataclass
+class ChainVerdict:
+    verdict: str  # KILL, PASS, WEAK_PASS, NEEDS_LLM
+    confidence: float
+    score: float
+    reason: str
+    gaps: list = field(default_factory=list)
+    contradictions: list = field(default_factory=list)
+    kill_signals: list = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        d = {
+            "verdict": self.verdict,
+            "confidence": round(self.confidence, 3),
+            "score": round(self.score, 3),
+            "reason": self.reason,
+        }
+        if self.gaps:
+            d["gaps"] = [g.to_dict() for g in self.gaps]
+        if self.contradictions:
+            d["contradictions"] = [c.to_dict() for c in self.contradictions]
+        if self.kill_signals:
+            d["kill_signals"] = self.kill_signals
+        return d
+
+
+class VerdictGenerator:
+    def __init__(
+        self,
+        kill_confidence_threshold: float = 0.6,
+        coverage_threshold: float = 0.5,
+        pass_score_threshold: float = 0.6,
+        weak_pass_threshold: float = 0.3,
+        confidence_floor: float = 0.6,
+    ):
+        self.kill_confidence_threshold = kill_confidence_threshold
+        self.coverage_threshold = coverage_threshold
+        self.pass_score_threshold = pass_score_threshold
+        self.weak_pass_threshold = weak_pass_threshold
+        self.confidence_floor = confidence_floor
+
+    def generate(self, chain: ChainResult) -> ChainVerdict:
+        kill_check = self._check_kill_signals(chain)
+        if kill_check:
+            return kill_check
+
+        if chain.coverage_ratio < self.coverage_threshold:
+            return ChainVerdict(
+                verdict="NEEDS_LLM",
+                confidence=chain.aggregate_confidence,
+                score=chain.weighted_score,
+                reason=f"Coverage too low: {chain.coverage_ratio:.0%} ({len(chain.gaps)} gaps)",
+                gaps=chain.gaps,
+            )
+
+        if chain.contradictions:
+            high_sev = [c for c in chain.contradictions if c.severity == "HIGH"]
+            if high_sev:
+                return ChainVerdict(
+                    verdict="NEEDS_LLM",
+                    confidence=chain.aggregate_confidence,
+                    score=chain.weighted_score,
+                    reason=f"{len(high_sev)} HIGH contradictions need LLM resolution",
+                    contradictions=chain.contradictions,
+                )
+
+        if chain.aggregate_confidence < self.confidence_floor:
+            return ChainVerdict(
+                verdict="NEEDS_LLM",
+                confidence=chain.aggregate_confidence,
+                score=chain.weighted_score,
+                reason=f"Confidence below floor: {chain.aggregate_confidence:.2f} < {self.confidence_floor}",
+                gaps=chain.gaps,
+            )
+
+        score = chain.weighted_score
+        if score < self.weak_pass_threshold:
+            return ChainVerdict(
+                verdict="KILL",
+                confidence=chain.aggregate_confidence,
+                score=score,
+                reason=f"Score {score:.2f} below kill threshold {self.weak_pass_threshold}",
+            )
+
+        if score < self.pass_score_threshold:
+            return ChainVerdict(
+                verdict="WEAK_PASS",
+                confidence=chain.aggregate_confidence,
+                score=score,
+                reason=f"Score {score:.2f} between weak and pass thresholds",
+                contradictions=chain.contradictions,
+            )
+
+        return ChainVerdict(
+            verdict="PASS",
+            confidence=chain.aggregate_confidence,
+            score=score,
+            reason=f"Score {score:.2f} above pass threshold",
+        )
+
+    def _check_kill_signals(self, chain: ChainResult) -> Optional[ChainVerdict]:
+        for r in chain.resolved:
+            if r.source != "kill_signals":
+                continue
+            if r.answer and "Kill signals:" in r.answer and r.confidence >= self.kill_confidence_threshold:
+                return ChainVerdict(
+                    verdict="KILL",
+                    confidence=r.confidence,
+                    score=0.0,
+                    reason=f"Kill signal triggered: {r.answer}",
+                    kill_signals=[r.answer],
+                )
+        return None

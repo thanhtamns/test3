@@ -1,0 +1,71 @@
+"""
+ProblemDecomposer — template-based decomposition of opportunity queries
+into atomic questions answerable by local knowledge. No LLM needed.
+"""
+
+from dataclasses import dataclass
+
+
+@dataclass
+class AtomicQuestion:
+    text: str
+    query_type: str
+    category: str
+    weight: float = 1.0
+
+    def to_dict(self) -> dict:
+        return {"text": self.text, "type": self.query_type, "category": self.category, "weight": self.weight}
+
+
+TEMPLATES = {
+    "opportunity_analysis": [
+        ("What industry is this in?", "classification", 1.0),
+        ("Who are the top 5 competitors?", "competitor", 1.5),
+        ("What is the entry capital required?", "financial", 1.0),
+        ("What is the business model?", "classification", 1.0),
+        ("What moat type is possible?", "moat", 2.0),
+        ("What leverage type applies (code/media/capital/labor)?", "leverage", 2.0),
+        ("What is the founder-market fit score?", "founder", 1.5),
+        ("Are there kill signals matching this pattern?", "kill", 2.0),
+        ("What is the failure rate for this category?", "base_rate", 1.5),
+        ("What is the realistic time-to-revenue?", "timeline", 1.0),
+        ("Is there platform dependency risk?", "risk", 1.5),
+        ("What is the TAM for this niche?", "market_size", 1.0),
+        ("Is timing favorable (market cycle)?", "timing", 1.0),
+        ("What compound mechanism exists?", "compound", 1.5),
+        ("Are there regulatory barriers?", "regulatory", 1.0),
+    ],
+    "competitor_analysis": [
+        ("Who are the direct competitors?", "competitor", 2.0),
+        ("What is the market leader's pricing?", "pricing", 1.5),
+        ("Are there free alternatives?", "competitor", 2.0),
+        ("What is the competitor failure rate?", "base_rate", 1.5),
+        ("Is Big Tech building this natively?", "threat", 2.0),
+        ("What moat do competitors have?", "moat", 1.5),
+        ("What channels do competitors use?", "channel", 1.0),
+        ("What is the switching cost?", "moat", 1.5),
+    ],
+    "pricing_analysis": [
+        ("What do competitors charge?", "pricing", 2.0),
+        ("Are there free alternatives covering >70%?", "competitor", 2.0),
+        ("What is willingness-to-pay in this niche?", "pricing", 1.5),
+        ("What is the subscription fatigue level?", "pricing", 1.0),
+        ("What is the typical conversion rate?", "conversion", 1.5),
+        ("What commission trends exist?", "channel", 1.0),
+    ],
+}
+
+
+class ProblemDecomposer:
+    def decompose(self, query: str, query_type: str = "opportunity_analysis") -> list[AtomicQuestion]:
+        template = TEMPLATES.get(query_type, TEMPLATES["opportunity_analysis"])
+        return [
+            AtomicQuestion(text=q, query_type=query_type, category=cat, weight=w)
+            for q, cat, w in template
+        ]
+
+    def decompose_custom(self, questions: list[str], query_type: str = "custom") -> list[AtomicQuestion]:
+        return [
+            AtomicQuestion(text=q, query_type=query_type, category="custom", weight=1.0)
+            for q in questions
+        ]

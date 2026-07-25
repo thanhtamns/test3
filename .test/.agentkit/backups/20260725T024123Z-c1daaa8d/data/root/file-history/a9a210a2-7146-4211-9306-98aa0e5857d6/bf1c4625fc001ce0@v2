@@ -1,0 +1,274 @@
+#!/usr/bin/env python3
+"""
+Empire Pipeline Runner -- Orchestrates full empire pipeline end-to-end.
+Wires Layer 1 (signals) -> Layer 2 (compound filter) -> Layer 3 (staircase) -> verdict.
+
+Usage:
+    python empire-pipeline-runner.py --opportunity "SaaS analytics for dentists"
+    python empire-pipeline-runner.py --opportunity '{"name":"X","type":"saas",...}'
+    python empire-pipeline-runner.py --test
+"""
+
+import argparse
+import json
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+
+SCRIPTS_ET = Path(__file__).parent.resolve()
+SKILLS_DIR = SCRIPTS_ET.parent.parent
+SCRIPTS_TL = SKILLS_DIR / "transaction-layer" / "scripts"
+BASE = SKILLS_DIR.parent.parent.parent
+RUNS_DIR = BASE / "data" / "empire" / "pipeline-runs"
+PYTHON = sys.executable
+
+
+def run_script(script_path: Path, args: list[str]) -> dict | None:
+    cmd = [PYTHON, str(script_path)] + args
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60, cwd=str(BASE))
+        if result.returncode != 0:
+            print(f"  [WARN] {script_path.name} failed: {result.stderr[:200]}", file=sys.stderr)
+            return None
+        for line in result.stdout.strip().split("\n"):
+            line = line.strip()
+            if line.startswith("{"):
+                try:
+                    return json.loads(line)
+                except json.JSONDecodeError:
+                    pass
+        try:
+            return json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return {"raw_output": result.stdout[:500]}
+    except subprocess.TimeoutExpired:
+        print(f"  [WARN] {script_path.name} timed out", file=sys.stderr)
+        return None
+    except Exception as e:
+        print(f"  [WARN] {script_path.name} error: {e}", file=sys.stderr)
+        return None
+
+
+def build_opportunity_dict(description: str) -> dict:
+    try:
+        return json.loads(description)
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    desc_lower = description.lower()
+
+    revenue_model = "subscription SaaS MRR" if any(k in desc_lower for k in ["saas", "subscription", "recurring", "monthly"]) else "one-time project"
+    cost_structure = "software digital" if any(k in desc_lower for k in ["saas", "tool", "app", "platform", "software"]) else "labor manual"
+    moat = "data moat" if any(k in desc_lower for k in ["data", "ai", "machine learning", "analytics"]) else "none"
+    network = "marketplace community" if any(k in desc_lower for k in ["marketplace", "platform", "community", "social"]) else "none"
+    founder_dep = "automated self-serve" if any(k in desc_lower for k in ["saas", "automated", "product", "passive"]) else "founder-dependent manual"
+
+    return {
+        "name": description[:100],
+        "type": "saas" if "saas" in desc_lower else "service" if "service" in desc_lower else "product",
+        "revenue_model": revenue_model,
+        "cost_structure": cost_structure,
+        "moat_claims": moat,
+        "network_dynamic": network,
+        "founder_dependency": founder_dep,
+        "market_context": description,
+        "platform": "",
+        "competition": "",
+        "regulatory": "",
+    }
+
+
+def run_empire_pipeline(opportunity: dict) -> dict:
+    print(f"\n{'='*60}")
+    print(f"EMPIRE PIPELINE -- {opportunity.get('name', 'unknown')}")
+    print(f"{'='*60}\n")
+
+    # Step 1: Compound Filter
+    print("[1/4] Running compound filter...")
+    compound_result = run_script(
+        SCRIPTS_TL / "compound-filter.py",
+        ["--json", json.dumps(opportunity)]
+    )
+    if not compound_result:
+        return {"error": "compound-filter failed"}
+
+    verdict = compound_result.get("verdict", "KILL")
+    score = compound_result.get("compound_score", 0)
+    print(f"  Compound: {score}/5 -> {verdict}")
+
+    if verdict == "KILL":
+        return {
+            "opportunity_name": opportunity.get("name"),
+            "empire_verdict": "KILL",
+            "compound_score": score,
+            "reasons": compound_result.get("reasons", []),
+            "timing_score": None,
+            "staircase_allowed": False,
+        }
+
+    # Step 2: Timing Scorer
+    print("[2/4] Running timing scorer...")
+    timing_result = run_script(
+        SCRIPTS_TL / "timing-scorer.py",
+        ["--json", json.dumps(opportunity)]
+    )
+    timing_score = timing_result.get("timing_score", 5.0) if timing_result else 5.0
+    print(f"  Timing: {timing_score}/10 -- {timing_result.get('recommendation', 'N/A') if timing_result else 'N/A'}")
+
+    # Step 3: Founder Edge Match
+    print("[3/4] Running founder edge matcher...")
+    edge_result = run_script(
+        SCRIPTS_TL / "founder-edge-matcher.py",
+        ["--json", json.dumps({"title": opportunity.get("name", ""), "pain_statement": opportunity.get("market_context", "")})]
+    )
+    edge_score = None
+    if edge_result and "results" in edge_result and edge_result["results"]:
+        edge_score = edge_result["results"][0].get("edge_score")
+    print(f"  Edge: {edge_score}/10" if edge_score else "  Edge: N/A")
+
+    # Step 4: Staircase Enforcer
+    print("[4/4] Running staircase enforcer...")
+    staircase_result = run_script(
+        SCRIPTS_ET / "staircase-enforcer.py",
+        ["check", "--verdict", verdict]
+    )
+    staircase_allowed = staircase_result.get("allowed", True) if staircase_result else True
+    current_stair = staircase_result.get("current_stair", 0) if staircase_result else 0
+    print(f"  Staircase: {'ALLOWED' if staircase_allowed else 'BLOCKED'} (Stair {current_stair})")
+
+    # Final verdict
+    if verdict == "PASS" and staircase_allowed and timing_score >= 5:
+        empire_verdict = "GO_EMPIRE"
+    elif verdict == "PASS" and staircase_allowed:
+        empire_verdict = "GO_EMPIRE"
+    elif verdict == "DOWNGRADE" and staircase_allowed:
+        empire_verdict = "GO_BRIDGE"
+    elif not staircase_allowed:
+        empire_verdict = "BLOCKED_BY_STAIRCASE"
+    else:
+        empire_verdict = "KILL"
+
+    result = {
+        "opportunity_name": opportunity.get("name"),
+        "empire_verdict": empire_verdict,
+        "compound_score": score,
+        "compound_verdict": verdict,
+        "timing_score": timing_score,
+        "timing_recommendation": timing_result.get("recommendation") if timing_result else None,
+        "edge_score": edge_score,
+        "staircase_allowed": staircase_allowed,
+        "current_stair": current_stair,
+        "reasons": compound_result.get("reasons", []),
+        "timestamp": datetime.now().isoformat(),
+    }
+
+    print(f"\n{'='*60}")
+    print(f"VERDICT: {empire_verdict}")
+    print(f"Compound: {score}/5 | Timing: {timing_score}/10 | Stair: {current_stair}")
+    print(f"{'='*60}\n")
+
+    return result
+
+
+def save_run(results: list[dict]):
+    RUNS_DIR.mkdir(parents=True, exist_ok=True)
+    path = RUNS_DIR / f"run-{datetime.now().strftime('%Y-%m-%d-%H%M')}.json"
+    data = {
+        "run_date": datetime.now().isoformat(),
+        "total_opportunities": len(results),
+        "verdicts": {
+            "GO_EMPIRE": sum(1 for r in results if r.get("empire_verdict") == "GO_EMPIRE"),
+            "GO_BRIDGE": sum(1 for r in results if r.get("empire_verdict") == "GO_BRIDGE"),
+            "KILL": sum(1 for r in results if r.get("empire_verdict") in ("KILL", "BLOCKED_BY_STAIRCASE")),
+        },
+        "results": results,
+    }
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(f"Run saved to: {path}")
+    return path
+
+
+def run_tests():
+    test_opps = [
+        {
+            "name": "SaaS Analytics for Dental Clinics",
+            "type": "saas",
+            "revenue_model": "monthly subscription SaaS MRR",
+            "cost_structure": "software digital",
+            "moat_claims": "data moat integration",
+            "network_dynamic": "none",
+            "founder_dependency": "automated self-serve product",
+            "market_context": "emerging niche, few competitors",
+            "platform": "new launch",
+            "competition": "few niche players",
+            "regulatory": "",
+        },
+        {
+            "name": "Upwork Freelance Web Dev",
+            "type": "service",
+            "revenue_model": "hourly project-based",
+            "cost_structure": "labor per-project manual",
+            "moat_claims": "none commodity",
+            "network_dynamic": "none",
+            "founder_dependency": "founder-dependent manual active",
+            "market_context": "saturated established",
+            "platform": "mature",
+            "competition": "saturated thousands",
+            "regulatory": "",
+        },
+        {
+            "name": "n8n Workflow Templates",
+            "type": "digital_product",
+            "revenue_model": "one-time per template",
+            "cost_structure": "digital content",
+            "moat_claims": "none replicable",
+            "network_dynamic": "none",
+            "founder_dependency": "passive after creation",
+            "market_context": "growing market",
+            "platform": "growth expanding",
+            "competition": "moderate several",
+            "regulatory": "",
+        },
+    ]
+
+    print("=== Empire Pipeline E2E Test ===\n")
+    results = []
+    passed = 0
+
+    expected = ["GO_EMPIRE", "KILL", "GO_BRIDGE"]
+    for opp, exp in zip(test_opps, expected):
+        result = run_empire_pipeline(opp)
+        results.append(result)
+        ok = result.get("empire_verdict") == exp
+        passed += ok
+        status = "PASS" if ok else "FAIL"
+        print(f"[{status}] {opp['name']}: {result.get('empire_verdict')} (expected {exp})\n")
+
+    save_run(results)
+    print(f"Results: {passed}/{len(test_opps)} passed")
+    sys.exit(0 if passed == len(test_opps) else 1)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Empire Pipeline Runner")
+    parser.add_argument("--opportunity", type=str, help="Opportunity description or JSON")
+    parser.add_argument("--test", action="store_true", help="Run E2E test with 3 mock opportunities")
+    args = parser.parse_args()
+
+    if args.test:
+        run_tests()
+        return
+
+    if not args.opportunity:
+        parser.print_help()
+        sys.exit(1)
+
+    opp = build_opportunity_dict(args.opportunity)
+    result = run_empire_pipeline(opp)
+    save_run([result])
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

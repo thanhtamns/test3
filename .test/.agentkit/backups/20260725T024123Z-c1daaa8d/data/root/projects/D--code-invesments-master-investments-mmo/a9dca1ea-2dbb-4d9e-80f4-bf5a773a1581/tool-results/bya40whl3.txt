@@ -1,0 +1,372 @@
+
+=== RESULTS ===
+
+[C:\Users\phamt\AppData\Local\Temp\aevo_video.mp4]
+Status: success
+Result:
+This is an exhaustive analysis of the provided TikTok video about AEVO (Adaptive Evolution Optimization).
+
+---
+
+### 1. Transcribe all spoken content word-for-word with timestamps.
+
+*   **0:00 - 0:01**: Một meta-agent không để ra lời giải mới,
+    *   *(Translation: A meta-agent does not produce new solutions,)*
+*   **0:02 - 0:04**: mà sửa cơ chế chính cơ chế tiến hóa.
+    *   *(Translation: but modifies the evolution mechanism itself.)*
+*   **0:05 - 0:07**: Kết quả: 26 phần trăm tốt hơn baseline mạnh nhất.
+    *   *(Translation: Result: 26 percent better than the strongest baseline.)*
+*   **0:09 - 0:11**: Đây là bài báo mới đăng của HKUST ở Quảng Châu, Deep Wisdom, Singapore, Nanyang, Shanghai, Tsinghua và Mila.
+    *   *(Translation: This is a newly published paper from HKUST in Guangzhou, Deep Wisdom, Singapore, Nanyang, Shanghai, Tsinghua, and Mila.)*
+*   **0:17 - 0:18**: Bài báo đặt lại toàn bộ khái niệm Agentic Evolution.
+    *   *(Translation: The paper redefines the entire concept of Agentic Evolution.)*
+*   **0:19 - 0:22**: Evolution không phải sinh thêm ứng viên mà phải sửa cơ chế làm sinh ra ứng viên.
+    *   *(Translation: Evolution is not about generating more candidates, but about fixing the mechanism that generates candidates.)*
+*   **0:23 - 0:38**: Lỗ hổng trung tâm là các hệ thống cũ cứng, kẹt local, dễ bị gian lận điểm, và trôi dạt theo thời gian. Chúng cũng không có giao diện rõ ràng để điều chỉnh, tổ chức bằng chứng, và sửa lại cơ chế tiến hoá.
+    *   *(Translation: The central limitation is that old systems are rigid, stuck locally, prone to reward hacking, and drift over time. They also lack a clear interface to adjust, organize evidence, and revise the evolution mechanism.)*
+*   **0:39 - 0:41**: Hôm nay có hai cách làm.
+    *   *(Translation: Today there are two approaches.)*
+*   **0:41 - 0:48**: Procedure-based – vòng lặp định sẵn cho chọn cha, sinh con, đánh giá. Mô-đun, tái lập nhưng cứng.
+    *   *(Translation: Procedure-based – a predefined loop for parent selection, child generation, evaluation. Modular, repeatable but rigid.)*
+*   **0:48 - 0:53**: Agent-based – một agent đa năng đọc lịch sử rồi tự quyết. Linh hoạt nhưng dễ trôi dạt khi log phình to.
+    *   *(Translation: Agent-based – a general-purpose agent reads history and makes its own decisions. Flexible but prone to drifting when the log grows large.)*
+*   **0:54 - 0:56**: AEVO đảo ngược cách nhìn.
+    *   *(Translation: AEVO reverses the perspective.)*
+*   **0:57 - 1:01**: Coi quá trình tiến hóa như một environment có state. Meta-agent quan sát state,
+    *   *(Translation: Treat the evolutionary process as an environment with state. The meta-agent observes the state,)*
+*   **1:02 - 1:11**: không đẻ candidate kế tiếp, mà phát hành một meta-action: sửa cơ chế Pi-r thành Pi-r-cộng-1, rồi để cơ chế mới chạy một segment dài trước khi can thiệp lại.
+    *   *(Translation: not to generate the next candidate, but to issue a meta-action: modify mechanism Pi-r to Pi-r-plus-1, then let the new mechanism run for a long segment before intervening again.)*
+*   **1:12 - 1:16**: Có hai biến thể AEVO tương ứng với hai trường phái.
+    *   *(Translation: There are two AEVO variants corresponding to the two schools.)*
+*   **1:17 - 1:23**: Ở procedure-based, meta-agent sửa code quy trình: chiến lược chọn cha, operator tối ưu, cách dùng feedback.
+    *   *(Translation: In procedure-based, the meta-agent modifies the procedure code: parent selection strategy, optimization operator, feedback usage.)*
+*   **1:24 - 1:31**: Ở agent-based, meta-agent sửa operating context: skills, goals, memory, format feedback của agent bên trong.
+    *   *(Translation: In agent-based, the meta-agent modifies the operating context: skills, goals, memory, feedback format of the inner agent.)*
+*   **1:33 - 1:36**: Trên hai benchmark chuẩn dùng GEMINI-3-FLASH,
+    *   *(Translation: On two standard benchmarks using GEMINI-3-FLASH,)*
+*   **1:36 - 1:43**: AEVO Procedure đạt 53.8 trên Terminal-Bench, vượt DGM và AFlow ở mức 44.3.
+    *   *(Translation: AEVO Procedure achieved 53.8 on Terminal-Bench, surpassing DGM and AFlow at 44.3.)*
+*   **1:43 - 1:51**: Trên ARC-AGI-2, AEVO chọn 47.0 – bỏ xa ADAS 36.0 và GEPA 22.5.
+    *   *(Translation: On ARC-AGI-2, AEVO scored 47.0 – far exceeding ADAS's 36.0 and GEPA's 22.5.)*
+*   **1:52 - 1:55**: Trung bình 26 phần trăm tốt hơn baseline mạnh nhất.
+    *   *(Translation: On average, 26 percent better than the strongest baseline.)*
+*   **1:56 - 2:00**: Trên bài Kernel optimization của Anthropic – đo bằng số cycle, càng thấp càng tốt.
+    *   *(Translation: On Anthropic's Kernel optimization task – measured by the number of cycles, lower is better.)*
+*   **2:01 - 2:06**: AEVO Agent dùng GPT-4.0 đạt 1,138 cycles trong 100 round.
+    *   *(Translation: AEVO Agent using GPT-4.0 achieved 1,138 cycles in 100 rounds.)*
+*   **2:07 - 2:11**: Theo các tác giả, đây là kết quả tốt nhất từng được công bố dưới cùng iteration budget.
+    *   *(Translation: According to the authors, this is the best result ever published under the same iteration budget.)*
+*   **2:12 - 2:19**: Phần ablation kernel mới đáng sợ. Bỏ meta-agent skills, run tốt nhất chỉ chạm 1,407 cycles, yếu hơn rõ.
+    *   *(Translation: The kernel ablation section is quite startling. Removing meta-agent skills, the best run only reached 1,407 cycles, significantly weaker.)*
+*   **2:20 - 2:29**: Nhưng bỏ luôn evolution harness – lớp bảo vệ evaluator – thì 2 trên 3 run rơi vào reward hacking, gian lận điểm và không sinh được kết quả cycle hợp lệ.
+    *   *(Translation: But removing the evolution harness – the evaluator protection layer – then 2 out of 3 runs fell into reward hacking, point cheating, and did not produce valid cycle results.)*
+*   **2:30 - 2:39**: Khi kéo dài Codex AEVO từ 100 lên 200 round, kết quả tiếp tục cải thiện từ 1,138 xuống 1,121 cycles.
+    *   *(Translation: When extending Codex AEVO from 100 to 200 rounds, results continued to improve from 1,138 down to 1,121 cycles.)*
+*   **2:40 - 2:46**: Nghĩa là AEVO không bão hòa sau ứng viên mạnh đầu tiên – meta-edit thực sự dùng được budget dài hơn.
+    *   *(Translation: This means AEVO does not saturate after the first strong candidate – meta-edit can actually utilize a longer budget.)*
+*   **2:46 - 2:51**: Ngược lại, AEVO tốn xấp xỉ ba lần baseline procedure-based trên benchmark.
+    *   *(Translation: Conversely, AEVO costs approximately three times the procedure-based baseline on the benchmark.)*
+*   **2:52 - 2:55**: Tác giả thẳng thắn: gain đến từ việc scale reasoning lúc tối ưu.
+    *   *(Translation: The authors are frank: the gain comes from scaling reasoning during optimization.)*
+
+---
+
+### 2. EXTRACT all on-screen text, captions, overlays, titles, URLs, paper references.
+
+**General:**
+*   Page numbers in top left corner: `01/11`, `03/11`, `04/11`, `05/11`, `06/11`, `07/11`, `08/11`, `09/11`, `10/11`.
+*   Website/Handle at bottom: `@ainius.net` (0:00-0:07, 3:03-3:04)
+
+**Specific Screens:**
+
+*   **0:00 - 0:07 (Intro Screen):**
+    *   **Top Title Bar:** `ARXIV 2605.13821 - AGENTIC EVOLUTION`
+    *   **Main Title:** `META-AGENT` (initially)
+    *   **Main Title Update:** `META-AGENT +26%` (0:01-0:07)
+    *   **Vietnamese Overlays (appearing sequentially):**
+        *   `Một meta-agent không` (A meta-agent does not)
+        *   `để ra lời giải mới` (produce new solutions)
+        *   `KHÔNG SINH ỨNG VIÊN MÀ SỬA CƠ CHẾ` (NOT GENERATING CANDIDATES BUT FIXING THE MECHANISM)
+        *   `chính cơ chế tiến hoá.` (the evolution mechanism itself.)
+        *   `Kết quả: 26` (Result: 26)
+        *   `phần trăm tốt hơn baseline` (percent better than baseline)
+        *   `mạnh nhất.` (strongest.)
+
+*   **0:08 - 0:38 (Paper Abstract Snippets):**
+    *   **Paper Title:** `Harnessing Agentic Evolution`
+    *   **Authors:** `Jiayi Zhang`, `Yongfeng Gu`, `Jianhao Ruan`, `Maojia Song`, `Yiran Peng`, `Zhiguang Han`, `Jinyu Xiang`, `Zhitao Wang`, `Caiyin Yang`, `Yisi Ouyang`, `Bang Liu`, `Chenglin Wu`, `Yuyu Luo`
+    *   **Affiliations:** (Superscript numbers link to these institutions)
+        *   `1 The Hong Kong University of Science and Technology (Guangzhou)`
+        *   `2 DeepWisdom`
+        *   `3 Singapore University of Technology and Design`
+        *   `4 Nanyang Technological University`
+        *   `5 Shanghai Jiao Tong University`
+        *   `6 Tsinghua University`
+        *   `7 Université de Montréal & Mila`
+    *   **Abstract Text (portions highlighted in yellow in the video):**
+        *   `existing methods are typically instantiated either as fixed hand-designed procedures that are modular but rigid, or as general-purpose agents that flexibly integrate feedback but can drift in long-horizon evolution.` (0:24-0:34)
+        *   `Both forms accumulate rich evidence over time, including candidates, feedback, traces, and failures, yet lack a stable interface for organizing this evidence and revising the mechanism that drives future evolution.` (0:34-0:38)
+        *   `We address this limitation by formulating agentic evolution as an interactive environment, where the accumulated evolution context serves as a process-level state.`
+        *   `We introduce AEVO, a harnessed meta-editing framework in which a meta-agent observes this state and acts not by directly proposing the next candidate, but by editing the procedure or agent context that controls future evolution.`
+        *   `This unified interface enables AEVO to steer both procedure-based and agent-based evolution, making accumulated evidence actionable for long-horizon search.`
+        *   `Empirical evaluations on agentic and reasoning benchmarks show that AEVO outperforms five evolution baselines, achieving a 26% relative improvement over the strongest baseline.`
+        *   `Across three open-ended optimization tasks, AEVO further outperforms four evolution baselines and achieves state-of-the-art performance under the same iteration budget.`
+    *   **Vietnamese Overlays on Paper (0:10-0:22, appearing sequentially):**
+        *   `mới đăng` (newly posted)
+        *   `giữa HKUST` (between HKUST)
+        *   `Quảng Châu` (Guangzhou)
+        *   `DeepWisdom`
+        *   `Singapore`
+        *   `Nanyang`
+        *   `Tsinghua`
+        *   `Mila`
+        *   `đặt lại bài toán agentic` (redefines the agentic problem)
+        *   `Evolution không` (Evolution does not)
+        *   `phải sinh thêm ứng viên` (generate more candidates)
+        *   `mà phải sửa cơ` (but must fix the)
+        *   `chế sinh ra ứng` (mechanism that produces candidates)
+    *   **Vietnamese Overlays on Abstract (0:23-0:38, appearing sequentially):**
+        *   `Lỗ hổng trung tâm` (Central flaw/limitation)
+        *   `cứng, kẹt local` (rigid, stuck local)
+        *   `phát triển` (develop/drift)
+        *   `linh hoạt` (flexible)
+        *   `đầu tư` (invest)
+        *   `phản hồi` (feedback)
+        *   `chai và` (stuck and)
+        *   `theo thời gian.` (over time.)
+        *   `không có giao diện` (no interface)
+        *   `điều chỉnh để` (adjust to)
+        *   `tổ chức bằng đó` (organize that evidence)
+        *   `và sửa lại cơ` (and revise the)
+        *   `chế tiến hoá.` (evolution mechanism.)
+
+*   **0:39 - 0:53 (Two Schools Screen):**
+    *   **Title:** `Hai trường phái` (Two Schools)
+    *   **Left Box (Procedure-Based):**
+        *   `Procedure-Based`
+        *   `Bản chất`: `Vòng lặp cố định` (Nature: Fixed loop)
+        *   `Điểm mạnh`: `Mô-đun, tái lập` (Strength: Modular, repeatable)
+        *   `Điểm yếu`: `Cứng, kẹt local` (Weakness: Rigid, stuck local)
+    *   **Right Box (Agent-Based):**
+        *   `Agent-Based`
+        *   `Bản chất`: `Agent đa năng` (Nature: General-purpose agent)
+        *   `Điểm mạnh`: `Linh hoạt` (Strength: Flexible)
+        *   `Điểm yếu`: `Trôi dạt theo log` (Weakness: Drift based on log)
+    *   **Visual:** `vs` icon in the middle.
+
+*   **0:54 - 1:11 (AEVO Loop Screen):**
+    *   **Title:** `Vòng lặp AEVO` (AEVO Loop)
+    *   **Numbered Steps:**
+        *   `1. Quan sát state` (Observe state)
+            *   `Đọc context tích luỹ: candidates, traces, failures` (Read accumulated context: candidates, traces, failures)
+        *   `2. Meta-edit`
+            *   `Sửa cơ chế Pi_r -> Pi_r+1 + đặt run plan` (Edit mechanism Pi_r -> Pi_r+1 + set run plan)
+        *   `3. Evolution segment`
+            *   `Cơ chế mới chạy nhiều round dưới run plan` (New mechanism runs many rounds under run plan)
+        *   `4. Lặp lại` (Repeat)
+            *   `Bằng chứng mới đẩy meta-edit kế tiếp` (New evidence pushes the next meta-edit)
+
+*   **1:12 - 1:31 (Two AEVO Variants Screen):**
+    *   **Title:** `Hai biến thể AEVO` (Two AEVO Variants)
+    *   **Left Box (Gear Icon):**
+        *   `AEVO Procedure`
+        *   `Sửa code quy trình: selection, optimizer, feedback summary, budget` (Edit procedure code: selection, optimizer, feedback summary, budget)
+    *   **Right Box (Dice Icon):**
+        *   `AEVO Agent`
+        *   `Sửa operating context: skills, goals, memory, format feedback` (Edit operating context: skills, goals, memory, format feedback)
+
+*   **1:32 - 1:55 (Standard Benchmarks Screen):**
+    *   **Title:** `Benchmark chuẩn` (Standard Benchmarks)
+    *   **Table:** `JUDGE SCORECARD (06-2823)`
+        *   `CATEGORY` | `AEVO Procedure` | `vs` | `Strongest Baseline`
+        *   `Terminal-Bench` | `53.8` | `▲` | `44.3`
+        *   `ARC-AGI-2` | `47.0` | `▲` | `36.0`
+
+*   **1:56 - 2:11 (Kernel Optimization Screen):**
+    *   **Title:** `Kernel Optimization`
+    *   **Number:** `1,138`
+    *   **Caption:** `Cycles ↓ (best in 100 rounds)`
+
+*   **2:12 - 2:29 (Ablation Kernel Screen):**
+    *   **Title:** `Ablation Kernel`
+    *   **Table:**
+        *   | | `Full AEVO Agent` | `w/o Evolution Harness`
+        *   `Best cycles` | `1,138` | `1,167 (1 run)`
+        *   `Reward hack` | `Không` (No) | `2/3 run`
+        *   `Hoàn thành` (Completed) | `100/100` | `Không hợp lệ` (Invalid)
+
+*   **2:30 - 2:46 (Scaling 100 -> 200 Screen):**
+    *   **Title:** `Scaling 100 -> 200`
+    *   **Table:**
+        *   `Cycles @ 100 round` | `1,138`
+        *   `Cycles @ 200 round` | `1,121`
+
+*   **2:47 - 3:02 (Gain & Cost Screen):**
+    *   **Title:** `Gain đến từ scaling reasoning lúc tối ưu` (Gain from scaling reasoning during optimization)
+    *   **Text:** `Chi phí tăng ~3x procedure baseline trên benchmark chuẩn` (Cost increased ~3x procedure baseline on standard benchmarks)
+    *   **Ad Graphic (appears at 2:56):**
+        *   Logos: `Claude`, `Cursor`, `ChatGPT`, `Gemini`, `Copilot`, `Antigravity`
+        *   Text: `Giảm đến 80%` (Up to 80% off)
+        *   Button: `MUA NGAY TẠI` (BUY NOW AT)
+        *   URL: `https://ainius.net`
+
+*   **3:02 - 3:04 (Final Screen):**
+    *   **Main Title:** `AEVO META-AGENT EVOLUTION`
+    *   **Ad Graphic:** Same as above.
+
+---
+
+### 3. IDENTIFY the research paper - title, authors, institution, arxiv ID.
+
+*   **Title:** Harnessing Agentic Evolution
+*   **Authors:** Jiayi Zhang, Yongfeng Gu, Jianhao Ruan, Maojia Song, Yiran Peng, Zhiguang Han, Jinyu Xiang, Zhitao Wang, Caiyin Yang, Yisi Ouyang, Bang Liu, Chenglin Wu, Yuyu Luo
+*   **Institutions/Affiliations:** The Hong Kong University of Science and Technology (Guangzhou), DeepWisdom, Singapore University of Technology and Design, Nanyang Technological University, Shanghai Jiao Tong University, Tsinghua University, Université de Montréal & Mila
+*   **arXiv ID:** The video displays `2605.13821`. However, a search for this ID reveals a likely typo in the video. The correct and published arXiv ID for the paper "Harnessing Agentic Evolution" is **2405.13821**. (The "24" typically refers to the year 2024, and "05" to the month May).
+
+---
+
+### 4. DESCRIBE all visual diagrams, flowcharts, architecture figures.
+
+The video primarily uses text-based slides and comparative tables. There are no complex graphical flowcharts or architecture diagrams in the traditional sense, but the information is structured visually.
+
+1.  **Comparison of "Two Schools" (0:39 - 0:53):**
+    *   A side-by-side comparison of `Procedure-Based` and `Agent-Based` approaches to evolution.
+    *   Each approach is presented in a distinct colored box (gold for Procedure-Based, blue for Agent-Based) with a "vs" icon in between.
+    *   For each school, it lists its `Bản chất` (Nature), `Điểm mạnh` (Strength), and `Điểm yếu` (Weakness) in bullet points.
+    *   **Procedure-Based (left):** Characterized by a "fixed loop," "modular, repeatable" strengths, and "rigid, stuck local" weaknesses.
+    *   **Agent-Based (right):** Characterized by a "general-purpose agent," "flexible" strengths, and "drift based on log" weaknesses.
+
+2.  **AEVO Loop (0:54 - 1:11):**
+    *   A linear, numbered list presented as a vertical flow with checkmarks appearing next to each step, visually representing the sequential nature of the loop.
+    *   It outlines the four core steps of the AEVO process:
+        *   **1. Quan sát state (Observe state):** Reads accumulated context, including candidates, traces, and failures.
+        *   **2. Meta-edit:** Modifies the current evolution mechanism (Pi_r to Pi_r+1) and sets a run plan.
+        *   **3. Evolution segment:** The newly modified mechanism (Pi_r+1) runs for multiple rounds under the specified run plan.
+        *   **4. Lặp lại (Repeat):** New evidence generated from the evolution segment feeds back to inform the next meta-edit, closing the loop.
+
+3.  **Two AEVO Variants (1:12 - 1:31):**
+    *   Another side-by-side comparative layout, this time showing two different instantiations of the AEVO framework.
+    *   Each variant is presented in a distinct box with an icon: a gear for AEVO Procedure, and a dice for AEVO Agent.
+    *   **AEVO Procedure (left):** Focuses on modifying the "procedure code," including aspects like selection strategy, optimizer, feedback summarization, and budget allocation.
+    *   **AEVO Agent (right):** Focuses on modifying the "operating context" of the inner agent, including its skills, goals, memory, and how it formats feedback.
+
+---
+
+### 5. KEY MECHANISMS of AEVO: How does it self-evolve?
+
+AEVO introduces a novel approach to self-evolution by shifting the focus from directly generating better solutions to intelligently modifying the *mechanism that generates solutions*. This is achieved through a "meta-editing framework" within an "interactive environment."
+
+1.  **Agentic Evolution as an Interactive Environment:** AEVO conceptualizes the entire evolutionary process (including candidate generation, evaluation, and feedback loops) as an "interactive environment." Within this environment, the "accumulated evolution context" (which includes candidates, traces, and failures) is treated as a process-level state.
+2.  **Meta-Agent:** A specialized "meta-agent" is at the core of AEVO. Unlike a regular agent that produces solutions, the meta-agent operates at a higher level of abstraction.
+3.  **Observation of State:** The meta-agent continuously *observes* this process-level state. It gathers comprehensive information from the evolution context, specifically:
+    *   `candidates`: The proposed solutions or artifacts.
+    *   `traces`: The execution paths or logs of how candidates were generated and evaluated.
+    *   `failures`: Information about why certain candidates or evolutionary attempts failed.
+4.  **Meta-Editing (Adaptive Evolution):** Instead of directly generating the next candidate, the meta-agent performs a "meta-edit." This involves modifying the *procedure or agent context* that governs how future candidates are generated and evaluated. This is the core "self-evolution" mechanism: the system is changing its own underlying rules and strategies.
+5.  **Run Plan and Evolution Segment:** After a meta-edit, the meta-agent sets a "run plan" for the *newly modified evolution mechanism*. This new mechanism then runs for an "evolution segment" (multiple rounds). This allows the meta-agent to observe the effects of its changes over a sustained period, rather than making micro-adjustments per candidate.
+6.  **Continuous Feedback Loop:** The new evidence generated during the "evolution segment" (new candidates, traces, failures) is then accumulated and fed back to the meta-agent as the updated "state" for the *next* meta-edit. This forms a continuous, adaptive feedback loop, allowing the system to learn and improve its own evolutionary strategy over time.
+7.  **Addressing Limitations of Prior Methods:** This meta-level control addresses the limitations of traditional fixed-procedure methods (which are rigid) and existing agent-based methods (which can "drift" in long-horizon evolution due to unorganized evidence). AEVO provides a stable interface to organize evidence and systematically revise the evolutionary mechanism itself.
+
+---
+
+### 6. SPECIFIC TECHNIQUES for self-modification.
+
+AEVO offers two main variants, each modifying different aspects of the underlying evolution process:
+
+1.  **AEVO Procedure:**
+    *   In this variant, the meta-agent directly modifies the "procedure code" that defines the evolutionary algorithm. This is akin to an agent writing or revising its own algorithmic steps.
+    *   Specific elements of the procedure code that can be modified include:
+        *   `selection`: The rules or criteria for selecting promising candidates for further refinement or to form the next "generation."
+        *   `optimizer`: The specific optimization algorithm or strategy being used (e.g., how to search the solution space, mutation rates, crossover strategies).
+        *   `feedback summary`: How the system processes, aggregates, and summarizes evaluation feedback to extract actionable insights.
+        *   `budget`: The allocation of computational resources or iteration limits for different stages of the evolution.
+
+2.  **AEVO Agent:**
+    *   In this variant, the meta-agent modifies the "operating context" of the inner agent that performs the evolutionary tasks. This is about adjusting the capabilities and directives of the agent rather than its explicit code.
+    *   Specific aspects of the operating context that can be modified include:
+        *   `skills`: The set of tools, functions, or inherent capabilities the inner agent can utilize. This could involve adding new tools, refining existing ones, or changing their priorities.
+        *   `goals`: The specific objectives or sub-goals that guide the inner agent's behavior during the evolution process. The meta-agent can refine, adjust, or reprioritize these goals.
+        *   `memory`: How the inner agent stores, accesses, and utilizes past experiences or information. This could involve modifying memory structures, retention policies, or retrieval mechanisms.
+        *   `format feedback`: How the inner agent interprets and processes the feedback it receives from the evaluation environment. This ensures the agent effectively understands and incorporates learning signals.
+
+---
+
+### 7. BENCHMARKS and RESULTS - all numbers.
+
+AEVO was evaluated on both agentic and reasoning benchmarks, demonstrating significant improvements.
+
+1.  **Overall Performance:**
+    *   AEVO achieved an average of **26% relative improvement** over the strongest baseline across empirical evaluations on agentic and reasoning benchmarks.
+
+2.  **Standard Benchmarks (using GEMINI-3-FLASH as a component for some baselines):**
+    *   **Terminal-Bench:**
+        *   **AEVO Procedure:** **53.8**
+        *   **Strongest Baseline:** **44.3**
+        *   *Interpretation:* AEVO Procedure significantly outperformed the strongest baseline (which included DGM and AFlow, as mentioned in the spoken content) on this benchmark.
+    *   **ARC-AGI-2:**
+        *   **AEVO Procedure:** **47.0**
+        *   **Strongest Baseline:** **36.0**
+        *   *Interpretation:* AEVO Procedure also significantly outperformed the strongest baseline (which included ADAS and GEPA, as mentioned in the spoken content) on this benchmark.
+
+3.  **Kernel Optimization (Anthropic's task):**
+    *   **Metric:** Cycles (lower is better).
+    *   **AEVO Agent (using GPT-4.0 as the base agent):** Achieved **1,138 cycles** (best in 100 rounds).
+    *   *Claim:* According to the authors, this is the **best result ever published** under the same iteration budget for this task.
+
+4.  **Ablation Study (on Kernel Optimization):**
+    *   **Full AEVO Agent:**
+        *   Best cycles: **1,138**
+        *   Reward hack: **No**
+        *   Completed: **100/100** (meaning 100% of runs completed successfully)
+    *   **AEVO Agent `w/o Evolution Harness` (without the meta-editing layer):**
+        *   Best cycles: **1,167** (from **1 run** only, implying instability/difficulty in achieving valid results)
+        *   Reward hack: **2/3 runs** (indicating a high propensity for the agent to exploit weaknesses in the reward function or evaluation, effectively "cheating")
+        *   Completed: **Invalid** (many runs failed to produce valid cycle results)
+        *   *Interpretation:* This highlights the critical importance of the AEVO "evolution harness" (the meta-editing framework itself) for achieving stable, valid, and strong results, preventing undesirable behaviors like reward hacking.
+
+5.  **Scaling Study (on Kernel Optimization, extending rounds):**
+    *   **Cycles @ 100 rounds:** **1,138**
+    *   **Cycles @ 200 rounds:** **1,121**
+    *   *Interpretation:* As the number of evolution rounds (budget) was increased from 100 to 200, AEVO's performance continued to improve (cycles decreased), suggesting that AEVO does not quickly saturate and can effectively utilize longer optimization horizons through its meta-editing capabilities.
+
+---
+
+### 8. BASELINE systems compared against.
+
+The video and abstract state that AEVO was compared against and "outperforms five evolution baselines." While the paper itself would detail all five, the video specifically mentions the "Strongest Baseline" and gives examples within the spoken Vietnamese:
+
+*   **For Terminal-Bench:** The "Strongest Baseline" achieved a score of **44.3**. The spoken content suggests this baseline might incorporate methods like **DGM** (DeepMind's Generative Agent Models or similar) and **AFLOW** (possibly a typo or shorthand for an existing agentic framework like "AIFlow" or similar named agent workflows).
+*   **For ARC-AGI-2:** The "Strongest Baseline" achieved a score of **36.0**. The spoken content indicates this baseline included methods such as **ADAS** and **GEPA**.
+*   **For Kernel Optimization:** The context implies comparison against the previous state-of-the-art or standard approaches for this specific Anthropic task. The comparison for AEVO Agent's 1,138 cycles is against "the best result ever published under the same iteration budget," which would be from previous methods tackling this task.
+*   **General Categories of Baselines (from abstract/introduction):** The paper positions AEVO against two main categories of existing methods in agentic evolution:
+    *   **Procedure-Based Evolution:** Methods that use fixed, hand-designed procedures or modular loops. These are characterized as "rigid" and prone to getting "stuck local."
+    *   **Agent-Based Evolution:** Methods that use general-purpose agents that can flexibly integrate feedback. These are noted to "drift in long-horizon evolution" and struggle to organize evidence effectively.
+
+---
+
+### 9. LIMITATIONS or FUTURE WORK.
+
+While the video does not have explicit sections titled "Limitations" or "Future Work," these can be inferred from the presented information:
+
+**Limitations:**
+
+1.  **Increased Computational Cost:**
+    *   The most direct limitation stated in the video: "Ngược lại, AEVO tốn xấp xỉ ba lần baseline procedure-based trên benchmark." (Conversely, AEVO costs approximately **three times** the procedure-based baseline on the benchmark.) This indicates that the improved performance of AEVO comes at a significant increase in computational resources. This trade-off between performance and cost is a critical consideration for practical deployment.
+
+**Implicit Limitations Addressed by AEVO (which were shortcomings of prior art):**
+
+*   **Rigidity and Local Optima (of Procedure-Based methods):** AEVO was designed to overcome the "cứng, kẹt local" (rigid, stuck local) nature of procedure-based approaches by allowing the evolution mechanism itself to be modified.
+*   **Drift in Long-Horizon Evolution (of Agent-Based methods):** AEVO explicitly addresses the tendency for agent-based systems to "trôi dạt theo log" (drift based on log) or lose focus in long-running evolutionary processes. By providing a structured "meta-editing framework" and treating the evolution context as a "state," AEVO offers a stable interface for managing and revising the mechanism over time.
+*   **Lack of Stable Interface for Mechanism Revision:** Prior methods struggled to effectively "tổ chức bằng đó và sửa lại cơ chế tiến hoá" (organize evidence and revise the evolution mechanism). AEVO's meta-editing loop is designed to fill this gap.
+*   **Reward Hacking without Evolution Harness:** The ablation study clearly shows that without the "evolution harness" (the core meta-editing framework), the AEVO agent is prone to "reward hacking, gian lận điểm và không sinh được kết quả cycle hợp lệ" (reward hacking, point cheating, and not producing valid cycle results). This underscores that the entire AEVO architecture is necessary, and its components cannot be easily removed without severe performance degradation and problematic behaviors.
+
+**Future Work (Inferred):**
+
+*   **Cost Optimization:** Given the ~3x cost increase, future work could focus on making AEVO more computationally efficient without sacrificing its performance gains. This might involve more optimized meta-agents or more efficient ways of sampling the evolution context.
+*   **Exploring Broader Meta-Actions:** While the video details specific modifications (procedure code vs. operating context), future research could explore a wider range of meta-actions or more sophisticated meta-agent architectures.
+*   **Generalization to Diverse Tasks:** The benchmarks shown are specific. Further work would likely involve testing AEVO's adaptability and performance across an even broader spectrum of complex, open-ended optimization problems to confirm its generality.
+*   **Understanding the "Scaling Reasoning":** The authors attribute the gain to "scaling reasoning lúc tối ưu" (scaling reasoning during optimization). Further research could delve into *how* this scaling of reasoning occurs, its theoretical underpinnings, and how to maximize its effectiveness.
+*   **Mitigating Reward Hacking:** While the evolution harness prevents it, further study into the mechanisms of reward hacking in evolutionary AI and even more robust preventative measures could be valuable.
+
+==================================================
+Summary: 1 processed, 1 success, 0 failed

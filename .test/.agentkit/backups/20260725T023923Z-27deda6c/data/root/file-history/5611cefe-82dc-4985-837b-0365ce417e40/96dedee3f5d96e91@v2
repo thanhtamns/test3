@@ -1,0 +1,186 @@
+#!/usr/bin/env python3
+"""
+MTDE Retriever — template for fact extraction from search results.
+Designed to be called by SBE orchestrator which provides actual WebSearch/LLM tools.
+Standalone mode uses mock for testing.
+"""
+
+import json
+import hashlib
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Callable, Optional
+
+
+@dataclass
+class FactSheet:
+    question_text: str = ""
+    field_name: str = ""
+    value: any = None
+    source_url: str = ""
+    source_tier: str = "F"  # S/A/B/C/D/F
+    date: str = ""
+    confidence: float = 0.0
+    status: str = "pending"  # pending/found/no_results/error
+    dimension: str = ""
+    raw_snippet: str = ""
+
+    def to_dict(self):
+        return {
+            "question": self.question_text,
+            "field": self.field_name,
+            "value": self.value,
+            "source_url": self.source_url,
+            "source_tier": self.source_tier,
+            "date": self.date,
+            "confidence": round(self.confidence, 3),
+            "status": self.status,
+            "dimension": self.dimension,
+        }
+
+
+SOURCE_TIER_PATTERNS = {
+    "S": ["gov.", "sec.gov", "worldbank.org", "statista.com", "bls.gov"],
+    "A": ["reuters.com", "bloomberg.com", "wsj.com", "ft.com", "techcrunch.com"],
+    "B": ["crunchbase.com", "g2.com", "capterra.com", "similarweb.com", "semrush.com"],
+    "C": ["medium.com", "substack.com", "reddit.com", "quora.com"],
+    "D": ["youtube.com", "tiktok.com", "twitter.com", "facebook.com"],
+}
+
+
+class MTDERetriever:
+    EXTRACTION_PROMPT = """From this search snippet, extract ONE specific factual data point.
+Question: {question}
+Snippet: {snippet}
+
+Return ONLY valid JSON (no markdown):
+{{"field": "<field_name>", "value": <numeric_or_string>, "date": "<YYYY or YYYY-MM>", "confidence": <0.0-1.0>}}
+
+Rules:
+- value must be a number if the fact is numeric
+- confidence: 1.0 = exact match, 0.5 = inferred, 0.2 = weak signal
+- If no relevant fact found, return {{"field": "none", "value": null, "confidence": 0.0}}"""
+
+    def __init__(
+        self,
+        search_fn: Optional[Callable] = None,
+        extract_fn: Optional[Callable] = None,
+        max_concurrent: int = 10,
+        cache_dir: Optional[Path] = None,
+    ):
+        self.search_fn = search_fn
+        self.extract_fn = extract_fn
+        self.max_concurrent = max_concurrent
+        self.cache_dir = cache_dir
+        self._cache = {}
+
+    def retrieve(self, questions: list) -> list:
+        facts = []
+        for i in range(0, len(questions), self.max_concurrent):
+            batch = questions[i:i + self.max_concurrent]
+            for q in batch:
+                fact = self._retrieve_single(q)
+                facts.append(fact)
+        return facts
+
+    def _retrieve_single(self, question) -> FactSheet:
+        q_text = question.text if hasattr(question, "text") else str(question)
+        dimension = question.dimension if hasattr(question, "dimension") else ""
+        target_fields = question.target_fields if hasattr(question, "target_fields") else []
+
+        cache_key = self._cache_key(q_text)
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
+        if not self.search_fn:
+            return FactSheet(
+                question_text=q_text,
+                status="no_search_fn",
+                dimension=dimension,
+            )
+
+        try:
+            results = self.search_fn(q_text, max_results=3)
+        except Exception:
+            return FactSheet(question_text=q_text, status="search_error", dimension=dimension)
+
+        if not results:
+            return FactSheet(question_text=q_text, status="no_results", dimension=dimension)
+
+        best = results[0]
+        snippet = best.get("snippet", best.get("text", ""))
+        url = best.get("url", best.get("link", ""))
+
+        if not self.extract_fn:
+            return FactSheet(
+                question_text=q_text,
+                raw_snippet=snippet[:500],
+                source_url=url,
+                source_tier=self._classify_source(url),
+                status="no_extract_fn",
+                dimension=dimension,
+            )
+
+        prompt = self.EXTRACTION_PROMPT.format(question=q_text, snippet=snippet[:800])
+        try:
+            extraction = self.extract_fn(prompt)
+            if isinstance(extraction, str):
+                extraction = json.loads(extraction)
+        except Exception:
+            return FactSheet(
+                question_text=q_text,
+                raw_snippet=snippet[:500],
+                source_url=url,
+                source_tier=self._classify_source(url),
+                status="extraction_error",
+                dimension=dimension,
+            )
+
+        field_name = extraction.get("field", "")
+        if field_name == "none" or extraction.get("value") is None:
+            return FactSheet(
+                question_text=q_text,
+                source_url=url,
+                source_tier=self._classify_source(url),
+                status="no_fact_found",
+                dimension=dimension,
+            )
+
+        if not field_name and target_fields:
+            field_name = target_fields[0]
+
+        fact = FactSheet(
+            question_text=q_text,
+            field_name=field_name,
+            value=extraction.get("value"),
+            source_url=url,
+            source_tier=self._classify_source(url),
+            date=extraction.get("date", ""),
+            confidence=extraction.get("confidence", 0.5),
+            status="found",
+            dimension=dimension,
+            raw_snippet=snippet[:300],
+        )
+
+        self._cache[cache_key] = fact
+        return fact
+
+    def _classify_source(self, url: str) -> str:
+        url_lower = url.lower()
+        for tier, patterns in SOURCE_TIER_PATTERNS.items():
+            for pattern in patterns:
+                if pattern in url_lower:
+                    return tier
+        return "C"
+
+    def _cache_key(self, text: str) -> str:
+        return hashlib.md5(text.encode()).hexdigest()
+
+    def get_token_estimate(self, question_count: int) -> dict:
+        return {
+            "extraction_tokens_per_q": 120,
+            "total_extraction_tokens": question_count * 120,
+            "search_calls": question_count,
+            "llm_calls": question_count,
+        }

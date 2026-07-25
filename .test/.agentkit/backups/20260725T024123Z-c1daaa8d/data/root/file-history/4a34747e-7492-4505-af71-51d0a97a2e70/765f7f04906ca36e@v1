@@ -1,0 +1,568 @@
+#!/usr/bin/env python3
+"""Stage0 verdict quality scorer. Reads verdict markdown, outputs JSON score 0-180."""
+
+import argparse
+import json
+import re
+import sys
+
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8")
+
+
+def count_agent_dispatch(text: str) -> dict:
+    patterns = [r'Task\(', r'subagent_type\s*=', r'agents_fired', r'wave.*receipt',
+                r'researcher.*agent', r'debugger.*agent', r'tester.*agent',
+                r'planner.*agent', r'code-reviewer', r'dispatched.*agent',
+                r'agent.*dispatched', r'spawn.*agent', r'delegate.*to']
+    hits = set()
+    for p in patterns:
+        if re.search(p, text, re.IGNORECASE):
+            hits.add(p)
+    n = len(hits)
+    if n == 0: score = 0
+    elif n <= 4: score = 5
+    elif n <= 8: score = 10
+    elif n <= 12: score = 15
+    else: score = 20
+    return {"score": score, "max": 20, "detail": f"{n} agent dispatch signals found"}
+
+
+def count_computation(text: str) -> dict:
+    markers = ['calc-dispatcher', 'power-law-sizer', 'monte-carlo',
+                'money-intelligence-runner', '[COMPUTED:', 'CCC']
+    p_pattern = r'P(?:10|50|90)'
+    count = sum(1 for m in markers if m.lower() in text.lower())
+    if re.search(p_pattern, text):
+        count += 1
+    if count == 0: score = 0
+    elif count <= 2: score = 8
+    elif count <= 4: score = 14
+    else: score = 20
+    return {"score": score, "max": 20, "detail": f"{count} computation markers found"}
+
+
+def count_evidence(text: str) -> dict:
+    urls = set(re.findall(r'https?://[^\s\)\]>"]+', text))
+    k_tags = len(re.findall(r'\[K\]', text))
+    t_tags = len(re.findall(r'\[T\]', text))
+    q_tags = len(re.findall(r'\[\?\]', text))
+    n = len(urls)
+    if n == 0: score = 0
+    elif n <= 3: score = 5
+    elif n <= 7: score = 10
+    elif n <= 15: score = 15
+    else: score = 20
+    # Penalty: revenue claim without zone tag
+    rev_lines = [l for l in text.split('\n')
+                 if re.search(r'(?:revenue|MRR|ARR|income|\$\d)', l, re.IGNORECASE)]
+    untagged_rev = [l for l in rev_lines if not re.search(r'\[K\]|\[T\]|\[\?\]', l)]
+    if untagged_rev and rev_lines:
+        score = max(0, score - 5)
+    detail = f"{n} URLs, {k_tags} [K], {t_tags} [T], {q_tags} [?] tags"
+    if untagged_rev:
+        detail += f"; -{5} penalty: {len(untagged_rev)} revenue claims untagged"
+    return {"score": score, "max": 20, "detail": detail}
+
+
+VALID_VERDICTS = {
+    'KILL', 'SIDE_HUSTLE', 'SIDE_HUSTLE_WITH_STAIRCASE', 'MOUNTAIN_CANDIDATE',
+    'INSUFFICIENT_SIGNAL', 'EXPLORATION_COMPLETE', 'EXPLORATION_ONGOING',
+    'DEPLOY_CANDIDATE',
+}
+
+
+def check_verdict(text: str) -> dict:
+    score = 0
+    failures = []
+    found_class = None
+    # Strategy 1: look for known verdict class names near verdict/class keywords
+    for vc in VALID_VERDICTS:
+        if re.search(rf'(?:verdict|class|classification)\s*[:=]\s*[`"\']*{vc}', text, re.IGNORECASE):
+            found_class = vc
+            score += 10
+            break
+    # Strategy 2: any standalone mention of a valid verdict class
+    if not found_class:
+        for vc in VALID_VERDICTS:
+            if re.search(rf'\b{vc}\b', text):
+                found_class = vc
+                score += 10
+                break
+    # Strategy 3: generic regex -- may catch invented classes
+    if not found_class:
+        verdict_match = re.search(
+            r'(?:verdict\s*(?:class)?|classification)\s*[:=]\s*[`"\']*([A-Za-z_]{4,})', text, re.IGNORECASE)
+        if verdict_match:
+            found_class = verdict_match.group(1).upper()
+            failures.append(f"Invalid verdict class {found_class}")
+        else:
+            failures.append("No verdict class found")
+    # Confidence formula evidence
+    if re.search(r'agent_response_rate|confidence.*formula|formula.*confidence', text, re.IGNORECASE):
+        score += 5
+    # Mountain test Q1/Q2/Q3
+    q_count = len(re.findall(r'Q[123]\s*[:=]?\s*(?:yes|no|true|false)', text, re.IGNORECASE))
+    if q_count >= 3:
+        score += 5
+    detail = f"verdict={found_class or 'NONE'}, formula={'yes' if score >= 15 else 'no'}, mountain_qs={q_count}/3"
+    return {"score": score, "max": 20, "detail": detail, "_failures": failures}
+
+
+PIPELINE_CHECKS = [
+    (r'profile.*load|loaded.*profile|investor.*profile', 2, 'Profile loaded'),
+    (r'intent.*class|classif.*intent|query.*type', 2, 'Intent classified'),
+    (r'decision.*question|DQ.*generat|generated.*question', 2, 'Decision questions'),
+    (r'wave\s*1|wave.*one|first.*wave', 3, 'Wave 1 dispatched'),
+    (r'wave\s*2|wave.*two|second.*wave', 3, 'Wave 2 dispatched'),
+    (r'operator.*master|mastery.*section', 2, 'Operator mastery'),
+    (r'experience.*brain|brain.*experience', 2, 'Experience brain'),
+    (r'brain.*information.*flow.*audit|information.*flow.*audit|BIF.*audit', 2, 'Brain Info Flow Audit'),
+    (r'hypothes[ie]s.*generat|generated.*hypothes', 2, 'Hypothesis generation'),
+]
+
+
+def check_pipeline(text: str) -> dict:
+    score = 0
+    found = []
+    missing = []
+    for pattern, pts, label in PIPELINE_CHECKS:
+        if re.search(pattern, text, re.IGNORECASE):
+            score += pts
+            found.append(label)
+        else:
+            missing.append(label)
+    detail = f"found: {', '.join(found) if found else 'none'}"
+    if missing:
+        detail += f"; missing: {', '.join(missing)}"
+    return {"score": score, "max": 20, "detail": detail}
+
+
+def check_leverage_classification(text: str) -> dict:
+    """Legacy leverage check — retained for test_leverage_scoring.py backward compat. Not called by score_verdict()."""
+    score = 0
+    details = []
+
+    sleep_patterns = [
+        r'Q4[_-]?SLEEP', r'sleep\s+test', r'revenue\s+continues?\s+when\s+founder',
+        r'passive\s+income', r'recurring\s+(revenue|subscription)',
+        r'founder\s+does\s+zero\s+work',
+    ]
+    if any(re.search(p, text, re.IGNORECASE) for p in sleep_patterns):
+        score += 5
+        details.append("sleep test present")
+
+    leverage_patterns = [
+        r'Q5[_-]?LEVERAGE', r'leverage[_:\s]+(CODE|MEDIA|CAPITAL|LABOR|HYBRID)',
+        r'Naval\s+hierarchy', r'leverage\s+class',
+        r'(CODE|MEDIA|CAPITAL|LABOR|HYBRID)\s+leverage',
+    ]
+    if any(re.search(p, text, re.IGNORECASE) for p in leverage_patterns):
+        score += 5
+        details.append("leverage classification found")
+
+    asset_patterns = [
+        r'asset\s+at\s+M?12', r'founder\s+owns?\s+after',
+        r'owns?\s+at\s+month\s+12', r'asset\s+after\s+12\s+months?',
+        r'sellable\s+asset', r'transferable\s+asset',
+    ]
+    if any(re.search(p, text, re.IGNORECASE) for p in asset_patterns):
+        score += 5
+        details.append("asset identification present")
+
+    is_labor = bool(re.search(r'(?:Q5|leverage)[_:\s]+LABOR\b', text, re.IGNORECASE)) and not re.search(r'\bHYBRID\b', text)
+    has_staircase = bool(re.search(
+        r'stair[_-]?step|transition\s+path|bootstrap.*to.*product|labor.*to.*(code|media|saas)',
+        text, re.IGNORECASE,
+    ))
+    if is_labor and not has_staircase:
+        score -= 5
+        details.append("PENALTY: labor model without staircase path")
+
+    return {"score": max(score, 0), "max": 15, "detail": "; ".join(details) or "no leverage signals"}
+
+
+def check_capital_deployment(text: str) -> dict:
+    score = 0
+    details = []
+
+    roi_patterns = [
+        r'ROI[%\s]*[:=]?\s*\d', r'return\s+on\s+invest',
+        r'deploy_cost.*\$|deploy.*\$\d', r'\$\d+.*→.*\$\d+/mo',
+        r'monthly.*ROI', r'payback.*day',
+    ]
+    if any(re.search(p, text, re.IGNORECASE) for p in roi_patterns):
+        score += 3
+        details.append("ROI calculation present")
+
+    deploy_patterns = [
+        r'deploy[_\s]cost', r'investment[:\s]+\$\d',
+        r'capital.*deploy', r'budget.*per.*asset',
+        r'deployment.*budget', r'deploy.*\$\d+',
+    ]
+    if any(re.search(p, text, re.IGNORECASE) for p in deploy_patterns):
+        score += 2
+        details.append("deployment cost specified")
+
+    sleep_filter_patterns = [
+        r'sleep.*filter|filter.*sleep', r'only.*models.*pass.*sleep',
+        r'Q4.*first|first.*Q4', r'sleep.*before.*analysis',
+    ]
+    sleep_present_patterns = [r'Q4[_-]?SLEEP', r'sleep\s+test']
+    if any(re.search(p, text, re.IGNORECASE) for p in sleep_filter_patterns):
+        score += 2
+        details.append("sleep test used as filter")
+    elif any(re.search(p, text, re.IGNORECASE) for p in sleep_present_patterns):
+        score += 1
+        details.append("sleep test present (not as filter)")
+
+    portfolio_patterns = [
+        r'portfolio', r'kill.*\d+.*day', r'30.*day.*kill',
+        r'reallocat', r'micro.*asset', r'asset.*slot',
+    ]
+    if any(re.search(p, text, re.IGNORECASE) for p in portfolio_patterns):
+        score += 2
+        details.append("portfolio/kill criteria present")
+
+    hours_patterns = [
+        r'founder.*hour.*post|post.*setup.*hour',
+        r'<?\d+h?/week.*after|after.*setup.*\d+h',
+        r'max_founder_hours', r'passive.*\d+h',
+        r'founder_hours_post_setup',
+    ]
+    if any(re.search(p, text, re.IGNORECASE) for p in hours_patterns):
+        score += 1
+        details.append("founder hours post-setup specified")
+
+    is_labor = bool(re.search(r'(?:Q5|leverage)[_:\s]+LABOR\b', text, re.IGNORECASE)) and not re.search(r'\bHYBRID\b', text)
+    has_staircase = bool(re.search(
+        r'stair[_-]?step|transition\s+path|bootstrap.*to.*product|labor.*to.*(code|media|saas)',
+        text, re.IGNORECASE,
+    ))
+    if is_labor and not has_staircase:
+        score -= 3
+        details.append("PENALTY: labor model without staircase path")
+
+    return {"score": max(score, 0), "max": 10, "detail": "; ".join(details) or "no capital deployment signals"}
+
+
+def check_portfolio_context(text: str) -> dict:
+    score = 0
+    details = []
+
+    portfolio_section_patterns = [
+        r'PORTFOLIO\s+COMPARISON', r'Portfolio\s+P50', r'portfolio\s+allocation',
+        r'PORTFOLIO_CONTEXT', r'Deployment\s+Portfolio',
+    ]
+    if any(re.search(p, text, re.IGNORECASE) for p in portfolio_section_patterns):
+        score += 5
+        details.append("portfolio context section present")
+
+    p_number_patterns = [
+        r'P10.*P50.*P90.*portfolio', r'portfolio.*P10.*P50.*P90',
+        r'portfolio.*return.*\$\d', r'portfolio.*\$\d+.*\$\d+.*\$\d+',
+    ]
+    if any(re.search(p, text, re.IGNORECASE) for p in p_number_patterns):
+        score += 3
+        details.append("portfolio P10/P50/P90 numbers present")
+
+    labor_compare_patterns = [
+        r'labor.*comparison|comparison.*labor', r'hourly.*rate.*portfolio',
+        r'portfolio.*passive.*vs|vs.*portfolio.*passive',
+        r'earns?\s+less.*per\s+dollar.*portfolio', r'SUBOPTIMAL',
+        r'Q8.*PORTFOLIO', r'outperform.*portfolio|portfolio.*outperform',
+    ]
+    if any(re.search(p, text, re.IGNORECASE) for p in labor_compare_patterns):
+        score += 2
+        details.append("labor vs portfolio comparison present")
+
+    return {"score": min(score, 10), "max": 10, "detail": "; ".join(details) if details else "no portfolio context"}
+
+
+def grade(total: int) -> str:
+    if total >= 140: return "A"
+    if total >= 124: return "B"
+    if total >= 95: return "C"
+    if total >= 72: return "D"
+    return "F"
+
+
+def check_side_door(text: str) -> dict:
+    score = 0
+    details = []
+
+    has_kill = bool(re.search(r'\bKILL\b', text))
+    has_relationship_barrier = bool(re.search(
+        r'network_barrier|capital_barrier|track_record_gap|entry_window_closed|no_precedent|credential_gap|network_gap',
+        text, re.IGNORECASE))
+    has_side_door_section = bool(re.search(r'side.?door\s+path', text, re.IGNORECASE))
+    has_chain = bool(re.search(r'→|->|\bchain\b', text))
+    has_script = bool(re.search(r'[Ss]ay\s+(this|exactly)\s*:', text))
+    has_persona_matrix = bool(re.search(r'(?i)persona.{0,10}(matrix|switch|different|per.{0,5}link)', text))
+    has_info_asymmetry = bool(re.search(r'(?i)(info|information).{0,10}asymmetr|reveal.{0,10}sequence|never.{0,10}reveal', text))
+
+    if has_kill and has_relationship_barrier:
+        if has_side_door_section:
+            score += 4
+            details.append("side-door section present")
+        else:
+            details.append("MISSING: side-door section (relationship KILL)")
+        if has_chain:
+            score += 3
+            details.append("chain notation found")
+        if has_script:
+            score += 3
+            details.append("encounter scripts found")
+        if has_persona_matrix:
+            score += 3
+            details.append("persona matrix present")
+        if has_info_asymmetry:
+            score += 2
+            details.append("info asymmetry section present")
+    elif has_kill and not has_relationship_barrier:
+        score += 5
+        details.append("non-relationship KILL: side-door correctly skipped")
+    else:
+        score += 5
+        details.append("non-KILL verdict: side-door N/A")
+
+    return {"score": min(score, 15), "max": 15, "detail": "; ".join(details)}
+
+
+def check_orthodox_gate(text: str) -> dict:
+    orthodox_removed = len(re.findall(r'\[removed:?\s*orthodox', text, re.IGNORECASE))
+    orthodox_tagged = len(re.findall(r'\[ORTHODOX', text, re.IGNORECASE))
+
+    orthodox_patterns_present = 0
+    for p in [r'attend\s+events?', r'build\s+your\s+network', r'create\s+content',
+              r'cold\s+email', r'take\s+a\s+course', r'volunteer']:
+        if re.search(p, text, re.IGNORECASE):
+            orthodox_patterns_present += 1
+
+    score = 5
+    details = []
+
+    if orthodox_removed > 0:
+        score += 3
+        details.append(f"{orthodox_removed} orthodox recs removed")
+    if orthodox_tagged > 0:
+        details.append(f"{orthodox_tagged} orthodox recs tagged")
+
+    if orthodox_patterns_present >= 3:
+        score = max(0, score - 3)
+        details.append(f"WARNING: {orthodox_patterns_present} orthodox patterns still in output")
+    elif orthodox_patterns_present == 0:
+        score += 2
+        details.append("clean: zero orthodox patterns detected")
+
+    return {"score": min(score, 10), "max": 10, "detail": "; ".join(details) if details else "no orthodox signals"}
+
+
+def check_voice_mode(text: str) -> dict:
+    is_operator = bool(re.search(r'voice.*operator|operator.*voice', text, re.IGNORECASE))
+
+    if not is_operator:
+        return {"score": 5, "max": 5, "detail": "analyst mode (default)"}
+
+    violations = []
+    bullet_count = len(re.findall(r'^\s*[-*]\s', text, re.MULTILINE))
+    table_count = len(re.findall(r'\|.*\|.*\|', text))
+    tag_count = len(re.findall(r'\[K\]|\[T\]|\[\?\]', text))
+
+    if bullet_count > 5:
+        violations.append(f"{bullet_count} bullet lists")
+    if table_count > 2:
+        violations.append(f"{table_count} table rows")
+    if tag_count > 0:
+        violations.append(f"{tag_count} zone tags leaked")
+
+    if not violations:
+        return {"score": 5, "max": 5, "detail": "operator voice clean"}
+    else:
+        return {"score": 1, "max": 5, "detail": f"operator voice violations: {', '.join(violations)}"}
+
+
+def check_wound_extraction(text: str) -> dict:
+    score = 0
+    details = []
+    wound_types = len(re.findall(r'(?i)(credibility|isolation|legacy|control|rivalry|boredom)_wound', text))
+    needs = bool(re.search(r'(?i)needs_not_wants|actual.{0,10}need|what they.{0,15}need', text))
+    exploit = bool(re.search(r'(?i)exploitation_angle|exploit|leverage.{0,10}wound', text))
+    if wound_types > 0:
+        score += 2
+        details.append(f"{wound_types} wound types detected")
+    if needs:
+        score += 1
+        details.append("needs analysis present")
+    if exploit:
+        score += 2
+        details.append("exploitation angles present")
+    return {"score": min(score, 5), "max": 5, "detail": "; ".join(details) if details else "no wound extraction"}
+
+
+def check_instance_specificity(text: str) -> dict:
+    """Check if verdict contains instance-level model details vs generic categories."""
+    score = 0
+    details = []
+
+    named_buyers = len(re.findall(
+        r'(?i)buyer[s]?\s*\(verified\)|contact_method|procurement@|buyer.*\|.*\|.*\|', text))
+    named_suppliers = len(re.findall(
+        r'(?i)supplier[s]?\s*\(verified\)|factory|supplier.*\|.*location.*\|.*price', text))
+    price_with_unit = len(re.findall(
+        r'\$[\d,.]+/(?:ton|kg|unit|piece|mo|month|year|hr|order)', text, re.IGNORECASE))
+    price_with_source = len(re.findall(
+        r'\$[\d,.]+.*(?:alibaba|source|verified|comtrade|https?://)', text, re.IGNORECASE))
+    cold_messages = len(re.findall(
+        r'(?i)first\s+action\s+message|copy.?paste\s+ready|cold\s+message.*ready', text))
+    model_count = len(re.findall(r'### Model \d', text))
+    sub_niche = len(re.findall(
+        r'(?i)sub.?niche|specific.*product.*→|W320|S16|screen.*moisture', text))
+
+    generic_patterns = len(re.findall(
+        r'(?i)foreign\s+buyers|various\s+(?:buyers|suppliers)|2-10%|finder.?s?\s+fee\s+\d+-\d+%',
+        text))
+
+    if named_buyers >= 2:
+        score += 4
+        details.append(f"{named_buyers} buyer signals")
+    elif named_buyers >= 1:
+        score += 2
+        details.append(f"{named_buyers} buyer signal")
+
+    if named_suppliers >= 2:
+        score += 4
+        details.append(f"{named_suppliers} supplier signals")
+    elif named_suppliers >= 1:
+        score += 2
+        details.append(f"{named_suppliers} supplier signal")
+
+    if price_with_unit >= 2:
+        score += 3
+        details.append(f"{price_with_unit} prices with units")
+    elif price_with_unit >= 1:
+        score += 1
+
+    if price_with_source >= 1:
+        score += 2
+        details.append(f"{price_with_source} prices with sources")
+
+    if cold_messages >= 1:
+        score += 3
+        details.append("cold message present")
+
+    if model_count >= 1:
+        score += 2
+        details.append(f"{model_count} instance models")
+
+    if sub_niche >= 1:
+        score += 2
+        details.append("sub-niche specificity")
+
+    if generic_patterns >= 2:
+        score = max(0, score - 5)
+        details.append(f"PENALTY: {generic_patterns} generic patterns detected")
+
+    return {"score": min(score, 20), "max": 20,
+            "detail": "; ".join(details) if details else "no instance specificity"}
+
+
+def check_compound_objectives(text: str) -> dict:
+    score = 0
+    details = []
+    compound = len(re.findall(r'(?i)(compound|dual|multiple).{0,15}(objective|goal|purpose)', text))
+    hidden = len(re.findall(r'(?i)(hidden|unstated|secret).{0,15}(objective|gain|goal)', text))
+    density = bool(re.search(r'compound_density|density.*[≥>=]\s*2', text))
+    if compound > 0:
+        score += 2
+        details.append(f"{compound} compound objective mentions")
+    if hidden > 0:
+        score += 2
+        details.append(f"{hidden} hidden objective mentions")
+    if density:
+        score += 1
+        details.append("compound density score present")
+    return {"score": min(score, 5), "max": 5, "detail": "; ".join(details) if details else "no compound objectives"}
+
+
+def score_verdict(text: str) -> dict:
+    d_agent = count_agent_dispatch(text)
+    d_comp = count_computation(text)
+    d_evid = count_evidence(text)
+    d_verd = check_verdict(text)
+    d_pipe = check_pipeline(text)
+    d_side = check_side_door(text)
+    d_orth = check_orthodox_gate(text)
+    d_voice = check_voice_mode(text)
+    d_wound = check_wound_extraction(text)
+    d_compound = check_compound_objectives(text)
+    d_instance = check_instance_specificity(text)
+    d_deploy = check_capital_deployment(text)
+    d_portfolio = check_portfolio_context(text)
+
+    total = (d_agent["score"] + d_comp["score"] + d_evid["score"]
+             + d_verd["score"] + d_pipe["score"]
+             + d_side["score"] + d_orth["score"] + d_voice["score"]
+             + d_wound["score"] + d_compound["score"] + d_instance["score"]
+             + d_deploy["score"] + d_portfolio["score"])
+
+    critical = []
+    if d_agent["score"] == 0:
+        critical.append("ZERO agents spawned")
+    if d_verd["score"] < 10:
+        for f in d_verd.get("_failures", []):
+            critical.append(f)
+    if d_evid["score"] == 0:
+        critical.append("ZERO source URLs found")
+    if d_side["score"] == 0:
+        critical.append("Side-door section MISSING on relationship KILL")
+    if d_instance["score"] <= 2:
+        critical.append("LOW instance specificity — verdict may be category-level generic")
+
+    # Clean internal keys
+    d_verd.pop("_failures", None)
+
+    return {
+        "quality_score": total,
+        "grade": grade(total),
+        "dimensions": {
+            "agent_dispatch": d_agent,
+            "computation": d_comp,
+            "evidence": d_evid,
+            "verdict_validity": d_verd,
+            "pipeline_completeness": d_pipe,
+            "side_door_analysis": d_side,
+            "orthodox_gate": d_orth,
+            "voice_mode": d_voice,
+            "wound_extraction": d_wound,
+            "compound_objectives": d_compound,
+            "instance_specificity": d_instance,
+            "capital_deployment": d_deploy,
+            "portfolio_context": d_portfolio,
+        },
+        "grade_map": "A=140+ B=124+ C=95+ D=72+ F=<72 (max=180)",
+        "critical_failures": critical,
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Stage0 verdict quality scorer")
+    parser.add_argument("--verdict-file", help="Path to verdict markdown file (default: stdin)")
+    args = parser.parse_args()
+
+    if args.verdict_file:
+        with open(args.verdict_file, "r", encoding="utf-8") as f:
+            text = f.read()
+    else:
+        text = sys.stdin.read()
+
+    if not text.strip():
+        print(json.dumps({"error": "Empty input"}, indent=2))
+        sys.exit(1)
+
+    result = score_verdict(text)
+    print(json.dumps(result, indent=2))
+
+
+if __name__ == "__main__":
+    main()

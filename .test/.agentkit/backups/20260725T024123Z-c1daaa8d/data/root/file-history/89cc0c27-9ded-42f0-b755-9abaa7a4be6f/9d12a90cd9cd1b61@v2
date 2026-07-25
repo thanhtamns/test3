@@ -1,0 +1,83 @@
+package api
+
+import (
+	"context"
+	"log/slog"
+	"net/http"
+	"time"
+)
+
+type RouterOption func(*handler)
+
+func WithPublisher(p EventPublisher) RouterOption {
+	return func(h *handler) { h.publisher = p }
+}
+
+func NewRouter(store Storage, logger *slog.Logger, opts ...RouterOption) http.Handler {
+	apiMux := http.NewServeMux()
+
+	h := &handler{store: store, hub: newWSHub(), logger: logger}
+	for _, opt := range opts {
+		opt(h)
+	}
+
+	apiMux.HandleFunc("POST /v1/events", h.handleIngestEvents)
+	apiMux.HandleFunc("GET /v1/overview", h.handleOverview)
+	apiMux.HandleFunc("GET /v1/projects", h.handleListProjects)
+	apiMux.HandleFunc("GET /v1/projects/{id}/stats", h.handleProjectStats)
+	apiMux.HandleFunc("GET /v1/savings/trend", h.handleSavingsTrend)
+	apiMux.HandleFunc("GET /v1/waste", h.handleWasteReport)
+	apiMux.HandleFunc("GET /v1/waste/projects", h.handleProjectWasteScores)
+	apiMux.HandleFunc("GET /v1/security/alerts", h.handleSecurityAlerts)
+	apiMux.HandleFunc("GET /v1/billing/status", h.handleBillingStatus)
+	apiMux.HandleFunc("POST /v1/billing/checkout", h.handleCreateCheckout)
+	apiMux.HandleFunc("GET /v1/export/csv", h.handleExportCSV)
+	apiMux.HandleFunc("GET /v1/roi", h.handleROISummary)
+	apiMux.HandleFunc("GET /v1/ws", h.handleWebSocket)
+	apiMux.HandleFunc("GET /v1/provenance", h.handleProvenance)
+	apiMux.HandleFunc("GET /v1/cost/by-pr", h.handleCostByPR)
+	apiMux.HandleFunc("GET /v1/budget/status", h.handleBudgetStatus)
+	apiMux.HandleFunc("GET /v1/quality/summary", h.handleQualitySummary)
+	apiMux.HandleFunc("GET /v1/compliance/export", h.handleComplianceExport)
+
+	rl := newRateLimiter()
+
+	var wrapped http.Handler = apiMux
+	wrapped = withRateLimit(rl)(wrapped)
+	wrapped = withTenantAuth(wrapped)
+	wrapped = withCORS(wrapped)
+
+	root := http.NewServeMux()
+	root.HandleFunc("GET /healthz", h.handleHealthz)
+	root.HandleFunc("POST /v1/billing/webhook", h.handleStripeWebhook)
+	root.Handle("/", wrapped)
+
+	return withLogging(logger, root)
+}
+
+func (h *handler) handleHealthz(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+
+	if err := h.store.Ping(ctx); err != nil {
+		h.logger.Error("healthz ping failed", "error", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte(`{"status":"unhealthy"}`))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status":"ok"}`))
+}
+
+func withLogging(logger *slog.Logger, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		logger.Info("request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"remote", r.RemoteAddr,
+		)
+		next.ServeHTTP(w, r)
+	})
+}

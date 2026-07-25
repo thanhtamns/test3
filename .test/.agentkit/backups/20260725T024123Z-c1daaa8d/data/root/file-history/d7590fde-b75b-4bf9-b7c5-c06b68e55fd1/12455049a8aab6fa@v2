@@ -1,0 +1,143 @@
+---
+phase: 4
+title: "Quality Score ROI Dimension"
+status: pending
+priority: P1
+effort: "2h"
+dependencies: []
+---
+
+# Phase 4: Quality Score ROI Dimension
+
+## Overview
+
+Replace `check_leverage_classification()` (measures IF analysis MENTIONS leverage) with `check_capital_deployment()` (measures IF models ARE capital-deployed assets with ROI calculations). Add new scoring dimension for portfolio construction quality.
+
+## Requirements
+
+- Functional: New `check_capital_deployment()` replaces `check_leverage_classification()` — max 20pts (up from 15)
+- Functional: Checks: (1) ROI calculation present per model, (2) deploy_cost specified, (3) sleep test as filter not measurement, (4) portfolio allocation with kill criteria, (5) founder_hours_post_setup specified
+- Functional: Keep existing leverage checks as sub-signals within the new dimension
+- Functional: Update max score from 175 → 180 (net +5 from dimension upgrade)
+- Non-functional: Grade thresholds proportionally adjusted
+
+## Architecture
+
+New dimension replaces `leverage_classification`:
+
+```python
+def check_capital_deployment(text: str) -> dict:
+    score = 0
+    details = []
+
+    # (1) ROI calculation present — 5pts
+    roi_patterns = [
+        r'ROI[%\s]*[:=]?\s*\d', r'return\s+on\s+invest',
+        r'deploy_cost.*→.*passive', r'\$\d+.*→.*\$\d+/mo',
+        r'monthly.*ROI', r'payback.*days?',
+    ]
+    if any(re.search(p, text, re.IGNORECASE) for p in roi_patterns):
+        score += 5
+        details.append("ROI calculation present")
+
+    # (2) Deploy cost per model — 5pts
+    deploy_patterns = [
+        r'deploy[_\s]cost', r'investment[:\s]+\$\d',
+        r'capital.*deploy', r'budget.*per.*asset',
+        r'\$\d+.*domain|\$\d+.*template|\$\d+.*tool',
+    ]
+    if any(re.search(p, text, re.IGNORECASE) for p in deploy_patterns):
+        score += 5
+        details.append("deployment cost specified")
+
+    # (3) Sleep test as filter (not just measurement) — 4pts
+    sleep_filter = [
+        r'sleep.*filter|filter.*sleep', r'only.*models.*pass.*sleep',
+        r'Q4.*first|first.*Q4', r'sleep.*before.*analysis',
+    ]
+    # Also accept existing Q4-SLEEP presence
+    sleep_present = [r'Q4[_-]?SLEEP', r'sleep\s+test']
+    if any(re.search(p, text, re.IGNORECASE) for p in sleep_filter):
+        score += 4
+        details.append("sleep test used as filter")
+    elif any(re.search(p, text, re.IGNORECASE) for p in sleep_present):
+        score += 2
+        details.append("sleep test present (not as filter)")
+
+    # (4) Portfolio/kill criteria — 3pts
+    portfolio_patterns = [
+        r'portfolio', r'kill.*\d+.*day', r'30.*day.*kill',
+        r'reallocat', r'micro.*asset', r'asset.*slot',
+    ]
+    if any(re.search(p, text, re.IGNORECASE) for p in portfolio_patterns):
+        score += 3
+        details.append("portfolio/kill criteria present")
+
+    # (5) Founder hours post-setup — 3pts
+    hours_patterns = [
+        r'founder.*hour.*post|post.*setup.*hour',
+        r'<?\d+h?/week.*after|after.*setup.*\d+h',
+        r'max_founder_hours', r'passive.*\d+h',
+    ]
+    if any(re.search(p, text, re.IGNORECASE) for p in hours_patterns):
+        score += 3
+        details.append("founder hours post-setup specified")
+
+    # PENALTY: all models are labor without any ROI (same as old penalty)
+    is_labor = bool(re.search(
+        r'(?:Q5|leverage)[_:\s]+LABOR\b', text, re.IGNORECASE
+    )) and not re.search(r'\bHYBRID\b', text)
+    has_staircase = bool(re.search(
+        r'stair[_-]?step|transition\s+path|labor.*to.*(code|media|saas)',
+        text, re.IGNORECASE,
+    ))
+    if is_labor and not has_staircase:
+        score -= 5
+        details.append("PENALTY: labor model without staircase")
+
+    return {
+        "score": max(score, 0),
+        "max": 20,
+        "detail": "; ".join(details) or "no capital deployment signals"
+    }
+```
+
+Update `score_verdict()`:
+- Replace `d_leverage = check_leverage_classification(text)` with `d_deploy = check_capital_deployment(text)`
+- Rename dimension key: `leverage_classification` → `capital_deployment`
+- New max total: 180 (was 175)
+
+Update `grade()` thresholds (proportional to 180):
+- A: 140+ (was 136)
+- B: 124+ (was 120)
+- C: 95+ (was 93)
+- D: 72+ (was 71)
+- F: <72
+
+## Related Code Files
+
+- Modify: `.claude/skills/business/transaction-layer/nui-hunter/scripts/stage0-quality-score.py`
+
+## Implementation Steps
+
+1. Add `check_capital_deployment()` function (replaces `check_leverage_classification()`)
+2. Keep `check_leverage_classification()` as internal helper (called within new function for backward compat signals)
+3. Update `score_verdict()`: swap dimension, update total calc
+4. Update `grade()` thresholds for max=180
+5. Update `grade_map` string in output
+6. Verify dimension key name change in JSON output: `capital_deployment` not `leverage_classification`
+
+## Success Criteria
+
+- [ ] `check_capital_deployment()` scores 20/20 for text with ROI + deploy_cost + sleep_filter + portfolio + hours
+- [ ] `check_capital_deployment()` scores 0/20 for old text without any capital signals
+- [ ] Labor penalty still fires for Q5=LABOR without staircase
+- [ ] `grade(140)` == "A", `grade(139)` == "B"
+- [ ] `score_verdict()` output has `capital_deployment` dimension (not `leverage_classification`)
+- [ ] `grade_map` shows "180" as max
+- [ ] Old leverage signals (Q4-SLEEP, Q5-LEVERAGE) still contribute to score within new dimension
+
+## Risk Assessment
+
+- **Dimension rename breaks audit hook:** Audit schema (Phase 3) adds DEPLOY_CANDIDATE to verdicts, but dimension key rename from `leverage_classification` → `capital_deployment` is internal to quality-score.py only. Audit schema has its own dimension names
+- **Grade threshold shift:** Small change (136→140 for A). Existing verdicts may drop one grade. Acceptable — new dimension rewards better analysis

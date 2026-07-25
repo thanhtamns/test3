@@ -1,0 +1,187 @@
+---
+name: transaction-layer
+description: "Stage 0 Transaction Layer V16 — Ground Truth Learning. Predictions from real outcomes, not templates. Built on V8-V15 pipeline."
+version: 16.0
+---
+
+# Transaction Layer Skill
+
+## Purpose
+Facilitate first cash flow for Stage 0 users. NOT analysis — TRANSACTIONS.
+
+## Components
+- `resource-map-template.md` — Structured resource inventory interview
+- `marketplace-scan-checklist.md` — 10-marketplace scan protocol
+- `transaction-logger.md` — Every-transaction logging schema
+- `daily-ops-stage0.md` — Daily operations template for focus phase
+- `stage-gate-config.md` — Progressive unlock tiers
+- `kill-criteria-reference.md` — V8 kill criteria (path-based, no dollar kills)
+
+## Agents
+
+### Core Pipeline
+- `transaction-orchestrator` (sonnet) — Central routing, V8 pipeline flow
+- `resource-mapper` (haiku) — Resource inventory
+- `marketplace-scanner` (haiku) — Volume scanning, speed-first
+- `verification-gate` (sonnet) — 5-question GO/SKIP with reasoning
+- `micro-test-engine` (sonnet) — Test execution
+- `focus-coach` (haiku) — Daily execution coaching
+
+### Intelligence Layer (v13.0)
+- `archetype-router` (V18) — dispatches 10 parallel archetype scanners; replaces `money-mountain-scanner` direct dispatch
+- `smb-saas-scanner` (sonnet) — V18 smb_saas archetype scanner; refactored from `money-mountain-scanner` (archived)
+- `leverage-path-finder` (opus) — V8 bootstrap paths + V9 reverse-engineering + V13 structural position precedents
+- `smart-detector` (opus) — 5-rule deal detection + V8 leverage bonus + V13 structural position detection
+- `deep-reasoner` (opus) — 15-technique reasoning: V9-V11 + V12 ad-validated + survivor + V13 Gold Rush Law (T0) mandatory
+- `ecosystem-mapper` (opus) — V13 full value chain mapping, structural position identification, Gold Rush Law
+- `causal-reasoner` (opus) — V13 5-WHY causal chains, dollar tracing, durability testing, survivor analysis
+
+### V11 Evidence-First Scripts
+- `scripts/evidence-scraper.py` — Harvest revenue proof from 5 sources
+- `scripts/path-extractor-runner.py` — Batch I/O for LLM-driven path extraction
+- `scripts/pattern-clusterer.py` — 3-axis clustering into archetypes
+- `scripts/execution-distance-scorer.py` — 10-dimension founder→revenue distance
+- `scripts/compound-scorer.py` — 6-mechanism compound accumulation rate
+- `scripts/acquisition-simulator.py` — Per-channel funnel simulation
+- `scripts/trajectory-calculator.py` — Churn-adjusted revenue trajectory
+
+### V12 Observation + Survivor Intelligence Scripts
+- `scripts/ad-library-observer.py` — FB Ad Library observation via HN/Reddit signals
+- `scripts/arbitrage-detector.py` — VN→US geographic price gap detection (10 VN products)
+- `scripts/compound-customer-scorer.py` — Repeat/referral scoring (11 business model archetypes)
+- `scripts/ad-creative-analyzer.py` — Gemini-powered video ad → product/model extraction
+- `scripts/amazon-trend-observer.py` — Amazon BSR + trending product signals
+- `scripts/trade-data-connector.py` — UN Comtrade API (21 HS codes, official export/import $)
+- `scripts/failure-survivor-analyzer.py` — Failure mining + survivor hunting per category
+- `scripts/business-model-matrix.py` — 8 business model templates with per-model viability scoring
+
+### V13 Ecosystem Intelligence Scripts
+- `scripts/ecosystem-mapper-runner.py` — Ecosystem map cache management, freshness checks, I/O
+- `scripts/causal-chain-builder.py` — Causal chain caching, validation, batch processing
+
+### V13 Compound Intelligence Scripts
+- `scripts/pattern-librarian-runner.py` — Outcome→pattern extraction, Bayesian updates, library management
+
+### V13 Data
+- `data/ecosystem-maps/` — Cached ecosystem maps (JSON per ecosystem, 30-day TTL)
+- `data/causal-chains/` — Cached causal analyses per ecosystem/position (30-day TTL)
+- `data/pattern-library.json` — Accumulated patterns from verified outcomes (Bayesian, cross-ecosystem)
+
+### V16 Pipeline Flow
+```
+Step -7: GROUND TRUTH CHECK (V16 - MANDATORY FIRST)
+  ground-truth-cli.py stats → predict (if sufficient data)
+  IF CALIBRATED: prediction overrides template advice
+  IF INSUFFICIENT: flag output, offer to record decision
+  ALWAYS: check pending outcomes, alert if overdue
+
+Step -6: Ecosystem Mapping + Causal Reasoning (V13)
+  ecosystem-mapper-runner → ecosystem-mapper agent → causal-chain-builder → causal-reasoner agent
+  Filter: only positions with durability_score >= 6 pass to Step -5
+  Kill: CROWD positions flagged, TREND positions killed
+Step -5.5: COMPOUND FILTER (Empire V1 - optional, --mode empire)
+  compound-filter.py: 5-question compound test (recurring, scale, moat, network, independence)
+  Score ≥3 → PASS (continue pipeline)
+  Score 2 → DOWNGRADE (tagged bridge_only, Stair 0-1 only)
+  Score ≤1 → KILL (log reason, skip)
+  timing-scorer.py: platform maturity + competitor density + regulatory window (0-10)
+  Config: data/compound-config.json (thresholds, stair overrides)
+Step -5A: Observation Layer (V12)
+  ad-library-observer → arbitrage-detector → compound-customer-scorer
+  → (optional) ad-creative-analyzer, amazon-trend-observer
+Step -5B: Survivor Intelligence (V12)
+  trade-data-connector → failure-survivor-analyzer → business-model-matrix
+  CRITICAL: trade data >$100M → cannot kill product, evaluate per-model
+Step -4: Evidence Discovery (V11)
+  evidence-scraper → path-extractor → pattern-clusterer → scoring
+Step -3: Load Intelligence (V10)
+Step -2: Media Detection (V9)
+Step -1: Multi-Lens Decomposition (V9 + V11 + V12)
+Step 0+: Scanner (V12 trade-data-informed) → Deep-reasoner (14 techniques)
+  → staircase-gate → Execution Path Generator → Learning Loop
+
+Step +1: GROUND TRUTH CAPTURE (V16 - POST-DECISION)
+  AFTER any recommendation with action:
+  ground-truth-cli.py record --json '{decision context}'
+  SET outcome_due_date (default 30 days)
+  ADD to pending_outcomes.json
+```
+
+## Data
+- `data/transaction-state.json` — Central state tracking
+- `data/case-studies/` — 500+ real business case studies (IH, BHW, Flippa, PH)
+- `data/predictions/opportunity-predictions.json` — Prediction tracking
+- `data/assets/calibration/opportunity-calibration.json` — Detection accuracy calibration
+- `data/source-pipeline/` — Raw scan results from MCP servers
+- `data/pipeline-predictions.jsonl` — V9 outcome prediction log (feeds learning loop)
+
+## MCP Servers (Intelligence Sources)
+- `reddit-research` — Semantic search across subreddits
+- `hacker-news` — HN stories, comments, Show HN, Ask HN
+- `idea-reality` — Cross-platform reality check (GitHub, HN, npm, PyPI, PH, SO)
+
+### V14 Intelligence Depth Scripts
+- `scripts/calibration-updater.py` — Dynamic weight calibration from prediction outcomes
+- `scripts/outcome-tracker.py` — Prediction lifecycle: append, check, log, backfill
+- `scripts/delta-calculator.py` — Prediction delta calculation
+- `scripts/temporal-analyzer.py` — Temporal pattern analysis
+
+### V15 Intelligence Core Automation
+- `scripts/platform-signal-monitor.py` — Commission rate monitoring, delta classification, arbitrage scoring
+- `scripts/auto-verify.py` — Automated prediction verification, closes learning loop
+- `scripts/knowledge-query.py` — Unified knowledge graph query (cache-first protocol)
+- `data/knowledge-graph.json` — Unified entity store (platforms, patterns, industries, predictions)
+- `data/rate-history/` — Time-series commission rate history per platform
+- `data/platform-alerts.json` — Active platform rate change alerts
+- `data/platform-signals.jsonl` — Append-only signal log
+
+### V16 Ground Truth Learning (MANDATORY)
+- `../money-intelligence/ground-truth-cli.py` — Record decisions, outcomes, get predictions
+- `../money-intelligence/ground_truth/` — Schema, capture, predictor modules
+- `../money-intelligence/experience_layer/data/ground_truth/decisions.json` — All recorded decisions
+- `../money-intelligence/experience_layer/data/ground_truth/pending_outcomes.json` — Awaiting outcome
+
+### V16 Ground Truth Protocol (BEFORE all other analysis)
+```
+Step -7: Ground Truth Check (V16 - MANDATORY FIRST)
+  1. python ground-truth-cli.py stats
+  2. IF data_sufficiency == "CALIBRATED" (100+ outcomes):
+       prediction = ground-truth-cli.py predict --json '{situation}'
+       USE prediction.predicted_success as primary signal
+       SKIP template-based advice if confidence > 0.7
+  3. IF data_sufficiency == "LEARNING" (30-99 outcomes):
+       prediction = ground-truth-cli.py predict --json '{situation}'
+       COMBINE with template advice (50/50 weight)
+  4. IF data_sufficiency == "INSUFFICIENT" (<30 outcomes):
+       FLAG output with: "⚠️ UNCALIBRATED: <N> decisions recorded. Predictions unreliable."
+       PROCEED with template-based advice
+       ALWAYS offer: "Record this decision? Run: ground-truth-cli.py record --json '...'"
+  5. python ground-truth-cli.py pending
+     ALERT if overdue_outcomes > 0
+```
+
+### V15 Cache-First Protocol (MANDATORY before WebSearch)
+```
+BEFORE any niche/market analysis:
+1. python knowledge-query.py --fresh "{topic}"
+2. If FRESH (≤7d):  use cached data, SKIP WebSearch
+3. If STALE (7-30d): WebSearch for delta only (what changed since last scan)
+4. If EXPIRED (>30d): full WebSearch + merge results via knowledge-accumulator
+```
+
+### V15 Automated Schedules
+```
+DAILY (8AM ICT):
+  platform-signal-monitor.py --scan
+  outcome-tracker.py --check
+  auto-verify.py --run
+
+WEEKLY (Sunday 9AM ICT):
+  knowledge-accumulator.py --delta --niche "all"
+  pattern-clusterer.py --cluster
+  temporal-analyzer.py --batch
+```
+
+## Activation
+Auto-activated when transaction-orchestrator detects Stage 0.
+Manual: user says "dong tien", "giao dich", "ban", "mua", "stage 0"

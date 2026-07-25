@@ -1,0 +1,11 @@
+pub mod dedup;
+pub mod events;
+pub mod filter;
+pub mod read_dedup;
+pub mod session;
+pub mod tracking;
+pub mod waste;
+
+pub mod proto {
+    include!(concat!(env!("OUT_DIR"), "/codeflow.events.v1.rs"));
+}

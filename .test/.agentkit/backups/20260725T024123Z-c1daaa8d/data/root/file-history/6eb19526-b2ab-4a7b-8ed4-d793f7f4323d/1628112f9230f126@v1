@@ -1,0 +1,31 @@
+---
+title: "Autonomous Evolution Hook"
+description: ""
+status: pending
+priority: P2
+branch: "master"
+tags: []
+blockedBy: []
+blocks: []
+created: "2026-05-09T12:12:56.996Z"
+createdBy: "ck:plan"
+source: skill
+---
+
+# Autonomous Evolution Hook
+
+## Overview
+
+<!-- Brief description -->
+
+## Phases
+
+| Phase | Name | Status |
+|-------|------|--------|
+| 1 | [Create evolution-auto-runner.cjs](./phase-01-create-evolution-auto-runner-cjs.md) | Pending |
+| 2 | [Fix knowledge-auto-refresh.cjs](./phase-02-fix-knowledge-auto-refresh-cjs.md) | Pending |
+| 3 | [Register hook + test](./phase-03-register-hook-test.md) | Pending |
+
+## Dependencies
+
+<!-- Cross-plan dependencies -->

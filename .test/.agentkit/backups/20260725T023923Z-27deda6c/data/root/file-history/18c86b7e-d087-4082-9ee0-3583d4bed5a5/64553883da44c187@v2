@@ -1,0 +1,29 @@
+strip_ansi = true
+on_empty = "(all tests passed)"
+
+[command]
+name = "cargo"
+args_contain = ["test"]
+
+[[strip_lines]]
+pattern = '^\s+Compiling '
+
+[[strip_lines]]
+pattern = '^\s+Downloading '
+
+[[strip_lines]]
+pattern = '^\s+Downloaded '
+
+[[strip_lines]]
+pattern = '^\s*$'
+
+[[replace]]
+pattern = 'finished in \d+\.\d+s'
+replacement = 'finished in X.Xs'
+
+[head_tail]
+head = 10
+tail = 30
+separator = "\n... ({omitted} lines omitted) ...\n"
+
+max_lines = 150

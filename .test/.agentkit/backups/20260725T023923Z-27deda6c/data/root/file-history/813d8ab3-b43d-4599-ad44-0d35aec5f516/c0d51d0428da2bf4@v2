@@ -1,0 +1,220 @@
+"""Case Archiver — SQLite replay archive for /stage0 research payloads.
+
+Stores full research cache, agent outputs, and verdicts for deterministic replay.
+Separate from evolution-registry.db (which tracks mutations/variants).
+"""
+
+import gzip
+import json
+import sqlite3
+from pathlib import Path
+from typing import Optional
+
+ROOT = Path(__file__).resolve().parents[4]
+DEFAULT_DB = ROOT / "data" / "evolution" / "replay-archive.db"
+
+
+class CaseArchiver:
+    def __init__(self, db_path: Optional[Path] = None):
+        self.db_path = db_path or DEFAULT_DB
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._ensure_tables()
+
+    def _conn(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(str(self.db_path))
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+        return conn
+
+    def _ensure_tables(self):
+        with self._conn() as conn:
+            conn.executescript("""
+                CREATE TABLE IF NOT EXISTS case_archive (
+                    case_id TEXT PRIMARY KEY,
+                    topic TEXT NOT NULL,
+                    verdict_class TEXT NOT NULL,
+                    verdict_summary TEXT,
+                    strategy_used TEXT,
+                    research_cache BLOB,
+                    agent_outputs BLOB,
+                    trace_signals TEXT,
+                    founder_profile TEXT,
+                    timestamp TEXT NOT NULL,
+                    actual_outcome TEXT,
+                    actual_revenue REAL,
+                    founder_acted INTEGER
+                );
+
+                CREATE TABLE IF NOT EXISTS replay_results (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    case_id TEXT NOT NULL REFERENCES case_archive(case_id),
+                    strategy_variant TEXT NOT NULL,
+                    replay_verdict_class TEXT NOT NULL,
+                    replay_score REAL,
+                    delta_from_original REAL,
+                    replayed_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_case_topic
+                    ON case_archive(topic);
+                CREATE INDEX IF NOT EXISTS idx_case_verdict
+                    ON case_archive(verdict_class);
+                CREATE INDEX IF NOT EXISTS idx_case_timestamp
+                    ON case_archive(timestamp);
+                CREATE INDEX IF NOT EXISTS idx_replay_case
+                    ON replay_results(case_id);
+            """)
+
+    def _compress(self, text: Optional[str]) -> Optional[bytes]:
+        if text is None:
+            return None
+        return gzip.compress(text.encode("utf-8"))
+
+    def _decompress(self, data: Optional[bytes]) -> Optional[str]:
+        if data is None:
+            return None
+        return gzip.decompress(data).decode("utf-8")
+
+    def archive_case(self, case_data: dict) -> str:
+        case_id = case_data["case_id"]
+        research_cache = self._compress(case_data.get("research_cache"))
+        agent_outputs = self._compress(case_data.get("agent_outputs"))
+
+        with self._conn() as conn:
+            conn.execute("""
+                INSERT INTO case_archive
+                    (case_id, topic, verdict_class, verdict_summary, strategy_used,
+                     research_cache, agent_outputs, trace_signals, founder_profile, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(case_id) DO UPDATE SET
+                    topic=excluded.topic,
+                    verdict_class=excluded.verdict_class,
+                    verdict_summary=excluded.verdict_summary,
+                    strategy_used=excluded.strategy_used,
+                    research_cache=excluded.research_cache,
+                    agent_outputs=excluded.agent_outputs,
+                    trace_signals=excluded.trace_signals,
+                    founder_profile=excluded.founder_profile,
+                    timestamp=excluded.timestamp
+            """, (
+                case_id,
+                case_data["topic"],
+                case_data["verdict_class"],
+                case_data.get("verdict_summary"),
+                case_data.get("strategy_used"),
+                research_cache,
+                agent_outputs,
+                case_data.get("trace_signals"),
+                case_data.get("founder_profile"),
+                case_data["timestamp"],
+            ))
+        return case_id
+
+    def get_case(self, case_id: str) -> Optional[dict]:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM case_archive WHERE case_id=?", (case_id,)
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            "case_id": row[0],
+            "topic": row[1],
+            "verdict_class": row[2],
+            "verdict_summary": row[3],
+            "strategy_used": row[4],
+            "research_cache": self._decompress(row[5]),
+            "agent_outputs": self._decompress(row[6]),
+            "trace_signals": row[7],
+            "founder_profile": row[8],
+            "timestamp": row[9],
+            "actual_outcome": row[10],
+            "actual_revenue": row[11],
+            "founder_acted": row[12],
+        }
+
+    def query_cases(
+        self,
+        topic: Optional[str] = None,
+        verdict_class: Optional[str] = None,
+        limit: int = 50,
+    ) -> list[dict]:
+        conditions = []
+        params = []
+        if topic:
+            conditions.append("topic LIKE ?")
+            params.append(f"%{topic}%")
+        if verdict_class:
+            conditions.append("verdict_class = ?")
+            params.append(verdict_class)
+
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        query = f"SELECT case_id, topic, verdict_class, verdict_summary, strategy_used, timestamp FROM case_archive {where} ORDER BY timestamp DESC LIMIT ?"
+        params.append(limit)
+
+        with self._conn() as conn:
+            rows = conn.execute(query, params).fetchall()
+        return [
+            {"case_id": r[0], "topic": r[1], "verdict_class": r[2],
+             "verdict_summary": r[3], "strategy_used": r[4], "timestamp": r[5]}
+            for r in rows
+        ]
+
+    def sample(self, n: int = 20, diverse: bool = False) -> list[dict]:
+        if not diverse:
+            with self._conn() as conn:
+                rows = conn.execute(
+                    "SELECT case_id, topic, verdict_class, verdict_summary, strategy_used, timestamp "
+                    "FROM case_archive ORDER BY RANDOM() LIMIT ?", (n,)
+                ).fetchall()
+            return [
+                {"case_id": r[0], "topic": r[1], "verdict_class": r[2],
+                 "verdict_summary": r[3], "strategy_used": r[4], "timestamp": r[5]}
+                for r in rows
+            ]
+
+        with self._conn() as conn:
+            classes = conn.execute(
+                "SELECT DISTINCT verdict_class FROM case_archive"
+            ).fetchall()
+        class_names = [c[0] for c in classes]
+        if not class_names:
+            return []
+
+        per_class = max(1, n // len(class_names))
+        remainder = n - (per_class * len(class_names))
+        results = []
+
+        with self._conn() as conn:
+            for cls in class_names:
+                alloc = per_class + (1 if remainder > 0 else 0)
+                if remainder > 0:
+                    remainder -= 1
+                rows = conn.execute(
+                    "SELECT case_id, topic, verdict_class, verdict_summary, strategy_used, timestamp "
+                    "FROM case_archive WHERE verdict_class=? ORDER BY RANDOM() LIMIT ?",
+                    (cls, alloc),
+                ).fetchall()
+                results.extend([
+                    {"case_id": r[0], "topic": r[1], "verdict_class": r[2],
+                     "verdict_summary": r[3], "strategy_used": r[4], "timestamp": r[5]}
+                    for r in rows
+                ])
+        return results[:n]
+
+    def update_outcome(
+        self,
+        case_id: str,
+        outcome: str,
+        revenue: float = 0.0,
+        founder_acted: bool = False,
+    ):
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE case_archive SET actual_outcome=?, actual_revenue=?, founder_acted=? WHERE case_id=?",
+                (outcome, revenue, int(founder_acted), case_id),
+            )
+
+    def count(self) -> int:
+        with self._conn() as conn:
+            return conn.execute("SELECT COUNT(*) FROM case_archive").fetchone()[0]

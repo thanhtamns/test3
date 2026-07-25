@@ -1,0 +1,340 @@
+#!/usr/bin/env python3
+"""
+Capital-path classifier for stage0 local orchestration.
+
+Dual-axis routing: (capital_usd × leverage_access_score) → track.
+TIER_0 splits into 3 subtracks based on founder's leverage potential.
+
+Input:  --profile-file <path>  OR  --profile-json <json_string>
+Output: JSON {tier, track, capital_usd, leverage_access_score, leverage_dimensions,
+              target_range, timeline_days, primary_hypothesis, constraints,
+              decision_question_codes, bridge_needed,
+              deployment_budget, asset_slots, per_slot_budget}  ← TIER_0 only
+
+4 Tiers:
+- TIER_0: $0-1K    → MICRO_DEPLOY / ASSET_BUILDER / LEVERAGE_SPRINT (by leverage score)
+- TIER_1: $1K-5K   → HYBRID (service funds product)
+- TIER_2: $5K-20K  → PRODUCT (standard stage0 analysis)
+- TIER_3: $20K+    → ACQUISITION (buy not build)
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Capital tier definitions
+# ---------------------------------------------------------------------------
+
+TRACK_ALIASES = {
+    "SERVICE_ENTRY": "MICRO_DEPLOY",
+    "CASHFLOW_SEED": "MICRO_DEPLOY",
+    "LEVERAGE_ENTRY": "ASSET_BUILDER",
+}
+
+TIER_0_SUBTRACKS = {
+    "MICRO_DEPLOY": {
+        "leverage_range": (0, 3),
+        "track": "MICRO_DEPLOY",
+        "target_range": (500, 2000),
+        "timeline_days": (30, 90),
+        "primary_hypothesis": "deploy_micro_assets",
+        "constraints": {
+            "max_per_asset": 200,
+            "min_assets": 3,
+            "max_founder_hours_post_setup": 2,
+            "kill_days": 30,
+            "sleep_test_required": True,
+            "no_paid_ads": True,
+            "no_hiring": True,
+        },
+        "decision_question_codes": [
+            "DEPLOY_BUDGET",
+            "RISK_CAPITAL",
+            "ASSET_SCAN",
+            "ROI_TARGET",
+            "KILL_CRITERIA",
+            "LEVERAGE",
+        ],
+    },
+    "ASSET_BUILDER": {
+        "leverage_range": (4, 6),
+        "track": "ASSET_BUILDER",
+        "target_range": (1000, 5000),
+        "timeline_days": (30, 120),
+        "primary_hypothesis": "build_leverage_while_earning",
+        "constraints": {
+            "max_per_asset": 500,
+            "min_assets": 2,
+            "max_founder_hours_post_setup": 5,
+            "kill_days": 30,
+            "sleep_test_required": True,
+            "ai_assisted_product": True,
+            "no_paid_ads": True,
+            "no_hiring": True,
+        },
+        "decision_question_codes": [
+            "DEPLOY_BUDGET",
+            "ASSET_TYPE",
+            "BUILD_VS_BUY",
+            "ROI_TARGET",
+            "COMPOUND_MECHANISM",
+            "LEVERAGE",
+        ],
+    },
+    "LEVERAGE_SPRINT": {
+        "leverage_range": (7, 10),
+        "track": "LEVERAGE_SPRINT",
+        "target_range": (2000, 10000),
+        "timeline_days": (7, 60),
+        "primary_hypothesis": "ship_leverage_asset_first",
+        "constraints": {
+            "ai_assisted_product": True,
+            "product_first": True,
+            "no_hiring": True,
+            "max_founder_hours_post_setup": 2,
+            "kill_days": 14,
+            "sleep_test_required": True,
+        },
+        "decision_question_codes": [
+            "SHIP_7D",
+            "FIRST_10_CUSTOMERS",
+            "PRICE_POINT",
+            "DISTRIBUTION",
+            "KILL_14D",
+            "LEVERAGE",
+        ],
+    },
+}
+
+CAPITAL_TIERS = {
+    "TIER_0": {
+        "range": (0, 1001),
+        "track": "MICRO_DEPLOY",
+        "subtracks": True,
+        "target_range": (500, 2000),
+        "timeline_days": (30, 90),
+        "primary_hypothesis": "deploy_micro_assets",
+        "constraints": {
+            "no_paid_ads": True,
+            "no_hiring": True,
+            "sleep_test_required": True,
+            "max_founder_hours_post_setup": 2,
+            "deploy_allocation": True,
+        },
+        "decision_question_codes": [
+            "DEPLOY_BUDGET",
+            "RISK_CAPITAL",
+            "ASSET_SCAN",
+            "ROI_TARGET",
+            "KILL_CRITERIA",
+            "LEVERAGE",
+        ],
+    },
+    "TIER_1": {
+        "range": (1000, 5000),
+        "track": "HYBRID",
+        "target_range": (2000, 5000),
+        "timeline_days": (60, 180),
+        "primary_hypothesis": "service_funds_product",
+        "constraints": {
+            "product_budget_cap": 2000,
+            "paid_ads_cap": 500,
+            "no_hiring": True,
+        },
+        "decision_question_codes": [
+            "SERVICE_FLOOR",
+            "PRODUCT_SEED",
+            "REINVESTMENT",
+            "NETWORK_LEVERAGE",
+            "KILL_CRITERIA",
+        ],
+    },
+    "TIER_2": {
+        "range": (5000, 20000),
+        "track": "PRODUCT",
+        "target_range": (5000, 10000),
+        "timeline_days": (90, 360),
+        "primary_hypothesis": "product_with_service_floor",
+        "constraints": {
+            "product_budget_cap": 10000,
+            "paid_ads_cap": 2000,
+            "hiring_cap": 2,
+        },
+        "decision_question_codes": [
+            "WINNER",
+            "KILL",
+            "CUSTOMER",
+            "ECONOMICS",
+            "MOAT",
+            "SERVICE_FLOOR",
+        ],
+    },
+    "TIER_3": {
+        "range": (20000, None),  # None = no upper limit
+        "track": "ACQUISITION",
+        "target_range": (10000, 50000),
+        "timeline_days": (180, 720),
+        "primary_hypothesis": "buy_not_build",
+        "constraints": {},
+        "decision_question_codes": [
+            "ACQUISITION_TARGET",
+            "INTEGRATION_COST",
+            "OPERATOR_FIT",
+            "COMPOUNDING",
+            "EXIT_PATH",
+        ],
+    },
+}
+
+
+def _get_capital_usd(profile: dict) -> int:
+    """Extract capital in USD from profile, handling various formats."""
+    capital = profile.get("capital_usd")
+
+    if capital is None:
+        return 0
+
+    if isinstance(capital, (int, float)):
+        return int(capital)
+
+    if isinstance(capital, dict):
+        # Handle nested format: {"available_now": 1000, "can_raise": 5000}
+        available = capital.get("available_now") or capital.get("available") or 0
+        return int(available)
+
+    if isinstance(capital, str):
+        # Handle string format: "1000", "$1,000", "1K"
+        clean = capital.replace("$", "").replace(",", "").strip().upper()
+        if clean.endswith("K"):
+            return int(float(clean[:-1]) * 1000)
+        return int(float(clean))
+
+    return 0
+
+
+def _get_leverage_access(profile: dict) -> dict:
+    """Compute leverage access score via LeverageMechanism. Falls back to score 0."""
+    try:
+        mi_path = str(Path(__file__).resolve().parents[3] / "money-intelligence")
+        if mi_path not in sys.path:
+            sys.path.insert(0, mi_path)
+        from money_mechanisms.leverage import LeverageMechanism
+        return LeverageMechanism.assess_founder_leverage_access(profile)
+    except ImportError:
+        return {
+            "leverage_access_score": 0,
+            "dimensions": {},
+            "track_recommendation": "CASHFLOW_SEED",
+        }
+
+
+def classify(profile: dict) -> dict:
+    """Classify founder profile into capital tier with dual-axis routing.
+
+    Axis 1: capital_usd → TIER_0/1/2/3
+    Axis 2: leverage_access_score → TIER_0 subtracks (MICRO_DEPLOY/ASSET_BUILDER/LEVERAGE_SPRINT)
+
+    TIER_0 output includes deployment_budget, asset_slots, per_slot_budget.
+    TIER_1/2/3 output is unchanged.
+    """
+    capital_usd = _get_capital_usd(profile)
+
+    selected_tier = None
+    for tier_name, tier_config in CAPITAL_TIERS.items():
+        low, high = tier_config["range"]
+        if high is None:
+            if capital_usd >= low:
+                selected_tier = tier_name
+                break
+        elif low <= capital_usd < high:
+            selected_tier = tier_name
+            break
+
+    if not selected_tier:
+        selected_tier = "TIER_0"
+
+    tier_config = CAPITAL_TIERS[selected_tier]
+
+    if tier_config.get("subtracks"):
+        leverage = _get_leverage_access(profile)
+        score = leverage.get("leverage_access_score", 0)
+
+        matched_subtrack = None
+        for subtrack_name, subtrack_config in TIER_0_SUBTRACKS.items():
+            low, high = subtrack_config["leverage_range"]
+            if low <= score <= high:
+                matched_subtrack = subtrack_config
+                break
+
+        if not matched_subtrack:
+            matched_subtrack = TIER_0_SUBTRACKS["MICRO_DEPLOY"]
+
+        asset_slots = matched_subtrack["constraints"].get("min_assets", 3)
+        per_slot_budget = capital_usd // asset_slots if capital_usd > 0 else 0
+
+        return {
+            "tier": selected_tier,
+            "track": matched_subtrack["track"],
+            "capital_usd": capital_usd,
+            "leverage_access_score": score,
+            "leverage_dimensions": leverage.get("dimensions", {}),
+            "target_range": list(matched_subtrack["target_range"]),
+            "timeline_days": list(matched_subtrack["timeline_days"]),
+            "primary_hypothesis": matched_subtrack["primary_hypothesis"],
+            "constraints": matched_subtrack["constraints"],
+            "decision_question_codes": matched_subtrack["decision_question_codes"],
+            "bridge_needed": False,
+            "deployment_budget": capital_usd,
+            "asset_slots": asset_slots,
+            "per_slot_budget": per_slot_budget,
+        }
+
+    bridge_needed = selected_tier in ("TIER_0", "TIER_1")
+
+    return {
+        "tier": selected_tier,
+        "track": tier_config["track"],
+        "capital_usd": capital_usd,
+        "leverage_access_score": 0,
+        "leverage_dimensions": {},
+        "target_range": list(tier_config["target_range"]),
+        "timeline_days": list(tier_config["timeline_days"]),
+        "primary_hypothesis": tier_config["primary_hypothesis"],
+        "constraints": tier_config["constraints"],
+        "decision_question_codes": tier_config["decision_question_codes"],
+        "bridge_needed": bridge_needed,
+    }
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(
+        description="Classify founder into capital tier for stage0 routing"
+    )
+    group = ap.add_mutually_exclusive_group(required=True)
+    group.add_argument("--profile-json", help="Profile JSON string")
+    group.add_argument("--profile-file", help="Path to profile JSON file")
+    args = ap.parse_args()
+
+    if args.profile_json:
+        try:
+            profile = json.loads(args.profile_json)
+        except json.JSONDecodeError as e:
+            print(json.dumps({"error": f"invalid JSON: {e}"}))
+            sys.exit(1)
+    else:
+        path = Path(args.profile_file)
+        if not path.exists():
+            print(json.dumps({"error": f"file not found: {path}"}))
+            sys.exit(1)
+        profile = json.loads(path.read_text(encoding="utf-8"))
+
+    result = classify(profile)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+if __name__ == "__main__":
+    main()

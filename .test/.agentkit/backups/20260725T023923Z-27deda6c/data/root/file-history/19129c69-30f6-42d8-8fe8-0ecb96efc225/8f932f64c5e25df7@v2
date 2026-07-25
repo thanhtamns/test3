@@ -1,0 +1,190 @@
+# /stage0 Quality Audit — 260509 Mobile App $800K/mo Output
+
+**Date:** 2026-05-09
+**Auditor:** System self-diagnosis
+**Subject:** /stage0 output for "20 tỷ VNĐ/tháng trong phần mềm mobile"
+**Severity:** CRITICAL — 14 pipeline steps skipped, output quality ~35/100
+
+---
+
+## Executive Summary
+
+The output LOOKS polished but SKIPPED 70%+ of the v25 pipeline. It produced a McKinsey-style report instead of an operator-grade decision tool. The "3 tư duy đỉnh cao" framework is generic advice available in any business book — not the differentiated, computation-backed, operator-tested output the pipeline was designed to produce.
+
+---
+
+## Pipeline Compliance Scorecard
+
+| Step | Name | Status | Impact |
+|------|------|--------|--------|
+| 0 | CWD validate | ✅ | — |
+| 0.5 | Runtime assertions load | ❌ SKIPPED | P0 learned rules not enforced |
+| 1 | Profile load | ✅ | Loaded |
+| 1.5 | SRE initialization | ⚠️ PARTIAL | Ran depth tracker only, not full SRE |
+| 2 | Topic receive | ✅ | — |
+| 2.5 | Topic disambiguation | ✅ | Branch B selected |
+| 2.55 | Query-mode detection | ⚠️ OVERRIDE | Ran script, manually overrode to FOUNDER_SPECIFIC — ok |
+| 2.6 | Intent classification | ❌ SKIPPED | No intent_class → no addendum agents |
+| 2.6.2 | Capital-path routing | ✅ | Ran orchestrator |
+| 2.65 | Decision questions | ❌ SKIPPED | No DQ generation → no structured research |
+| 2.66 | Question deep analysis | ❌ SKIPPED | Depends on 2.65 |
+| 2.67 | User validation gate | ❌ SKIPPED | Depends on 2.66 |
+| 3 | KB-first lookup | ❌ SKIPPED | No prior knowledge checked |
+| 3.4 | Data intelligence dispatch | ❌ SKIPPED | 1/8 scripts ran (data-intelligence-router never called) |
+| 3.4b | Calc-dispatcher | ❌ SKIPPED | No P10/P50/P90 computed by engine |
+| 3.4c | Early constraint detection | ❌ SKIPPED | TIER_0 constraints not inverted early |
+| 3.4d | Operator mastery engine | ⚠️ PARTIAL | L1-L5 labels present but values appear hand-typed, not computed |
+| 3.4e | Experience brain | ❌ FAILED | Script path bug (scripts vs script) |
+| 3.4f | Vicarious knowledge | ✅ | Returned OPM patterns |
+| 3.5 | Wave 1 (8+addendum agents) | ❌ SKIPPED | ZERO Task agents spawned |
+| 3.5.0 | Cognitive retrieval | ❌ SKIPPED | No schemas/archetypes loaded |
+| 3.6 | Ladder consumption | ❌ SKIPPED | Ladder ran in hook but not consumed |
+| 3.8 | Wave 2 (6 agents) | ❌ SKIPPED | ZERO Task agents spawned |
+| 3.9 | Framework advisor | ❌ SKIPPED | No persona outputs to synthesize |
+| 4 | Research synthesis | ❌ SKIPPED | No agent outputs to synthesize |
+| 4.5 | Survivorship inversion | ❌ SKIPPED | — |
+| 5 | Hypothesis generator | ❌ SKIPPED | No 5 hypotheses generated |
+| 5.money-flow | Money flow tagging | ❌ SKIPPED | — |
+| 6 | Mountain Test v23 | ⚠️ PARTIAL | Q1/Q3/Compounding answered but NOT deterministic |
+| 6.3 | Stair-step detection | ❌ SKIPPED | — |
+| 6.4 | Constraint-inversion debate | ❌ SKIPPED | — |
+| 6.45 | Confidence calculation | ❌ SKIPPED | Confidence "0.72" appears hand-assigned |
+| 7 | Verdict synthesis | ⚠️ PARTIAL | Verdict written but without upstream data |
+| 9 | Persist verdict | ✅ | persist-verdict.py ran |
+| 10 | Persist knowledge | ✅ | persist-knowledge.py ran |
+| 11 | Verify persistence | ✅ | verify-persistence.py 6/6 ✅ |
+
+**Pipeline completion: 7/33 steps fully executed = 21%**
+
+---
+
+## 7 Critical Failures in Output Quality
+
+### F1: ZERO Task Agents Spawned (Wave 1 + Wave 2)
+
+The entire v25 architecture is built around 14 parallel agents providing diverse intelligence. This run used **ZERO**. All analysis came from the main LLM context = single perspective, zero adversarial challenge.
+
+**Evidence:** Output says "Brain Information Flow Audit — DATA: 1/8 scripts" — system self-reported degradation but didn't fix it.
+
+### F2: Generic "Tư Duy" Framework = Business Book Content
+
+The 3 frameworks (Distribution-First, Compounding Machine, Identity Evolution) are available in any $15 business book. A $800K/mo target requires OPERATOR-GRADE specificity:
+
+- **What the output says:** "Build platform, not tool" — generic
+- **What the pipeline should produce:** Specific B2B vertical + TAM calculation + competitor deep-profile + founder-skill-match score + Day 1 action + kill criteria + P10/P50/P90 revenue distribution
+
+### F3: Revenue Claims Without Power-Law Computation
+
+Output states "80% apps don't reach $1K/mo" and "Path C: 8,000 B2B seats × $100/mo" but:
+- No calc-dispatcher power-law-sizer was run (Step 3.4b skipped)
+- P10/P50/P90/P99 table present but values appear estimated, not computed
+- [POWER-LAW-MEDIAN-WARNING] P0 learned rule violated — mode ($0) not cited before P90
+
+### F4: No Decision Questions → No Structured Research
+
+Steps 2.65-2.67 generate 5-11 decision questions (WINNER/KILL/CUSTOMER/ECONOMICS/MOAT for TIER_2+, or FIRST_500/TIME_TO_CASH/etc for TIER_0) then deep-analyze each. Skipping these means:
+- No WINNER mechanism identified with evidence
+- No KILL scenario analyzed with probability
+- No specific CUSTOMER profile (who exactly pays $100/mo for B2B software?)
+- No verified ECONOMICS math
+- No MOAT assessment
+
+### F5: No Constraint-Inversion for TIER_0 → $800K/mo Gap
+
+The 800x gap (TIER_0 targeting $800K/mo) should trigger Step 3.4c early constraint detection + Step 6.4 constraint-inversion debate. Neither ran. The output gives a stair-step path ($0→$2K→$5K→$50K→$200K→$500K→$800K) but without:
+- Probability per step
+- Kill criteria per step
+- Time-to-revenue per step (verified, not estimated)
+- Evidence of ANYONE doing this specific stair-step in mobile software
+
+### F6: Experience Brain Script Bug Not Fixed
+
+Output logs "Experience Brain has a bug (script vs scripts)" then continues without it. The pipeline spec says: "If experience-brain-runner.py fails → tag claims with [EXPERIENCE_BRAIN_DEGRADED]." The tag exists but no Day 1/3/7 action sequence was generated from trained prototypes.
+
+### F7: Mountain Test Run as Prose, Not Deterministic
+
+v23 Mountain Test is DETERMINISTIC (Q1=no → KILL, period). The output runs it as prose analysis and produces "CONDITIONAL" verdict — a class that doesn't exist in the v23 deterministic rules:
+- Valid verdicts: KILL, SIDE_HUSTLE, MOUNTAIN_CANDIDATE (LINDY-VERIFIED or LINDY_WARNING), INSUFFICIENT_SIGNAL
+- "CONDITIONAL" = LLM invented a verdict class
+
+---
+
+## Root Cause Analysis
+
+### RC1: Main LLM Context Overload
+
+The stage0.md spec is 2507 lines. The LLM read ~900 lines (profile + initial steps) then ran out of attention budget. Steps after 3.4f were never read → never executed.
+
+**Fix:** Split stage0.md into stage0-checklist.md (mandatory step list, <200 lines) + stage0-spec-detail.md (rationale, already exists). Main LLM only reads checklist.
+
+### RC2: No Enforcement Hook for Wave 1/2
+
+The `stage0-wave2-enforcement.cjs` hook exists in `_archive/` — it was archived. Without enforcement, the LLM can produce a verdict without spawning any agents.
+
+**Fix:** Restore enforcement hooks or build a preflight-check that blocks persist-verdict.py if wave1-receipt missing.
+
+### RC3: Script Path Bug Unfixed Mid-Run
+
+Experience brain failed because script path was `scripts/` but actual path is `script/` (or similar). The LLM noted the bug but didn't fix it — just continued in degraded mode.
+
+**Fix:** Add path validation to experience-brain-runner.py startup.
+
+### RC4: No Quality Gate Between Research and Verdict
+
+There's no gate that says "you CANNOT write a verdict unless ≥10 agents responded." The Stage0 post-audit hook (`stage0-post-audit.cjs`) exists but apparently doesn't enforce agent count.
+
+**Fix:** stage0-post-audit.cjs should check: (1) wave1-receipt exists with agents_fired ≥8, (2) wave2-receipt exists with agents_fired ≥4, (3) calc-dispatcher ran, (4) confidence computed via formula not hand-assigned.
+
+---
+
+## Thinking Quality Assessment
+
+### What "Tư Duy Đỉnh Cao" SHOULD Look Like for $800K/mo Mobile Software
+
+The output gives WHAT (distribution-first, compounding, identity evolution). A truly evolved analysis would give the MECHANISM:
+
+1. **ANTI-CONSENSUS INSIGHT:** The output recommends "B2B $100/mo" — this is the MOST CONSENSUS path in SaaS. 50,000 founders are doing this. The question the system DIDN'T ask: "What if B2B SaaS is already a red ocean and the real $800K/mo path is something the market hasn't priced in?"
+
+2. **MISSING: Second-Order Effects Analysis**
+   - AI is collapsing mobile app development cost → supply explosion → app store discovery harder → favors PLATFORM owners not app builders
+   - RevenueCat data shows apps before 2020 capture 69% revenue → incumbency advantage is STRUCTURAL, not just distribution → a new founder in 2026 faces a fundamentally different game
+   - The REAL question: "Is building a new mobile app in 2026 even the right vehicle for $800K/mo?" — the pipeline should have challenged the PREMISE
+
+3. **MISSING: Specific Opportunity Names**
+   - No specific B2B vertical identified (construction? logistics? healthcare? which one?)
+   - No competitor deep-profile of $800K/mo mobile businesses
+   - No analysis of WHY specific founders reached $800K and whether their conditions are reproducible
+
+4. **MISSING: Founder-Specific Path Math**
+   - TIER_0 ($0-1K capital) → service income target = $2K-6K/mo in 30 days
+   - But WHICH service? For WHICH client? At WHAT hourly rate? With WHAT specific skill?
+   - The output says "land 2-3 freelance software clients" — this is a sentence, not a strategy
+
+---
+
+## Recommendations
+
+### Immediate (Fix Quality)
+
+1. **Restore wave enforcement hooks** from `_archive/` — hooks that block verdict without Wave 1+2 receipts
+2. **Fix experience-brain script path** — one-line fix, high impact
+3. **Add agent-count gate to persist-verdict.py** — refuse persistence if `agents_fired < 10`
+4. **Split stage0.md** — checklist-only version (<200 lines) for LLM attention budget
+
+### Structural (Fix Thinking)
+
+5. **Add PREMISE CHALLENGE step** — before any analysis, ask "Is the vehicle (mobile app) the right choice for the target ($800K/mo)?" Compare vehicle-level success rates
+6. **Add SPECIFIC VERTICAL SCANNER** — when target is B2B SaaS, identify top 5 underserved verticals with TAM > $1B and <3 funded competitors
+7. **Add FOUNDER-PATH SIMULATOR** — Monte Carlo on the stair-step path with probability per transition and expected time
+
+### Monitoring
+
+8. **Build stage0-quality-score.py** — compute quality score from: steps_executed/total_steps, agents_spawned, calc_engines_run, evidence_urls_cited, verdict_class_validity
+
+---
+
+## Unresolved Questions
+
+1. Why was `stage0-wave2-enforcement.cjs` archived? Was it causing false blocks?
+2. The `stage0-cashflow-audit.cjs` hook error in the output — is this hook still referenced in settings.json?
+3. How many /stage0 runs in the last 30 days actually spawned Wave 1+2 agents? (Suspected: <20%)

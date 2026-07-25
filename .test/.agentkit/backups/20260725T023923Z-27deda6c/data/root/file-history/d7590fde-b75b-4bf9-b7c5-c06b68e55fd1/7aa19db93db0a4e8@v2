@@ -1,0 +1,117 @@
+---
+phase: 2
+title: "Portfolio Optimizer"
+status: pending
+priority: P1
+effort: "6h"
+dependencies: [1]
+---
+
+# Phase 2: Portfolio Optimizer
+
+## Overview
+
+Python script that takes founder profile (capital, tags, constraints) and computes optimal allocation across asset classes. Wires existing Kelly/Monte Carlo/power-law engines as computation backends.
+
+## Requirements
+
+- Functional: Accept profile JSON → output portfolio allocation with P10/P50/P90 returns
+- Functional: Filter asset classes by capital range, founder tags, sleep test requirement
+- Functional: Use Kelly criterion for position sizing, Monte Carlo for portfolio simulation
+- Functional: Exclude labor classes when sleep_test_required=true
+- Functional: Show excluded classes with reasons
+- Non-functional: Pure computation, no web calls. Runs in <2s. JSON I/O.
+
+## Architecture
+
+```
+portfolio-optimizer.py
+  ├── loads asset-classes.json
+  ├── filters by founder profile constraints
+  ├── calls kelly-criterion → position fractions
+  ├── calls monte-carlo-sim → portfolio simulation
+  ├── calls power-law-sizer → tail outcome modeling
+  └── outputs portfolio allocation JSON
+```
+
+Existing engines used as library imports (add sys.path to calculation-engines/scripts/):
+- `kelly-criterion-position-sizing-calculator.py` → `calculate_kelly_fraction()`
+- `monte-carlo-sim.py` → `run_monte_carlo()`
+- `power-law-sizer.py` → `size_power_law()`
+
+## Related Code Files
+
+- Create: `D:\code\invesments\master_investments\.claude\skills\business\transaction-layer\nui-hunter\scripts\portfolio-optimizer.py`
+- Read: `D:\code\invesments\master_investments\.claude\skills\business\calculation-engines\scripts\kelly-criterion-position-sizing-calculator.py`
+- Read: `D:\code\invesments\master_investments\.claude\skills\business\calculation-engines\scripts\monte-carlo-sim.py`
+- Read: `D:\code\invesments\master_investments\.claude\skills\business\calculation-engines\scripts\power-law-sizer.py`
+- Read: `D:\code\invesments\master_investments\data\intelligence\asset-classes.json` (from Phase 1)
+
+## Implementation Steps
+
+1. Create `portfolio-optimizer.py` in nui-hunter/scripts/ with argparse CLI:
+   ```
+   --profile-json '{"capital_usd": 500, "founder_tags": ["english_fluent"], ...}'
+   --profile-file path/to/profile.json
+   ```
+
+2. Implement `load_asset_classes()`:
+   - Load from `data/intelligence/asset-classes.json`
+   - Path resolution: `Path(__file__).resolve().parents[5] / "data" / "intelligence"`
+
+3. Implement `filter_classes(classes, profile)`:
+   - Capital filter: `capital_entry_min <= capital_usd`
+   - Founder tag filter: all required `founder_fit_tags` present in profile tags
+   - Sleep test filter: if `profile.sleep_test_required=true`, exclude `sleep_test=NO`
+   - Max assets filter: limit to top N by expected_roi_p50 at founder's tier
+
+4. Implement `compute_kelly_fractions(filtered_classes, profile)`:
+   - For each class, derive Kelly inputs from ROI distribution:
+     - `win_rate` = 1 - failure_rate_year1
+     - `avg_win` = roi_distribution.p75 * capital_allocated
+     - `avg_loss` = abs(roi_distribution.p10) * capital_allocated
+   - Call Kelly calculator → get fraction per class
+   - Apply half-Kelly for safety (existing engine default)
+   - Normalize fractions to sum to 1.0
+
+5. Implement `allocate_capital(kelly_fractions, capital_usd, max_assets)`:
+   - Sort by Kelly fraction descending
+   - Take top `max_assets` classes
+   - Allocate proportionally, round to nearest $50 for TIER_0
+   - Ensure min allocation >= $50 (below = not worth deploying)
+
+6. Implement `simulate_portfolio(allocations, iterations=10000)`:
+   - For each allocation, run Monte Carlo with class's ROI distribution
+   - Aggregate across portfolio
+   - Output P10/P50/P90 portfolio return at 6mo and 12mo
+   - Include monthly passive income estimate
+
+7. Implement `format_output(allocations, simulation, excluded)`:
+   - Portfolio allocation table
+   - P10/P50/P90 returns
+   - Monthly passive income P10/P50/P90
+   - Excluded classes with reasons
+   - Computation log (kelly fractions, MC iterations, survival rate)
+   - Labor comparison: for each excluded labor class, compute hourly rate equivalent
+
+8. Wire CLI: `main()` with argparse, JSON output to stdout
+
+## Success Criteria
+
+- [ ] `portfolio-optimizer.py` runs with `--profile-json` input
+- [ ] Filters correctly: sleep=NO excluded when required
+- [ ] Kelly fractions computed and normalized
+- [ ] Allocations sum to <= capital_usd
+- [ ] Monte Carlo simulation produces P10/P50/P90
+- [ ] Excluded classes listed with reasons
+- [ ] Labor comparison section computed
+- [ ] Runs in <2s for 15 classes × 10K MC iterations
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|------|------------|
+| Kelly fractions negative (expected loss > win) | Clamp to 0, exclude class |
+| Monte Carlo slow for many classes | 10K iterations default, configurable via --iterations |
+| Existing calc engines have incompatible API | Read their actual function signatures in Phase 2 implementation; adapt wrapper if needed |
+| ROI distributions unrealistic | P10-P90 range forces wide uncertainty; survivorship adjustment via failure_rate |

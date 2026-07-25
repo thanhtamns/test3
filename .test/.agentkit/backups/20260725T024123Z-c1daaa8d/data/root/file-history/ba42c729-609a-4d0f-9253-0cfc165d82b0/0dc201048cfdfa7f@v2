@@ -1,0 +1,155 @@
+use regex::Regex;
+
+pub fn detect_pr_ref() -> Option<String> {
+    if let Some(pr) = from_env() {
+        return Some(pr);
+    }
+    if let Some(pr) = from_branch_name() {
+        return Some(pr);
+    }
+    from_recent_commits()
+}
+
+pub fn detect_feature_tag() -> Option<String> {
+    let branch = git_branch_name()?;
+    let prefix = branch.split('/').next()?;
+    match prefix {
+        "feat" | "feature" | "fix" | "bugfix" | "hotfix" | "chore" | "refactor" | "docs" | "test" | "ci" => {
+            Some(prefix.to_string())
+        }
+        _ => None,
+    }
+}
+
+fn from_env() -> Option<String> {
+    for var in &[
+        "GH_PR_NUMBER",
+        "GITHUB_PR_NUMBER",
+        "PULL_REQUEST_NUMBER",
+        "CI_MERGE_REQUEST_IID",
+    ] {
+        if let Ok(val) = std::env::var(var) {
+            let val = val.trim().to_string();
+            if !val.is_empty() {
+                return Some(format!("#{}", val));
+            }
+        }
+    }
+    None
+}
+
+fn from_branch_name() -> Option<String> {
+    let branch = git_branch_name()?;
+    let re = Regex::new(r"(?i)(?:^|/)([A-Z]+-\d+)").ok()?;
+    re.captures(&branch).map(|c| c[1].to_uppercase())
+}
+
+fn from_recent_commits() -> Option<String> {
+    let output = std::process::Command::new("git")
+        .args(["log", "--oneline", "-5", "--format=%s"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let re = Regex::new(r"\(#(\d+)\)").ok()?;
+    for line in stdout.lines() {
+        if let Some(caps) = re.captures(line) {
+            return Some(format!("#{}", &caps[1]));
+        }
+    }
+    None
+}
+
+fn git_branch_name() -> Option<String> {
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if branch.is_empty() || branch == "HEAD" {
+        None
+    } else {
+        Some(branch)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_branch_pattern_jira() {
+        let re = Regex::new(r"(?i)(?:^|/)([A-Z]+-\d+)").unwrap();
+        let caps = re.captures("feat/PROJ-123-add-login").unwrap();
+        assert_eq!(&caps[1], "PROJ-123");
+    }
+
+    #[test]
+    fn test_branch_pattern_no_match() {
+        let re = Regex::new(r"(?i)(?:^|/)([A-Z]+-\d+)").unwrap();
+        assert!(re.captures("main").is_none());
+        assert!(re.captures("feat/add-login").is_none());
+    }
+
+    #[test]
+    fn test_commit_pattern() {
+        let re = Regex::new(r"\(#(\d+)\)").unwrap();
+        let caps = re.captures("feat: add login (#123)").unwrap();
+        assert_eq!(&caps[1], "123");
+    }
+
+    #[test]
+    fn test_commit_pattern_no_match() {
+        let re = Regex::new(r"\(#(\d+)\)").unwrap();
+        assert!(re.captures("fix: typo in readme").is_none());
+    }
+
+    #[test]
+    fn test_feature_tag_feat() {
+        let branch = "feat/add-login";
+        let prefix = branch.split('/').next().unwrap();
+        assert_eq!(prefix, "feat");
+    }
+
+    #[test]
+    fn test_feature_tag_fix() {
+        let branch = "fix/null-pointer";
+        let prefix = branch.split('/').next().unwrap();
+        assert_eq!(prefix, "fix");
+    }
+
+    #[test]
+    fn test_feature_tag_unknown() {
+        let branch = "random-branch-name";
+        let prefix = branch.split('/').next().unwrap();
+        assert_eq!(prefix, "random-branch-name");
+        let known = ["feat", "feature", "fix", "bugfix", "hotfix", "chore", "refactor", "docs", "test", "ci"];
+        assert!(!known.contains(&prefix));
+    }
+
+    #[test]
+    fn test_env_var_detection() {
+        // Can't easily test env vars without side effects; verify from_env logic
+        // by checking that missing vars return None
+        let result = from_env();
+        // In CI, GH_PR_NUMBER might be set; in local dev, it won't be
+        // Just verify it doesn't panic
+        let _ = result;
+    }
+
+    #[test]
+    fn test_detect_pr_ref_runs() {
+        // Integration-level: verify detect_pr_ref doesn't panic in any environment
+        let _ = detect_pr_ref();
+    }
+
+    #[test]
+    fn test_detect_feature_tag_runs() {
+        let _ = detect_feature_tag();
+    }
+}

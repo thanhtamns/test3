@@ -1,0 +1,103 @@
+{
+  "version": 2,
+  "profile_type": "dynamic",
+  "location": "Vietnam",
+  "timezone": "UTC+7",
+  "languages": ["Vietnamese", "English"],
+
+  "skills": {
+    "primary": ["software_development", "ai_ml", "web_development", "automation"],
+    "secondary": ["commodity_trading", "sourcing", "export_logistics"],
+    "latent": ["sales", "negotiation", "relationship_building"],
+    "_note": "Secondary = proven but not daily. Latent = can develop with effort."
+  },
+
+  "capital_usd": 1000,
+  "hours_per_day": 8,
+
+  "existing_assets": {
+    "email_list": 0,
+    "social_following": 0,
+    "domain_authority": 0,
+    "existing_products": [],
+    "existing_revenue_streams": [],
+    "physical_networks": ["Dak Lak coffee cooperatives", "VN tech community"],
+    "relationship_capital": ["coffee farmers", "local traders"]
+  },
+
+  "preferences": {
+    "_note": "Weights 0-1. Higher = stronger preference. NOT hard exclusions.",
+    "avoid_phone_sales": 0.7,
+    "prefer_digital_delivery": 0.5,
+    "prefer_remote_operation": 0.6,
+    "avoid_heavy_regulation": 0.8,
+    "prefer_lindy_models": 0.9
+  },
+
+  "constraints": {
+    "_note": "TRUE hard constraints. Very few should be here.",
+    "no_illegal_activity": true,
+    "no_scams": true,
+    "max_upfront_capital_usd": 1000
+  },
+
+  "advantages": {
+    "cost_arbitrage": {
+      "enabled": true,
+      "vn_cost_multiplier": 0.3,
+      "description": "VN labor/living costs 70% lower than US/EU"
+    },
+    "technical_skills": {
+      "enabled": true,
+      "years": 15,
+      "leverage": "can build tools, automate, scrape data"
+    },
+    "geographic_position": {
+      "enabled": true,
+      "coffee_origin": true,
+      "asia_timezone": true,
+      "sea_trade_hub_access": true
+    },
+    "knowledge_domains": {
+      "coding": {"years": 15, "depth": "expert"},
+      "coffee_trade": {"years": 2, "depth": "intermediate"},
+      "digital_marketing": {"years": 5, "depth": "practitioner"}
+    },
+    "local_networks": {
+      "dak_lak_trade": true,
+      "vn_tech_community": true,
+      "vn_sourcing_access": true
+    }
+  },
+
+  "lindy_filter": {
+    "_note": "Prefer business models that have survived 100+ years",
+    "minimum_model_age_years": 50,
+    "preferred_categories": [
+      "commodity_trading",
+      "export_import",
+      "service_arbitrage",
+      "real_estate_services",
+      "education_training",
+      "consulting",
+      "manufacturing_brokerage"
+    ],
+    "avoid_categories": [
+      "crypto_speculation",
+      "meme_trends",
+      "platform_dependent_only"
+    ]
+  },
+
+  "opportunity_paths": {
+    "_note": "System should evaluate BOTH paths, not just one",
+    "path_a_digital": {
+      "enabled": true,
+      "examples": ["SaaS", "automation services", "technical consulting"]
+    },
+    "path_b_lindy": {
+      "enabled": true,
+      "examples": ["coffee export", "sourcing agency", "trade facilitation"]
+    }
+  }
+}

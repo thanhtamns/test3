@@ -1,0 +1,326 @@
+"""persist-knowledge.py — Step 9.5 KG + schema + cognee write.
+
+Fixes audit findings F1 (KG dir missing → uses existing data/kg/), F5 (schemas/patterns empty),
+F8 (single ingest event proves design works, just unwired).
+
+Per decision D2: Use cognee_store as canonical KG via existing data/kg/ JSONL append-only schema.
+NO new directory structure. Mirror case JSON to data/case-studies/stage0/ for cognee idempotent
+ingest pickup.
+
+Brain principle: hippocampus (kb/cases) + neocortex (cognee_store) + index (data/kg/index.json)
+write together. Compound learning fires every run.
+
+Usage:
+    python persist-knowledge.py --case <case-json-path> [--no-cognee-trigger]
+"""
+from __future__ import annotations
+
+import argparse
+import io
+import json
+import os
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+
+HERE = Path(__file__).parent
+NUI_HUNTER = HERE.parent
+REPO_ROOT = NUI_HUNTER.parent.parent.parent.parent.parent  # master_investments root
+
+KG_DIR = REPO_ROOT / "data" / "kg"
+ENTITIES_FILE = KG_DIR / "entities.jsonl"
+RELATIONS_FILE = KG_DIR / "relations.jsonl"
+INDEX_FILE = KG_DIR / "index.json"
+
+SCHEMA_REGISTRY = REPO_ROOT / "data" / "schemas" / "registry.json"
+SCHEMA_PATTERNS_DIR = REPO_ROOT / "data" / "schemas" / "patterns"
+
+CASE_STUDIES_STAGE0 = REPO_ROOT / "data" / "case-studies" / "stage0"
+COGNITIVE_LOG = REPO_ROOT / "data" / "cognitive" / "custom" / "consolidation-log.jsonl"
+
+
+def append_jsonl(target: Path, record: dict[str, Any]) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(record, ensure_ascii=False) + "\n"
+    with open(target, "a", encoding="utf-8") as f:
+        f.write(line)
+
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def slugify(s: str) -> str:
+    return "".join(c if c.isalnum() or c == "-" else "-" for c in s.lower()).strip("-")[:60]
+
+
+def extract_entities(case: dict[str, Any]) -> list[dict[str, Any]]:
+    """Map stage0 case fields to data/kg entity schema."""
+    case_id = case["case_id"]
+    ts = now_iso()
+    entities: list[dict[str, Any]] = []
+
+    # Verdict entity (always)
+    verdict_id = f"verdict:{case_id}"
+    entities.append({
+        "id": verdict_id,
+        "type": "verdict",
+        "stage0_case_id": case_id,
+        "date": case.get("date", ts[:10]),
+        "topic": case.get("topic") or case.get("title_en") or case.get("title_vn", ""),
+        "conclusion": case.get("verdict_class") or case.get("verdict_type", "UNKNOWN"),
+        "confidence": case.get("confidence", 0.5),
+        "_ts": ts,
+        "_op": "upsert",
+    })
+
+    # Niche entity (if domain present)
+    if "domain" in case:
+        niche_slug = slugify(case["domain"])
+        entities.append({
+            "id": f"niche:{niche_slug}",
+            "type": "niche",
+            "slug": niche_slug,
+            "description": case.get("domain", ""),
+            "_ts": ts,
+            "_op": "upsert",
+        })
+
+    # Founder entity (if founder profile present in case)
+    profile = case.get("founder_profile_fit", {}) or case.get("profile", {})
+    if profile and profile.get("name"):
+        founder_slug = slugify(profile["name"])
+        entities.append({
+            "id": f"founder:{founder_slug}",
+            "type": "founder",
+            "name": profile["name"],
+            "country": profile.get("country") or profile.get("geo_advantage", ["unknown"])[0] if profile.get("geo_advantage") else "unknown",
+            "_ts": ts,
+            "_op": "upsert",
+        })
+
+    return entities
+
+
+def extract_relations(case: dict[str, Any], entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Map case relationships to data/kg relation schema."""
+    ts = now_iso()
+    relations: list[dict[str, Any]] = []
+    case_id = case["case_id"]
+    verdict_id = f"verdict:{case_id}"
+
+    # verdict → source URLs (verified_by)
+    for src in case.get("source_urls", [])[:10]:
+        if isinstance(src, str) and src.startswith("http"):
+            domain = src.split("/")[2] if len(src.split("/")) > 2 else "unknown"
+            src_id = f"source:{slugify(domain)}-{slugify(src[-40:])}"
+            relations.append({
+                "type": "verified_by",
+                "from": verdict_id,
+                "to": src_id,
+                "_ts": ts,
+                "_op": "upsert",
+            })
+
+    # operates_in: niche relation (if niche entity exists)
+    niche_entity = next((e for e in entities if e["type"] == "niche"), None)
+    if niche_entity:
+        relations.append({
+            "type": "operates_in",
+            "from": verdict_id,
+            "to": niche_entity["id"],
+            "_ts": ts,
+            "_op": "upsert",
+        })
+
+    return relations
+
+
+def update_index(entities: list[dict[str, Any]], case_id: str) -> None:
+    """Update data/kg/index.json with entity_id → metadata mapping (last-write-wins)."""
+    if INDEX_FILE.exists():
+        index = json.loads(INDEX_FILE.read_text(encoding="utf-8"))
+    else:
+        index = {}
+    for e in entities:
+        index[e["id"]] = {
+            "type": e["type"],
+            "case_id": case_id,
+            "last_updated": e["_ts"],
+        }
+    INDEX_FILE.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def update_schema_registry(case: dict[str, Any]) -> list[str]:
+    """Append SCH-NNN candidates from case.new_artifacts.
+
+    Existing registry uses patterns as LIST of dicts (each with id field). Preserve format.
+    """
+    if SCHEMA_REGISTRY.exists():
+        registry = json.loads(SCHEMA_REGISTRY.read_text(encoding="utf-8"))
+    else:
+        registry = {"schema_version": "1.0", "patterns": []}
+
+    if "patterns" not in registry or not isinstance(registry["patterns"], list):
+        registry["patterns"] = []
+
+    by_id = {p.get("id"): i for i, p in enumerate(registry["patterns"]) if isinstance(p, dict) and p.get("id")}
+
+    fired: list[str] = []
+    new_artifacts = case.get("new_artifacts", [])
+    for art in new_artifacts:
+        if not isinstance(art, dict):
+            continue
+        if art.get("type") not in ("learned_rule_candidate", "archetype_candidate", "schema_candidate"):
+            continue
+
+        sch_id = art.get("id") or f"SCH-AUTO-{slugify(art.get('name', ''))}"
+        if not sch_id:
+            continue
+
+        if sch_id in by_id:
+            entry = registry["patterns"][by_id[sch_id]]
+            entry["evidence_count"] = entry.get("evidence_count", 0) + 1
+            entry["last_seen"] = now_iso()
+            entry.setdefault("case_ids", [])
+            if case["case_id"] not in entry["case_ids"]:
+                entry["case_ids"].append(case["case_id"])
+        else:
+            new_entry = {
+                "id": sch_id,
+                "pattern": art.get("name", ""),
+                "type": art.get("type"),
+                "evidence_count": art.get("evidence_count", 1),
+                "first_seen": now_iso(),
+                "last_seen": now_iso(),
+                "case_ids": [case["case_id"]],
+                "source": "stage0_persist_knowledge",
+            }
+            registry["patterns"].append(new_entry)
+
+            pattern_file = SCHEMA_PATTERNS_DIR / f"{sch_id}-{slugify(art.get('name', ''))}.md"
+            pattern_file.parent.mkdir(parents=True, exist_ok=True)
+            pattern_file.write_text(
+                f"# {sch_id}: {art.get('name', '')}\n\n"
+                f"**Type:** {art.get('type')}\n"
+                f"**First seen:** {now_iso()}\n"
+                f"**Source case:** {case['case_id']}\n\n"
+                f"## Description\n{art.get('description', 'See source case for details.')}\n",
+                encoding="utf-8",
+            )
+        fired.append(sch_id)
+
+    SCHEMA_REGISTRY.write_text(json.dumps(registry, ensure_ascii=False, indent=2), encoding="utf-8")
+    return fired
+
+
+def mirror_to_case_studies(case: dict[str, Any]) -> Path:
+    """Mirror case JSON to data/case-studies/stage0/ for cognee idempotent ingest pickup."""
+    target = CASE_STUDIES_STAGE0 / f"{case['case_id']}.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(case, ensure_ascii=False, indent=2), encoding="utf-8")
+    return target
+
+
+def log_consolidation_event(case: dict[str, Any], entities: list[dict[str, Any]], schemas_fired: list[str]) -> None:
+    """Append case_ingestion event to cognitive consolidation log (matches existing schema)."""
+    event = {
+        "event_id": case["case_id"],
+        "ts": now_iso(),
+        "type": "case_ingestion",
+        "case_id": case["case_id"],
+        "source": "stage0_persist_knowledge",
+        "knowledge_fired": case.get("knowledge_fired", []) + schemas_fired,
+        "new_artifacts": case.get("new_artifacts", []),
+        "entity_count": len(entities),
+        "verdict": case.get("verdict_class") or case.get("verdict_type", "UNKNOWN"),
+    }
+    append_jsonl(COGNITIVE_LOG, event)
+
+
+def append_calibration_delayed(case: dict[str, Any]) -> dict[str, Any]:
+    """P2.2 wire — write delayed_pending Brier entry on every verdict.
+
+    Per decision D4: dual brier path. PROVISIONAL/MOUNTAIN verdicts get delayed entries
+    that resolve when /log-outcome fires. This is the WRITE half of T1 reflex feedback.
+    """
+    brier_file = REPO_ROOT / "data" / "calibration" / "brier-scores.jsonl"
+    brier_file.parent.mkdir(parents=True, exist_ok=True)
+
+    p_mountain = case.get("p_mountain") or case.get("confidence", 0.5)
+    verdict = case.get("verdict_class") or case.get("verdict_type") or "UNKNOWN"
+    pulse_due = case.get("pulse_due_date")
+    if not pulse_due:
+        from datetime import timedelta as _td
+        pulse_due = (datetime.now(timezone.utc) + _td(days=2)).strftime("%y%m%d")
+
+    rec = {
+        "case_id": case["case_id"],
+        "verdict": verdict,
+        "p_mountain": round(float(p_mountain), 4),
+        "observed": None,
+        "brier": None,
+        "path": "delayed_pending",
+        "pulse_due_date": pulse_due,
+        "ts_created": now_iso(),
+    }
+    with open(brier_file, "a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    return rec
+
+
+def persist(case_path: Path) -> dict[str, Any]:
+    case = json.loads(case_path.read_text(encoding="utf-8"))
+    case_id = case["case_id"]
+
+    entities = extract_entities(case)
+    relations = extract_relations(case, entities)
+
+    for e in entities:
+        append_jsonl(ENTITIES_FILE, e)
+    for r in relations:
+        append_jsonl(RELATIONS_FILE, r)
+
+    update_index(entities, case_id)
+    schemas_fired = update_schema_registry(case)
+    case_studies_path = mirror_to_case_studies(case)
+    log_consolidation_event(case, entities, schemas_fired)
+    brier_record = append_calibration_delayed(case)
+
+    return {
+        "case_id": case_id,
+        "entities_appended": len(entities),
+        "relations_appended": len(relations),
+        "schemas_fired": schemas_fired,
+        "case_studies_mirror": str(case_studies_path.relative_to(REPO_ROOT)),
+        "kg_index_updated": True,
+        "consolidation_event_logged": True,
+        "calibration_delayed_appended": brier_record["path"] == "delayed_pending",
+        "ts": now_iso(),
+    }
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--case", required=True, type=Path)
+    args = ap.parse_args()
+
+    if not args.case.exists():
+        print(json.dumps({"error": f"case file not found: {args.case}"}), file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        receipt = persist(args.case)
+        print(json.dumps(receipt, ensure_ascii=False, indent=2))
+        sys.exit(0)
+    except Exception as e:
+        print(json.dumps({"error": str(e), "type": type(e).__name__}), file=sys.stderr)
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    main()

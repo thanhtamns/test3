@@ -1,0 +1,22 @@
+{
+  "type": "weekly_synthesis",
+  "description": "Template for Sunday 30-min weekly pattern synthesis (Phase 1)",
+  "required_fields": ["week_number", "deals_observed"],
+  "template": {
+    "id": "week-YYMMDD",
+    "type": "weekly_synthesis",
+    "week_number": 0,
+    "date": "",
+    "deals_observed_this_week": 0,
+    "new_patterns_recognized": [],
+    "failures_observed_this_week": 0,
+    "failure_patterns_repeating": [],
+    "middleman_opportunities_spotted": [],
+    "question_for_next_week": "",
+    "cumulative": {
+      "total_deals": 0,
+      "total_failures": 0,
+      "total_patterns": 0
+    }
+  }
+}

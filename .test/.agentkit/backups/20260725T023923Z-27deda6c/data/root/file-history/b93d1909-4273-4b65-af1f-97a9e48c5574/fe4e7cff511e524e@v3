@@ -1,0 +1,32 @@
+'use strict';
+
+// Fix cost: auto (<30s, self-fixable), medium (30s-2min, deeper work), large (>2min, may need user)
+const DEFAULT_FIX_COST = 'auto';
+
+function classifyGaps(failedChecks) {
+  const result = { critical: [], major: [], minor: [] };
+
+  for (const check of failedChecks) {
+    const severity = check.severity || 'minor';
+    const gap = {
+      id: check.id,
+      severity,
+      dimension: check.dimension || 'unknown',
+      description: check.description || `Failed check: ${check.id}`,
+      fix: check.fix || null,
+      fix_cost: check.fix_cost || DEFAULT_FIX_COST
+    };
+
+    if (severity === 'critical') result.critical.push(gap);
+    else if (severity === 'major') result.major.push(gap);
+    else result.minor.push(gap);
+  }
+
+  return result;
+}
+
+function getAllActionable(classified) {
+  return [...classified.critical, ...classified.major];
+}
+
+module.exports = { classifyGaps, getAllActionable };

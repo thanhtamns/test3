@@ -1,0 +1,101 @@
+---
+phase: 6
+title: "Tests and Validation"
+status: pending
+priority: P1
+effort: "2h"
+dependencies: [1, 2, 3, 4, 5]
+---
+
+# Phase 6: Tests and Validation
+
+## Overview
+
+Add test cases for leverage scoring across all modified components. Update existing fixtures. Validate 3 success criteria scenarios end-to-end.
+
+## Related Code Files
+
+- Modify: `D:\code\invesments\master_investments\tests\stage0\test_stage0_acceptance.py`
+- Modify: `D:\code\invesments\master_investments\tests\stage0\fixtures\expected-dimensions.json`
+- Create: `D:\code\invesments\master_investments\tests\stage0\fixtures\leverage-test-verdicts.json`
+
+## Implementation Steps
+
+### 1. Update expected-dimensions.json
+
+Add `leverage_classification` dimension, update max and grade map:
+```json
+{
+  "dimensions": [
+    "agent_dispatch", "computation", "evidence", "verdict_validity",
+    "pipeline_completeness", "side_door_analysis", "orthodox_gate",
+    "voice_mode", "wound_extraction", "compound_objectives",
+    "instance_specificity", "leverage_classification"
+  ],
+  "max_total": 175,
+  "grade_map": { "A": 136, "B": 120, "C": 93, "D": 71 }
+}
+```
+
+### 2. Create leverage test fixtures
+
+`leverage-test-verdicts.json` — 4 scenarios:
+
+| ID | Description | Expected Score | Penalty | Verdict |
+|----|-------------|---------------|---------|---------|
+| labor_no_sleep | Vietnam sourcing agent | 10 | no | SIDE_HUSTLE |
+| code_with_sleep | Supplier directory SaaS | 15 | no | MOUNTAIN_CANDIDATE |
+| hybrid_staircase | ESG audit → template SaaS | 15 | no | SIDE_HUSTLE_WITH_STAIRCASE |
+| labor_no_staircase | Labor without transition | 0 | yes | SIDE_HUSTLE |
+
+### 3. TestLeverageScoring class (9 tests)
+
+```python
+class TestLeverageScoring:
+    def test_sleep_test_present_scores_5(self): ...
+    def test_leverage_class_present_scores_5(self): ...
+    def test_asset_identification_scores_5(self): ...
+    def test_full_leverage_section_scores_15(self): ...
+    def test_labor_without_staircase_penalized(self): ...
+    def test_labor_with_staircase_no_penalty(self): ...
+    def test_hybrid_not_penalized(self): ...
+    def test_old_verdict_no_leverage_scores_zero(self): ...
+    def test_max_total_is_175(self): ...
+```
+
+### 4. TestAuditSchemaLeverage class (4 tests)
+
+```python
+class TestAuditSchemaLeverage:
+    def test_leverage_group_exists(self): ...
+    def test_leverage_weight_015(self): ...
+    def test_weights_sum_to_one(self): ...
+    def test_sleep_test_is_critical(self): ...
+```
+
+### 5. End-to-end validation
+
+Run quality scorer against 3 scenarios:
+1. Labor verdict text → leverage_classification = 0/15, penalty present
+2. Code verdict text → leverage_classification = 15/15
+3. Hybrid verdict text → leverage_classification = 15/15, no penalty
+
+Verify existing tests still pass (no regressions from grade threshold change).
+
+## Success Criteria
+
+- [ ] `expected-dimensions.json` updated (12 dims, max=175)
+- [ ] `leverage-test-verdicts.json` created (4 fixtures)
+- [ ] TestLeverageScoring: 9 tests pass
+- [ ] TestAuditSchemaLeverage: 4 tests pass
+- [ ] E2E: labor → 0/15 + penalty
+- [ ] E2E: code → 15/15
+- [ ] E2E: hybrid → 15/15, no penalty
+- [ ] All existing tests pass (no regressions)
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|------|-----------|
+| Import path issues | Verify sys.path in test file |
+| Existing tests break from grade threshold change | Update hardcoded grade expectations |

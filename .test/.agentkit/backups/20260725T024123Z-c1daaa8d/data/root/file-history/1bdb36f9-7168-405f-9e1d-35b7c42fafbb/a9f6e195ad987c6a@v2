@@ -1,0 +1,41 @@
+"""
+GraduationRules — threshold-based promotion/demotion between autonomy levels.
+Includes hysteresis to prevent oscillation.
+"""
+
+from .accuracy_tracker import AccuracyTracker, AccuracyResult
+
+
+AUTONOMY_LEVELS = ("HUMAN_DECIDES", "SEMI_AUTO", "FULL_AUTO")
+
+
+class GraduationRules:
+    THRESHOLDS = {
+        "FULL_AUTO": {"min_accuracy": 0.85, "min_verdicts": 30},
+        "SEMI_AUTO": {"min_accuracy": 0.70, "min_verdicts": 30},
+        "HUMAN_DECIDES": {"min_accuracy": 0.0, "min_verdicts": 0},
+    }
+
+    DEMOTION_DROP = 0.10
+    DEMOTION_WINDOW = 10
+    REPROMOTION_STREAK = 5
+
+    def evaluate(self, result: AccuracyResult) -> str:
+        if not result.sufficient:
+            return "HUMAN_DECIDES"
+        if result.accuracy >= self.THRESHOLDS["FULL_AUTO"]["min_accuracy"]:
+            return "FULL_AUTO"
+        if result.accuracy >= self.THRESHOLDS["SEMI_AUTO"]["min_accuracy"]:
+            return "SEMI_AUTO"
+        return "HUMAN_DECIDES"
+
+    def check_demotion(self, domain: str, tracker: AccuracyTracker) -> bool:
+        recent = tracker.accuracy(domain, window=self.DEMOTION_WINDOW)
+        overall = tracker.accuracy(domain, window=30)
+        if recent.sample_size < self.DEMOTION_WINDOW:
+            return False
+        return (overall.accuracy - recent.accuracy) > self.DEMOTION_DROP
+
+    def demote(self, current_level: str) -> str:
+        idx = AUTONOMY_LEVELS.index(current_level) if current_level in AUTONOMY_LEVELS else 0
+        return AUTONOMY_LEVELS[max(0, idx - 1)]

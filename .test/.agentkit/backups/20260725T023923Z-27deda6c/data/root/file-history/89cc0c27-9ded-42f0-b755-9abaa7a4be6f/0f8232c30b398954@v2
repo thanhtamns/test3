@@ -1,0 +1,45 @@
+use anyhow::{bail, Result};
+use std::fs;
+use std::path::PathBuf;
+
+use codeflow_core::{dashboard_template, exporter};
+
+pub fn export(format: String, range_days: u32, output: Option<String>) -> Result<()> {
+    let db_path = super::paths::db_path();
+    let data = exporter::collect(&db_path, range_days)?;
+
+    let (content, ext) = match format.as_str() {
+        "json" => (exporter::to_json(&data)?, "json"),
+        "csv" => (exporter::to_csv(&data), "csv"),
+        "html" => (dashboard_template::render_html(&data), "html"),
+        _ => bail!("Unknown format '{}'. Use: json, csv, html", format),
+    };
+
+    let out_path = match output {
+        Some(p) => PathBuf::from(p),
+        None => {
+            let ts = chrono::Utc::now().format("%Y%m%d-%H%M%S");
+            let dir = PathBuf::from("codeflow-export");
+            fs::create_dir_all(&dir)?;
+            dir.join(format!("export-{}.{}", ts, ext))
+        }
+    };
+
+    if let Some(parent) = out_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&out_path, content)?;
+
+    println!("  CODEFLOW Export\n");
+    println!("  Format:  {}", format);
+    println!("  Range:   {} days", range_days);
+    println!("  Records: {} provenance, {} cost",
+        data.provenance.total_records, data.cost.record_count);
+    println!("  Output:  {}\n", out_path.display());
+
+    if format == "html" {
+        println!("  Open in browser to view dashboard.");
+    }
+
+    Ok(())
+}

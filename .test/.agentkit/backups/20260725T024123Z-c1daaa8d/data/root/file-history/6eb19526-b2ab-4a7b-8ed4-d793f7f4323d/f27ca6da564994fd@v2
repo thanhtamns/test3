@@ -1,0 +1,40 @@
+---
+phase: 2
+title: Fix knowledge-auto-refresh.cjs
+status: completed
+priority: P1
+effort: 30m
+dependencies: []
+---
+
+# Phase 2: Fix knowledge-auto-refresh.cjs
+
+## Overview
+
+Fix `knowledge-auto-refresh.cjs` in `D:\code\invesments\master_investments_mmo\.claude\hooks\` — currently line 157 calls `--list-all` which only lists personas but never refreshes. Replace with actual refresh call targeting top-N stale personas.
+
+## Related Code Files
+
+- Modify: `D:\code\invesments\master_investments_mmo\.claude\hooks\knowledge-auto-refresh.cjs`
+- Read: `D:\code\invesments\master_investments_mmo\.claude\hooks\check-knowledge-staleness.cjs` (for staleness logic pattern)
+
+## Implementation Steps
+
+1. Read current `spawnBackgroundRefresh` function (line 143-181)
+2. Replace `[KB_LOADER, '--list-all', '--json']` with actual refresh logic
+3. The refresh should:
+   - Call `intelligent-kb-loader.py` with `--refresh` flag for each stale persona
+   - OR call a simpler Python script that updates `knowledge-state.yaml` timestamps
+4. Since real refresh requires WebSearch (LLM), and hooks can't spawn Claude agents, change strategy:
+   - Write a lightweight Python script that marks personas as "queued for refresh" in `knowledge-state.yaml`
+   - Log which personas need refresh to `.logs/kb-refresh-queue.json`
+   - The next Claude session's `check-knowledge-staleness.cjs` reads this queue and reminds user more urgently
+
+**Alternative (simpler, recommended):** Since `auto_evolve.py` Phase 1 (knowledge_hunter) already hunts knowledge from external sources, and the real persona refresh REQUIRES LLM (WebSearch), keep this hook as a queue-writer + urgent-reminder rather than trying to do LLM work from a hook.
+
+## Success Criteria
+
+- [ ] `spawnBackgroundRefresh` no longer calls useless `--list-all`
+- [ ] Stale personas written to `.logs/kb-refresh-queue.json` with timestamps
+- [ ] Queue file consumed by `check-knowledge-staleness.cjs` for urgent reminders
+- [ ] Hook still non-blocking and fail-open

@@ -1,0 +1,255 @@
+"""
+ExecutionBridge — maps strategic recommendations to actionable scripts.
+Every action gets: exact script, psychological read, timing, fallback.
+60-second test: if founder can't act on it in 60 seconds, it's not an action.
+Zero LLM calls.
+"""
+
+from dataclasses import dataclass, field
+from typing import Optional
+
+
+@dataclass
+class ExecutionScript:
+    action: str
+    exact_script: str            # word-for-word what to say/write/do
+    psychological_read: str      # what the target is thinking
+    timing_window: str           # when to execute for max impact
+    fallback_if_rejected: str    # plan B if this fails
+    sixty_second_test: bool      # can founder act on this in 60 seconds?
+    persona_mode: str = "default"  # naive_newcomer | knowledgeable_insider | urgent_buyer | reluctant_walker
+    difficulty: str = "novice"     # novice | intermediate | advanced
+
+
+class ExecutionBridge:
+    def bridge(
+        self,
+        path_steps: list,  # PathStep objects from SynthesisResult
+        strategic_insight: Optional[dict] = None,
+        founder_context: Optional[dict] = None,
+    ) -> list[ExecutionScript]:
+        """Map each path step to an execution script."""
+        scripts = []
+        si = strategic_insight or {}
+        fc = founder_context or {}
+        tier = fc.get("capability_tier", "bootstrapper")
+
+        for step in path_steps:
+            action_text = getattr(step, "action", str(step))
+            action_lower = action_text.lower()
+
+            if self._is_outreach_action(action_lower):
+                script = self._build_outreach_script(action_text, si, fc, tier)
+            elif self._is_content_action(action_lower):
+                script = self._build_content_script(action_text, si, fc, tier)
+            elif self._is_research_action(action_lower):
+                script = self._build_research_script(action_text, si, fc, tier)
+            elif self._is_build_action(action_lower):
+                script = self._build_build_script(action_text, si, fc, tier)
+            else:
+                script = self._build_generic_script(action_text, si, fc, tier)
+
+            scripts.append(script)
+
+        return scripts
+
+    def format_scripts(self, scripts: list[ExecutionScript]) -> str:
+        """Format execution scripts as narrative sections."""
+        if not scripts:
+            return ""
+
+        parts = ["## Execution Scripts"]
+        for i, s in enumerate(scripts, 1):
+            parts.append(f"\n### Move {i}: {s.action}")
+            parts.append(f"**Persona:** {s.persona_mode} | **Difficulty:** {s.difficulty}")
+            parts.append(f"\n**Exact script:**\n> {s.exact_script}")
+            parts.append(f"\n**What they're thinking:** {s.psychological_read}")
+            parts.append(f"**Timing:** {s.timing_window}")
+            parts.append(f"**If rejected:** {s.fallback_if_rejected}")
+            if not s.sixty_second_test:
+                parts.append("⚠ This action needs prep work — not a 60-second move.")
+
+        return "\n".join(parts)
+
+    # --- Action classifiers ---
+
+    def _is_outreach_action(self, text: str) -> bool:
+        return any(w in text for w in (
+            "contact", "reach out", "approach", "email", "message",
+            "pitch", "connect", "meet", "call",
+        ))
+
+    def _is_content_action(self, text: str) -> bool:
+        return any(w in text for w in (
+            "write", "publish", "newsletter", "blog", "post",
+            "content", "report", "brief",
+        ))
+
+    def _is_research_action(self, text: str) -> bool:
+        return any(w in text for w in (
+            "research", "analyze", "study", "investigate", "scrape",
+            "track", "monitor", "survey", "validate", "check",
+            "map", "assess",
+        ))
+
+    def _is_build_action(self, text: str) -> bool:
+        return any(w in text for w in (
+            "build", "create", "develop", "implement", "code",
+            "design", "launch", "ship",
+        ))
+
+    # --- Script builders ---
+
+    def _build_outreach_script(self, action: str, si: dict, fc: dict, tier: str) -> ExecutionScript:
+        side_doors = si.get("side_doors", [])
+
+        if tier == "bootstrapper":
+            persona = "naive_newcomer"
+            script = (
+                "Subject: Quick question about [their recent work/post]\n\n"
+                "Hi [Name],\n\n"
+                "I'm researching [domain] and noticed your work on [specific thing]. "
+                "I'm building [what you're building] and would love 15 minutes to learn from your perspective.\n\n"
+                "Would [specific day] work for a brief call?\n\n"
+                "[Your name]"
+            )
+            psych = (
+                "They receive 50+ pitches/week. Yours must show you did homework. "
+                "The 'quick question' hook works because it's low-commitment and flattering."
+            )
+            difficulty = "novice"
+        else:
+            persona = "knowledgeable_insider"
+            script = (
+                "Subject: [Specific insight] about [their portfolio/market]\n\n"
+                "Hi [Name],\n\n"
+                "I've been tracking [specific metric] in [market] — noticed [specific finding]. "
+                "This may be relevant to [their specific interest/fund thesis]. "
+                "Happy to share the full analysis if useful.\n\n"
+                "[Your name]"
+            )
+            psych = (
+                "They're evaluating whether you have signal or noise. Leading with a SPECIFIC finding "
+                "proves signal. Never lead with 'I want to pick your brain.'"
+            )
+            difficulty = "intermediate"
+
+        fallback = (
+            "If no response in 5 days: forward the same email with 'bumping this — thought the "
+            "[finding] might be time-sensitive.' If still no response: find a different contact at "
+            "the same org, or pivot to a side door."
+        )
+        if side_doors:
+            fallback += f" Side doors identified: {'; '.join(side_doors[:2])}."
+
+        return ExecutionScript(
+            action=action,
+            exact_script=script,
+            psychological_read=psych,
+            timing_window="Tuesday-Thursday 8-10am target's timezone. Never Monday or Friday.",
+            fallback_if_rejected=fallback,
+            sixty_second_test=True,
+            persona_mode=persona,
+            difficulty=difficulty,
+        )
+
+    def _build_content_script(self, action: str, si: dict, fc: dict, tier: str) -> ExecutionScript:
+        compound = si.get("compound_trap", "") or si.get("compound_asset", "")
+        difficulty = "novice" if tier == "bootstrapper" else "intermediate"
+
+        return ExecutionScript(
+            action=action,
+            exact_script=(
+                "Title format: '[Specific number] [thing] about [domain] this week'\n"
+                "Structure: 3 verified data points + 1 non-obvious insight + 1 question for engagement.\n"
+                "Length: 500 words max. Distribution: LinkedIn + newsletter + 1 industry forum.\n"
+                f"Compound angle: every piece builds the {compound or 'knowledge asset'}."
+            ),
+            psychological_read=(
+                "Readers scan titles for specificity. Numbers + domain + timeframe = click. "
+                "Generic thought-leadership = skip."
+            ),
+            timing_window="Publish Tuesday or Wednesday morning. Weekend posts get 40% less engagement in B2B.",
+            fallback_if_rejected=(
+                "If engagement < 5 reactions after 3 posts: the topic is wrong, not the format. "
+                "Interview 3 target readers about what they actually need."
+            ),
+            sixty_second_test=False,
+            persona_mode="knowledgeable_insider",
+            difficulty=difficulty,
+        )
+
+    def _build_research_script(self, action: str, si: dict, fc: dict, tier: str) -> ExecutionScript:
+        return ExecutionScript(
+            action=action,
+            exact_script=(
+                "Step 1: List 3 specific data points you need (not 'understand the market').\n"
+                "Step 2: For each, identify the EXACT source (URL, database, person).\n"
+                "Step 3: Set a 2-hour timebox. Extract data. Stop.\n"
+                "Step 4: Write a 1-paragraph summary of what you found vs. what you expected."
+            ),
+            psychological_read=(
+                "Research is the most common procrastination disguise. "
+                "The 2-hour timebox prevents infinite research loops."
+            ),
+            timing_window="First thing in the morning when focus is highest. Never after lunch.",
+            fallback_if_rejected=(
+                "If data unavailable after 2 hours: the question is too broad. "
+                "Narrow to 1 specific metric."
+            ),
+            sixty_second_test=True,
+            persona_mode="default",
+            difficulty="novice",
+        )
+
+    def _build_build_script(self, action: str, si: dict, fc: dict, tier: str) -> ExecutionScript:
+        is_technical = fc.get("technical_builder", True)
+        difficulty = "intermediate" if is_technical else "advanced"
+
+        return ExecutionScript(
+            action=action,
+            exact_script=(
+                f"{'Code the MVP in 1 weekend. Ship ugly, test fast.' if is_technical else 'Use no-code (Bubble/Softr) for MVP. Ship in 3 days.'}\n"
+                "Define 'done' before starting: what's the ONE thing users can do?\n"
+                "Skip: auth, payments, design polish. Ship the core loop only.\n"
+                "Get 3 people to use it within 48 hours of shipping."
+            ),
+            psychological_read=(
+                "Builders over-engineer. The MVP test is: would you use this yourself in its current "
+                "ugly state? If no, you're building for your ego."
+            ),
+            timing_window="Start Friday evening, ship Sunday night. Weekday building = part-time attention = 3x longer.",
+            fallback_if_rejected=(
+                "If can't build in a weekend: scope is too big. Cut 80% of features. Ship the remaining 20%."
+            ),
+            sixty_second_test=False,
+            persona_mode="default",
+            difficulty=difficulty,
+        )
+
+    def _build_generic_script(self, action: str, si: dict, fc: dict, tier: str) -> ExecutionScript:
+        return ExecutionScript(
+            action=action,
+            exact_script=(
+                "Specific first step: identify the SINGLE person who can say yes to this and find their "
+                "contact. Write them a 3-sentence message explaining what you want and why it benefits THEM."
+            ),
+            psychological_read=(
+                "Most actions stall because the first step isn't specific enough. "
+                "'Who can say yes?' collapses complexity into one search."
+            ),
+            timing_window="Today. Not tomorrow. Not 'this week.' Now.",
+            fallback_if_rejected=(
+                "If blocked: the action isn't specific enough. Break it into 3 smaller actions, "
+                "each with a named target."
+            ),
+            sixty_second_test=True,
+            persona_mode="default",
+            difficulty="novice",
+        )
+
+    def _extract_target(self, action: str) -> str:
+        for marker in ("with", "to", "for"):
+            if marker in action.lower():
+                return action.lower().split(marker, 1)[1].strip()[:50]
+        return "target"

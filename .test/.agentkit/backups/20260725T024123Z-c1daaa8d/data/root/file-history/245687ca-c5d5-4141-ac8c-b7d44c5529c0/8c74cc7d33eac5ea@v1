@@ -1,0 +1,353 @@
+#!/usr/bin/env node
+/**
+ * Stop Hook - Trajectory Logger (Universal)
+ *
+ * Fires: After ANY agent completes (SubagentStop event)
+ * Purpose: Capture full trajectory + Layer 2/3 traces for pattern aggregation
+ *
+ * Input (stdin): { tool_calls, session_id, conversation, task_output, ... }
+ * Output:
+ *   - data/trajectories/{YYMMDD}-{case_id}.jsonl
+ *   - data/trace-outputs/{YYYY-MM-DD}/{case_id}.md
+ *   - data/trace-tools/{YYYY-MM-DD}/{case_id}.jsonl
+ *
+ * Exit: 0 always (non-blocking, fail-open)
+ */
+
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+
+let isHookEnabled;
+try {
+  ({ isHookEnabled } = require('./lib/ck-config-utils.cjs'));
+} catch {
+  isHookEnabled = () => true;
+}
+
+if (!isHookEnabled('trajectory-logger')) {
+  process.exit(0);
+}
+
+// Import trace writers (fail-open)
+let writeFullOutput, writeToolSequence;
+try {
+  ({ writeFullOutput, writeToolSequence } = require('./lib/trace-writer.cjs'));
+} catch {
+  writeFullOutput = () => ({ error: 'trace-writer not available' });
+  writeToolSequence = () => ({ error: 'trace-writer not available' });
+}
+
+const ROOT = path.resolve(__dirname, '..', '..');
+const TRAJECTORIES_DIR = path.join(ROOT, 'data', 'trajectories');
+const VERDICTS_DIR = path.join(ROOT, '.claude', 'skills', 'business',
+  'transaction-layer', 'nui-hunter', 'verdicts');
+const CORRECTIONS_LOG = path.join(ROOT, '.claude', 'data', 'lessons');
+const MAX_RESULT_LENGTH = 500;
+const RETENTION_DAYS = 30;
+
+function ensureDir(dir) {
+  fs.mkdirSync(dir, { recursive: true });
+}
+
+function dateStamp(d = new Date()) {
+  const yy = String(d.getFullYear()).slice(2);
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yy}${mm}${dd}`;
+}
+
+function getLatestVerdict() {
+  if (!fs.existsSync(VERDICTS_DIR)) return null;
+  const files = fs.readdirSync(VERDICTS_DIR)
+    .filter(f => f.startsWith('verdict-'))
+    .sort()
+    .reverse();
+  if (files.length === 0) return null;
+
+  try {
+    const content = fs.readFileSync(path.join(VERDICTS_DIR, files[0]), 'utf8');
+    const caseMatch = content.match(/case_id:\s*(\S+)/i);
+    const verdictMatch = content.match(/verdict:\s*(MOUNTAIN|SIDE_HUSTLE|SKIP|BLOCKED)/i);
+    const confMatch = content.match(/confidence:\s*([\d.]+)/i);
+    const topicMatch = content.match(/topic:\s*(.+?)(?:\n|$)/i);
+    const pMountainMatch = content.match(/p_mountain:\s*([\d.]+)/i);
+
+    // Check if verdict is recent (within last 5 minutes)
+    const latestFile = path.join(VERDICTS_DIR, files[0]);
+    const stat = fs.statSync(latestFile);
+    if (Date.now() - stat.mtimeMs > 5 * 60 * 1000) {
+      return null; // Verdict too old
+    }
+
+    return {
+      case_id: caseMatch?.[1] || `unknown-${Date.now()}`,
+      verdict: verdictMatch?.[1]?.toUpperCase() || 'UNKNOWN',
+      confidence: parseFloat(confMatch?.[1]) || 0.5,
+      topic: topicMatch?.[1]?.trim() || 'unknown',
+      p_mountain: pMountainMatch ? parseFloat(pMountainMatch[1]) : null
+    };
+  } catch {
+    return null;
+  }
+}
+
+function getRecentCorrections(since) {
+  if (!fs.existsSync(CORRECTIONS_LOG)) return [];
+  const corrections = [];
+  try {
+    const files = fs.readdirSync(CORRECTIONS_LOG).filter(f => f.endsWith('.json'));
+    for (const file of files) {
+      const lesson = JSON.parse(fs.readFileSync(path.join(CORRECTIONS_LOG, file), 'utf8'));
+      const created = new Date(lesson.created);
+      if (created > since) {
+        corrections.push({
+          original_output: lesson.user_message?.slice(0, 200) || '',
+          correction: lesson.extracted_rule || '',
+          correction_type: lesson.correction_type || 'unknown',
+          timestamp: lesson.created
+        });
+      }
+    }
+  } catch {}
+  return corrections;
+}
+
+function classifyError(errorMsg) {
+  const msg = (errorMsg || '').toLowerCase();
+  if (msg.includes('timeout')) return 'timeout';
+  if (msg.includes('rate') && msg.includes('limit')) return 'rate_limit';
+  if (msg.includes('parse') || msg.includes('json')) return 'parse';
+  if (msg.includes('validation') || msg.includes('invalid')) return 'validation';
+  if (msg.includes('network') || msg.includes('fetch') || msg.includes('connection')) return 'network';
+  if (msg.includes('encoding') || msg.includes('utf')) return 'encoding';
+  if (msg.includes('permission')) return 'permission';
+  return 'other';
+}
+
+function extractComponent(toolCall) {
+  if (toolCall.tool === 'Bash' && toolCall.args?.command) {
+    const cmd = toolCall.args.command;
+    if (cmd.includes('.py')) return cmd.match(/(\w+[-\w]*)\.py/)?.[1] || 'python';
+    if (cmd.includes('.cjs')) return cmd.match(/(\w+[-\w]*)\.cjs/)?.[1] || 'hook';
+  }
+  if (toolCall.tool === 'Agent') {
+    return toolCall.args?.subagent_type || 'agent';
+  }
+  return toolCall.tool || 'unknown';
+}
+
+function cleanupOldTrajectories() {
+  if (!fs.existsSync(TRAJECTORIES_DIR)) return;
+  const cutoff = Date.now() - (RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  try {
+    const files = fs.readdirSync(TRAJECTORIES_DIR).filter(f => f.endsWith('.jsonl'));
+    for (const file of files) {
+      const filePath = path.join(TRAJECTORIES_DIR, file);
+      const stat = fs.statSync(filePath);
+      if (stat.mtimeMs < cutoff) {
+        fs.unlinkSync(filePath);
+      }
+    }
+  } catch {}
+}
+
+function extractWaveAgents(toolCalls) {
+  const wave1 = [];
+  const wave2 = [];
+
+  for (const tc of toolCalls) {
+    if (tc.tool === 'Agent' || tc.tool === 'Task') {
+      const agentType = tc.args?.subagent_type || tc.args?.description || '';
+      const desc = (tc.args?.description || '').toLowerCase();
+
+      // Wave 1: research/discovery agents
+      if (desc.includes('research') || desc.includes('scan') || desc.includes('discovery') ||
+          agentType.includes('researcher') || agentType.includes('Explore')) {
+        wave1.push(agentType || 'research');
+      }
+      // Wave 2: analysis/synthesis agents
+      else if (desc.includes('analys') || desc.includes('synthesiz') || desc.includes('evaluat') ||
+               agentType.includes('validator') || agentType.includes('analyst')) {
+        wave2.push(agentType || 'analysis');
+      }
+    }
+  }
+
+  return { wave1: [...new Set(wave1)], wave2: [...new Set(wave2)] };
+}
+
+function detectAgentType(input) {
+  // Try to detect agent type from conversation or input
+  const conversation = input.conversation || [];
+  for (const msg of conversation) {
+    const content = (msg.content || '').toLowerCase();
+    if (content.includes('/stage0')) return 'stage0';
+    if (content.includes('/startup')) return 'startup';
+    if (content.includes('/advisory')) return 'advisory';
+    if (content.includes('/invest')) return 'invest';
+    if (content.includes('/research')) return 'researcher';
+  }
+  return input.agent_type || input.intent_class || 'unknown';
+}
+
+function main() {
+  try {
+    let raw = '';
+    try {
+      raw = fs.readFileSync(0, 'utf8').trim();
+    } catch {
+      process.exit(0);
+    }
+    if (!raw) process.exit(0);
+
+    let input;
+    try {
+      input = JSON.parse(raw);
+    } catch {
+      process.exit(0);
+    }
+
+    const now = new Date();
+    const sessionStart = new Date(now.getTime() - 60 * 60 * 1000);
+
+    // Detect if this is a stage0 run
+    const conversation = input.conversation || [];
+    const isStage0 = conversation.some(msg =>
+      (msg.content || '').includes('/stage0') ||
+      (msg.content || '').includes('stage0')
+    );
+
+    // For stage0: require recent verdict. For others: generate case_id
+    let caseId, verdictInfo;
+    if (isStage0) {
+      verdictInfo = getLatestVerdict();
+      if (!verdictInfo) process.exit(0); // Stage0 requires verdict
+      caseId = verdictInfo.case_id;
+    } else {
+      // For non-stage0 runs, generate case_id from agent type + timestamp
+      const agentType = detectAgentType(input);
+      caseId = `${agentType}-${Date.now()}`;
+      verdictInfo = null;
+    }
+
+    const intentClass = detectAgentType(input);
+
+    // Extract tool calls
+    const toolCalls = (input.tool_calls || []).map(tc => ({
+      tool: tc.tool || tc.name || 'unknown',
+      args: tc.args || tc.input || {},
+      result_summary: String(tc.result || tc.output || '').slice(0, MAX_RESULT_LENGTH),
+      success: !tc.error && tc.result !== undefined,
+      error: tc.error || null,
+      latency_ms: tc.latency_ms || 0,
+      timestamp: tc.timestamp || now.toISOString()
+    }));
+
+    // Extract errors
+    const errors = toolCalls
+      .filter(tc => tc.error)
+      .map(tc => ({
+        type: classifyError(tc.error),
+        component: extractComponent(tc),
+        message: String(tc.error).slice(0, 500),
+        stack_trace: null,
+        recoverable: true,
+        timestamp: tc.timestamp
+      }));
+
+    // Get user corrections
+    const corrections = getRecentCorrections(sessionStart);
+
+    // Extract wave agents
+    const { wave1, wave2 } = extractWaveAgents(toolCalls);
+
+    // Write Layer 2 (full output)
+    const fullOutput = input.task_output || input.output || '';
+    const outputResult = writeFullOutput(caseId, fullOutput, {
+      agent_type: intentClass
+    });
+
+    // Write Layer 3 (tool sequence)
+    const toolsResult = writeToolSequence(caseId, toolCalls, {
+      agent_type: intentClass
+    });
+
+    // Build trajectory
+    const trajectory = {
+      case_id: caseId,
+      timestamp: now.toISOString(),
+      session_id: input.session_id || 'unknown',
+
+      topic: verdictInfo?.topic || 'unknown',
+      intent_class: intentClass,
+      profile_id: input.profile_id || 'default',
+
+      tool_calls: toolCalls,
+      errors: errors,
+      user_corrections: corrections,
+
+      verdict: verdictInfo?.verdict || null,
+      confidence: verdictInfo?.confidence || null,
+      p_mountain: verdictInfo?.p_mountain || null,
+      accuracy_score: null,
+
+      // Layer 2+3 trace paths
+      trace_output_path: outputResult.path || null,
+      trace_tools_path: toolsResult.path || null,
+
+      total_latency_ms: toolCalls.reduce((sum, tc) => sum + (tc.latency_ms || 0), 0),
+      total_tokens: input.total_tokens || 0,
+      agent_calls: toolCalls.filter(tc => tc.tool === 'Agent' || tc.tool === 'Task').length,
+      wave1_agents: wave1,
+      wave2_agents: wave2
+    };
+
+    // Write trajectory
+    ensureDir(TRAJECTORIES_DIR);
+    const filename = `${dateStamp()}-${caseId}.jsonl`;
+    const filePath = path.join(TRAJECTORIES_DIR, filename);
+    fs.appendFileSync(filePath, JSON.stringify(trajectory) + '\n');
+
+    // Log success
+    const logDir = path.join(__dirname, '.logs');
+    fs.mkdirSync(logDir, { recursive: true });
+    fs.appendFileSync(
+      path.join(logDir, 'hook-log.jsonl'),
+      JSON.stringify({
+        ts: now.toISOString(),
+        hook: 'trajectory-logger',
+        status: 'success',
+        case_id: caseId,
+        intent_class: intentClass,
+        is_stage0: isStage0,
+        errors_captured: errors.length,
+        trace_output: outputResult.path ? 'ok' : outputResult.error,
+        trace_tools: toolsResult.path ? 'ok' : toolsResult.error
+      }) + '\n'
+    );
+
+    // Cleanup old files (async, fail-open)
+    setImmediate(cleanupOldTrajectories);
+
+  } catch (e) {
+    try {
+      const logDir = path.join(__dirname, '.logs');
+      fs.mkdirSync(logDir, { recursive: true });
+      fs.appendFileSync(
+        path.join(logDir, 'hook-log.jsonl'),
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          hook: 'trajectory-logger',
+          status: 'error',
+          error: e.message
+        }) + '\n'
+      );
+    } catch {}
+  }
+
+  process.exit(0);
+}
+
+main();

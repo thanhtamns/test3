@@ -1,0 +1,102 @@
+"""Unit tests for surprise_exploration primitive."""
+from __future__ import annotations
+
+import importlib
+import sys
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1] / "scripts"
+sys.path.insert(0, str(ROOT))
+
+
+@pytest.fixture
+def surprise(tmp_path, monkeypatch):
+    from primitives import paths
+    db_path = tmp_path / "surprise-explorations.db"
+    monkeypatch.setattr(paths, "CUSTOM_ROOT", tmp_path)
+
+    from primitives import surprise_exploration as mod
+    importlib.reload(mod)
+    monkeypatch.setattr(mod, "SURPRISE_DB", db_path)
+    mod.init_db()
+    yield mod
+
+
+class TestCheckSurprise:
+    def test_below_threshold_returns_none(self, surprise):
+        result = surprise.check_surprise("node1", error=0.3, domain="test")
+        assert result is None
+
+    def test_above_threshold_returns_action(self, surprise):
+        result = surprise.check_surprise("node1", error=0.7, domain="test-domain")
+        assert result is not None
+        assert result["action"] == "explore_domain"
+        assert result["domain"] == "test-domain"
+        assert result["trigger_node"] == "node1"
+        assert result["trigger_error"] == 0.7
+
+    def test_priority_proportional_to_error(self, surprise):
+        r1 = surprise.check_surprise("n1", error=0.6, domain="d1")
+        r2 = surprise.check_surprise("n2", error=0.9, domain="d2")
+        assert r2["priority"] > r1["priority"]
+
+    def test_priority_capped_at_3(self, surprise):
+        result = surprise.check_surprise("n1", error=0.99, domain="d1")
+        assert result["priority"] <= 3.0
+
+
+class TestCooldown:
+    def test_same_domain_in_cooldown_rejected(self, surprise):
+        r1 = surprise.check_surprise("n1", error=0.8, domain="hot")
+        assert r1 is not None
+        r2 = surprise.check_surprise("n2", error=0.9, domain="hot")
+        assert r2 is None
+
+    def test_different_domain_not_in_cooldown(self, surprise):
+        surprise.check_surprise("n1", error=0.8, domain="domain-a")
+        r2 = surprise.check_surprise("n2", error=0.8, domain="domain-b")
+        assert r2 is not None
+
+
+class TestBackpressure:
+    def test_max_pending_enforced(self, surprise):
+        surprise.MAX_PENDING = 3
+        surprise.check_surprise("n1", error=0.8, domain="d1")
+        surprise.check_surprise("n2", error=0.8, domain="d2")
+        surprise.check_surprise("n3", error=0.8, domain="d3")
+        r4 = surprise.check_surprise("n4", error=0.9, domain="d4")
+        assert r4 is None
+
+
+class TestPendingAndResolve:
+    def test_get_pending_empty(self, surprise):
+        assert surprise.get_pending_explorations() == []
+
+    def test_get_pending_after_triggers(self, surprise):
+        surprise.check_surprise("n1", error=0.7, domain="d1")
+        surprise.check_surprise("n2", error=0.6, domain="d2")
+        pending = surprise.get_pending_explorations()
+        assert len(pending) == 2
+        assert pending[0]["error"] >= pending[1]["error"]
+
+    def test_resolve_removes_from_pending(self, surprise):
+        surprise.check_surprise("n1", error=0.8, domain="d1")
+        pending = surprise.get_pending_explorations()
+        assert len(pending) == 1
+        success = surprise.resolve_exploration(pending[0]["id"], "completed")
+        assert success is True
+        assert surprise.get_pending_explorations() == []
+
+    def test_resolve_nonexistent_returns_false(self, surprise):
+        assert surprise.resolve_exploration(9999) is False
+
+
+class TestCountPending:
+    def test_count_zero_initially(self, surprise):
+        assert surprise.count_pending() == 0
+
+    def test_count_increments(self, surprise):
+        surprise.check_surprise("n1", error=0.8, domain="d1")
+        assert surprise.count_pending() == 1

@@ -1,0 +1,191 @@
+#!/usr/bin/env node
+/**
+ * SessionStart Hook - Stage0 Session Preflight
+ *
+ * Fires: Once per session (startup, resume, clear, compact)
+ * Consolidates:
+ *   - RC-2: Pending Outcomes Pulse Check
+ *   - RC-5: Pre-Evolution Check
+ *
+ * Exit Codes:
+ *   0 - Always (non-blocking advisory hook)
+ */
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+
+let isHookEnabled;
+try {
+  ({ isHookEnabled } = require('./lib/ck-config-utils.cjs'));
+} catch {
+  isHookEnabled = () => true;
+}
+
+if (!isHookEnabled('stage0-session-preflight')) {
+  process.exit(0);
+}
+
+const ROOT = path.join(__dirname, '..', '..');
+const BRIER_FILE = path.join(ROOT, 'data', 'calibration', 'brier-scores.jsonl');
+const SCHEMA_FILE = path.join(ROOT, 'data', 'schemas', 'registry.json');
+const POLICY_FILE = path.join(ROOT, 'data', 'calibration', 'evolution-policy.json');
+
+// --- Shared loader ---
+
+function loadBrierScores() {
+  if (!fs.existsSync(BRIER_FILE)) return [];
+  try {
+    const content = fs.readFileSync(BRIER_FILE, 'utf8');
+    return content.split('\n')
+      .filter(line => line.trim())
+      .map(line => { try { return JSON.parse(line); } catch { return null; } })
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+// --- RC-2: Pending Outcomes Pulse Check ---
+
+function checkPendingOutcomes(records) {
+  if (records.length === 0) return;
+
+  const pending = records.filter(r => r.path === 'delayed_pending' && r.observed === null);
+  const orphaned = records.filter(r => r.path === 'outcome_orphaned');
+
+  const now = new Date();
+  const overdue = pending.filter(r => {
+    if (!r.pulse_due_date) return false;
+    try {
+      const y = parseInt('20' + r.pulse_due_date.slice(0, 2), 10);
+      const m = parseInt(r.pulse_due_date.slice(2, 4), 10) - 1;
+      const d = parseInt(r.pulse_due_date.slice(4, 6), 10);
+      return now > new Date(y, m, d);
+    } catch {
+      return false;
+    }
+  });
+
+  const messages = [];
+
+  if (overdue.length > 0) {
+    messages.push(`⚠ Pulse overdue: ${overdue.length} prediction(s) need outcome verification`);
+    overdue.slice(0, 3).forEach(r => {
+      messages.push(`  - ${r.case_id} (verdict: ${r.verdict}, due: ${r.pulse_due_date})`);
+    });
+    if (overdue.length > 3) {
+      messages.push(`  ... and ${overdue.length - 3} more`);
+    }
+    messages.push(`  Run: /log-outcome --case-id <id> --observed 0|1`);
+  }
+
+  if (orphaned.length > 0) {
+    messages.push(`ℹ ${orphaned.length} orphaned predictions (no outcome after 14d)`);
+  }
+
+  if (messages.length > 0) {
+    console.log(messages.join('\n'));
+  }
+}
+
+// --- RC-5: Pre-Evolution Check ---
+
+function loadSchemas() {
+  if (!fs.existsSync(SCHEMA_FILE)) return { patterns: [] };
+  try {
+    return JSON.parse(fs.readFileSync(SCHEMA_FILE, 'utf8'));
+  } catch {
+    return { patterns: [] };
+  }
+}
+
+function updatePolicy(status) {
+  try {
+    const policy = fs.existsSync(POLICY_FILE)
+      ? JSON.parse(fs.readFileSync(POLICY_FILE, 'utf8'))
+      : {};
+
+    policy.last_check = new Date().toISOString();
+    policy.evolution_allowed = status.evolutionAllowed;
+    policy.blockers = status.blockers;
+    policy.warnings = status.warnings;
+
+    fs.mkdirSync(path.dirname(POLICY_FILE), { recursive: true });
+    fs.writeFileSync(POLICY_FILE, JSON.stringify(policy, null, 2));
+  } catch {
+    // Non-blocking: policy file update failure should not crash session
+  }
+}
+
+function checkPreEvolution(records) {
+  const schemas = loadSchemas();
+
+  const status = {
+    evolutionAllowed: true,
+    blockers: [],
+    warnings: [],
+  };
+
+  // Check 1: Brier score quality (30d window)
+  const cutoff30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const resolved = records.filter(r => r.path === 'verified' && typeof r.brier === 'number');
+  const recent = resolved.filter(r => {
+    const ts = r.verified_at || r.ts_created;
+    if (!ts) return false;
+    try { return new Date(ts) >= cutoff30d; } catch { return false; }
+  });
+
+  if (recent.length > 0) {
+    const avgBrier = recent.reduce((sum, r) => sum + r.brier, 0) / recent.length;
+    if (avgBrier > 0.50) {
+      status.evolutionAllowed = false;
+      status.blockers.push(`MODEL_OVERCONFIDENT: Brier avg (30d) = ${avgBrier.toFixed(3)} > 0.50`);
+    }
+  }
+
+  // Check 2: Ground truth existence
+  const realOutcomes = resolved.filter(r => !r._note?.includes('bulk'));
+  if (realOutcomes.length < 5) {
+    status.warnings.push(`NO_GROUND_TRUTH: Only ${realOutcomes.length} real outcome(s) verified`);
+  }
+
+  // Check 3: Schema noise ratio
+  const patterns = schemas.patterns || [];
+  if (patterns.length > 0) {
+    const noiseCount = patterns.filter(p => {
+      const id = (p.id || p.name || '').toUpperCase();
+      return id.startsWith('FINDING-') || id.startsWith('VERDICT-') || id.includes('RAW');
+    }).length;
+    const noiseRatio = noiseCount / patterns.length;
+    if (noiseRatio > 0.80) {
+      status.warnings.push(`SCHEMA_NOISE: ${(noiseRatio * 100).toFixed(0)}% of ${patterns.length} patterns are noise`);
+    }
+  }
+
+  updatePolicy(status);
+
+  const messages = [];
+  if (status.blockers.length > 0) {
+    messages.push('❌ Evolution BLOCKED:');
+    status.blockers.forEach(b => messages.push(`  - ${b}`));
+  }
+  if (status.warnings.length > 0) {
+    messages.push('⚠ Evolution warnings:');
+    status.warnings.forEach(w => messages.push(`  - ${w}`));
+  }
+  if (messages.length > 0) {
+    console.log(messages.join('\n'));
+  }
+}
+
+// --- Main ---
+
+function main() {
+  const records = loadBrierScores();
+  checkPendingOutcomes(records);
+  checkPreEvolution(records);
+  process.exit(0);
+}
+
+main();

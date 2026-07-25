@@ -1,0 +1,76 @@
+# Intelligence Controller — Hypothesis-Driven Search Brain
+
+**Status:** complete
+**Created:** 2026-05-22
+**Target:** `D:\code\invesments\master_investments\.claude\lib\intelligence\controller\`
+
+## Problem
+
+The master_investments system has no BRAIN controlling what the LLM searches for. It depends entirely on LLM + WebSearch with no intelligent search strategy, no incremental picture building, no hypothesis-driven research. The system fires 30 generic queries, gets 200-char snippets, and synthesizes — no intelligence directing the process.
+
+## Solution: Hypothesis-Driven Intelligence Controller
+
+A deterministic Python controller that sits ABOVE the LLM and tells it WHAT to search for, building knowledge incrementally through a hypothesis → test → refine loop.
+
+## Architecture
+
+```
+CONTROLLER (deterministic Python, no LLM for strategy)
+  │
+  ├── Phase 1: SEED — 3 tiny searches (DDG)
+  │     → Extract entities, numbers, relationships → initial graph
+  │
+  ├── Phase 2: HYPOTHESIZE — Generate testable hypotheses from graph gaps
+  │     → Rule-based (gap types → hypothesis templates)
+  │     → Structural (missing broker, high-value edges)
+  │
+  ├── Phase 3: DIRECT — Rank hypotheses, allocate budget, choose method
+  │     → High-value: WebFetch full pages
+  │     → Low-value: DDG snippets
+  │
+  ├── Phase 4: UPDATE — Parse results → update graph → mark hypotheses
+  │     → CONFIRMED / KILLED / INCONCLUSIVE
+  │
+  ├── Phase 5: JUDGE — Is picture complete enough?
+  │     → Yes: stop and synthesize
+  │     → No: generate new hypotheses, loop back to Phase 3
+  │
+  └── Output: MoneyFlowGraph with verified edges + bottleneck positions
+```
+
+## Files Created
+
+| File | Purpose |
+|------|---------|
+| `controller/__init__.py` | Package init |
+| `controller/money_flow_graph.py` | Graph data structure (nodes, edges, hypotheses) |
+| `controller/seeder.py` | 3-search bootstrap with entity/number extraction |
+| `controller/hypothesis_generator.py` | Rule-based hypothesis creation from gaps |
+| `controller/search_director.py` | Budget allocation + method selection |
+| `controller/graph_updater.py` | Parse search results → update graph |
+| `controller/completion_judge.py` | Stop condition evaluation |
+| `controller/intelligence_controller.py` | Main orchestrator loop |
+| `controller/think_runner_bridge.py` | Bridge to ThinkRunner pipeline |
+| `controller/tests/test_intelligence_controller.py` | 20 tests, all passing |
+
+## Integration
+
+| System | Integration Point |
+|--------|-------------------|
+| ThinkRunner | Pre-stage before decompose→query. Graph context injected into strategic reasoner. |
+| /hunt --asym | Step A0.PRE runs controller before all 6 scanners. Graph shared to all scanners. |
+| hunt.md | Updated with A0.PRE section referencing intelligence-controller-integration.md |
+
+## Test Results
+
+```
+20 passed, 0 failed, 20 total
+```
+
+## Key Design Decisions
+
+1. Controller is DETERMINISTIC — Python if-then rules for search strategy, not LLM
+2. WebFetch for high-value hypotheses — fixes RC-2 (snippet-only problem)
+3. Graph is the memory — each cycle builds on previous (incremental picture building)
+4. Budget-controlled — 15 calls max forces intelligent allocation
+5. Confidence-gated — only verified edges (conf > 0.6) used in synthesis

@@ -1,0 +1,58 @@
+---
+phase: 2
+title: "Synthetic Data Purge"
+status: pending
+priority: P1
+effort: "30m"
+dependencies: []
+---
+
+# Phase 2: Synthetic Data Purge
+
+## Overview
+Remove or tag all synthetic/bootstrap data from calibration pipelines so the system knows it has ZERO real learning, not fake "35 resolved outcomes."
+
+## Requirements
+- Functional: All `source: "bootstrap_synthetic"` and `source: "bootstrap"` records excluded from calibration
+- Functional: Brain-refresh weekly reports show true state: "0 real outcomes, system uncalibrated"
+- Non-functional: Don't delete files — tag and exclude (preserve audit trail)
+
+## Related Code Files
+- Modify: `D:\code\invesments\master_investments\data\calibration\brier-scores.jsonl` — tag synthetic entries
+- Modify: `D:\code\invesments\master_investments\data\calibration\revenue-outcomes.jsonl` — tag synthetic entries
+- Modify: `D:\code\invesments\master_investments\data\deals\deal-pipeline.json` — tag bootstrap entries
+- Modify: `D:\code\invesments\master_investments\.claude\skills\business\feedback_loop\auto-outcome-detector.py` — skip synthetic in calculations
+- Modify: `D:\code\invesments\master_investments\.claude\skills\business\transaction-layer\nui-hunter\scripts\bias-calibrator.py` — skip synthetic
+
+## Implementation Steps
+
+1. In `brier-scores.jsonl`: Add `"_synthetic": true` field to all entries where `verified_by == "brier_backfill"` AND no real outcome exists
+   - Keep entries in file for audit trail
+   - Script: read all lines, tag, rewrite
+
+2. In `revenue-outcomes.jsonl`: Add `"_synthetic": true` to all entries where `source == "bootstrap_synthetic"`
+
+3. In `deal-pipeline.json`: Add `"_synthetic": true` to all pipeline entries where `source == "bootstrap"`
+
+4. In `auto-outcome-detector.py`: When calculating stats, filter out entries with `_synthetic: true`
+   ```python
+   verified_entries = [e for e in entries if e.get("brier") is not None and not e.get("_synthetic")]
+   ```
+
+5. In `bias-calibrator.py`: Same filter — skip synthetic entries in bias calculation
+
+6. In brain-refresh scripts: Update summary output to show:
+   ```
+   Real outcomes: X | Synthetic (excluded): Y | Calibration status: UNCALIBRATED if X < 5
+   ```
+
+## Success Criteria
+- [ ] `auto-outcome-detector.py` reports 0 real verified entries (not 35)
+- [ ] `bias-calibrator.py` reports "insufficient_data" for ALL verdict classes (not just some)
+- [ ] Brain-refresh weekly shows "UNCALIBRATED" status
+- [ ] No synthetic data influences any calibration calculation
+- [ ] Original data preserved with `_synthetic: true` tag
+
+## Risk Assessment
+- Risk: Some downstream script relies on having ≥5 entries to function → will degrade gracefully to "insufficient_data" status (already handles this case)
+- Risk: brain-refresh cron breaks → test locally first with `--dry-run`

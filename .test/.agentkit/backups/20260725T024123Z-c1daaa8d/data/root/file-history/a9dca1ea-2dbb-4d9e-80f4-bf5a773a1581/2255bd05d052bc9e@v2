@@ -1,0 +1,43 @@
+# /meta-status — Meta-Evolution Dashboard
+
+Show the current state of the AEVO-style meta-evolution system.
+
+## Instructions
+
+Run the meta-evolution orchestrator in status mode:
+
+```bash
+D:/code/invesments/master_investments/.claude/skills/.venv/Scripts/python.exe \
+  D:/code/invesments/master_investments/.claude/lib/intelligence/mechanism/meta_evolution_orchestrator.py \
+  --mode status
+```
+
+Parse the JSON output and present as a formatted dashboard:
+
+## Dashboard Format
+
+### Controller State
+- Status: IDLE | SEGMENT_RUNNING
+- Outcomes since last edit: N (trigger at 5)
+- Active segment: {id} ({collected}/{needed} verdicts) or "none"
+
+### Last Meta-Edit
+- Knob: {knob_id}
+- Change: {old_value} → {new_value}
+- Reason: {reason}
+- Result: KEPT | REVERTED | AMPLIFIED | pending
+
+### Error Attribution Summary
+- Total mechanism errors attributed
+- Top culprit knobs (sorted by error count)
+- Next meta-edit trigger: N more outcomes needed
+
+### Safety Status
+- Weekly budget: {used}/3 edits
+- Invariant violations: {count}
+- Auto-rollbacks: {count}
+
+### Current Knob Values
+Run `KnobRegistry.snapshot_markdown()` to show all 23 knobs with current values.
+
+If any component fails, show partial results with warning.

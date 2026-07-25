@@ -1,0 +1,136 @@
+"""
+T02 Reflexion — self-critique via bias detection.
+Detects 5 bias types; score = 1.0 - (bias_count / 5).
+Zero LLM calls.
+"""
+
+from urllib.parse import urlparse
+
+from .base import TechniqueInput, TechniqueResult
+
+FAILURE_DIMS = {"failure_patterns", "base_rates"}
+COMPETITIVE_DIM = "competitive_landscape"
+
+
+def reflexion(inp: TechniqueInput) -> TechniqueResult:
+    facts = inp.facts
+    biases: list[str] = []
+    chain: list[str] = []
+
+    # 1. Source bias: all facts from same domain
+    if _check_source_bias(facts, chain):
+        biases.append("source_bias")
+
+    # 2. Optimism bias: no failure/base_rate facts
+    if _check_optimism_bias(facts, chain):
+        biases.append("optimism_bias")
+
+    # 3. Blind spot: no competitive landscape facts
+    if _check_blind_spot(facts, chain):
+        biases.append("blind_spot")
+
+    # 4. Reality gap: facts contradict founder constraints
+    if _check_reality_gap(facts, inp.founder_context, chain):
+        biases.append("reality_gap")
+
+    # 5. Verification gap: no verified (K-tagged) facts
+    if _check_verification_gap(facts, chain):
+        biases.append("verification_gap")
+
+    bias_count = len(biases)
+    score = round(max(0.0, 1.0 - bias_count / 5), 3)
+
+    # Confidence grows with more facts (more data = better bias detection)
+    confidence = round(min(0.9, 0.2 + len(facts) * 0.08), 3)
+
+    if bias_count == 0:
+        verdict = "GO"
+        chain.append("No biases detected — analysis appears balanced")
+    elif bias_count <= 1:
+        verdict = "CAUTION"
+        chain.append(f"Minor bias ({bias_count}/5): {biases}")
+    elif bias_count <= 3:
+        verdict = "INVESTIGATE"
+        chain.append(f"Moderate bias ({bias_count}/5): {biases} — re-research needed")
+    else:
+        verdict = "KILL"
+        chain.append(f"Severe bias ({bias_count}/5): {biases} — analysis unreliable")
+
+    return TechniqueResult(
+        technique_id="T02_reflexion",
+        score=score,
+        confidence=confidence,
+        verdict=verdict,
+        reasoning_chain=chain,
+        zone_tag="T" if confidence < 0.75 else "K",
+        data_used=[f"facts_checked:{len(facts)}"],
+        metadata={
+            "bias_count": bias_count,
+            "biases_detected": biases,
+        },
+    )
+
+
+def _check_source_bias(facts: list, chain: list[str]) -> bool:
+    urls = [f.source_url for f in facts if f.source_url]
+    if len(urls) < 2:
+        chain.append("source_bias: insufficient URLs to detect — skipped")
+        return False
+    domains = set()
+    for url in urls:
+        try:
+            domains.add(urlparse(url).netloc.lower())
+        except Exception:
+            pass
+    if len(domains) == 1:
+        chain.append(f"source_bias DETECTED: all {len(urls)} URLs from same domain '{next(iter(domains))}'")
+        return True
+    chain.append(f"source_bias: OK — {len(domains)} distinct domains")
+    return False
+
+
+def _check_optimism_bias(facts: list, chain: list[str]) -> bool:
+    has_failure = any(f.dimension in FAILURE_DIMS for f in facts)
+    if not has_failure:
+        chain.append("optimism_bias DETECTED: no facts in failure_patterns or base_rates dimensions")
+        return True
+    chain.append("optimism_bias: OK — failure/base_rate facts present")
+    return False
+
+
+def _check_blind_spot(facts: list, chain: list[str]) -> bool:
+    has_competitive = any(f.dimension == COMPETITIVE_DIM for f in facts)
+    if not has_competitive:
+        chain.append("blind_spot DETECTED: no competitive_landscape facts")
+        return True
+    chain.append("blind_spot: OK — competitive_landscape facts present")
+    return False
+
+
+def _check_reality_gap(facts: list, founder: dict, chain: list[str]) -> bool:
+    capital = founder.get("capital_usd", 0)
+    for f in facts:
+        # Look for capital requirement signals in fact text
+        fact_lower = f.fact.lower()
+        if "capital" in fact_lower or "invest" in fact_lower or "require" in fact_lower:
+            val = f.value
+            if val and val > capital and capital > 0:
+                chain.append(
+                    f"reality_gap DETECTED: fact requires ~{val:.0f} capital, founder has {capital}"
+                )
+                return True
+    chain.append("reality_gap: OK — no explicit capital contradiction found")
+    return False
+
+
+def _check_verification_gap(facts: list, chain: list[str]) -> bool:
+    if not facts:
+        chain.append("verification_gap DETECTED: no facts at all")
+        return True
+    has_verified = any(f.zone_tag == "K" for f in facts)
+    if not has_verified:
+        chain.append("verification_gap DETECTED: zero facts with zone_tag 'K' (all unverified)")
+        return True
+    k_count = sum(1 for f in facts if f.zone_tag == "K")
+    chain.append(f"verification_gap: OK — {k_count}/{len(facts)} facts verified [K]")
+    return False

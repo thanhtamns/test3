@@ -1,0 +1,191 @@
+"""
+AntiHallucinationFilter — verifies LLM output for factual consistency.
+Cross-query validation, confidence decomposition, claim-level verification.
+"""
+
+import json
+import logging
+from dataclasses import dataclass, field
+from typing import Optional
+
+logger = logging.getLogger("anti_hallucination")
+
+
+@dataclass
+class VerifiedClaim:
+    claim: str
+    confidence: float
+    source: str = ""
+    verified_by: str = "none"
+    status: str = "unverified"  # verified, unverified, rejected, cross_query_failed
+
+
+@dataclass
+class VerifiedResult:
+    claims: list[VerifiedClaim] = field(default_factory=list)
+    raw_data: dict = field(default_factory=dict)
+    rejection_count: int = 0
+    cross_query_failures: int = 0
+    overall_confidence: float = 0.0
+
+    @property
+    def verified_claims(self) -> list[VerifiedClaim]:
+        return [c for c in self.claims if c.status == "verified"]
+
+    def to_dict(self) -> dict:
+        return {
+            "claims": [
+                {
+                    "claim": c.claim,
+                    "confidence": c.confidence,
+                    "source": c.source,
+                    "verified_by": c.verified_by,
+                    "status": c.status,
+                }
+                for c in self.claims
+            ],
+            "rejection_count": self.rejection_count,
+            "cross_query_failures": self.cross_query_failures,
+            "overall_confidence": self.overall_confidence,
+        }
+
+
+class AntiHallucinationFilter:
+    """Verifies LLM output before it enters the knowledge system."""
+
+    def __init__(self, min_confidence: int = 4, cross_query_threshold: float = 0.5):
+        self.min_confidence = min_confidence
+        self.cross_query_threshold = cross_query_threshold
+
+    def verify(self, llm_output: str, schema: Optional[dict] = None) -> VerifiedResult:
+        """Parse and verify structured LLM output."""
+        result = VerifiedResult()
+
+        parsed = self._parse_json(llm_output)
+        if parsed is None:
+            result.overall_confidence = 0.0
+            return result
+
+        result.raw_data = parsed
+        claims = self._extract_claims(parsed)
+
+        for claim_data in claims:
+            claim = VerifiedClaim(
+                claim=claim_data.get("claim", claim_data.get("name", str(claim_data))),
+                confidence=claim_data.get("confidence", 5) / 10.0,
+                source=claim_data.get("source", claim_data.get("evidence", "")),
+            )
+
+            raw_conf = claim_data.get("confidence", 5)
+            if raw_conf < self.min_confidence:
+                claim.status = "rejected"
+                claim.verified_by = "confidence_gate"
+                result.rejection_count += 1
+            else:
+                claim.status = "verified"
+                claim.verified_by = "confidence_gate"
+
+            result.claims.append(claim)
+
+        if result.claims:
+            verified = [c for c in result.claims if c.status == "verified"]
+            if verified:
+                result.overall_confidence = sum(c.confidence for c in verified) / len(verified)
+
+        return result
+
+    def cross_validate(self, result1: VerifiedResult, result2: VerifiedResult) -> VerifiedResult:
+        """Compare two results from same question asked differently."""
+        merged = VerifiedResult()
+        merged.raw_data = {"query1": result1.raw_data, "query2": result2.raw_data}
+
+        claims1 = {self._normalize(c.claim): c for c in result1.verified_claims}
+        claims2 = {self._normalize(c.claim): c for c in result2.verified_claims}
+
+        all_keys = set(claims1.keys()) | set(claims2.keys())
+
+        for key in all_keys:
+            c1 = claims1.get(key)
+            c2 = claims2.get(key)
+
+            if c1 and c2:
+                conf_diff = abs(c1.confidence - c2.confidence)
+                if conf_diff <= self.cross_query_threshold:
+                    claim = VerifiedClaim(
+                        claim=c1.claim,
+                        confidence=(c1.confidence + c2.confidence) / 2,
+                        source=c1.source or c2.source,
+                        verified_by="cross_query",
+                        status="verified",
+                    )
+                else:
+                    claim = VerifiedClaim(
+                        claim=c1.claim,
+                        confidence=min(c1.confidence, c2.confidence) * 0.5,
+                        source=c1.source,
+                        verified_by="cross_query",
+                        status="cross_query_failed",
+                    )
+                    merged.cross_query_failures += 1
+            elif c1:
+                claim = VerifiedClaim(
+                    claim=c1.claim,
+                    confidence=c1.confidence * 0.7,
+                    source=c1.source,
+                    verified_by="single_query",
+                    status="unverified",
+                )
+            else:
+                claim = VerifiedClaim(
+                    claim=c2.claim,
+                    confidence=c2.confidence * 0.7,
+                    source=c2.source,
+                    verified_by="single_query",
+                    status="unverified",
+                )
+
+            merged.claims.append(claim)
+
+        if merged.claims:
+            merged.overall_confidence = sum(c.confidence for c in merged.claims) / len(merged.claims)
+
+        return merged
+
+    def _parse_json(self, text: str) -> Optional[dict]:
+        if not text:
+            return None
+        text = text.strip()
+        if text.startswith("```"):
+            lines = text.split("\n")
+            text = "\n".join(lines[1:])
+            if text.endswith("```"):
+                text = text[:-3]
+            text = text.strip()
+
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            import re
+            match = re.search(r'[\[{].*[}\]]', text, re.DOTALL)
+            if match:
+                try:
+                    return json.loads(match.group())
+                except json.JSONDecodeError:
+                    pass
+        logger.warning("Failed to parse LLM output as JSON")
+        return None
+
+    def _extract_claims(self, data) -> list[dict]:
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            for key in ("facts", "competitors", "kill_signals", "entries", "claims"):
+                if key in data and isinstance(data[key], list):
+                    return data[key]
+            if "tam" in data:
+                return [{"claim": f"TAM: ${data['tam'].get('value_usd', '?')}", **data["tam"]}]
+            return [data]
+        return []
+
+    def _normalize(self, text: str) -> str:
+        return text.lower().strip()[:80]

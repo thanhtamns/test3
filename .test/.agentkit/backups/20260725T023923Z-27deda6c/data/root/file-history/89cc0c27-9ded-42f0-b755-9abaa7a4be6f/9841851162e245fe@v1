@@ -1,0 +1,146 @@
+---
+phase: 6
+title: "Dashboard Pages (5 new pages)"
+status: pending
+priority: P2
+effort: "3d"
+dependencies: [5]
+---
+
+# Phase 6: Dashboard Pages (5 new pages)
+
+## Overview
+
+Add 5 new pages to Next.js dashboard: Cost Analytics, Provenance, Budget Management, Quality Metrics, Compliance Reports. Each page consumes the new API endpoints from Phase 5.
+
+## Requirements
+
+- Functional: 5 new pages accessible from sidebar, data fetched from cloud API, charts/tables render correctly, responsive layout
+- Non-functional: `npm run build` passes, pages load <2s, consistent with existing dashboard design patterns
+
+## Architecture
+
+```
+Dashboard (Next.js)
+├── /cost         — Cost-per-PR, per-dev, per-model charts
+├── /provenance   — AI vs Human breakdown, model distribution, blame view
+├── /budget       — Policy list, spend-vs-limit bars, alert config
+├── /quality      — Gate pass/fail rates, finding trends, hallucination counts
+└── /compliance   — Generate + download SLSA/CycloneDX/SOC2 reports
+```
+
+## Related Code Files
+
+- Create: `dashboard/src/app/cost/page.tsx` — Cost Analytics
+- Create: `dashboard/src/app/provenance/page.tsx` — Provenance View
+- Create: `dashboard/src/app/budget/page.tsx` — Budget Management
+- Create: `dashboard/src/app/quality/page.tsx` — Quality Metrics
+- Create: `dashboard/src/app/compliance/page.tsx` — Compliance Reports
+- Modify: `dashboard/src/app/layout.tsx` — add 5 nav links to sidebar (lines 62-68)
+- Modify: `dashboard/src/lib/api.ts` — add fetch functions for new endpoints
+
+## Implementation Steps
+
+### TDD Step A: Lock existing dashboard build
+
+1. Run `npm run build` in dashboard/ — verify clean build
+2. Note existing sidebar items (Overview, Projects, Waste, ROI, Security, Billing, Settings)
+3. Note existing API patterns in `api.ts` — fetch wrapper, error handling, type definitions
+
+### TDD Step B: Write tests for NEW behavior (red)
+
+4. Add `dashboard/src/app/cost/__tests__/page.test.tsx`:
+   - `renders cost page with PR table` — mock API, verify table headers (PR, Cost, Model, Date)
+   - `renders cost chart` — verify chart component renders
+5. Add `dashboard/src/app/provenance/__tests__/page.test.tsx`:
+   - `renders provenance summary` — AI% vs Human% stats
+   - `renders model distribution` — pie chart with model names
+6. Add `dashboard/src/app/quality/__tests__/page.test.tsx`:
+   - `renders gate pass/fail rate` — verify percentage display
+   - `renders findings table` — check_type, severity, count columns
+7. Run `npm test` — new tests FAIL (red, pages don't exist yet)
+
+### TDD Step C: Implement
+
+8. **api.ts** — Add fetch functions:
+   ```typescript
+   export async function fetchCostByPR(project?: string) {
+     return apiFetch<CostByPRResponse>('/v1/cost/by-pr', { project });
+   }
+   export async function fetchProvenance(project?: string, range?: string) {
+     return apiFetch<ProvenanceResponse>('/v1/provenance', { project, range });
+   }
+   export async function fetchBudgetStatus(project?: string) {
+     return apiFetch<BudgetResponse>('/v1/budget/status', { project });
+   }
+   export async function fetchQualitySummary(project?: string) {
+     return apiFetch<QualityResponse>('/v1/quality/summary', { project });
+   }
+   export async function fetchComplianceExport(format: string, range?: string) {
+     return apiFetch<Blob>('/v1/compliance/export', { format, range });
+   }
+   ```
+
+9. **layout.tsx** — Add nav items after existing ones:
+   ```tsx
+   { name: 'Cost', href: '/cost', icon: DollarSignIcon },
+   { name: 'Provenance', href: '/provenance', icon: FingerprintIcon },
+   { name: 'Budget', href: '/budget', icon: WalletIcon },
+   { name: 'Quality', href: '/quality', icon: ShieldCheckIcon },
+   { name: 'Compliance', href: '/compliance', icon: FileCheckIcon },
+   ```
+
+10. **cost/page.tsx**:
+    - Table: PR ref, total cost, model breakdown, date range
+    - Bar chart: cost by model (grouped by PR)
+    - Filters: date range selector (reuse existing component), project filter
+
+11. **provenance/page.tsx**:
+    - Stat cards: total files, AI-generated %, human %, mixed %
+    - Pie chart: contributor type distribution
+    - Pie chart: model usage distribution
+    - Table: recent provenance records (file, model, contributor, timestamp)
+
+12. **budget/page.tsx**:
+    - Cards: per-policy spend vs limit with progress bars
+    - Color coding: green (<75%), yellow (75-99%), red (100%+)
+    - Table: governance events (policy, action, reason, timestamp)
+
+13. **quality/page.tsx**:
+    - Stat card: gate pass rate (%)
+    - Bar chart: findings by check_type (dependency, vulnerability, license)
+    - Severity breakdown: critical/high/medium/low counts
+    - Table: recent findings (file, type, severity, finding text, blocked)
+
+14. **compliance/page.tsx**:
+    - Three export buttons: SLSA, CycloneDX, SOC 2
+    - Date range selector
+    - Download triggers fetch + file download
+    - Status display: last export timestamp, record count
+
+### TDD Step D: Verify
+
+15. Run `npm run build` — clean build with all new pages
+16. Run `npm test` — all tests pass
+17. Manual test: navigate to each new page in browser, verify data renders
+18. Manual test: compliance page download buttons produce valid files
+
+## Success Criteria
+
+- [ ] 5 new pages render correctly
+- [ ] Sidebar shows all 5 new nav items
+- [ ] Cost page shows per-PR breakdown
+- [ ] Provenance page shows AI vs Human stats
+- [ ] Budget page shows spend-vs-limit bars
+- [ ] Quality page shows gate pass/fail rate
+- [ ] Compliance page exports SLSA/CycloneDX/SOC2
+- [ ] `npm run build` passes
+- [ ] Consistent with existing dashboard design
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|---|---|
+| API not ready (Phase 5 incomplete) | Use mock data for initial development. Wire real API when Phase 5 ships. |
+| Chart library mismatch | Use same charting approach as existing dashboard (check page.tsx for pattern). |
+| New pages break existing layout | Test full sidebar + navigation before committing. |

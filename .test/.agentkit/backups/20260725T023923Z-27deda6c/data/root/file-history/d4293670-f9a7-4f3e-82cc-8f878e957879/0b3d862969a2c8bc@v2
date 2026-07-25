@@ -1,0 +1,50 @@
+# CODEFLOW Phase 1: Proto Schema + Provenance Core — Shipped
+
+**Date:** 2026-06-07
+**Repo:** `D:/code/invesments/tools_decisions/rtk-analysis/`
+**Plan:** `plans/260603-codeflow-ai-cost-intelligence-engine/phase-01-foundation-proto-schema-provenance-core.md`
+
+## What shipped
+
+Extended RTK (Rust Token Killer) with 4 new core modules + 1 CLI command for AI code provenance tracking:
+
+| Module | Purpose | Tests |
+|--------|---------|-------|
+| `proto/events.proto` + `core/proto.rs` | Protobuf event schema (7 event types) via prost-build | compile-time |
+| `core/content_hash.rs` | blake3 file hashing | 5 |
+| `core/attestation.rs` | Ed25519 key management, sign/verify, atomic key creation | 5 |
+| `core/provenance.rs` | ProvenanceRecord + SQLite store + snapshot diffing | 7 |
+| `core/agent_trace.rs` | Agent Trace v0.1.0 JSON export | 2 |
+| `cmds/codeflow/blame_cmd.rs` | `rtk blame <file>` — line-by-line AI attribution | via integration |
+| `hooks/hook_cmd.rs` (extended) | Provenance capture via diff-on-next-PreToolUse | via integration |
+
+**Total: 18 new tests, 2012 passing, 0 failed, 0 regressions.**
+
+## Key design decisions
+
+1. **Separate provenance.db** — not extending tracking.db. Same WAL pattern but isolated failure domain.
+2. **diff-on-next-PreToolUse** — PostToolUse hooks don't exist in any agent protocol. Each PreToolUse compares working tree against last snapshot stored in SQLite.
+3. **mtime pre-filter** — only hash files modified in last 30s. Keeps hook latency under target.
+4. **RTK_PROVENANCE=0** — opt-out env var for users who don't want provenance capture.
+5. **model_id defaults to "unknown"** — hook JSON has no model_id field. Enriched retroactively from ccusage via `rtk blame --enrich`.
+6. **Atomic key creation** — `OpenOptions::create_new(true)` prevents TOCTOU race on Ed25519 key generation.
+
+## Build environment lessons
+
+- MinGW toolchain needs explicit PATH to `/c/msys64/mingw64/bin` on Windows
+- build.rs must detect TARGET to switch linker flags (`/STACK:` for MSVC vs `-Wl,--stack,` for GNU)
+- Windows Application Control blocks test binaries from default cargo target dir — use `CARGO_TARGET_DIR="$TEMP/rtk-test-target"`
+- Project uses `warnings = "deny"` — every unused import/function is a build failure
+
+## Code review findings (all fixed)
+
+- **C2 (critical):** `truncate_str` byte-slicing panics on multi-byte UTF-8. Fixed with `char_indices()`.
+- **H1 (high):** `provenance_snapshots` table missing UNIQUE on file_path — unbounded growth. Fixed.
+- **H2/H3 (high):** git ls-files + full hash on every hook call violates latency target. Fixed with mtime pre-filter.
+- **H4 (high):** "blame" missing from RTK_META_COMMANDS — would fall through to raw execution. Fixed.
+- **M1 (medium):** TOCTOU race in key generation. Fixed with atomic create_new.
+- **M2 (medium):** `std::mem::forget` leaking TempDir in tests. Fixed with tuple return pattern.
+
+## What's next
+
+Phase 2 (Cost Attribution Engine) or Phase 4 (Quality Gate) — both unblocked, can run in parallel.

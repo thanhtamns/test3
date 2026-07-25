@@ -1,0 +1,75 @@
+---
+phase: 5
+title: "Verdict Output Format"
+status: pending
+priority: P2
+effort: "1h"
+dependencies: [1]
+---
+
+# Phase 5: Verdict Output Format
+
+## Overview
+
+Update `stage0.md` Step 7 verdict output to require leverage fields in every model recommendation. Depends on Phase 1 (Mountain Test v24 defines the fields).
+
+## Related Code Files
+
+- Modify: `D:\code\invesments\master_investments\.claude\commands\stage0.md` (Step 7)
+
+## Implementation Steps
+
+1. Locate Step 7 verdict output format in `stage0.md`.
+
+2. Add mandatory leverage fields block to each model's output template:
+
+```markdown
+### Leverage Assessment
+- **Sleep Test (Q4):** YES / NO / PARTIAL
+- **Leverage Class (Q5):** CODE / MEDIA / CAPITAL / LABOR / HYBRID
+- **Asset at M12:** [specific transferable asset description]
+- **Staircase Path:** [if LABOR/HYBRID: month-by-month transition to higher leverage]
+```
+
+3. Add verdict-level leverage summary table:
+
+```markdown
+## Leverage Summary
+| Model | Sleep Test | Leverage | Asset at M12 | Verdict Impact |
+|-------|-----------|----------|-------------|---------------|
+| Model 1 | YES/NO/PARTIAL | CODE/MEDIA/etc | description | verdict class |
+```
+
+4. Add hard cap enforcement note:
+```
+ENFORCEMENT: Any model with Q4=NO + Q5=LABOR MUST be classified SIDE_HUSTLE regardless of Q1-Q3 results.
+HARD CAP — no override, no exception.
+Rationale: labor without sleep = job, not business.
+```
+
+5. Update case JSON schema to include nullable leverage fields:
+```json
+{
+  "leverage": {
+    "sleep_test": "YES|NO|PARTIAL",
+    "leverage_class": "CODE|MEDIA|CAPITAL|LABOR|HYBRID",
+    "asset_at_m12": "string or null",
+    "staircase_path": "string or null"
+  }
+}
+```
+
+## Success Criteria
+
+- [ ] Every model has Leverage Assessment section in output
+- [ ] Verdict-level Leverage Summary table present
+- [ ] Hard cap enforcement note present
+- [ ] Case JSON schema includes nullable leverage fields
+- [ ] SIDE_HUSTLE_WITH_STAIRCASE documented in output format
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|------|-----------|
+| LLM forgets leverage fields | Audit schema Phase 3 catches via s0_sleep_test critical check |
+| Output length increase | ~100 words per model. Acceptable. |

@@ -1,0 +1,181 @@
+package waste
+
+import (
+	"fmt"
+	"time"
+)
+
+type Event struct {
+	EventID     string
+	SessionID   string
+	TenantID    string
+	ProjectDir  string
+	Command     string
+	EventType   string
+	ContentHash string
+	InputTokens uint64
+	Timestamp   time.Time
+}
+
+type Finding struct {
+	TenantID     string
+	SessionID    string
+	ProjectDir   string
+	PatternType  string
+	Command      string
+	Occurrences  int
+	TokensWasted uint64
+	Suggestion   string
+	Timestamp    time.Time
+}
+
+type SessionEvents struct {
+	SessionID  string
+	TenantID   string
+	ProjectDir string
+	Events     []Event
+}
+
+func Analyze(session SessionEvents) []Finding {
+	var findings []Finding
+	findings = append(findings, detectRedundantCommands(session)...)
+	findings = append(findings, detectReReadWaste(session)...)
+	findings = append(findings, detectBuildLoops(session)...)
+	return findings
+}
+
+func detectRedundantCommands(s SessionEvents) []Finding {
+	type cmdKey struct {
+		command     string
+		contentHash string
+	}
+	counts := make(map[cmdKey]int)
+	tokens := make(map[cmdKey]uint64)
+
+	for _, e := range s.Events {
+		if e.ContentHash == "" {
+			continue
+		}
+		k := cmdKey{command: e.Command, contentHash: e.ContentHash}
+		counts[k]++
+		tokens[k] = e.InputTokens
+	}
+
+	var findings []Finding
+	for k, count := range counts {
+		if count < 2 {
+			continue
+		}
+		redundant := count - 1
+		wasted := tokens[k] * uint64(redundant)
+		findings = append(findings, Finding{
+			TenantID:     s.TenantID,
+			SessionID:    s.SessionID,
+			ProjectDir:   s.ProjectDir,
+			PatternType:  "redundant_command",
+			Command:      k.command,
+			Occurrences:  count,
+			TokensWasted: wasted,
+			Suggestion:   fmt.Sprintf("'%s' ran %dx with identical output — %d runs were redundant (%d tokens wasted)", k.command, count, redundant, wasted),
+			Timestamp:    time.Now(),
+		})
+	}
+	return findings
+}
+
+func detectReReadWaste(s SessionEvents) []Finding {
+	type readKey struct {
+		command string
+	}
+
+	readCounts := make(map[readKey]int)
+	readTokens := make(map[readKey]uint64)
+
+	for _, e := range s.Events {
+		if e.EventType != "dedup" {
+			continue
+		}
+		k := readKey{command: e.Command}
+		readCounts[k]++
+		readTokens[k] = e.InputTokens
+	}
+
+	var findings []Finding
+	for k, count := range readCounts {
+		if count < 3 {
+			continue
+		}
+		redundant := count - 1
+		wasted := readTokens[k] * uint64(redundant)
+		findings = append(findings, Finding{
+			TenantID:     s.TenantID,
+			SessionID:    s.SessionID,
+			ProjectDir:   s.ProjectDir,
+			PatternType:  "re_read_waste",
+			Command:      k.command,
+			Occurrences:  count,
+			TokensWasted: wasted,
+			Suggestion:   fmt.Sprintf("'%s' re-read %dx in one session — consider caching or splitting large files", k.command, count),
+			Timestamp:    time.Now(),
+		})
+	}
+	return findings
+}
+
+func detectBuildLoops(s SessionEvents) []Finding {
+	buildCmds := map[string]bool{
+		"cargo test": true, "cargo build": true,
+		"npm test": true, "npm run build": true,
+		"go test ./...": true, "go build ./...": true,
+		"pytest": true, "tsc": true, "eslint .": true,
+	}
+
+	type streak struct {
+		count  int
+		tokens uint64
+	}
+	streaks := make(map[string]*streak)
+
+	var findings []Finding
+	for _, e := range s.Events {
+		if !buildCmds[e.Command] {
+			for cmd, st := range streaks {
+				if st.count >= 3 {
+					findings = append(findings, buildLoopFinding(s, cmd, st.count, st.tokens))
+				}
+			}
+			streaks = make(map[string]*streak)
+			continue
+		}
+
+		st, ok := streaks[e.Command]
+		if !ok {
+			st = &streak{}
+			streaks[e.Command] = st
+		}
+		st.count++
+		st.tokens += e.InputTokens
+	}
+
+	for cmd, st := range streaks {
+		if st.count >= 3 {
+			findings = append(findings, buildLoopFinding(s, cmd, st.count, st.tokens))
+		}
+	}
+
+	return findings
+}
+
+func buildLoopFinding(s SessionEvents, cmd string, count int, tokens uint64) Finding {
+	return Finding{
+		TenantID:     s.TenantID,
+		SessionID:    s.SessionID,
+		ProjectDir:   s.ProjectDir,
+		PatternType:  "build_loop",
+		Command:      cmd,
+		Occurrences:  count,
+		TokensWasted: tokens / 2,
+		Suggestion:   fmt.Sprintf("'%s' failed %dx in a row — fix root cause before re-running (est. %d tokens wasted)", cmd, count, tokens/2),
+		Timestamp:    time.Now(),
+	}
+}

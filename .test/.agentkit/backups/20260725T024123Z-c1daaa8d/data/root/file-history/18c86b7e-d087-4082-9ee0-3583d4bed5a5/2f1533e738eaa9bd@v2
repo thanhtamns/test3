@@ -1,0 +1,143 @@
+"use client";
+
+import { useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
+
+export default function SettingsPage() {
+  const apiUrl =
+    process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold">Settings</h1>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>API Configuration</CardTitle>
+          <CardDescription>
+            Connect your CODEFLOW CLI to the cloud dashboard
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <label className="text-sm font-medium">API Endpoint</label>
+            <div className="mt-1 flex items-center gap-2">
+              <code className="bg-muted px-3 py-2 rounded text-sm flex-1">
+                {apiUrl}
+              </code>
+              <Badge variant="outline">POST /v1/events</Badge>
+            </div>
+          </div>
+
+          <Separator />
+
+          <ApiKeySection />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>CLI Installation</CardTitle>
+          <CardDescription>
+            Set up CODEFLOW on your machine
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Step n={1} title="Install the CLI">
+            <code className="bg-muted px-3 py-2 rounded text-sm block">
+              cargo install codeflow
+            </code>
+          </Step>
+          <Step n={2} title="Install hooks for Claude Code">
+            <code className="bg-muted px-3 py-2 rounded text-sm block">
+              codeflow init
+            </code>
+          </Step>
+          <Step n={3} title="Verify it works">
+            <code className="bg-muted px-3 py-2 rounded text-sm block">
+              codeflow wrap git status && codeflow stats
+            </code>
+          </Step>
+          <Step n={4} title="Sync to cloud (optional)">
+            <code className="bg-muted px-3 py-2 rounded text-sm block">
+              CODEFLOW_API_URL={apiUrl} codeflow sync --once
+            </code>
+          </Step>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>About</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <span className="text-muted-foreground">Version</span>
+            <span>0.1.0</span>
+            <span className="text-muted-foreground">Plan</span>
+            <span>
+              <Badge>Free</Badge>
+            </span>
+            <span className="text-muted-foreground">Data Retention</span>
+            <span>90 days</span>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function ApiKeySection() {
+  const [revealed, setRevealed] = useState(false);
+  const apiKey = "cf_dev_demo_key_12345";
+
+  return (
+    <div>
+      <label className="text-sm font-medium">API Key</label>
+      <div className="mt-1 flex items-center gap-2">
+        <code className="bg-muted px-3 py-2 rounded text-sm flex-1 font-mono">
+          {revealed ? apiKey : "cf_••••••••••••••••••"}
+        </code>
+        <button
+          onClick={() => setRevealed(!revealed)}
+          className="text-sm text-muted-foreground hover:text-foreground"
+        >
+          {revealed ? "Hide" : "Reveal"}
+        </button>
+      </div>
+      <p className="text-xs text-muted-foreground mt-1">
+        Set as CODEFLOW_API_KEY environment variable in your CLI
+      </p>
+    </div>
+  );
+}
+
+function Step({
+  n,
+  title,
+  children,
+}: {
+  n: number;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-1">
+        <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">
+          {n}
+        </span>
+        <span className="text-sm font-medium">{title}</span>
+      </div>
+      <div className="ml-8">{children}</div>
+    </div>
+  );
+}

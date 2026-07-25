@@ -1,0 +1,370 @@
+"""
+Tests for IntelligenceController — the hypothesis-driven search brain.
+Uses mock research_fn to verify the loop logic without real web calls.
+"""
+
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
+
+from intelligence.controller.money_flow_graph import (
+    MoneyFlowGraph, GraphNode, GraphEdge, Hypothesis,
+    HYPOTHESIS_CONFIRMED, HYPOTHESIS_KILLED, HYPOTHESIS_UNTESTED,
+)
+from intelligence.controller.seeder import Seeder, _normalize_amount
+from intelligence.controller.hypothesis_generator import HypothesisGenerator
+from intelligence.controller.search_director import SearchDirector
+from intelligence.controller.graph_updater import GraphUpdater
+from intelligence.controller.completion_judge import CompletionJudge, VERDICT_COMPLETE, VERDICT_CONTINUE, VERDICT_INCOMPLETE
+from intelligence.controller.intelligence_controller import IntelligenceController
+
+
+# --- Mock research function ---
+MOCK_RESPONSES = {
+    "who_pays": 'SMEs pay $5,000-15,000/year for GDPR compliance. Deloitte Corp charges €400/hr. DataGuard GmbH offers automated compliance for $200/mo. According to Gartner, the market is worth $3.2 billion.',
+    "market_size": 'The global GDPR compliance market size was valued at $3.2 billion in 2024, growing at 25% CAGR. Over 67% of fines target SMEs with fewer than 500 employees.',
+    "chain_actors": 'Key providers include Deloitte, PwC, KPMG (Big4 consulting), OneTrust Platform, DataGuard GmbH, and boutique firms. SME customers typically find consultants via referral (60%) or Google search (25%).',
+    "verify": 'DataGuard GmbH reported 2,500 customers and €25M ARR in 2024. The company provides automated GDPR compliance to mid-market firms.',
+    "broker": 'No organized broker or referral marketplace exists for GDPR consulting. Most referrals happen informally through accountants and lawyers.',
+    "default": 'The compliance consulting market continues to grow as regulations increase globally.',
+}
+
+def mock_research(query: str) -> str:
+    q = query.lower()
+    if "who pays" in q or "pricing" in q or "cost" in q:
+        return MOCK_RESPONSES["who_pays"]
+    if "market size" in q or "worth" in q or "billion" in q:
+        return MOCK_RESPONSES["market_size"]
+    if "companies" in q or "providers" in q or "list" in q:
+        return MOCK_RESPONSES["chain_actors"]
+    if "company" in q or "revenue" in q or "employees" in q:
+        return MOCK_RESPONSES["verify"]
+    if "broker" in q or "intermediary" in q or "referral" in q:
+        return MOCK_RESPONSES["broker"]
+    return MOCK_RESPONSES["default"]
+
+
+def mock_webfetch(query: str) -> str:
+    return f"FULL PAGE CONTENT for: {query}. " + mock_research(query) * 3
+
+
+# --- Test MoneyFlowGraph ---
+
+def test_graph_add_node():
+    g = MoneyFlowGraph()
+    n1 = g.add_node("Deloitte", "PROVIDER", monthly_volume=50000, confidence=0.8)
+    assert n1.entity == "Deloitte"
+    assert n1.entity_type == "PROVIDER"
+    assert len(g.nodes) == 1
+
+    n2 = g.add_node("Deloitte", "PROVIDER", confidence=0.9)
+    assert len(g.nodes) == 1
+    assert n2.confidence == 0.9
+
+
+def test_graph_add_edge():
+    g = MoneyFlowGraph()
+    g.add_node("SME Corp", "PAYER")
+    g.add_node("Deloitte", "PROVIDER")
+    e = g.add_edge("SME Corp", "Deloitte", "PAYS", amount_per_tx=5000, volume_monthly=10, confidence=0.7)
+    assert e.monthly_value == 50000
+    assert len(g.edges) == 1
+
+
+def test_graph_auto_creates_nodes():
+    g = MoneyFlowGraph()
+    g.add_edge("Buyer X", "Seller Y", "PAYS")
+    assert len(g.nodes) == 2
+    assert any(n.entity == "Buyer X" for n in g.nodes.values())
+
+
+def test_graph_find_gaps():
+    g = MoneyFlowGraph()
+    g.add_node("SME Corp", "PAYER", confidence=0.3)
+    g.add_node("Provider A", "PROVIDER")
+    gaps = g.find_gaps()
+    gap_types = [gap["type"] for gap in gaps]
+    assert "low_confidence_node" in gap_types
+    assert "payer_no_outflow" in gap_types
+    assert "provider_no_inflow" in gap_types
+
+
+def test_graph_bottleneck_positions():
+    g = MoneyFlowGraph()
+    g.add_node("Buyer1", "PAYER")
+    g.add_node("Buyer2", "PAYER")
+    g.add_node("Hub", "BROKER")
+    g.add_node("Seller1", "PROVIDER")
+    g.add_node("Seller2", "PROVIDER")
+    g.add_edge("Buyer1", "Hub", "PAYS", amount_per_tx=1000, volume_monthly=10, confidence=0.8)
+    g.add_edge("Buyer2", "Hub", "PAYS", amount_per_tx=2000, volume_monthly=5, confidence=0.8)
+    g.add_edge("Hub", "Seller1", "PAYS", amount_per_tx=800, volume_monthly=8, confidence=0.8)
+    g.add_edge("Hub", "Seller2", "PAYS", amount_per_tx=1500, volume_monthly=7, confidence=0.8)
+    positions = g.bottleneck_positions()
+    hub_positions = [p for p in positions if p["type"] == "HUB"]
+    assert len(hub_positions) >= 1
+
+
+def test_graph_serialization():
+    g = MoneyFlowGraph()
+    g.add_node("Test", "PAYER")
+    g.add_edge("Test", "Other", "PAYS")
+    g.add_hypothesis("test hypothesis", "test query")
+    d = g.to_dict()
+    assert "nodes" in d
+    assert "edges" in d
+    assert "hypotheses" in d
+    assert "stats" in d
+    j = g.to_json()
+    parsed = json.loads(j)
+    assert parsed["stats"]["node_count"] == 2
+
+
+# --- Test Seeder ---
+
+def test_seeder_creates_graph():
+    s = Seeder(research_fn=mock_research)
+    g = s.seed("GDPR compliance for SMEs")
+    assert len(g.nodes) >= 2
+    assert g.overall_confidence() > 0
+
+
+def test_normalize_amount():
+    assert _normalize_amount("$3.2 billion") == 3.2e9
+    assert _normalize_amount("$200M") == 200e6
+    assert _normalize_amount("25K") == 25000
+    assert _normalize_amount("$5,000") == 5000
+
+
+# --- Test HypothesisGenerator ---
+
+def test_hypothesis_from_gaps():
+    g = MoneyFlowGraph()
+    g.add_node("SME", "PAYER", confidence=0.3)
+    g.add_node("Provider", "PROVIDER")
+    gen = HypothesisGenerator()
+    hypotheses = gen.generate(g, "compliance", cycle=0)
+    assert len(hypotheses) > 0
+    assert all(h.status == HYPOTHESIS_UNTESTED for h in hypotheses)
+
+
+def test_structural_hypothesis_no_broker():
+    g = MoneyFlowGraph()
+    g.add_node("Buyer", "PAYER")
+    g.add_node("Seller", "PROVIDER")
+    g.add_edge("Buyer", "Seller", "PAYS")
+    gen = HypothesisGenerator()
+    hypotheses = gen.generate(g, "compliance", cycle=0)
+    statements = [h.statement for h in hypotheses]
+    assert any("broker" in s.lower() for s in statements)
+
+
+# --- Test SearchDirector ---
+
+def test_search_director_plans():
+    g = MoneyFlowGraph()
+    g.add_hypothesis("test", "test query", priority=0.9)
+    g.add_hypothesis("test2", "test query 2", priority=0.5)
+    sd = SearchDirector(research_fn=mock_research)
+    tasks = sd.plan_searches(g, cycle=0)
+    assert len(tasks) == 2
+    assert tasks[0].priority >= tasks[1].priority
+
+
+def test_search_director_budget():
+    sd = SearchDirector(research_fn=mock_research)
+    assert sd.budget_remaining == 12
+    g = MoneyFlowGraph()
+    for i in range(15):
+        g.add_hypothesis(f"h{i}", f"q{i}", priority=0.5)
+    tasks = sd.plan_searches(g, cycle=0)
+    assert len(tasks) <= 3  # MAX_TESTS_PER_CYCLE
+
+
+def test_search_director_executes():
+    sd = SearchDirector(research_fn=mock_research)
+    g = MoneyFlowGraph()
+    g.add_hypothesis("test", "GDPR providers list", priority=0.5)
+    tasks = sd.plan_searches(g, cycle=0)
+    results = sd.execute(tasks)
+    assert len(results) == 1
+    assert results[0].success
+    assert results[0].content_length > 50
+
+
+# --- Test GraphUpdater ---
+
+def test_graph_updater_confirms():
+    g = MoneyFlowGraph()
+    h = g.add_hypothesis("DataGuard exists", "DataGuard GmbH revenue", priority=0.8)
+    updater = GraphUpdater()
+    changes = updater.update_from_result(g, h, MOCK_RESPONSES["verify"])
+    assert h.status == HYPOTHESIS_CONFIRMED
+    assert changes["nodes_added"] >= 0 or changes["entities_found"] >= 0
+
+
+def test_graph_updater_empty_response():
+    g = MoneyFlowGraph()
+    h = g.add_hypothesis("test", "test", priority=0.5)
+    updater = GraphUpdater()
+    changes = updater.update_from_result(g, h, "")
+    assert h.status == "INCONCLUSIVE"
+
+
+# --- Test CompletionJudge ---
+
+def test_judge_continues_when_insufficient():
+    g = MoneyFlowGraph()
+    g.add_node("A", "PAYER")
+    g.add_hypothesis("test", "test")
+    judge = CompletionJudge()
+    v = judge.judge(g, cycle=1, budget_remaining=10)
+    assert v.verdict == VERDICT_CONTINUE
+
+
+def test_judge_completes_when_sufficient():
+    g = MoneyFlowGraph()
+    for i in range(5):
+        g.add_node(f"Entity{i}", "PAYER", confidence=0.8)
+    for i in range(4):
+        g.add_edge(f"Entity{i}", f"Entity{i+1}", "PAYS", confidence=0.8)
+    judge = CompletionJudge()
+    v = judge.judge(g, cycle=2, budget_remaining=5)
+    assert v.verdict == VERDICT_COMPLETE
+
+
+def test_judge_incomplete_on_budget_exhaustion():
+    g = MoneyFlowGraph()
+    g.add_node("A", "PAYER")
+    judge = CompletionJudge()
+    v = judge.judge(g, cycle=1, budget_remaining=0)
+    assert v.verdict == VERDICT_INCOMPLETE
+
+
+# --- Test Full Controller ---
+
+def test_controller_full_run():
+    logs = []
+    controller = IntelligenceController(
+        research_fn=mock_research,
+        webfetch_fn=mock_webfetch,
+        progress_fn=lambda msg: logs.append(msg),
+        max_cycles=3,
+    )
+    result = controller.run("GDPR compliance for SMEs")
+    assert result.cycles_run >= 1
+    assert result.total_searches >= 3
+    assert len(result.graph.nodes) >= 3
+    assert result.final_verdict in ("COMPLETE", "INCOMPLETE", "no_hypotheses", "quality_threshold_met", "no_more_questions", "max_cycles_reached_but_sufficient", "budget_exhausted_but_sufficient", "budget_exhausted", "max_cycles_exhausted", "more_hypotheses_to_test")
+    assert len(logs) > 0
+
+    summary = result.summary()
+    assert "Intelligence Result" in summary
+    assert "nodes" in summary.lower() or "Nodes" in summary
+
+
+def test_controller_produces_positions():
+    controller = IntelligenceController(
+        research_fn=mock_research,
+        max_cycles=3,
+    )
+    result = controller.run("GDPR compliance for SMEs")
+    d = result.to_dict()
+    assert "graph" in d
+    assert "bottleneck_positions" in d
+    assert "cycle_logs" in d
+    assert len(d["cycle_logs"]) >= 1
+
+
+# --- Test INCONCLUSIVE Retry ---
+
+def test_search_director_narrow_query():
+    """narrow_query rewrites with different scope."""
+    from intelligence.controller.search_director import SearchTask
+    sd = SearchDirector(research_fn=mock_research)
+    g = MoneyFlowGraph()
+    h = g.add_hypothesis("Test DataGuard", '"DataGuard" revenue annual', priority=0.8)
+    task = SearchTask(hypothesis=h, query='"DataGuard" revenue annual', method="DDG", priority=0.8)
+    narrowed = sd.narrow_query(task)
+    assert narrowed.query != task.query
+    assert "DataGuard" in narrowed.query
+    assert narrowed.priority < task.priority
+
+
+def test_search_director_narrow_query_no_quotes():
+    """narrow_query handles queries without quoted entities."""
+    from intelligence.controller.search_director import SearchTask
+    sd = SearchDirector(research_fn=mock_research)
+    g = MoneyFlowGraph()
+    h = g.add_hypothesis("test", "GDPR market overview", priority=0.6)
+    task = SearchTask(hypothesis=h, query="GDPR market overview", method="DDG", priority=0.6)
+    narrowed = sd.narrow_query(task)
+    assert narrowed.query != task.query
+    assert "GDPR market overview" in narrowed.query
+
+
+def test_controller_retries_inconclusive():
+    """Controller retries INCONCLUSIVE hypotheses with narrowed queries."""
+    call_log = []
+
+    def tracking_research(query: str) -> str:
+        call_log.append(query)
+        # Seed queries (first 3) succeed to bootstrap graph
+        if len(call_log) <= 3:
+            return MOCK_RESPONSES["who_pays"]
+        # Cycle queries 4-6 return too-short response → triggers INCONCLUSIVE
+        if len(call_log) <= 6:
+            return "x"  # len < 30 → INCONCLUSIVE
+        # Retries (7+) succeed
+        return MOCK_RESPONSES["verify"]
+
+    controller = IntelligenceController(
+        research_fn=tracking_research,
+        max_cycles=2,
+    )
+    result = controller.run("GDPR compliance for SMEs")
+    # Seed(3) + at least 1 cycle search + at least 1 retry = >4
+    assert len(call_log) > 4, f"Expected retries, got {len(call_log)} calls: {call_log}"
+    # Verify some queries are narrowed (contain narrowing suffixes)
+    retry_queries = call_log[6:]  # After seed(3) + first cycle attempts(up to 3)
+    if retry_queries:
+        assert any("pricing" in q or "company" in q or "market share" in q or "founded" in q for q in retry_queries)
+
+
+def test_controller_no_retry_when_budget_exhausted():
+    """Controller skips retry when budget is 0."""
+    call_count = [0]
+
+    def counting_research(query: str) -> str:
+        call_count[0] += 1
+        return ""  # Always empty → INCONCLUSIVE
+
+    controller = IntelligenceController(
+        research_fn=counting_research,
+        max_cycles=5,
+    )
+    result = controller.run("test budget limit")
+    # With budget=12 test + 3 seed, retries should not exceed total budget
+    # 3 seed + 12 test budget max + up to 12 retries sharing same budget
+    assert call_count[0] <= 30  # 15 original max + 15 retry max (generous bound)
+    assert result.final_verdict in ("INCOMPLETE", "budget_exhausted", "max_cycles_exhausted", "no_hypotheses")
+
+
+if __name__ == "__main__":
+    tests = [fn for name, fn in sorted(globals().items()) if name.startswith("test_")]
+    passed = 0
+    failed = 0
+    for test in tests:
+        try:
+            test()
+            print(f"  PASS: {test.__name__}")
+            passed += 1
+        except Exception as e:
+            print(f"  FAIL: {test.__name__}: {e}")
+            failed += 1
+    print(f"\n{'='*50}")
+    print(f"Results: {passed} passed, {failed} failed, {passed+failed} total")
+    if failed > 0:
+        sys.exit(1)

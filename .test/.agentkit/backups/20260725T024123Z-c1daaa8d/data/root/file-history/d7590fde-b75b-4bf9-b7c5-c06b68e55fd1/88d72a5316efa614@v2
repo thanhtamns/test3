@@ -1,0 +1,87 @@
+---
+phase: 3
+title: "Audit Schema Leverage Group"
+status: pending
+priority: P1
+effort: "1h"
+dependencies: []
+---
+
+# Phase 3: Audit Schema Leverage Group
+
+## Overview
+
+Add `leverage` dimension group (weight 0.15) to `audit-schemas/stage0.json` with 4 checks. Rebalance existing weights to sum to 1.0.
+
+## Related Code Files
+
+- Modify: `D:\code\invesments\master_investments\.claude\hooks\lib\audit-schemas\stage0.json`
+
+## Implementation Steps
+
+1. Add new dimension group `leverage` after `domain_specific` group. Weight: 0.15.
+
+```json
+"leverage": {
+  "weight": 0.15,
+  "checks": [
+    {
+      "id": "s0_sleep_test",
+      "rule": "contains('Q4[_-]?SLEEP|sleep test|revenue continues when founder|founder does zero work')",
+      "severity": "critical",
+      "description": "Missing sleep test — every model MUST answer whether revenue continues when founder stops working",
+      "fix": "Add Q4-SLEEP answer: YES (recurring/automated), PARTIAL (<5h/week maintenance), or NO (revenue stops). This is the single most important business model quality signal."
+    },
+    {
+      "id": "s0_leverage_class",
+      "rule": "contains('Q5[_-]?LEVERAGE|leverage.*(CODE|MEDIA|CAPITAL|LABOR|HYBRID)|Naval hierarchy')",
+      "severity": "major",
+      "description": "Missing leverage classification — must classify by Naval hierarchy (CODE > MEDIA > CAPITAL > LABOR)",
+      "fix": "Add Q5-LEVERAGE: CODE (software/SaaS), MEDIA (content/audience), CAPITAL (investment), LABOR (service/consulting), or HYBRID (labor with transition path)."
+    },
+    {
+      "id": "s0_asset_at_m12",
+      "rule": "contains('asset at M12|founder owns after|owns at month 12|asset after 12 months|sellable asset|transferable asset')",
+      "severity": "major",
+      "description": "No asset identification at month 12 — must specify what founder OWNS after 12 months that is sellable without the founder",
+      "fix": "Add 'Asset at M12' section: what transferable/sellable asset exists after 12 months? (codebase, content library, subscriber list, brand, dataset, process IP). If answer is 'nothing' or 'client relationships' → model is a job."
+    },
+    {
+      "id": "s0_labor_staircase",
+      "rule": "if_contains('LABOR|labor model|service delivery|consulting|freelanc', then_requires='stair-step|transition path|bootstrap.*product|labor.*to.*(code|media|saas)|upgrade.*leverage')",
+      "severity": "major",
+      "description": "Labor model recommended without transition path — labor-only models are jobs, need explicit staircase to asset/leverage",
+      "fix": "For any LABOR-classified model: add explicit staircase section showing month-by-month transition from labor revenue to code/media/capital leverage. Include: trigger point, target asset, timeline, evidence of similar transitions."
+    }
+  ]
+}
+```
+
+2. Rebalance existing weights (total must = 1.0):
+
+| Group | Old Weight | New Weight |
+|-------|-----------|-----------|
+| completeness | 0.20 | 0.15 |
+| evidence | 0.25 | 0.20 |
+| depth | 0.25 | 0.20 |
+| consistency | 0.15 | 0.15 |
+| domain_specific | 0.15 | 0.15 |
+| leverage | — | 0.15 |
+| **Total** | **1.00** | **1.00** |
+
+3. `pass_criteria` unchanged: `"critical": 0, "major": 0`. Sleep test is critical — will block verdicts missing it.
+
+## Success Criteria
+
+- [ ] `leverage` dimension group added with 4 checks
+- [ ] `s0_sleep_test` severity = critical
+- [ ] `s0_leverage_class`, `s0_asset_at_m12`, `s0_labor_staircase` severity = major
+- [ ] Weights rebalanced, sum = 1.0
+- [ ] JSON validates (no syntax errors)
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|------|-----------|
+| `if_contains` rule syntax unsupported | Verify audit hook supports conditional rules. Fallback: standard `contains()` |
+| Critical sleep_test blocks old verdicts | Only applies to new output. Old case JSONs unaffected. |

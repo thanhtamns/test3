@@ -1,0 +1,297 @@
+#!/usr/bin/env python3
+"""Reflexion Writer for V16 Question-Driven Reasoning.
+
+Based on Reflexion (Shinn et al. 2023, NeurIPS).
+Generates verbal reflections on failed predictions.
+
+Input:  --prediction <json_string>
+        --actual <json_string>
+        --trajectory <json_string> (optional)
+Output: Reflection JSON or prompt for external execution
+
+Usage:
+    python reflexion-writer.py --prediction '{"verdict":"GO","confidence":0.75}' \
+                               --actual '{"outcome":"FAILED","reason":"no revenue"}' \
+                               --mode prompt
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+BUFFER_FILE = Path("data/reflexion/buffer.jsonl")
+ARCHIVE_DIR = Path("data/reflexion-archive")
+DELTA_THRESHOLD = 20  # Only generate reflection if delta > 20%
+FIFO_WINDOW = 2  # Keep Ω=2 per category
+
+
+# ---------------------------------------------------------------------------
+# Prompt generation
+# ---------------------------------------------------------------------------
+
+def generate_reflection_prompt(
+    prediction: dict,
+    actual: dict,
+    delta: float,
+    trajectory: dict = None,
+) -> str:
+    """Generate the reflection prompt."""
+
+    pred_str = f"{prediction.get('verdict', 'UNKNOWN')} - {prediction.get('confidence', 0)*100:.0f}% confidence"
+    actual_str = f"{actual.get('outcome', 'UNKNOWN')} - {actual.get('reason', 'no details')}"
+
+    trajectory_text = ""
+    if trajectory:
+        trajectory_text = f"""
+TRAJECTORY (what led to this prediction):
+- Key signals: {trajectory.get('key_signals', 'unknown')}
+- Techniques that agreed: {trajectory.get('techniques_agreeing', 'unknown')}
+- Top risk noted: {trajectory.get('top_risk', 'none noted')}
+"""
+
+    return f"""You are reflecting on a failed prediction to learn from the mistake.
+
+PREDICTION: {pred_str}
+ACTUAL OUTCOME: {actual_str}
+DELTA: {delta:.0f}%
+{trajectory_text}
+Generate a 2-3 sentence reflection that:
+1. Identifies the SPECIFIC mistake in reasoning (not just "I was wrong")
+2. Names what you SHOULD have asked or checked
+3. Provides a reusable structural lesson
+
+Format your response EXACTLY as:
+WHAT_I_THOUGHT: <1 sentence summary of prediction logic>
+WHAT_HAPPENED: <1 sentence of actual outcome>
+WHY_WRONG: <1-2 sentences identifying specific reasoning gap>
+SHOULD_HAVE_ASKED: <1 specific question>
+STRUCTURAL_LESSON: <1 sentence reusable insight>
+"""
+
+
+def parse_reflection_response(response: str) -> dict:
+    """Parse the structured reflection response."""
+    result = {
+        "what_i_thought": "",
+        "what_actually_happened": "",
+        "why_i_was_wrong": "",
+        "question_i_should_have_asked": "",
+        "structural_lesson": "",
+    }
+
+    lines = response.strip().split("\n")
+    for line in lines:
+        line = line.strip()
+        if line.startswith("WHAT_I_THOUGHT:"):
+            result["what_i_thought"] = line[15:].strip()
+        elif line.startswith("WHAT_HAPPENED:"):
+            result["what_actually_happened"] = line[14:].strip()
+        elif line.startswith("WHY_WRONG:"):
+            result["why_i_was_wrong"] = line[10:].strip()
+        elif line.startswith("SHOULD_HAVE_ASKED:"):
+            result["question_i_should_have_asked"] = line[18:].strip()
+        elif line.startswith("STRUCTURAL_LESSON:"):
+            result["structural_lesson"] = line[18:].strip()
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Reflection creation
+# ---------------------------------------------------------------------------
+
+def calculate_delta(prediction: dict, actual: dict) -> float:
+    """Calculate delta between prediction confidence and actual outcome."""
+    confidence = prediction.get("confidence", 0.5)
+
+    # Map outcome to numeric value
+    outcome = actual.get("outcome", "").upper()
+    if outcome in ("SUCCESS", "GO", "VALIDATED"):
+        actual_value = 1.0
+    elif outcome in ("FAILED", "KILL", "ABANDONED"):
+        actual_value = 0.0
+    elif outcome in ("PARTIAL", "CONDITIONAL"):
+        actual_value = 0.5
+    else:
+        actual_value = 0.5
+
+    # For GO predictions, delta = (confidence - actual) * 100
+    # Negative delta means overconfident (predicted GO but failed)
+    verdict = prediction.get("verdict", "").upper()
+    if verdict in ("GO", "STAIRCASE_GO", "CONDITIONAL_GO"):
+        return (actual_value - confidence) * 100
+    elif verdict == "KILL":
+        # For KILL predictions, invert the logic
+        return (confidence - (1 - actual_value)) * 100
+    else:
+        return (actual_value - 0.5) * 100
+
+
+def create_reflection_record(
+    case_id: str,
+    category: str,
+    prediction: dict,
+    actual: dict,
+    reflection: dict,
+) -> dict:
+    """Create a full reflection record."""
+    delta = calculate_delta(prediction, actual)
+
+    pred_str = f"{prediction.get('verdict', 'UNKNOWN')} - {prediction.get('confidence', 0)*100:.0f}% confidence"
+    actual_str = f"{actual.get('outcome', 'UNKNOWN')} - {actual.get('reason', 'no details')}"
+
+    return {
+        "reflection_id": f"ref-{datetime.now().strftime('%y%m%d')}-{uuid.uuid4().hex[:6]}",
+        "case_id": case_id,
+        "category": category,
+        "prediction": pred_str,
+        "actual_outcome": actual_str,
+        "delta": round(delta, 1),
+        "reflection": reflection,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "applied_count": 0,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Storage operations
+# ---------------------------------------------------------------------------
+
+def append_to_buffer(record: dict, buffer_path: Path = BUFFER_FILE) -> None:
+    """Append reflection to buffer JSONL."""
+    buffer_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(buffer_path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record) + "\n")
+
+
+def prune_fifo(category: str, window: int = FIFO_WINDOW, buffer_path: Path = BUFFER_FILE) -> int:
+    """Prune to keep only `window` most recent reflections per category."""
+    if not buffer_path.exists():
+        return 0
+
+    # Read all records
+    records = []
+    with open(buffer_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                try:
+                    records.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+
+    # Separate by category
+    category_records = [r for r in records if r.get("category") == category]
+    other_records = [r for r in records if r.get("category") != category]
+
+    # Sort by timestamp descending, keep only `window` most recent
+    category_records.sort(key=lambda r: r.get("timestamp", ""), reverse=True)
+    kept = category_records[:window]
+    archived = category_records[window:]
+
+    # Archive pruned records
+    if archived:
+        ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+        archive_file = ARCHIVE_DIR / f"pruned-{category}-{datetime.now().strftime('%Y%m%d')}.jsonl"
+        with open(archive_file, "a", encoding="utf-8") as f:
+            for r in archived:
+                f.write(json.dumps(r) + "\n")
+
+    # Rewrite buffer with remaining records
+    all_kept = other_records + kept
+    with open(buffer_path, "w", encoding="utf-8") as f:
+        for r in all_kept:
+            f.write(json.dumps(r) + "\n")
+
+    return len(archived)
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Reflexion Writer for V16")
+    parser.add_argument("--prediction", type=str, required=True, help="Prediction JSON")
+    parser.add_argument("--actual", type=str, required=True, help="Actual outcome JSON")
+    parser.add_argument("--trajectory", type=str, help="Trajectory JSON (optional)")
+    parser.add_argument("--case-id", type=str, default="unknown", help="Case ID")
+    parser.add_argument("--category", type=str, default="unknown", help="Opportunity category")
+    parser.add_argument("--mode", type=str, default="prompt", choices=["prompt", "parse"],
+                        help="Mode: 'prompt' generates prompt, 'parse' parses response")
+    parser.add_argument("--response", type=str, help="Response to parse (for mode=parse)")
+    parser.add_argument("--save", action="store_true", help="Save to buffer after parsing")
+    args = parser.parse_args()
+
+    # Parse inputs
+    try:
+        prediction = json.loads(args.prediction)
+        actual = json.loads(args.actual)
+        trajectory = json.loads(args.trajectory) if args.trajectory else None
+    except json.JSONDecodeError as e:
+        print(json.dumps({"error": f"Invalid JSON: {e}"}), file=sys.stderr)
+        return 1
+
+    # Calculate delta
+    delta = calculate_delta(prediction, actual)
+
+    # Check threshold
+    if abs(delta) <= DELTA_THRESHOLD:
+        print(json.dumps({
+            "skip": True,
+            "reason": f"Delta {delta:.1f}% below threshold {DELTA_THRESHOLD}%",
+            "delta": round(delta, 1),
+        }))
+        return 0
+
+    if args.mode == "prompt":
+        # Generate prompt for external execution
+        prompt = generate_reflection_prompt(prediction, actual, delta, trajectory)
+        print(json.dumps({
+            "mode": "prompt",
+            "delta": round(delta, 1),
+            "threshold_met": True,
+            "prompt": prompt,
+        }, indent=2))
+        return 0
+
+    elif args.mode == "parse":
+        if not args.response:
+            print(json.dumps({"error": "Mode 'parse' requires --response"}), file=sys.stderr)
+            return 1
+
+        # Parse the response
+        reflection = parse_reflection_response(args.response)
+
+        # Create full record
+        record = create_reflection_record(
+            case_id=args.case_id,
+            category=args.category,
+            prediction=prediction,
+            actual=actual,
+            reflection=reflection,
+        )
+
+        if args.save:
+            append_to_buffer(record)
+            pruned = prune_fifo(args.category)
+            record["saved"] = True
+            record["pruned_count"] = pruned
+
+        print(json.dumps(record, indent=2))
+        return 0
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

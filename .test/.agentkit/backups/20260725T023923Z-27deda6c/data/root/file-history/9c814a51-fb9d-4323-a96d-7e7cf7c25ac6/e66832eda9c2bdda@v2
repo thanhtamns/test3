@@ -1,0 +1,67 @@
+---
+phase: 6
+title: "Calibration + Integration Testing"
+status: pending
+priority: P2
+effort: "1d"
+dependencies: [5]
+---
+
+# Phase 6: Calibration + Integration Testing
+
+## Overview
+
+End-to-end calibration: tune dimension weights, query limits, confidence thresholds, satiation criteria. Integration tests verifying the full pipeline from big question to synthesized answer.
+
+## Requirements
+
+- Functional: Calibrate default dimension weights from test queries
+- Functional: Tune satiation thresholds (when to stop querying)
+- Functional: Integration test: /think produces answer with ≥80% LOCAL content
+- Functional: Integration test: Stage0 Step 1.5 enriches case without blocking
+- Non-functional: Calibration config stored in JSON (editable without code changes)
+
+## Related Code Files
+
+- Create: `.claude/lib/intelligence/decomposition/calibration_config.py`
+- Create: `.claude/lib/intelligence/decomposition/tests/test_integration.py`
+- Modify: `.claude/lib/intelligence/decomposition/decomposer.py` — load calibration
+- Read: `.claude/lib/intelligence/hunger/calibration_config.py` — reuse pattern
+
+## Implementation Steps
+
+1. Create `calibration_config.py`:
+   - Reuse pattern from hunger engine's CalibrationConfig
+   - Settings: max_queries_per_dimension (3-5), max_total_queries (40), min_confidence_threshold (0.5), satiation_coverage (0.9), cache_freshness_days (180), weight_evolution_cap (0.1)
+   - Load/save from `.claude/data/decomposition/calibration.json`
+
+2. Create `tests/test_integration.py`:
+   - Test 1: Full /think pipeline with mock LLM → verify ≥10 facts stored
+   - Test 2: Stage0 bridge with mock case → verify case enriched
+   - Test 3: Compound learning — run same topic twice → verify fewer queries second time
+   - Test 4: Template evolution — run 5 times → verify weights changed
+   - Test 5: Zone tag distribution — verify [K]/[T]/[?] counts in output
+   - Test 6: Satiation — verify decomposition stops when coverage ≥0.9
+   - Test 7: Error resilience — LLM returns garbage → verify graceful degradation
+   - Target: 10+ integration tests
+
+3. Calibrate defaults:
+   - Run test queries against mock LLM: "How to build a VC fund?", "SaaS vs agency?", "Coffee export margins?"
+   - Measure: facts_per_query, parse_success_rate, useful_fact_rate
+   - Adjust default weights in dimension_registry based on yield data
+   - Document calibration results in plan notes
+
+## Success Criteria
+
+- [ ] Calibration config loads from JSON
+- [ ] Integration tests verify full pipeline (10+)
+- [ ] ≥80% of synthesis content from LOCAL computation
+- [ ] ≤20% LLM usage (micro-fact retrieval only)
+- [ ] Compound cache hit rate >30% on second similar query
+- [ ] Template evolution changes weights after 5+ runs
+- [ ] All tests pass
+
+## Risk Assessment
+
+- Default calibration too aggressive (too many queries) → mitigation: conservative defaults, tune from real usage
+- Integration tests fragile due to mock quality → mitigation: realistic mock responses based on actual LLM output patterns

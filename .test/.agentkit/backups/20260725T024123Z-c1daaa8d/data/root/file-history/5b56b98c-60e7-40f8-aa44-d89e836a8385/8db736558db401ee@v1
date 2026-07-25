@@ -1,0 +1,178 @@
+"""
+OutputFormatter — renders SynthesisResult as narrative intelligence brief.
+Zone-tagged prose, not tables. Zero LLM calls.
+"""
+
+
+class OutputFormatter:
+    def format(self, result, strategic_insight=None, founder_context=None) -> str:
+        si = strategic_insight or result.strategic_insight
+        parts = [
+            self._header(result, si),
+            self._mechanism(result, si),
+            self._landscape(result),
+            self._critical_gaps(result),
+            self._strategic_path(result, si),
+        ]
+        if si and (si.get("asymmetric_play") or si.get("kill_conditions") or si.get("proceed_conditions")):
+            parts.append(self._asymmetric_edge(si))
+        parts.append(self._meta(result))
+        return "\n\n".join(p for p in parts if p)
+
+    # ── Header ────────────────────────────────────────────────────────────────
+
+    def _header(self, result, si) -> str:
+        score = result.overall_score
+        verdict_label = (
+            "strong signal" if score >= 0.75
+            else "moderate signal" if score >= 0.5
+            else "weak signal" if score >= 0.3
+            else "insufficient data"
+        )
+        k = result.facts_by_zone.get("K", 0)
+        t = result.facts_by_zone.get("T", 0)
+        unk = result.facts_by_zone.get("?", 0)
+        total = max(result.facts_used, 1)
+        zone_narrative = (
+            f"{k} verified [K], {t} inferred [T], {unk} uncertain [?]"
+            if (k + t + unk) > 0
+            else "no zone data"
+        )
+        verdict_line = f"**Verdict:** {score:.0%} {verdict_label} | {zone_narrative}"
+        if si and si.get("verdict"):
+            verdict_line += f" | {si['verdict']}"
+        return f"# Intelligence Brief: {result.query}\n\n{verdict_line}"
+
+    # ── Mechanism ─────────────────────────────────────────────────────────────
+
+    def _mechanism(self, result, si) -> str:
+        lines = ["## Mechanism"]
+        if si and si.get("causal_chain"):
+            chain = si["causal_chain"]
+            if isinstance(chain, list):
+                lines.append(" → ".join(str(c) for c in chain) + ".")
+            else:
+                lines.append(str(chain))
+        else:
+            # Synthesize from dimensions: highest and lowest scored tell the story
+            sorted_dims = sorted(result.dimension_scores.items(), key=lambda x: x[1].score)
+            if sorted_dims:
+                weak = sorted_dims[0]
+                strong = sorted_dims[-1]
+                weak_name, weak_ds = weak
+                strong_name, strong_ds = strong
+                lines.append(
+                    f"The strongest evidence sits in **{strong_name}** [{strong_ds.zone_tag}] "
+                    f"({strong_ds.fact_count} facts, {strong_ds.avg_confidence:.0%} avg confidence). "
+                    f"The critical unknown is **{weak_name}** [{weak_ds.zone_tag}] — "
+                    f"only {weak_ds.fact_count} facts at {weak_ds.avg_confidence:.0%} confidence, "
+                    f"which is the primary bottleneck to a clear verdict."
+                )
+            else:
+                lines.append("Insufficient dimension data to synthesize mechanism.")
+        return "\n\n".join(lines)
+
+    # ── Landscape ─────────────────────────────────────────────────────────────
+
+    def _landscape(self, result) -> str:
+        if not result.dimension_scores:
+            return ""
+        lines = ["## Landscape"]
+        # Sort by ascending score: most critical gaps first
+        sorted_dims = sorted(result.dimension_scores.items(), key=lambda x: x[1].score)
+        prev_name = None
+        for dim_name, ds in sorted_dims:
+            status = (
+                "well-covered" if ds.score >= 0.7
+                else "partially mapped" if ds.score >= 0.4
+                else "largely unknown"
+            )
+            sentence = (
+                f"**{dim_name}** [{ds.zone_tag}] is {status} ({ds.score:.0%}, "
+                f"{ds.fact_count} facts at {ds.avg_confidence:.0%} confidence)."
+            )
+            if ds.contradictions > 0:
+                sentence += (
+                    f" There {'is' if ds.contradictions == 1 else 'are'} "
+                    f"{ds.contradictions} contradiction{'s' if ds.contradictions > 1 else ''} "
+                    f"in this dimension — treat its signals as contested."
+                )
+            # Connect to previous dimension where logical (simple linkage hint)
+            if prev_name and ds.score < 0.4:
+                sentence += f" This gap is likely downstream of weak {prev_name} data."
+            lines.append(sentence)
+            prev_name = dim_name
+        return "\n\n".join(lines)
+
+    # ── Critical Gaps ─────────────────────────────────────────────────────────
+
+    def _critical_gaps(self, result) -> str:
+        if not result.gaps:
+            return ""
+        lines = ["## Critical Gaps"]
+        for gap in result.gaps:
+            risk_level = "high" if gap.priority >= 0.7 else "medium" if gap.priority >= 0.4 else "low"
+            para = (
+                f"**{gap.dimension}** ({risk_level} priority, coverage {gap.score:.0%}): "
+                f"{gap.suggested_action} "
+                f"Without this, any decision rests on incomplete ground — "
+                f"the risk is {'material' if risk_level == 'high' else 'moderate'}."
+            )
+            lines.append(para)
+        return "\n\n".join(lines)
+
+    # ── Strategic Path ────────────────────────────────────────────────────────
+
+    def _strategic_path(self, result, si) -> str:
+        if not result.path and not (si and si.get("asymmetric_play")):
+            return ""
+        lines = ["## Strategic Path"]
+        compound = si.get("compound_trap") if si else None
+        if compound:
+            lines.append(f"The compound asset being built here: **{compound}**")
+        if result.path:
+            narrative_parts = []
+            for step in result.path:
+                deps = ""
+                if step.dependencies:
+                    deps = f" (requires: {', '.join(step.dependencies)})"
+                narrative_parts.append(
+                    f"**Move {step.step_number}** — {step.action} [{step.zone_tag}] "
+                    f"({step.confidence:.0%} confidence). {step.rationale}{deps}."
+                )
+            lines.append(" ".join(narrative_parts) if len(narrative_parts) == 1
+                         else "\n\n".join(narrative_parts))
+        return "\n\n".join(lines)
+
+    # ── Asymmetric Edge ───────────────────────────────────────────────────────
+
+    def _asymmetric_edge(self, si) -> str:
+        lines = ["## Asymmetric Edge"]
+        if si.get("asymmetric_play"):
+            lines.append(f"**The play others miss:** {si['asymmetric_play']}")
+        if si.get("proceed_conditions"):
+            conds = si["proceed_conditions"]
+            if isinstance(conds, list):
+                lines.append("**Proceed when:** " + "; ".join(str(c) for c in conds) + ".")
+            else:
+                lines.append(f"**Proceed when:** {conds}")
+        if si.get("kill_conditions"):
+            conds = si["kill_conditions"]
+            if isinstance(conds, list):
+                lines.append("**Kill if:** " + "; ".join(str(c) for c in conds) + ".")
+            else:
+                lines.append(f"**Kill if:** {conds}")
+        return "\n\n".join(lines)
+
+    # ── Meta footer ───────────────────────────────────────────────────────────
+
+    def _meta(self, result) -> str:
+        k = result.facts_by_zone.get("K", 0)
+        t = result.facts_by_zone.get("T", 0)
+        unk = result.facts_by_zone.get("?", 0)
+        zone_str = f"K={k} T={t} ?={unk}"
+        return (
+            f"---\n"
+            f"*{result.query_type} | {len(result.dimension_scores)} dimensions | "
+            f"{result.facts_used} facts [{zone_str}] | {result.llm_calls_made} reasoning calls*"
+        )

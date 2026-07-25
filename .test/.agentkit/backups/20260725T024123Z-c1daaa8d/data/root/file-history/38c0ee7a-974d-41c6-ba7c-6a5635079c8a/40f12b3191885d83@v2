@@ -1,0 +1,318 @@
+"""
+AgentMemory ↔ Cognitive System Sync Bridge
+
+Bidirectional sync between AgentMemory MCP store and 7-layer cognitive system.
+Runs on SessionStart (after cognitive-session-init) and post-stage0.
+
+Flow:
+  1. Pull new memories from AgentMemory REST API
+  2. Map to cognitive layers (L1 ingest, L3 Bayesian, L4 Hebbian, L6 HITL)
+  3. Decay stale entries (>60 days no access)
+  4. Clear auto-consolidated items from HITL pending queue
+  5. Update INDEX.json with sync timestamp
+
+Usage:
+  python agentmemory-sync-bridge.py [--full|--quick]
+    --quick: health check + HITL clear only (default, for SessionStart)
+    --full:  complete bidirectional sync (for post-stage0)
+"""
+
+import hashlib
+import json
+import logging
+import os
+import sqlite3
+import sys
+import tempfile
+import time
+from datetime import datetime, timedelta
+from pathlib import Path
+from urllib.error import URLError
+from urllib.request import Request, urlopen
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+logger = logging.getLogger(__name__)
+
+SCRIPT_DIR = Path(__file__).parent
+COGNITIVE_ROOT = SCRIPT_DIR.parent
+PROJECT_ROOT = COGNITIVE_ROOT.parent
+CONFIG_PATH = SCRIPT_DIR / "agentmemory-config.json"
+INDEX_PATH = COGNITIVE_ROOT / "INDEX.json"
+
+AGENTMEMORY_URL = os.environ.get("AGENTMEMORY_URL", "http://localhost:3111")
+AGENTMEMORY_SECRET = os.environ.get("AGENTMEMORY_SECRET", "")
+
+
+def _api_call(endpoint: str, method: str = "GET", body: dict = None) -> dict:
+    url = f"{AGENTMEMORY_URL}{endpoint}"
+    headers = {"Content-Type": "application/json"}
+    if AGENTMEMORY_SECRET:
+        headers["Authorization"] = f"Bearer {AGENTMEMORY_SECRET}"
+
+    data = json.dumps(body).encode() if body else None
+    req = Request(url, data=data, headers=headers, method=method)
+
+    try:
+        with urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read().decode())
+    except URLError as e:
+        logger.debug("AgentMemory API unreachable at %s: %s", url, e)
+        return {"error": str(e)}
+    except Exception as e:
+        logger.debug("AgentMemory API error: %s", e)
+        return {"error": str(e)}
+
+
+def health_check() -> bool:
+    result = _api_call("/agentmemory/health")
+    if "error" in result:
+        logger.info("AgentMemory not running — skipping sync")
+        return False
+    logger.info("AgentMemory healthy: %s", result.get("status", "ok"))
+    return True
+
+
+def pull_recent_memories(since_hours: int = 24) -> list:
+    result = _api_call("/agentmemory/smart-search", method="POST", body={
+        "query": "*",
+        "limit": 100,
+    })
+    if "error" in result:
+        return []
+    return result.get("results", result.get("memories", []))
+
+
+def _stable_id(content: str) -> str:
+    return hashlib.sha256(content.encode()).hexdigest()[:16]
+
+
+def sync_to_bayesian(memories: list) -> int:
+    """Update L3 Bayesian priors from low-confidence AgentMemory entries."""
+    bayesian_db = COGNITIVE_ROOT / "custom" / "bayesian.db"
+    if not bayesian_db.exists():
+        return 0
+
+    now = datetime.utcnow().isoformat()
+    count = 0
+    conn = sqlite3.connect(str(bayesian_db), timeout=30.0)
+    try:
+        for mem in memories:
+            confidence = mem.get("confidence", mem.get("score", 0.5))
+            content = mem.get("content", mem.get("text", ""))
+            if not content or confidence >= 0.75:
+                continue
+
+            node_id = f"am-{_stable_id(content)}"
+            alpha = max(1.0, confidence * 10)
+            beta = max(1.0, (1 - confidence) * 10)
+            conn.execute(
+                "INSERT INTO bayesian_nodes (node_id, alpha, beta, n_updates, created_at, updated_at) "
+                "VALUES (?, ?, ?, 1, ?, ?) "
+                "ON CONFLICT(node_id) DO UPDATE SET "
+                "alpha=excluded.alpha, beta=excluded.beta, "
+                "n_updates=n_updates+1, updated_at=excluded.updated_at",
+                (node_id, alpha, beta, now, now),
+            )
+            count += 1
+        conn.commit()
+    except sqlite3.OperationalError as e:
+        logger.warning("Bayesian DB schema issue — skipping L3 sync: %s", e)
+    finally:
+        conn.close()
+
+    if count:
+        logger.info("L3 Bayesian: updated %d priors from AgentMemory", count)
+    return count
+
+
+def sync_to_hebbian(memories: list) -> int:
+    """Boost L4 Hebbian edges for co-retrieved memory pairs."""
+    hebbian_db = COGNITIVE_ROOT / "custom" / "hebbian-edges.db"
+    if not hebbian_db.exists():
+        return 0
+
+    now = datetime.utcnow().isoformat()
+    count = 0
+    conn = sqlite3.connect(str(hebbian_db), timeout=30.0)
+    try:
+        for mem in memories:
+            tags = mem.get("tags", mem.get("categories", []))
+            content = mem.get("content", mem.get("text", ""))
+            if not content:
+                continue
+
+            node_id = f"am-{_stable_id(content)}"
+            for tag in tags[:5]:
+                tag_id = f"tag-{tag}"
+                src, dst = (node_id, tag_id) if node_id < tag_id else (tag_id, node_id)
+                conn.execute(
+                    "INSERT INTO hebbian_edges (src_id, dst_id, weight, n_fires, last_fired) "
+                    "VALUES (?, ?, 0.1, 1, ?) "
+                    "ON CONFLICT(src_id, dst_id) DO UPDATE SET "
+                    "weight=MIN(weight+0.1, 1.0), n_fires=n_fires+1, last_fired=excluded.last_fired",
+                    (src, dst, now),
+                )
+                count += 1
+        conn.commit()
+    except sqlite3.OperationalError as e:
+        logger.warning("Hebbian DB schema issue — skipping L4 sync: %s", e)
+    finally:
+        conn.close()
+
+    if count:
+        logger.info("L4 Hebbian: boosted %d edges from AgentMemory", count)
+    return count
+
+
+def decay_stale_memories() -> int:
+    """Decay weight of memories not accessed in >60 days."""
+    config = _load_config()
+    threshold_days = config.get("sync_settings", {}).get("stale_threshold_days", 60)
+    decay_factor = config.get("sync_settings", {}).get("decay_factor", 0.95)
+
+    hebbian_db = COGNITIVE_ROOT / "custom" / "hebbian-edges.db"
+    if not hebbian_db.exists():
+        return 0
+
+    cutoff = (datetime.utcnow() - timedelta(days=threshold_days)).isoformat()
+    count = 0
+    conn = sqlite3.connect(str(hebbian_db), timeout=30.0)
+    try:
+        cursor = conn.execute(
+            "UPDATE hebbian_edges SET weight = weight * ? "
+            "WHERE last_fired < ? AND src_id LIKE 'am-%'",
+            (decay_factor, cutoff),
+        )
+        count = cursor.rowcount
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
+    finally:
+        conn.close()
+
+    if count:
+        logger.info("L4 decay: decayed %d stale AgentMemory edges (>%dd)", count, threshold_days)
+    return count
+
+
+def clear_hitl_auto_consolidated() -> int:
+    """Remove auto-consolidated items from HITL pending queue."""
+    pending_path = COGNITIVE_ROOT / "custom" / "pending-queue.jsonl"
+    approved_path = COGNITIVE_ROOT / "custom" / "approved-log.jsonl"
+
+    if not pending_path.exists():
+        return 0
+
+    lines = pending_path.read_text(encoding="utf-8").strip().splitlines()
+    if not lines:
+        return 0
+
+    kept = []
+    cleared = []
+    for line in lines:
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            kept.append(line)
+            continue
+
+        if entry.get("source") == "agentmemory_auto_consolidation":
+            entry["auto_approved_at"] = datetime.utcnow().isoformat()
+            entry["auto_approved_by"] = "agentmemory_sync_bridge"
+            cleared.append(json.dumps(entry, ensure_ascii=False))
+        else:
+            kept.append(line)
+
+    if cleared:
+        tmp_fd, tmp_path = tempfile.mkstemp(
+            dir=str(pending_path.parent), suffix=".tmp"
+        )
+        try:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as tmp_f:
+                if kept:
+                    tmp_f.write("\n".join(kept) + "\n")
+            os.replace(tmp_path, str(pending_path))
+        except Exception:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            raise
+        with open(approved_path, "a", encoding="utf-8") as f:
+            f.write("\n".join(cleared) + "\n")
+        logger.info("L6 HITL: auto-approved %d consolidated items", len(cleared))
+
+    return len(cleared)
+
+
+def update_index(sync_stats: dict) -> None:
+    if not INDEX_PATH.exists():
+        return
+
+    index = json.loads(INDEX_PATH.read_text(encoding="utf-8"))
+
+    if "agentmemory_bridge" not in index:
+        index["agentmemory_bridge"] = {}
+
+    index["agentmemory_bridge"] = {
+        "last_sync": datetime.utcnow().isoformat(),
+        "status": "active" if sync_stats.get("healthy") else "unavailable",
+        "stats": sync_stats,
+        "config": "data/cognitive/scripts/agentmemory-config.json",
+    }
+
+    INDEX_PATH.write_text(json.dumps(index, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    logger.info("INDEX.json updated with AgentMemory bridge status")
+
+
+def _load_config() -> dict:
+    if CONFIG_PATH.exists():
+        return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    return {}
+
+
+def run_quick() -> dict:
+    """SessionStart mode: health check + HITL clear."""
+    stats = {"mode": "quick", "healthy": False, "hitl_cleared": 0}
+
+    stats["healthy"] = health_check()
+    if stats["healthy"]:
+        stats["hitl_cleared"] = clear_hitl_auto_consolidated()
+
+    update_index(stats)
+    return stats
+
+
+def run_full() -> dict:
+    """Post-stage0 mode: complete bidirectional sync."""
+    stats = {"mode": "full", "healthy": False, "memories_pulled": 0,
+             "bayesian_updated": 0, "hebbian_boosted": 0, "decayed": 0, "hitl_cleared": 0}
+
+    stats["healthy"] = health_check()
+    if not stats["healthy"]:
+        update_index(stats)
+        return stats
+
+    memories = pull_recent_memories()
+    stats["memories_pulled"] = len(memories)
+
+    if memories:
+        stats["bayesian_updated"] = sync_to_bayesian(memories)
+        stats["hebbian_boosted"] = sync_to_hebbian(memories)
+
+    stats["decayed"] = decay_stale_memories()
+    stats["hitl_cleared"] = clear_hitl_auto_consolidated()
+
+    update_index(stats)
+    logger.info("Full sync complete: %s", json.dumps(stats))
+    return stats
+
+
+if __name__ == "__main__":
+    mode = "quick"
+    if len(sys.argv) > 1:
+        if sys.argv[1] in ("--full", "-f"):
+            mode = "full"
+
+    if mode == "full":
+        run_full()
+    else:
+        run_quick()

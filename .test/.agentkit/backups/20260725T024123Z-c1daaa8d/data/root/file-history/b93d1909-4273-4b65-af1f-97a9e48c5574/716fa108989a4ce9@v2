@@ -1,0 +1,51 @@
+{
+  "type": "default",
+  "trigger_patterns": [],
+  "min_length": 500,
+  "dimensions": {
+    "completeness": {
+      "weight": 0.4,
+      "checks": [
+        {
+          "id": "default_min_substance",
+          "rule": "min_length(200)",
+          "severity": "minor",
+          "description": "Output too short to be substantive"
+        },
+        {
+          "id": "default_no_todo",
+          "rule": "not_contains('TODO|PLACEHOLDER|NOT IMPLEMENTED|FIXME')",
+          "severity": "critical",
+          "description": "Contains unfinished TODO/PLACEHOLDER markers",
+          "fix": "Complete all TODO/PLACEHOLDER items or remove them if not applicable"
+        }
+      ]
+    },
+    "logic": {
+      "weight": 0.3,
+      "checks": [
+        {
+          "id": "default_no_stub",
+          "rule": "not_contains('stub|skeleton|boilerplate.*replace')",
+          "severity": "major",
+          "description": "Contains stub/skeleton code that should be completed",
+          "fix": "Replace stub/skeleton with actual implementation"
+        }
+      ]
+    },
+    "actionability": {
+      "weight": 0.3,
+      "checks": [
+        {
+          "id": "default_not_all_questions",
+          "rule": "statement_ratio(0.3)",
+          "severity": "major",
+          "description": "Output is mostly questions without actionable statements",
+          "fix": "Provide concrete recommendations or answers, not just questions"
+        }
+      ]
+    }
+  },
+  "pass_criteria": { "critical": 0, "major": 0 },
+  "max_iterations": 3
+}

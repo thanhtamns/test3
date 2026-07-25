@@ -1,0 +1,152 @@
+"""
+DistillationBridge — connects evolution triggers to knowledge distillation pipeline.
+Converts verified LLM output → decision vectors + kill signals in local DB.
+"""
+
+import json
+import sqlite3
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+ROOT = Path(__file__).resolve().parents[4]
+VECTORS_DB = ROOT / ".claude" / "data" / "knowledge-distillation" / "decision-vectors.db"
+KILL_SIGNALS_PATH = ROOT / ".claude" / "data" / "knowledge-distillation" / "kill-signals.json"
+PROVENANCE_DB = ROOT / ".claude" / "data" / "provenance" / "facts.db"
+
+
+@dataclass
+class DistilledVector:
+    vector_id: str
+    industry: str
+    business_model: str
+    features: dict
+    outcome: str
+    source: str
+
+
+class DistillationBridge:
+    def __init__(
+        self,
+        vectors_db: Optional[Path] = None,
+        kill_signals_path: Optional[Path] = None,
+        provenance_db: Optional[Path] = None,
+    ):
+        self.vectors_db = vectors_db or VECTORS_DB
+        self.kill_signals_path = kill_signals_path or KILL_SIGNALS_PATH
+        self.provenance_db = provenance_db or PROVENANCE_DB
+
+    def distill(self, facts: list[dict], domain: str, source: str = "evolution") -> list[DistilledVector]:
+        vectors = []
+        for fact in facts:
+            v = self._fact_to_vector(fact, domain, source)
+            if v and not self._is_duplicate(v):
+                self._store_vector(v)
+                vectors.append(v)
+        return vectors
+
+    def distill_correction(self, correction: dict, original_answer: str, domain: str) -> Optional[DistilledVector]:
+        v = self._fact_to_vector(correction, domain, source="correction")
+        if v:
+            self._store_vector(v)
+            self._log_provenance(
+                f"Correction: {original_answer} → {correction.get('corrected_answer', 'unknown')}",
+                domain,
+                "correction",
+            )
+        return v
+
+    def update_kill_signals(self, new_signals: list[dict]) -> int:
+        existing = []
+        if self.kill_signals_path.exists():
+            existing = json.loads(self.kill_signals_path.read_text(encoding="utf-8"))
+
+        existing_names = {s.get("name", "") for s in existing}
+        added = 0
+        for sig in new_signals:
+            if sig.get("name", "") not in existing_names:
+                existing.append(sig)
+                added += 1
+
+        if added > 0:
+            self.kill_signals_path.parent.mkdir(parents=True, exist_ok=True)
+            self.kill_signals_path.write_text(
+                json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+        return added
+
+    def _fact_to_vector(self, fact: dict, domain: str, source: str) -> Optional[DistilledVector]:
+        industry = fact.get("industry", domain.split("_")[0] if "_" in domain else domain)
+        model = fact.get("business_model", "unknown")
+        outcome = fact.get("outcome", "unknown")
+        features = {k: v for k, v in fact.items() if k not in ("industry", "business_model", "outcome")}
+
+        vid = f"{source}-{industry}-{model}-{datetime.now(timezone.utc).strftime('%y%m%d%H%M%S')}"
+        return DistilledVector(
+            vector_id=vid,
+            industry=industry,
+            business_model=model,
+            features=features,
+            outcome=outcome,
+            source=source,
+        )
+
+    def _is_duplicate(self, vector: DistilledVector) -> bool:
+        if not self.vectors_db.exists():
+            return False
+        with sqlite3.connect(str(self.vectors_db)) as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM decision_vectors WHERE industry=? AND business_model=? AND outcome=?",
+                (vector.industry, vector.business_model, vector.outcome),
+            ).fetchone()
+            return row[0] > 10
+
+    def _store_vector(self, vector: DistilledVector) -> None:
+        self.vectors_db.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(str(self.vectors_db)) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS decision_vectors (
+                    id TEXT PRIMARY KEY,
+                    industry TEXT,
+                    business_model TEXT,
+                    features_json TEXT,
+                    outcome TEXT,
+                    source TEXT,
+                    created_at TEXT
+                )
+            """)
+            conn.execute(
+                "INSERT OR IGNORE INTO decision_vectors (id, industry, business_model, features_json, outcome, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    vector.vector_id,
+                    vector.industry,
+                    vector.business_model,
+                    json.dumps(vector.features, ensure_ascii=False),
+                    vector.outcome,
+                    vector.source,
+                    datetime.now(timezone.utc).isoformat(),
+                ),
+            )
+
+    def _log_provenance(self, fact_text: str, domain: str, source: str) -> None:
+        self.provenance_db.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(str(self.provenance_db)) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS fact_provenance (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fact_text TEXT,
+                    source_llm TEXT,
+                    source_model TEXT,
+                    source_query TEXT,
+                    confidence REAL,
+                    domain TEXT,
+                    created_at TEXT,
+                    expires_at TEXT,
+                    verified INTEGER DEFAULT 0
+                )
+            """)
+            conn.execute(
+                "INSERT INTO fact_provenance (fact_text, source_llm, domain, confidence, created_at, verified) VALUES (?, ?, ?, ?, ?, ?)",
+                (fact_text, source, domain, 0.8, datetime.now(timezone.utc).isoformat(), 1),
+            )

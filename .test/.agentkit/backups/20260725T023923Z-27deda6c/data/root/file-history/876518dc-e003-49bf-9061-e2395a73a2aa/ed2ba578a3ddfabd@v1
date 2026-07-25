@@ -1,0 +1,130 @@
+---
+phase: 1
+title: "CLI Fix & Standardize (P0+P1)"
+status: pending
+priority: P1
+effort: "4h"
+dependencies: []
+---
+
+# Phase 1: CLI Fix & Standardize (P0+P1)
+
+## Overview
+
+Extract 3 duplicated functions to shared module, fix pre_id race condition, fix semantic mismatch in wrap dedup, fix event type collision (+ Cloud-side batchToRows overwrite), remove unnecessary custom trait, standardize logging.
+
+## Requirements
+
+- Functional: All existing tests pass after refactor. No behavior change except bug fixes (A5, A6, A7).
+- Non-functional: Zero new dependencies for DRY fixes. `cargo build` clean, no warnings.
+
+## Architecture
+
+New shared utility functions in `codeflow_core`:
+```
+cli/crates/core/src/
+├── lib.rs          ← add pub mod util
+├── util.rs         ← NEW: session_id(), estimate_tokens(), get_file_mtime_ns()
+└── dedup.rs        ← remove OptionalRow trait, add rusqlite::OptionalExtension import
+```
+
+## Related Code Files
+
+- Create: `cli/crates/core/src/util.rs`
+- Modify: `cli/crates/core/src/lib.rs` (add `pub mod util`)
+- Modify: `cli/crates/cli/src/main.rs` (remove duplicates, import from core, fix pre_id)
+- Modify: `cli/crates/cli/src/wrap.rs` (remove duplicates, import from core, fix A6+A7)
+- Modify: `cli/crates/core/src/dedup.rs` (remove estimate_tokens + OptionalRow, add OptionalExtension import)
+- Modify: `cli/crates/core/src/read_dedup.rs` (remove get_file_mtime_ns, import from util)
+- Modify: `cli/crates/cli/src/stats.rs` (remove inline session_id, import)
+
+## Implementation Steps
+
+### Step 1: Extract shared functions (A1+A2+A3) — DRY fixes
+
+1. Create `cli/crates/core/src/util.rs` with:
+   ```rust
+   pub fn session_id() -> String { /* from main.rs:494-504 */ }
+   pub fn estimate_tokens(byte_len: usize) -> usize { (byte_len + 3) / 4 }
+   pub fn get_file_mtime_ns(path: &str) -> Option<i64> { /* from main.rs:456-463 */ }
+   ```
+2. Add `pub mod util;` to `cli/crates/core/src/lib.rs`
+3. In `main.rs`: delete `session_id()` (lines ~494-504), `get_file_mtime_ns()` (lines ~456-463). Replace inline token estimate at line ~405 (`(tool_result.len() as i64 + 3) / 4`) with `codeflow_core::util::estimate_tokens(tool_result.len()) as i64`
+4. In `wrap.rs`: delete `session_id()` (lines ~226-237), `estimate_tokens()` (lines ~216-218). Replace with imports.
+5. In `dedup.rs`: delete `estimate_tokens()` (lines ~159-162). Replace call at line ~88 with `codeflow_core::util::estimate_tokens(content.len())`
+6. In `read_dedup.rs`: delete `get_file_mtime_ns()` (lines ~113-118). Import from util.
+7. In `stats.rs`: delete inline session_id logic (lines ~90-98). Import from util.
+8. Run `cargo build` — must compile clean.
+
+### Step 2: Remove OptionalRow trait (A4)
+
+1. In `dedup.rs`: add `use rusqlite::OptionalExtension;` to imports (line ~2)
+2. Delete `OptionalRow` trait + impl (lines ~173-185)
+3. Verify line ~64 `.optional()` now resolves through `rusqlite::OptionalExtension` — the standard trait provides `.optional()` on `rusqlite::Result<T>`, matching the call site
+4. Run `cargo build` to confirm compilation
+
+### Step 3: Fix pre_id race condition (A5)
+
+1. In `main.rs`: replace filesystem-based pre_id IPC with SQLite table
+2. Add `pre_tool_state` table to session DB: `(tool_name TEXT, file_path TEXT, row_id INTEGER, created_at INTEGER)`
+3. `write_last_pre_id` → INSERT into table
+4. `read_last_pre_id` → SELECT + DELETE in single transaction
+5. Delete `last_pre_id_path()`, `write_last_pre_id()`, `read_last_pre_id()` filesystem versions
+6. SQLite WAL mode already handles concurrent access safely
+
+### Step 4: Fix wrap dedup semantic mismatch (A6)
+
+1. In `wrap.rs`: replace `file_content_mtime(content)` with `0_u64` (constant)
+2. The dedup cache for commands should match on content hash only, not mtime
+3. Change dedup lookup: pass `0` as mtime so the mtime check always passes; content equality is the real check
+4. Delete `file_content_mtime()` function (lines ~220-224)
+
+### Step 5: Fix event type collision (A7) + batchToRows overwrite
+
+**CLI side:** Set event_type based on which saved more tokens:
+
+1. In `wrap.rs` lines ~134-138:
+   ```rust
+   event_type: if dedup_result.cache_hit && dedup_result.tokens_saved > filter_tokens_saved {
+       proto::EventType::Dedup as i32
+   } else if filter_result.filter_applied {
+       proto::EventType::Compression as i32
+   } else {
+       proto::EventType::Unspecified as i32
+   },
+   ```
+
+**Cloud side (REQUIRED — batchToRows data loss):** Fix `handler_events.go:120-137` where dedup block overwrites compression data. The sequential `if` blocks for `ev.Compression` and `ev.Dedup` overwrite `row.EventType`, `row.TokensSaved`, and `row.LatencyMs`. Fix by summing savings:
+
+1. In `handler_events.go`: when both `Compression` and `Dedup` are non-nil, sum `TokensSaved` and keep whichever `EventType` saved more. Or store both values in separate fields if schema supports it.
+2. At minimum: change the dedup block to ADD to TokensSaved instead of overwriting.
+
+### Step 6: Standardize logging (C1+C2)
+
+1. In `main.rs`: replace `eprintln!("[codeflow]...")` with `tracing::warn!` where tracing is initialized. Keep `eprintln!` only in hook entry points where tracing may not be ready.
+2. In `stats.rs`: replace `.unwrap_or_else()` silent swallows with `tracing::warn!` + fallback.
+3. In `wrap.rs` line ~82: log filter load errors with `tracing::debug!` before fallback.
+
+### Step 7: Verify
+
+1. `cargo build` — clean
+2. `cargo test` — all existing tests pass
+3. `cargo clippy` — no new warnings
+
+## Success Criteria
+
+- [ ] Zero duplicate functions across crates (session_id, estimate_tokens, get_file_mtime_ns)
+- [ ] OptionalRow trait removed, `rusqlite::OptionalExtension` imported and used
+- [ ] pre_id uses SQLite instead of filesystem temp files
+- [ ] wrap dedup uses consistent identity (not fake mtime)
+- [ ] Event type correctly reflects primary operation
+- [ ] `batchToRows` in cloud doesn't overwrite compression data with dedup data
+- [ ] All `eprintln!` in non-hook code replaced with tracing
+- [ ] `cargo build` clean, `cargo test` all pass, `cargo clippy` clean
+
+## Risk Assessment
+
+- **DRY refactor (low risk):** Pure extraction, no behavior change. Tests catch regressions.
+- **pre_id migration (medium risk):** Changes IPC mechanism. If SQLite table creation fails, pre→post linking breaks. Mitigate: fail-open (skip tracking, don't break hook).
+- **batchToRows fix (medium risk):** Changes Cloud event processing. Must verify existing analytics queries still produce correct results. Test with dual-field events.
+- **Event type change (low risk):** Both fields always populated, consumer updated to handle both.

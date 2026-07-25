@@ -1,0 +1,95 @@
+---
+phase: 4
+title: "First Kill Gate Review"
+status: pending
+priority: P1
+effort: "1 day"
+dependencies: [2, 3]
+---
+
+# Phase 4: First Kill Gate Review (Day 30)
+
+## Overview
+Day 30 mandatory review. Execute ALL pre-committed kill criteria WITHOUT EMOTION. Kill losers, double winners, replace dead bets. This is the most important phase — Taleb's cut-loss mechanism in action.
+
+## Requirements
+- ALL kill criteria from Phase 1 evaluated against actual data
+- Decisions recorded with numbers, not feelings
+- Freed hours reallocated immediately (no idle capacity)
+- At least 1 /hunt run to replenish chaos portfolio
+
+## Implementation Steps
+
+### Step 1: Data Collection (1h)
+Pull actual numbers from tracking sheet:
+
+**SAFE-A Scorecard:**
+| Metric | Target | Actual | Status |
+|--------|--------|--------|--------|
+| Cold DMs sent | 40+ | ? | |
+| Response rate | >5% | ? | |
+| Discovery calls | ≥3 | ? | |
+| Free audits | ≥1 | ? | |
+| Paid pilots closed | ≥1 | ? | |
+| Revenue | $500+ | ? | |
+| Hours spent | ≤60h total | ? | |
+| Capital spent | $0 | ? | |
+
+**CHAOS-1 Scorecard:**
+| Metric | Target | Actual | Status |
+|--------|--------|--------|--------|
+| Zalo group members | ≥20 | ? | |
+| WTP "yes" responses | ≥5 | ? | |
+| Paid conversions | ≥1 | ? | |
+| Operating cost | ≤$98 | ? | |
+| Hours spent | ≤12h total | ? | |
+
+**CHAOS-2/3/4 Scorecards:** Similar format per bet.
+
+### Step 2: Execute Kill Decisions (30min)
+
+Apply pre-committed criteria MECHANICALLY:
+
+| Bet | Kill Condition | Decision | Action |
+|-----|---------------|----------|--------|
+| SAFE-A | 0 closed deals at Day 60 | NOT YET (Day 30 is warning, Day 60 is kill) | Continue if pipeline exists, pivot if zero pipeline |
+| CHAOS-1 | 0 subscribers after free trial | If 0 → KILL. Reallocate 3h/wk | Replace with CHAOS-4 best card |
+| CHAOS-2 | <100 waitlist (Day 60 gate) | Check trajectory. <20 at Day 30 → early KILL | Reallocate 1.5h/wk to winner |
+| CHAOS-3 | <500 followers (Day 90 gate) | Check trajectory. <50 at Day 30 → warning | Continue at 1h/wk or reduce |
+
+### Step 3: Winner Analysis (30min)
+For any bet showing positive signals:
+1. What specifically is working? (channel, message, format)
+2. Can I 2x the input? (more hours, more outreach, more content)
+3. What is the compounding asset being built? (audience, data, reputation)
+4. Is convexity showing? (non-linear response to input)
+
+### Step 4: Reallocation (30min)
+Freed hours from killed bets → allocated to:
+1. **First priority:** Surviving chaos bet with strongest signals
+2. **Second priority:** New chaos bet from CHAOS-4 /hunt pipeline
+3. **Third priority:** Safe side (only if safe side is underperforming)
+4. **NEVER:** Leave hours unallocated. Idle capacity = wasted optionality
+
+### Step 5: Replenish Pipeline (2h)
+1. Run `/hunt` on 1 new topic based on learnings from Month 1
+2. Review deal cards → select replacement for killed bets
+3. Update tracking sheet with new bets + kill criteria
+
+### Step 6: Record & Reflect (30min)
+1. Write 1-paragraph post-mortem for each killed bet: what failed, what learned
+2. Log in system: `/log-outcome` for each bet
+3. Update `plans/reports/260529-barbell-cashflow-architecture.md` with actual results
+
+## Success Criteria
+- [ ] All 5 bets scored against pre-committed kill criteria
+- [ ] Kill decisions executed (not postponed, not "let's wait one more week")
+- [ ] Freed hours reallocated to specific bets with specific tasks
+- [ ] /hunt run completed, new deal cards available
+- [ ] Tracking sheet updated with Month 2 targets
+- [ ] Post-mortems written for killed bets
+
+## Risk Assessment
+- **Risk:** Emotional attachment prevents killing → **Mitigation:** Pre-committed criteria are NON-NEGOTIABLE. If in doubt, kill. New bets are free to create.
+- **Risk:** ALL bets killed → **Mitigation:** Expected outcome for chaos side. Safe side should be showing pipeline by Day 30. Run /hunt immediately for fresh bets.
+- **Risk:** Safe side also failing → **Mitigation:** Day 30 is WARNING for safe side, not kill. Analyze: is it skill gap (need to improve offer) or market gap (wrong vertical)? Adjust and continue to Day 60 kill gate.

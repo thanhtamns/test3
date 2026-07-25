@@ -1,0 +1,99 @@
+---
+phase: 1
+title: "Asset Class Database"
+status: pending
+priority: P1
+effort: "4h"
+dependencies: []
+---
+
+# Phase 1: Asset Class Database
+
+## Overview
+
+Create a static JSON database of 15-20 micro-capital asset classes with historical ROI distributions, structural properties, and founder-fit tags. This is the foundation — all subsequent components consume this data.
+
+## Requirements
+
+- Functional: JSON file with 15-20 asset classes, each with ROI distribution (P10/P25/P50/P75/P90), time-to-first-dollar, sleep test, leverage class, failure rates, capital tiers, founder fit tags
+- Non-functional: Every numeric claim tagged [K]/[T]/[?] with data source. Minimum 3 sources per class. File < 500 lines.
+
+## Architecture
+
+```
+data/intelligence/asset-classes.json    ← main database
+data/intelligence/asset-class-schema.json  ← JSON schema for validation
+```
+
+Single flat JSON array. No nested hierarchies — each asset class is self-contained. Schema file enables validation in tests.
+
+## Related Code Files
+
+- Create: `D:\code\invesments\master_investments\data\intelligence\asset-classes.json`
+- Create: `D:\code\invesments\master_investments\data\intelligence\asset-class-schema.json`
+
+## Implementation Steps
+
+1. Create `data/intelligence/` directory
+2. Define JSON schema (`asset-class-schema.json`) with required fields:
+   - `id` (string, kebab-case)
+   - `name` (string)
+   - `category` (enum: digital_product, service, media, physical, financial)
+   - `capital_entry_min` / `capital_entry_max` (int, USD)
+   - `roi_distribution` (object: p10, p25, p50, p75, p90 — annualized multiplier, -1.0 = total loss, 1.0 = 2x)
+   - `time_to_first_dollar_days` (object: p25, p50, p75)
+   - `sleep_test` (enum: YES, PARTIAL, NO)
+   - `leverage_class` (enum: CODE, MEDIA, CAPITAL, LABOR, HYBRID)
+   - `lindy_years` (int)
+   - `compound_mechanism` (string)
+   - `failure_rate_year1` (float, 0-1)
+   - `structural_risks` (array of risk tag strings)
+   - `data_sources` (array of {source, year, zone_tag} objects)
+   - `founder_fit_tags` (array of strings)
+   - `capital_tiers` (object: TIER_0/1/2/3, each with viable bool + expected_roi_p50 + notes)
+3. Populate 15-20 asset classes using research data from brainstorm:
+
+   **Sleep=YES classes (investor thinking):**
+   - `micro-saas` — Flippa data: 2-4x multiples, 70% <$1K/mo [K]
+   - `digital-template-library` — Gumroad: 20-30% margins, median 66d to first $ [K]
+   - `mini-course` — sub-$50 courses, low barrier [T]
+   - `chrome-extension` — freemium model [T]
+   - `notion-figma-templates` — Gumroad/Etsy subcategory [T]
+   - `affiliate-microsite` — declining commissions but still viable [K]
+   - `content-authority-site` — display ad model [T]
+   - `api-wrapper-tool` — AI API wrapper [T]
+   - `domain-portfolio` — $400M+ aftermarket, survivorship bias extreme [K]
+
+   **Sleep=PARTIAL classes:**
+   - `newsletter-paid` — Beehiiv/Substack: $2.37 CAC, 5-20% conversion, 50% churn [K]
+   - `paid-community` — Discord/Skool model [T]
+
+   **Sleep=NO classes (labor, included for comparison):**
+   - `sdr-agency` — lead gen arbitrage [T]
+   - `content-repurposing` — AI-assisted [T]
+   - `productized-audit` — domain expertise [T]
+   - `commodity-micro-broker` — VN agricultural [T]
+
+4. For each class, populate `capital_tiers` with TIER_0-specific data:
+   - `viable`: can you enter with $0-500?
+   - `expected_roi_p50`: annualized P50 return multiplier at that tier
+   - `notes`: tier-specific constraints
+
+5. Validate: every `data_sources` entry has zone tag, every numeric has source
+
+## Success Criteria
+
+- [ ] `data/intelligence/asset-classes.json` exists with 15+ classes
+- [ ] `data/intelligence/asset-class-schema.json` validates all entries
+- [ ] Every class has >= 3 data_sources entries
+- [ ] Every numeric tagged [K], [T], or [?]
+- [ ] Sleep=YES classes outnumber Sleep=NO (investor > laborer ratio)
+- [ ] All TIER_0 capital_tiers have viable + expected_roi_p50 populated
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|------|------------|
+| ROI data is survivorship-biased | Include failure_rate_year1 prominently; use P10 (includes failures) not just P50 |
+| Data goes stale | `data_sources` includes year field; annual refresh process documented |
+| Over-precise numbers create false confidence | Use wide P10-P90 ranges; never single-point estimate |

@@ -1,0 +1,18 @@
+{
+  "id": "3",
+  "subject": "Phase 3: Model Routing + Waste Detection + Live Metrics",
+  "description": "Add L3 model routing (ONNX local classifier), L4 waste pattern detection (NATS consumer), WebSocket live metrics for dashboard. See phase-03-model-routing-waste-detection-live-metrics.md",
+  "activeForm": "Building Model Routing + Waste Detection",
+  "status": "pending",
+  "blocks": [],
+  "blockedBy": [
+    "2"
+  ],
+  "metadata": {
+    "phase": 3,
+    "effort": "4 weeks",
+    "priority": "P2",
+    "planDir": "plans/260603-codeflow-ai-cost-intelligence-engine",
+    "phaseFile": "phase-03-model-routing-waste-detection-live-metrics.md"
+  }
+}

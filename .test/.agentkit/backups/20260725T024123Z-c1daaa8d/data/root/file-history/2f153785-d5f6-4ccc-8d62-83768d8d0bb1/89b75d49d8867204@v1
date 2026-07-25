@@ -1,0 +1,207 @@
+#!/usr/bin/env python3
+"""
+Capital-path classifier for stage0 local orchestration.
+
+Classifies founder into 1 of 4 capital tiers and outputs track + constraints.
+This runs BEFORE LLM analysis to ensure routing respects founder's actual position.
+
+Input:  --profile-file <path>  OR  --profile-json <json_string>
+Output: JSON {tier, track, capital_usd, target_range, timeline_days,
+              primary_hypothesis, constraints, decision_question_codes, bridge_needed}
+
+4 Tiers:
+- TIER_0: $0-1K    → SERVICE_ENTRY (first dollar focus)
+- TIER_1: $1K-5K   → HYBRID (service funds product)
+- TIER_2: $5K-20K  → PRODUCT (standard stage0 analysis)
+- TIER_3: $20K+    → ACQUISITION (buy not build)
+
+Plan ref: plans/260419-0828-stage0-capital-path-upgrade/phase-01-core-scripts.md
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Capital tier definitions
+# ---------------------------------------------------------------------------
+
+CAPITAL_TIERS = {
+    "TIER_0": {
+        "range": (0, 1000),
+        "track": "SERVICE_ENTRY",
+        "target_range": (500, 2000),
+        "timeline_days": (30, 90),
+        "primary_hypothesis": "service",
+        "constraints": {
+            "no_product_dev": True,
+            "no_paid_ads": True,
+            "no_hiring": True,
+            "cash_first": True,
+        },
+        "decision_question_codes": [
+            "FIRST_500",
+            "TIME_TO_CASH",
+            "SKILL_MATCH",
+            "NETWORK_ENTRY",
+            "RISK_CAP",
+        ],
+    },
+    "TIER_1": {
+        "range": (1000, 5000),
+        "track": "HYBRID",
+        "target_range": (2000, 5000),
+        "timeline_days": (60, 180),
+        "primary_hypothesis": "service_funds_product",
+        "constraints": {
+            "product_budget_cap": 2000,
+            "paid_ads_cap": 500,
+            "no_hiring": True,
+        },
+        "decision_question_codes": [
+            "SERVICE_FLOOR",
+            "PRODUCT_SEED",
+            "REINVESTMENT",
+            "NETWORK_LEVERAGE",
+            "KILL_CRITERIA",
+        ],
+    },
+    "TIER_2": {
+        "range": (5000, 20000),
+        "track": "PRODUCT",
+        "target_range": (5000, 10000),
+        "timeline_days": (90, 360),
+        "primary_hypothesis": "product_with_service_floor",
+        "constraints": {
+            "product_budget_cap": 10000,
+            "paid_ads_cap": 2000,
+            "hiring_cap": 2,
+        },
+        "decision_question_codes": [
+            "WINNER",
+            "KILL",
+            "CUSTOMER",
+            "ECONOMICS",
+            "MOAT",
+            "SERVICE_FLOOR",
+        ],
+    },
+    "TIER_3": {
+        "range": (20000, None),  # None = no upper limit
+        "track": "ACQUISITION",
+        "target_range": (10000, 50000),
+        "timeline_days": (180, 720),
+        "primary_hypothesis": "buy_not_build",
+        "constraints": {},
+        "decision_question_codes": [
+            "ACQUISITION_TARGET",
+            "INTEGRATION_COST",
+            "OPERATOR_FIT",
+            "COMPOUNDING",
+            "EXIT_PATH",
+        ],
+    },
+}
+
+
+def _get_capital_usd(profile: dict) -> int:
+    """Extract capital in USD from profile, handling various formats."""
+    capital = profile.get("capital_usd")
+
+    if capital is None:
+        return 0
+
+    if isinstance(capital, (int, float)):
+        return int(capital)
+
+    if isinstance(capital, dict):
+        # Handle nested format: {"available_now": 1000, "can_raise": 5000}
+        available = capital.get("available_now") or capital.get("available") or 0
+        return int(available)
+
+    if isinstance(capital, str):
+        # Handle string format: "1000", "$1,000", "1K"
+        clean = capital.replace("$", "").replace(",", "").strip().upper()
+        if clean.endswith("K"):
+            return int(float(clean[:-1]) * 1000)
+        return int(float(clean))
+
+    return 0
+
+
+def classify(profile: dict) -> dict:
+    """Classify founder profile into capital tier.
+
+    Args:
+        profile: Founder profile dict with capital_usd field.
+
+    Returns:
+        dict with tier classification and routing context.
+    """
+    capital_usd = _get_capital_usd(profile)
+
+    # Find matching tier
+    selected_tier = None
+    for tier_name, tier_config in CAPITAL_TIERS.items():
+        low, high = tier_config["range"]
+        if high is None:
+            # TIER_3: $20K+
+            if capital_usd >= low:
+                selected_tier = tier_name
+                break
+        elif low <= capital_usd < high:
+            selected_tier = tier_name
+            break
+
+    if not selected_tier:
+        selected_tier = "TIER_0"  # Default fallback
+
+    tier_config = CAPITAL_TIERS[selected_tier]
+
+    # Determine if bridge is needed (TIER_0/TIER_1 need to bridge to higher tiers)
+    bridge_needed = selected_tier in ("TIER_0", "TIER_1")
+
+    return {
+        "tier": selected_tier,
+        "track": tier_config["track"],
+        "capital_usd": capital_usd,
+        "target_range": list(tier_config["target_range"]),
+        "timeline_days": list(tier_config["timeline_days"]),
+        "primary_hypothesis": tier_config["primary_hypothesis"],
+        "constraints": tier_config["constraints"],
+        "decision_question_codes": tier_config["decision_question_codes"],
+        "bridge_needed": bridge_needed,
+    }
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(
+        description="Classify founder into capital tier for stage0 routing"
+    )
+    group = ap.add_mutually_exclusive_group(required=True)
+    group.add_argument("--profile-json", help="Profile JSON string")
+    group.add_argument("--profile-file", help="Path to profile JSON file")
+    args = ap.parse_args()
+
+    if args.profile_json:
+        try:
+            profile = json.loads(args.profile_json)
+        except json.JSONDecodeError as e:
+            print(json.dumps({"error": f"invalid JSON: {e}"}))
+            sys.exit(1)
+    else:
+        path = Path(args.profile_file)
+        if not path.exists():
+            print(json.dumps({"error": f"file not found: {path}"}))
+            sys.exit(1)
+        profile = json.loads(path.read_text(encoding="utf-8"))
+
+    result = classify(profile)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+if __name__ == "__main__":
+    main()

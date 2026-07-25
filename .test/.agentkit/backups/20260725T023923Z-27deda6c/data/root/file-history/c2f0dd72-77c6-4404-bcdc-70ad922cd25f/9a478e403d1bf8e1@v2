@@ -1,0 +1,213 @@
+"""
+StrategicReasoner — LLM reasoning layer AFTER SynthesisEngine scores facts.
+SynthesisEngine stays LOCAL-ONLY. This module is where LLM actually THINKS.
+Max 3 LLM calls per brainstorm, every claim references input facts.
+"""
+
+import json
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Callable, Optional
+
+
+@dataclass
+class StrategicInsight:
+    causal_chain: str
+    contradictions: list[dict] = field(default_factory=list)
+    inferred_gaps: list[dict] = field(default_factory=list)
+    asymmetric_play: str = ""
+    compound_trap: str = ""
+    kill_go_reasoning: str = ""
+    verdict: str = ""
+    kill_conditions: list[dict] = field(default_factory=list)
+    proceed_conditions: list[dict] = field(default_factory=list)
+    fact_references: list[str] = field(default_factory=list)
+    llm_calls_made: int = 0
+    total_latency_ms: int = 0
+
+    def to_dict(self) -> dict:
+        return {
+            "causal_chain": self.causal_chain,
+            "contradictions": self.contradictions,
+            "inferred_gaps": self.inferred_gaps,
+            "asymmetric_play": self.asymmetric_play,
+            "compound_trap": self.compound_trap,
+            "kill_go_reasoning": self.kill_go_reasoning,
+            "verdict": self.verdict,
+            "kill_conditions": self.kill_conditions,
+            "proceed_conditions": self.proceed_conditions,
+            "fact_references": self.fact_references,
+            "llm_calls_made": self.llm_calls_made,
+            "total_latency_ms": self.total_latency_ms,
+        }
+
+
+def _empty_insight(reason: str = "degraded") -> StrategicInsight:
+    return StrategicInsight(causal_chain=f"[{reason}]", llm_calls_made=0)
+
+
+class StrategicReasoner:
+    def __init__(self, max_calls: int = 3, llm_fn: Optional[Callable] = None):
+        self.max_calls = max_calls
+        self._llm_fn = llm_fn
+        self._calls_made = 0
+
+    def reason(
+        self,
+        facts: list,
+        dim_scores: dict,
+        query_context: dict,
+        founder_context: dict,
+    ) -> StrategicInsight:
+        if not facts:
+            return _empty_insight("no_facts")
+
+        self._calls_made = 0
+        start = time.time()
+        fact_context = self._format_facts(facts, dim_scores)
+        fact_refs = [getattr(f, "fact", str(f))[:80] for f in facts[:20]]
+
+        synthesis_data: dict = {"causal_chain": "[error]"}
+        strategy_data: dict = {}
+        verdict_data: dict = {}
+
+        try:
+            synthesis = self._call_llm(self._build_synthesis_prompt(fact_context, query_context))
+            synthesis_data = self._parse_json(synthesis, {
+                "causal_chain": "Unknown mechanism",
+                "contradictions": [],
+                "inferred_gaps": [],
+            })
+
+            strategy = self._call_llm(self._build_strategy_prompt(
+                synthesis_data, founder_context, query_context
+            ))
+            strategy_data = self._parse_json(strategy, {
+                "asymmetric_play": "None identified",
+                "compound_trap": "None identified",
+            })
+
+            verdict = self._call_llm(self._build_verdict_prompt(
+                synthesis_data, strategy_data, query_context
+            ))
+            verdict_data = self._parse_json(verdict, {
+                "verdict": "UNCERTAIN",
+                "kill_conditions": [],
+                "proceed_conditions": [],
+                "reasoning": "Insufficient data for mechanistic verdict",
+            })
+        except Exception:
+            return StrategicInsight(
+                causal_chain=synthesis_data.get("causal_chain", "[error]"),
+                fact_references=fact_refs,
+                llm_calls_made=self._calls_made,
+                total_latency_ms=int((time.time() - start) * 1000),
+            )
+
+        return StrategicInsight(
+            causal_chain=synthesis_data.get("causal_chain", ""),
+            contradictions=synthesis_data.get("contradictions", []),
+            inferred_gaps=synthesis_data.get("inferred_gaps", []),
+            asymmetric_play=strategy_data.get("asymmetric_play", ""),
+            compound_trap=strategy_data.get("compound_trap", ""),
+            kill_go_reasoning=verdict_data.get("reasoning", ""),
+            verdict=verdict_data.get("verdict", "UNCERTAIN"),
+            kill_conditions=verdict_data.get("kill_conditions", []),
+            proceed_conditions=verdict_data.get("proceed_conditions", []),
+            fact_references=fact_refs,
+            llm_calls_made=self._calls_made,
+            total_latency_ms=int((time.time() - start) * 1000),
+        )
+
+    def _call_llm(self, prompt: str) -> str:
+        if self._calls_made >= self.max_calls:
+            raise RuntimeError(f"LLM call budget exhausted ({self.max_calls})")
+
+        self._calls_made += 1
+
+        if self._llm_fn:
+            result = self._llm_fn(prompt, max_tokens=2048, temperature=0.3)
+        else:
+            from ...llm.factory import complete_with_fallback
+            result = complete_with_fallback(prompt, max_tokens=2048, temperature=0.3)
+
+        return result.content
+
+    def _parse_json(self, text: str, defaults: dict) -> dict:
+        text = text.strip()
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start >= 0 and end > start:
+            try:
+                return json.loads(text[start:end])
+            except json.JSONDecodeError:
+                pass
+        return {**defaults, "_raw": text[:500]}
+
+    def _format_facts(self, facts: list, dim_scores: dict) -> str:
+        by_dim: dict[str, list[str]] = {}
+        for f in facts:
+            dim = getattr(f, "dimension", "unknown")
+            fact_text = getattr(f, "fact", str(f))
+            zone = getattr(f, "zone_tag", "?")
+            by_dim.setdefault(dim, []).append(f"[{zone}] {fact_text[:150]}")
+
+        lines = []
+        for dim, dim_facts in by_dim.items():
+            score_obj = dim_scores.get(dim)
+            score_val = getattr(score_obj, "score", 0) if score_obj else 0
+            lines.append(f"\n## {dim} (score: {score_val:.2f})")
+            for ff in dim_facts[:5]:
+                lines.append(f"  - {ff}")
+        return "\n".join(lines)
+
+    def _build_synthesis_prompt(self, fact_context: str, query_context: dict) -> str:
+        query = query_context.get("original_query", query_context.get("query", ""))
+        return f"""You are a strategic business analyst. Given verified facts across multiple dimensions about: "{query}"
+
+FACTS:{fact_context}
+
+Tasks:
+1. CAUSAL MECHANISM: Not a summary — a causal chain (A causes B because C). What is the fundamental mechanism that determines success/failure here?
+2. CONTRADICTIONS: Which facts contradict each other? For each pair, which is more likely true and WHY?
+3. GAPS: Which dimensions have insufficient data? Based on existing facts, what can you INFER? Label as [INFERRED].
+
+Respond ONLY in JSON:
+{{"causal_chain": "...", "contradictions": [{{"fact_a": "...", "fact_b": "...", "resolution": "...", "reasoning": "..."}}], "inferred_gaps": [{{"dimension": "...", "inference": "...", "based_on": "..."}}]}}"""
+
+    def _build_strategy_prompt(self, synthesis: dict, founder_context: dict, query_context: dict) -> str:
+        query = query_context.get("original_query", query_context.get("query", ""))
+        capital = founder_context.get("capital_usd", "unknown")
+        hours = founder_context.get("hours_per_day", "unknown")
+        skills = founder_context.get("skills", [])
+
+        return f"""Given this causal mechanism for "{query}":
+{synthesis.get('causal_chain', 'Unknown')}
+
+Founder constraints: capital=${capital}, hours/day={hours}, skills={skills}
+
+Tasks:
+1. ASYMMETRIC PLAY: What can THIS specific founder exploit that 99% miss?
+   - Information asymmetry: what do insiders know that outsiders don't?
+   - Access asymmetry: what's gatekept that can be side-doored?
+   - Timing asymmetry: what's changing NOW that creates a window?
+2. COMPOUND TRAP: What asset accumulates during execution?
+   If answer is "experience" or "relationships" → this is a JOB not a POSITION. Flag redesign needed.
+
+Respond ONLY in JSON:
+{{"asymmetric_play": "...", "side_door": "...", "timing_window": "...", "compound_trap": "...", "redesign_needed": false}}"""
+
+    def _build_verdict_prompt(self, synthesis: dict, strategy: dict, query_context: dict) -> str:
+        return f"""Given:
+- Causal mechanism: {synthesis.get('causal_chain', 'Unknown')}
+- Asymmetric play: {strategy.get('asymmetric_play', 'None')}
+- Contradictions: {json.dumps(synthesis.get('contradictions', []))}
+
+Should founder PROCEED? Answer based on MECHANISM, not score.
+- List specific kill conditions and whether each is present
+- List specific proceed conditions and whether each is present
+- Give the mechanistic reason to GO or KILL
+
+Respond ONLY in JSON:
+{{"verdict": "GO|KILL|UNCERTAIN", "kill_conditions": [{{"condition": "...", "present": true/false}}], "proceed_conditions": [{{"condition": "...", "present": true/false}}], "reasoning": "..."}}"""

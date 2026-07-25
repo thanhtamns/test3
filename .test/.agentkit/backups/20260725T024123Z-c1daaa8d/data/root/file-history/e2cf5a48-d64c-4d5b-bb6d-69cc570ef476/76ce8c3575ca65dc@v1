@@ -1,0 +1,449 @@
+#!/usr/bin/env python3
+"""
+Stage0 Integration - Deep Intelligence as Step -8
+Runs BEFORE LLM analysis. System reasons first, LLM fills gaps only.
+"""
+
+import json
+import sys
+import os
+from pathlib import Path
+from typing import Dict, Any, List, Optional
+from dataclasses import dataclass
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from knowledge_accumulator import KnowledgeAccumulator
+
+
+@dataclass
+class DeepIntelligenceOutput:
+    """Output format for stage0 integration."""
+    applicable_claims: int
+    mechanisms: Dict[str, List[Dict]]
+    actions: List[Dict]
+    risks: List[str]
+    patterns: List[str]
+    gaps_for_llm: List[str]
+    confidence: float
+    should_skip_llm_for: List[str]  # Domains where KB is sufficient
+    opm_mechanisms: List[Dict] = None  # Zero-capital mechanisms available
+    capital_verdict: str = "PROCEED"  # PROCEED | EXPLORE_OPM | CAPITAL_BLOCKED
+
+
+class Stage0DeepIntelligence:
+    """
+    Step -8 in stage0 pipeline.
+    Runs before any LLM call. Provides pre-reasoning from knowledge base.
+
+    Output tells LLM:
+    - What system already knows (skip researching these)
+    - What gaps need filling (focus LLM here)
+    - Confidence level (if high, LLM can be brief)
+    """
+
+    def __init__(self):
+        self.kb = KnowledgeAccumulator()
+
+    def analyze(self, query: str, context: Dict[str, Any] = None) -> DeepIntelligenceOutput:
+        """Pre-analyze query using knowledge base."""
+
+        context = context or {}
+
+        # 1. Classify domains in query
+        domains = self._extract_domains(query)
+
+        # 2. Gather all relevant claims
+        all_claims = []
+        for domain in domains:
+            claims = self.kb.query(domain=domain, min_confidence=0.4)
+            all_claims.extend(claims)
+
+        # 3. Filter by context
+        applicable = [c for c in all_claims if self._applies(c, context)]
+
+        # 4. Group by mechanism type
+        mechanisms = self._group_mechanisms(applicable)
+
+        # 5. Derive actions
+        actions = self._derive_actions(applicable, context)
+
+        # 6. Extract risks
+        risks = self._extract_risks(applicable, context)
+
+        # 7. Extract patterns
+        patterns = self._extract_patterns(applicable)
+
+        # 8. Identify gaps
+        gaps = self._identify_gaps(query, domains, applicable)
+
+        # 9. Calculate confidence
+        confidence = self._calculate_confidence(applicable, gaps)
+
+        # 10. Determine what LLM can skip
+        skip_domains = self._domains_sufficient(domains, applicable)
+
+        # 11. Detect OPM mechanisms (NEVER kill on capital alone)
+        opm_mechanisms, capital_verdict = self._detect_opm_mechanisms(query, context)
+
+        return DeepIntelligenceOutput(
+            applicable_claims=len(applicable),
+            mechanisms=mechanisms,
+            actions=actions,
+            risks=risks,
+            patterns=patterns,
+            gaps_for_llm=gaps,
+            confidence=confidence,
+            should_skip_llm_for=skip_domains,
+            opm_mechanisms=opm_mechanisms,
+            capital_verdict=capital_verdict
+        )
+
+    def _extract_domains(self, query: str) -> List[str]:
+        """Extract relevant domains from query."""
+        query_lower = query.lower()
+
+        domain_keywords = {
+            "cash_flow": ["cash", "money", "capital", "payment", "invoice", "tiền", "dòng tiền", "float", "revenue", "l/c", "letter of credit", "prepay", "deposit", "fund"],
+            "negotiation": ["negotiate", "deal", "terms", "đàm phán", "leverage", "bargain", "contract"],
+            "positioning": ["position", "network", "hub", "broker", "connect", "vị thế", "market", "export", "xuất khẩu", "trade", "import"],
+            "business_strategy": ["strategy", "business", "model", "moat", "competitive", "chiến lược"],
+            "pricing": ["price", "pricing", "cost", "charge", "giá", "fob", "margin", "commission"],
+            "sales": ["sales", "sell", "customer", "client", "bán", "buyer"],
+            "risk": ["risk", "fail", "danger", "rủi ro", "survive", "safe"],
+            "execution": ["execute", "action", "do", "build", "start", "ship", "launch", "container", "shipment", "sample"],
+            "growth": ["growth", "scale", "expand", "acquire", "user", "traffic"],
+            "hiring": ["hire", "team", "people", "employee", "recruit"],
+            "validation": ["validate", "test", "customer", "feedback", "market fit"],
+            "decision_making": ["decision", "decide", "choose", "option", "bet"],
+            "psychology": ["psychology", "behavior", "bias", "cognitive", "emotion"]
+        }
+
+        found_domains = []
+        for domain, keywords in domain_keywords.items():
+            if any(kw in query_lower for kw in keywords):
+                found_domains.append(domain)
+
+        return found_domains or ["general"]
+
+    def _applies(self, claim, context: Dict) -> bool:
+        """Check if claim applies to context."""
+        # Capital constraint
+        if context.get("capital", float('inf')) == 0:
+            capital_words = ["invest", "purchase", "buy", "fund", "capital required"]
+            if any(w in claim.mechanism.lower() for w in capital_words):
+                return False
+        return True
+
+    def _group_mechanisms(self, claims) -> Dict[str, List[Dict]]:
+        """Group claims by mechanism type."""
+        groups = {}
+        for claim in claims:
+            mech_type = self._classify_mechanism_type(claim.mechanism)
+            if mech_type not in groups:
+                groups[mech_type] = []
+            groups[mech_type].append({
+                "claim": claim.claim,
+                "mechanism": claim.mechanism,
+                "confidence": claim.confidence,
+                "source": claim.source
+            })
+        return groups
+
+    def _classify_mechanism_type(self, mechanism: str) -> str:
+        mech_lower = mechanism.lower()
+        if any(kw in mech_lower for kw in ["timing", "when", "schedule", "speed"]):
+            return "timing"
+        if any(kw in mech_lower for kw in ["position", "network", "connect"]):
+            return "positioning"
+        if any(kw in mech_lower for kw in ["structure", "prepay", "annual", "pricing"]):
+            return "structure"
+        if any(kw in mech_lower for kw in ["psychology", "bias", "emotion", "perception"]):
+            return "psychology"
+        if any(kw in mech_lower for kw in ["avoid", "don't", "never", "risk"]):
+            return "defense"
+        return "execution"
+
+    def _derive_actions(self, claims, context: Dict) -> List[Dict]:
+        """Derive actions from claims."""
+        actions = []
+        for claim in claims[:15]:  # Top 15
+            # Extract action from mechanism
+            action = self._extract_action(claim.mechanism)
+            if action:
+                applicable = self._applies(claim, context)
+                actions.append({
+                    "action": action,
+                    "from_claim": claim.claim[:100],
+                    "confidence": claim.confidence,
+                    "applicable": applicable
+                })
+        return sorted(actions, key=lambda x: (-x["applicable"], -x["confidence"]))
+
+    def _extract_action(self, mechanism: str) -> Optional[str]:
+        """Extract actionable part from mechanism."""
+        # Look for action indicators
+        if "→" in mechanism:
+            parts = mechanism.split("→")
+            return parts[-1].strip()[:100]
+        if ":" in mechanism:
+            return mechanism.split(":")[-1].strip()[:100]
+        return mechanism[:100] if len(mechanism) < 100 else None
+
+    def _extract_risks(self, claims, context: Dict) -> List[str]:
+        """Extract risk-related claims."""
+        risks = []
+        for claim in claims:
+            if claim.domain == "risk" or "risk" in claim.claim.lower():
+                risks.append(f"[{claim.confidence:.0%}] {claim.claim}")
+        return risks[:10]
+
+    def _extract_patterns(self, claims) -> List[str]:
+        """Extract high-confidence patterns."""
+        patterns = []
+        for claim in sorted(claims, key=lambda c: -c.confidence)[:10]:
+            if claim.confidence >= 0.5:
+                patterns.append(f"{claim.claim} → {claim.mechanism[:80]}")
+        return patterns
+
+    def _identify_gaps(self, query: str, domains: List[str], claims) -> List[str]:
+        """Identify what knowledge is missing."""
+        gaps = []
+
+        # Expected aspects per domain
+        expected = {
+            "cash_flow": ["timing", "structure", "risk", "action"],
+            "negotiation": ["leverage", "psychology", "tactics", "risk"],
+            "business_strategy": ["moat", "differentiation", "scaling", "risk"],
+            "pricing": ["anchoring", "value", "tiers", "elasticity"],
+            "execution": ["priority", "speed", "validation", "risk"]
+        }
+
+        covered = set()
+        for claim in claims:
+            covered.add(claim.domain)
+            for kw in ["timing", "structure", "risk", "action", "leverage", "psychology"]:
+                if kw in claim.mechanism.lower() or kw in claim.claim.lower():
+                    covered.add(kw)
+
+        for domain in domains:
+            if domain in expected:
+                for aspect in expected[domain]:
+                    if aspect not in covered:
+                        gaps.append(f"Missing {aspect} knowledge for {domain}")
+
+        return gaps[:7]
+
+    def _calculate_confidence(self, claims, gaps: List[str]) -> float:
+        """Calculate overall confidence."""
+        if not claims:
+            return 0.1
+
+        base = sum(c.confidence for c in claims) / len(claims)
+        gap_penalty = len(gaps) * 0.03
+        volume_bonus = min(0.15, len(claims) * 0.01)
+
+        return max(0.1, min(0.95, base + volume_bonus - gap_penalty))
+
+    def _domains_sufficient(self, domains: List[str], claims) -> List[str]:
+        """Determine which domains have sufficient coverage."""
+        sufficient = []
+        domain_counts = {}
+        for claim in claims:
+            d = claim.domain
+            domain_counts[d] = domain_counts.get(d, 0) + 1
+
+        for domain in domains:
+            count = domain_counts.get(domain, 0)
+            if count >= 5:  # At least 5 claims = skip LLM for this
+                sufficient.append(domain)
+
+        return sufficient
+
+    def _detect_opm_mechanisms(self, query: str, context: Dict) -> tuple:
+        """
+        Detect zero-capital mechanisms when capital seems insufficient.
+        Returns (mechanisms_list, capital_verdict).
+
+        Core principle: NEVER kill based on capital alone.
+        Always check: WHO has capital? HOW can founder access it?
+        """
+        capital = context.get("capital", float('inf'))
+        capital_required = context.get("capital_required", 0)
+
+        # If capital sufficient, no OPM needed
+        if capital >= capital_required:
+            return [], "PROCEED"
+
+        # Capital gap exists - detect OPM mechanisms
+        opm_mechanisms = []
+        query_lower = query.lower()
+
+        # L/C funded mechanism (buyer's bank funds transaction)
+        if any(kw in query_lower for kw in ["export", "xuất khẩu", "fob", "container", "trade"]):
+            opm_mechanisms.append({
+                "name": "L/C Funded Transaction",
+                "principle": "Buyer's Letter of Credit funds 100% of transaction",
+                "how": [
+                    "Get buyer commitment + L/C",
+                    "Present L/C to local bank for pre-shipment finance (80-90%)",
+                    "Operate on BANK'S capital, not yours",
+                    "Repay from transaction proceeds"
+                ],
+                "capital_required": "Near $0 (L/C covers transaction)",
+                "skill_required": "Negotiation + documentation + relationships",
+                "applicable": True
+            })
+
+        # Broker/intermediary mechanism
+        opm_mechanisms.append({
+            "name": "Pure Broker Position",
+            "principle": "Connect buyer-seller, earn commission, never own inventory",
+            "how": [
+                "Build buyer database (your software skills)",
+                "Build seller database (your location access)",
+                "Match needs, take 2-5% commission",
+                "Never touch inventory"
+            ],
+            "capital_required": "$500-2000 (samples + travel)",
+            "skill_required": "Database + communication",
+            "applicable": True
+        })
+
+        # Skill exchange mechanism
+        founder_skills = context.get("skills", [])
+        if founder_skills or any(kw in query_lower for kw in ["software", "ai", "tech"]):
+            opm_mechanisms.append({
+                "name": "Skill-for-Access Exchange",
+                "principle": "Trade high-value skills for industry access/partnership",
+                "how": [
+                    "Find existing player needing tech (website, CRM, automation)",
+                    "Offer: 'I build your tech, you teach me + give deal access'",
+                    "$10K+ software value = partnership position",
+                    "6 months → knowledge + relationships to operate"
+                ],
+                "capital_required": "$0",
+                "skill_required": "Software/AI/Tech (founder has this)",
+                "applicable": True
+            })
+
+        # Prepay/customer-funded mechanism
+        opm_mechanisms.append({
+            "name": "Customer Prepay (Negative CCC)",
+            "principle": "Get paid BEFORE you pay suppliers",
+            "how": [
+                "Negotiate 50-100% deposit from buyer",
+                "Use buyer's money to fund operations",
+                "Deliver → collect remainder",
+                "Net: operated on THEIR capital"
+            ],
+            "capital_required": "Near $0",
+            "skill_required": "Value proposition + negotiation",
+            "applicable": True
+        })
+
+        # Determine verdict
+        if opm_mechanisms:
+            verdict = "EXPLORE_OPM"  # Not blocked - paths exist
+        else:
+            verdict = "CAPITAL_BLOCKED"  # True capital block
+
+        return opm_mechanisms, verdict
+
+
+def format_for_stage0(output: DeepIntelligenceOutput) -> str:
+    """Format output for injection into stage0 prompt."""
+
+    lines = [
+        "=" * 60,
+        "DEEP INTELLIGENCE PRE-ANALYSIS (Step -8)",
+        "=" * 60,
+        f"Knowledge claims applicable: {output.applicable_claims}",
+        f"Confidence: {output.confidence:.0%}",
+        "",
+        "MECHANISMS BY TYPE:"
+    ]
+
+    for mech_type, claims in output.mechanisms.items():
+        lines.append(f"  [{mech_type.upper()}] ({len(claims)} claims)")
+        for claim in claims[:3]:
+            lines.append(f"    • {claim['claim'][:80]}")
+            lines.append(f"      → {claim['mechanism'][:60]}")
+
+    lines.append("")
+    lines.append("TOP ACTIONS:")
+    for action in output.actions[:5]:
+        status = "✓" if action["applicable"] else "✗"
+        lines.append(f"  {status} [{action['confidence']:.0%}] {action['action'][:80]}")
+
+    if output.risks:
+        lines.append("")
+        lines.append("RISKS:")
+        for risk in output.risks[:5]:
+            lines.append(f"  ⚠ {risk}")
+
+    if output.gaps_for_llm:
+        lines.append("")
+        lines.append("GAPS FOR LLM TO FILL:")
+        for gap in output.gaps_for_llm:
+            lines.append(f"  ? {gap}")
+
+    if output.should_skip_llm_for:
+        lines.append("")
+        lines.append(f"LLM CAN SKIP: {', '.join(output.should_skip_llm_for)}")
+        lines.append("(Knowledge base sufficient for these domains)")
+
+    # OPM mechanisms - critical for capital-constrained founders
+    if output.opm_mechanisms:
+        lines.append("")
+        lines.append("=" * 60)
+        lines.append(f"CAPITAL VERDICT: {output.capital_verdict}")
+        lines.append("=" * 60)
+        lines.append("")
+        lines.append("ZERO-CAPITAL MECHANISMS AVAILABLE:")
+        for i, mech in enumerate(output.opm_mechanisms, 1):
+            lines.append(f"  [{i}] {mech['name']}")
+            lines.append(f"      Principle: {mech['principle']}")
+            lines.append(f"      Capital needed: {mech['capital_required']}")
+            for step in mech.get('how', [])[:3]:
+                lines.append(f"        → {step}")
+
+    lines.append("=" * 60)
+
+    return "\n".join(lines)
+
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Stage0 Deep Intelligence")
+    parser.add_argument("--query", "-q", required=True, help="Query to analyze")
+    parser.add_argument("--context", "-c", default="{}", help="JSON context")
+    parser.add_argument("--json", action="store_true", help="Output as JSON")
+
+    args = parser.parse_args()
+
+    di = Stage0DeepIntelligence()
+    context = json.loads(args.context)
+
+    output = di.analyze(args.query, context)
+
+    if args.json:
+        result = {
+            "applicable_claims": output.applicable_claims,
+            "confidence": output.confidence,
+            "mechanisms": output.mechanisms,
+            "actions": output.actions,
+            "risks": output.risks,
+            "patterns": output.patterns,
+            "gaps_for_llm": output.gaps_for_llm,
+            "should_skip_llm_for": output.should_skip_llm_for,
+            "opm_mechanisms": output.opm_mechanisms,
+            "capital_verdict": output.capital_verdict
+        }
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        print(format_for_stage0(output))
+
+
+if __name__ == "__main__":
+    main()

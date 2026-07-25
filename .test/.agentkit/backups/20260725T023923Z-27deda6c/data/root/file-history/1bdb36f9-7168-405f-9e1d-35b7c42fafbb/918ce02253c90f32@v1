@@ -1,0 +1,232 @@
+---
+phase: 6
+title: "Integration Test + Calibration"
+status: pending
+priority: P2
+effort: "2-3d"
+dependencies: [phase-01, phase-02, phase-03, phase-04, phase-05]
+---
+
+# Phase 6: Integration Test + Calibration
+
+## Overview
+
+End-to-end integration test of full LFI stack. Backtest against historical cases. Calibrate thresholds. Measure LLM dependency reduction. Validate hallucination reduction.
+
+## Requirements
+
+- Functional: Full pipeline test (query → decompose → resolve → chain → verdict → govern). Backtest on 50+ historical cases. A/B comparison vs pure-LLM baseline.
+- Non-functional: All tests automated and repeatable. Calibration produces tunable config.
+
+## Related Code Files
+
+**Create:**
+- `.claude/lib/intelligence/tests/test-lfi-integration.py`
+- `.claude/lib/intelligence/tests/test-backtest-historical.py`
+- `.claude/lib/intelligence/tests/test-hallucination-rate.py`
+- `.claude/lib/intelligence/calibration/lfi-calibration-config.json`
+- `.claude/scripts/lfi-health-check.py` — quick health dashboard
+
+**Modify:**
+- `.claude/lib/intelligence/calibration/calibrator.py` — add LFI-specific metrics
+
+## Implementation Steps
+
+### Step 1: Integration Test Suite (~1d)
+
+```python
+class LFIIntegrationTest:
+    def test_full_pipeline(self):
+        """Query → decompose → resolve → chain → verdict → govern"""
+        query = sample_opportunity("dropshipping_vietnam")
+
+        # T1: LLM Interface (mocked for test)
+        llm = MockIntelligenceLLM(responses=FIXTURE_RESPONSES)
+
+        # T2: Coverage + Gap
+        coverage = CoverageTracker(test_db)
+        result = coverage.check(query.features)
+        assert result.score >= 0  # coverage computed
+
+        # T3: Reasoning Chain
+        engine = ReasoningChainEngine(test_db)
+        verdict = engine.reason(query, query.context)
+        assert verdict.type in ("KILL", "PASS", "WEAK_PASS", "NEEDS_LLM")
+
+        # T4: Autonomy Governor
+        governor = AutonomyGovernor(tracker, rules)
+        governed = governor.wrap_verdict(verdict, query.domain)
+        assert governed.autonomy_level in ("FULL_AUTO", "SEMI_AUTO", "HUMAN_DECIDES")
+
+        # Trace exists
+        assert chain_tracer.last_trace is not None
+
+    def test_provider_swap(self):
+        """Verify system works with different LLM providers."""
+        for provider in ["claude", "gemini", "openai"]:
+            config = load_config()
+            config["default_provider"] = provider
+            llm = IntelligenceLLM(config)
+            # Should not raise
+            assert llm.provider.PROVIDER_NAME == provider
+
+    def test_evolution_cycle(self):
+        """Query → gap → LLM fill → distill → re-query → local resolve."""
+        # First query: novel domain, low coverage
+        v1 = engine.reason(novel_query, context)
+        assert v1.type == "NEEDS_LLM"
+
+        # Simulate evolution trigger
+        trigger = SessionTrigger(coverage, gaps, llm, distiller)
+        evolution = trigger.on_query(novel_query.features)
+        assert evolution.new_vectors > 0
+
+        # Second query: same domain, should resolve locally now
+        v2 = engine.reason(novel_query, context)
+        assert v2.type != "NEEDS_LLM"  # should be resolvable
+```
+
+### Step 2: Historical Backtest (~1d)
+
+```python
+class HistoricalBacktest:
+    def run(self, cases_path: str) -> BacktestResult:
+        """Run LFI engine against historical cases with known outcomes."""
+        cases = load_historical_cases(cases_path)  # From outcomes.db
+        results = []
+
+        for case in cases:
+            # Run chain reasoning
+            verdict = engine.reason(case.query, case.context)
+
+            # Compare with actual outcome
+            correct = verdict.type == case.actual_outcome
+            results.append({
+                "case_id": case.id,
+                "domain": case.domain,
+                "predicted": verdict.type,
+                "actual": case.actual_outcome,
+                "correct": correct,
+                "confidence": verdict.confidence,
+                "coverage_ratio": verdict.chain.coverage_ratio if hasattr(verdict, 'chain') else None,
+                "llm_needed": verdict.type == "NEEDS_LLM",
+            })
+
+        return BacktestResult(
+            total=len(results),
+            correct=sum(1 for r in results if r["correct"]),
+            accuracy=sum(1 for r in results if r["correct"]) / len(results),
+            llm_needed_pct=sum(1 for r in results if r["llm_needed"]) / len(results),
+            per_domain=self._group_by_domain(results),
+        )
+```
+
+### Step 3: Hallucination Rate Measurement (~0.5d)
+
+```python
+class HallucinationRateTest:
+    def measure(self, n_queries: int = 20) -> HallucinationReport:
+        """Send queries through anti-hallucination filter, measure rejection rate."""
+        queries = generate_test_queries(n_queries)
+        results = []
+
+        for q in queries:
+            raw = llm.query_raw(q)  # without filter
+            filtered = llm.query(q, schema, domain)  # with filter
+
+            results.append({
+                "query": q,
+                "raw_claims": count_claims(raw),
+                "filtered_claims": count_claims(filtered),
+                "rejected_claims": count_claims(raw) - count_claims(filtered),
+                "cross_query_failures": filtered.cross_query_failures,
+                "url_verification_failures": filtered.url_failures,
+            })
+
+        return HallucinationReport(
+            total_claims=sum(r["raw_claims"] for r in results),
+            rejected_claims=sum(r["rejected_claims"] for r in results),
+            rejection_rate=rejected / total,
+            cross_query_failure_rate=...,
+            url_failure_rate=...,
+        )
+```
+
+### Step 4: Calibration Config (~0.5d)
+
+Tunable thresholds in single config file:
+
+```json
+{
+  "coverage": {
+    "high_threshold": 0.8,
+    "medium_threshold": 0.4,
+    "staleness_days": 90,
+    "freshness_penalty_pct": 10
+  },
+  "reasoning": {
+    "confidence_threshold": 0.6,
+    "aggregate_method": "geometric_mean",
+    "min_coverage_ratio": 0.5,
+    "pass_score_threshold": 7.0
+  },
+  "anti_hallucination": {
+    "min_confidence_per_claim": 7,
+    "cross_query_diff_threshold": 0.5,
+    "enable_url_verification": true
+  },
+  "evolution": {
+    "session_max_llm_calls": 3,
+    "daily_budget_usd": 1.0,
+    "min_distill_confidence": 0.7,
+    "continuous_stale_refresh_limit": 5,
+    "continuous_weak_domain_limit": 3
+  },
+  "autonomy": {
+    "full_auto_accuracy": 0.85,
+    "semi_auto_accuracy": 0.70,
+    "min_verdicts_for_promotion": 30,
+    "demotion_drop_threshold": 0.10,
+    "demotion_window": 10,
+    "re_promotion_consecutive_good": 5
+  }
+}
+```
+
+### Step 5: Health Check Dashboard (~0.5d)
+
+```bash
+python .claude/scripts/lfi-health-check.py
+
+# Output:
+# === LFI Health Check ===
+# Knowledge DB: 523 vectors, 89 kill signals, 34 pattern rules
+# Coverage: 12 domains tracked
+#   - saas_micro:        92% (FULL_AUTO, 120 verdicts, 88% accuracy)
+#   - dropshipping_vn:   71% (SEMI_AUTO, 45 verdicts, 72% accuracy)
+#   - crypto_defi:       28% (HUMAN_DECIDES, 15 verdicts, 61% accuracy)
+# Evolution: +12 vectors this week (session:5, outcome:3, continuous:4)
+# Staleness: 3 facts expiring in 7 days
+# LLM dependency: 8% of verdicts required LLM (target: <10%)
+# Hallucination filter: 14% of raw claims rejected last week
+# Anti-hallucination: last calibration 2 days ago
+```
+
+## Success Criteria
+
+- [ ] Integration test passes end-to-end
+- [ ] Provider swap test passes for claude/gemini/openai
+- [ ] Backtest accuracy >= 75% on 50+ historical cases
+- [ ] LLM dependency < 20% of verdicts (NEEDS_LLM rate)
+- [ ] Hallucination filter rejects > 10% of raw claims (proving it catches real issues)
+- [ ] Health check script runs in < 5s
+- [ ] All calibration thresholds in single JSON config
+- [ ] Evolution cycle test proves system learns (query → gap → fill → resolve locally)
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|---|---|
+| Not enough historical cases for backtest | Use synthetic cases + existing outcomes.db |
+| Backtest accuracy < 75% | Calibrate thresholds iteratively. If < 60%, redesign feature schema |
+| Health check script becomes maintenance burden | Keep it simple: read SQLite + JSON, compute stats, print |

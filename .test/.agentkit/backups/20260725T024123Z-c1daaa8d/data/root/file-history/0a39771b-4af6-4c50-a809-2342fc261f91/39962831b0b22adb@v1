@@ -1,0 +1,145 @@
+"""
+T08 Staircase — Map founder's growth path from current capital to revenue target.
+Wraps compound_paths + stage_detector. Zero LLM calls.
+"""
+
+from __future__ import annotations
+
+from .base import TechniqueInput, TechniqueResult
+
+try:
+    from ....layers.scale_aware.compound_paths import get_compound_path, CompoundPath
+    _COMPOUND_PATHS_AVAILABLE = True
+except ImportError:
+    _COMPOUND_PATHS_AVAILABLE = False
+    get_compound_path = None
+
+try:
+    from ....layers.scale_aware.stage_detector import detect_stage
+    _STAGE_DETECTOR_AVAILABLE = True
+except ImportError:
+    _STAGE_DETECTOR_AVAILABLE = False
+    detect_stage = None
+
+_WEEKS_PER_MONTH = 4.33
+
+
+def _extract_revenue_target(facts: list) -> float | None:
+    """Pull first revenue target from unit_economics facts with a value."""
+    for f in facts:
+        if f.dimension == "unit_economics" and f.value is not None and f.value > 0:
+            return float(f.value)
+    return None
+
+
+def staircase(input: TechniqueInput) -> TechniqueResult:
+    """
+    Calculate months to reach revenue target via compound path steps.
+
+    Verdict:
+      STAIRCASE_GO       — reachable in ≤12 months
+      STAIRCASE_POSSIBLE — reachable in 12–24 months
+      CAUTION            — >24 months or unclear path
+    """
+    capital = float(input.founder_context.get("capital_usd", 0))
+    revenue = float(input.founder_context.get("monthly_revenue_usd", 0))
+    business_model = input.context.get("business_model", "")
+    reasoning: list[str] = []
+    data_used: list[str] = []
+
+    # --- Detect current stage ---
+    current_stage_id = "unknown"
+    if _STAGE_DETECTOR_AVAILABLE:
+        try:
+            stage = detect_stage(capital, revenue)
+            current_stage_id = stage.stage_id
+            reasoning.append(f"Current stage: {current_stage_id} (capital=${capital:,.0f}, rev=${revenue:,.0f}/mo)")
+            data_used.append(f"stage:{current_stage_id}")
+        except Exception as e:
+            reasoning.append(f"Stage detection failed: {e}")
+    else:
+        reasoning.append(f"Stage detector unavailable — estimating from capital=${capital:,.0f}")
+        if capital < 500:
+            current_stage_id = "stage_0_zero"
+        elif capital < 5000:
+            current_stage_id = "stage_1_side_hustle"
+        else:
+            current_stage_id = "stage_2_traction"
+
+    # --- Extract revenue target ---
+    revenue_target = _extract_revenue_target(input.facts)
+    if revenue_target is None:
+        revenue_target = max(revenue * 5, 1000.0)
+        reasoning.append(f"No revenue target in facts — defaulting to ${revenue_target:,.0f}/mo")
+    else:
+        reasoning.append(f"Revenue target from facts: ${revenue_target:,.0f}/mo")
+
+    # --- Look up compound path ---
+    path_steps = []
+    path_confidence = "low"
+    total_weeks = 0
+
+    if _COMPOUND_PATHS_AVAILABLE and get_compound_path is not None:
+        try:
+            path_steps = get_compound_path(current_stage_id, "stage_3_scale")
+            if path_steps:
+                total_weeks = sum(s.duration_weeks for s in path_steps)
+                data_used.append(f"compound_path:{current_stage_id}->stage_3_scale")
+                path_confidence = "high"
+                reasoning.append(
+                    f"Path found: {len(path_steps)} steps, {total_weeks} weeks total"
+                )
+                for s in path_steps[:3]:
+                    reasoning.append(f"  Step {s.step}: {s.action[:60]} ({s.duration_weeks}wk)")
+            else:
+                reasoning.append(f"No compound path found for stage '{current_stage_id}'")
+        except Exception as e:
+            reasoning.append(f"Path lookup failed: {e}")
+
+    # --- Estimate if no path data ---
+    if not path_steps or total_weeks == 0:
+        # Conservative estimate: $1K capital → ~6mo to first revenue, each 10x takes ~6mo
+        if capital >= 5000:
+            total_weeks = 26  # ~6 months
+        elif capital >= 1000:
+            total_weeks = 52  # ~12 months
+        else:
+            total_weeks = 78  # ~18 months
+        reasoning.append(
+            f"Estimated path: ~{total_weeks} weeks based on capital tier (no path data)"
+        )
+
+    total_months = total_weeks / _WEEKS_PER_MONTH
+
+    reasoning.append(f"Total path: {total_months:.1f} months to reach scale target")
+
+    # --- Verdict ---
+    if total_months <= 12:
+        verdict = "STAIRCASE_GO"
+        score = 0.85
+    elif total_months <= 24:
+        verdict = "STAIRCASE_POSSIBLE"
+        score = 0.65
+    else:
+        verdict = "CAUTION"
+        score = 0.4
+
+    confidence = 0.75 if path_confidence == "high" else 0.45
+
+    return TechniqueResult(
+        technique_id="T08_staircase",
+        score=round(score, 3),
+        confidence=round(confidence, 3),
+        verdict=verdict,
+        reasoning_chain=reasoning,
+        zone_tag="K" if path_confidence == "high" else "T",
+        data_used=data_used,
+        metadata={
+            "total_months": round(total_months, 1),
+            "total_weeks": total_weeks,
+            "path_steps_count": len(path_steps),
+            "path_confidence": path_confidence,
+            "current_stage_id": current_stage_id,
+            "revenue_target": revenue_target,
+        },
+    )

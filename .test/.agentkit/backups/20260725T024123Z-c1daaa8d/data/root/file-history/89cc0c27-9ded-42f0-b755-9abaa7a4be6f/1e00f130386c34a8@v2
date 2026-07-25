@@ -1,0 +1,228 @@
+use regex::Regex;
+use std::sync::LazyLock;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Registry {
+    Npm,
+    PyPI,
+    CratesIo,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DepStatus {
+    Exists,
+    Hallucinated,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Language {
+    JavaScript,
+    Python,
+    Rust,
+}
+
+#[derive(Debug, Clone)]
+pub struct DepFinding {
+    pub package: String,
+    pub registry: Registry,
+    pub status: DepStatus,
+    pub line_number: usize,
+}
+
+static JS_IMPORT: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?:import\s+.*?\s+from\s+['"]([^'"./][^'"]*)['"]|require\(\s*['"]([^'"./][^'"]*)['"]\s*\))"#)
+        .unwrap()
+});
+
+static PY_IMPORT: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^(?:import\s+(\w+)|from\s+(\w+))\b").unwrap()
+});
+
+pub fn extract_imports(content: &str, lang: &Language) -> Vec<(String, usize)> {
+    let mut results = Vec::new();
+
+    match lang {
+        Language::JavaScript => {
+            for (line_idx, line) in content.lines().enumerate() {
+                for caps in JS_IMPORT.captures_iter(line) {
+                    let pkg = caps
+                        .get(1)
+                        .or_else(|| caps.get(2))
+                        .map(|m| m.as_str().to_string());
+                    if let Some(name) = pkg {
+                        let base = name.split('/').next().unwrap_or(&name);
+                        let base = if base.starts_with('@') {
+                            &name[..name.find('/').map(|i| {
+                                name[i + 1..].find('/').map(|j| i + 1 + j).unwrap_or(name.len())
+                            }).unwrap_or(name.len())]
+                        } else {
+                            base
+                        };
+                        results.push((base.to_string(), line_idx + 1));
+                    }
+                }
+            }
+        }
+        Language::Python => {
+            for (line_idx, line) in content.lines().enumerate() {
+                let trimmed = line.trim();
+                if let Some(caps) = PY_IMPORT.captures(trimmed) {
+                    let pkg = caps
+                        .get(1)
+                        .or_else(|| caps.get(2))
+                        .map(|m| m.as_str().to_string());
+                    if let Some(name) = pkg {
+                        if !is_python_stdlib(&name) {
+                            results.push((name, line_idx + 1));
+                        }
+                    }
+                }
+            }
+        }
+        Language::Rust => {
+            for (line_idx, line) in content.lines().enumerate() {
+                let trimmed = line.trim();
+                if trimmed.starts_with('[') || trimmed.starts_with('#') || trimmed.is_empty() {
+                    continue;
+                }
+                if let Some(name) = trimmed.split('=').next() {
+                    let name = name.trim().replace('-', "_");
+                    if !name.is_empty() && !name.starts_with('[') && name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                        results.push((name, line_idx + 1));
+                    }
+                }
+            }
+        }
+    }
+
+    results.sort_by(|a, b| a.0.cmp(&b.0));
+    results.dedup_by(|a, b| a.0 == b.0);
+    results
+}
+
+pub fn validate_package(name: &str, registry: &Registry) -> DepStatus {
+    let url = match registry {
+        Registry::Npm => format!("https://registry.npmjs.org/{}", name),
+        Registry::PyPI => format!("https://pypi.org/pypi/{}/json", name),
+        Registry::CratesIo => format!("https://crates.io/api/v1/crates/{}", name),
+    };
+
+    match ureq::head(&url).call() {
+        Ok(_) => DepStatus::Exists,
+        Err(ureq::Error::StatusCode(404)) => DepStatus::Hallucinated,
+        Err(_) => DepStatus::Unknown,
+    }
+}
+
+pub fn language_from_extension(ext: &str) -> Option<Language> {
+    match ext {
+        "js" | "jsx" | "ts" | "tsx" | "mjs" | "cjs" => Some(Language::JavaScript),
+        "py" | "pyi" => Some(Language::Python),
+        _ => None,
+    }
+}
+
+pub fn registry_for_language(lang: &Language) -> Registry {
+    match lang {
+        Language::JavaScript => Registry::Npm,
+        Language::Python => Registry::PyPI,
+        Language::Rust => Registry::CratesIo,
+    }
+}
+
+fn is_python_stdlib(name: &str) -> bool {
+    matches!(
+        name,
+        "os" | "sys" | "re" | "math" | "json" | "time" | "datetime"
+            | "collections" | "functools" | "itertools" | "pathlib"
+            | "typing" | "abc" | "io" | "logging" | "unittest"
+            | "subprocess" | "threading" | "multiprocessing" | "socket"
+            | "http" | "urllib" | "hashlib" | "base64" | "struct"
+            | "copy" | "enum" | "dataclasses" | "contextlib" | "argparse"
+            | "shutil" | "glob" | "tempfile" | "csv" | "sqlite3"
+            | "pickle" | "shelve" | "xml" | "html" | "email"
+            | "string" | "textwrap" | "random" | "secrets" | "uuid"
+            | "pdb" | "traceback" | "warnings" | "dis" | "ast"
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_imports_js_esm() {
+        let code = r#"import express from 'express';
+import { Router } from 'react-router';
+import './local';
+import '../relative';
+"#;
+        let imports = extract_imports(code, &Language::JavaScript);
+        let names: Vec<&str> = imports.iter().map(|i| i.0.as_str()).collect();
+        assert!(names.contains(&"express"));
+        assert!(names.contains(&"react-router"));
+        assert!(!names.iter().any(|n| n.starts_with('.')));
+    }
+
+    #[test]
+    fn test_extract_imports_js_require() {
+        let code = r#"const fs = require('fs');
+const lodash = require('lodash');
+const local = require('./local');
+"#;
+        let imports = extract_imports(code, &Language::JavaScript);
+        let names: Vec<&str> = imports.iter().map(|i| i.0.as_str()).collect();
+        assert!(names.contains(&"fs"));
+        assert!(names.contains(&"lodash"));
+        assert!(!names.iter().any(|n| n.starts_with('.')));
+    }
+
+    #[test]
+    fn test_extract_imports_python() {
+        let code = "import requests\nfrom flask import Flask\nimport os\nimport json\n";
+        let imports = extract_imports(code, &Language::Python);
+        let names: Vec<&str> = imports.iter().map(|i| i.0.as_str()).collect();
+        assert!(names.contains(&"requests"));
+        assert!(names.contains(&"flask"));
+        assert!(!names.contains(&"os"));
+        assert!(!names.contains(&"json"));
+    }
+
+    #[test]
+    fn test_extract_imports_rust_cargo_deps() {
+        let code = r#"[dependencies]
+serde = "1"
+anyhow = "1"
+"#;
+        let imports = extract_imports(code, &Language::Rust);
+        let names: Vec<&str> = imports.iter().map(|i| i.0.as_str()).collect();
+        assert!(names.contains(&"serde"));
+        assert!(names.contains(&"anyhow"));
+    }
+
+    #[test]
+    fn test_language_from_extension() {
+        assert_eq!(language_from_extension("js"), Some(Language::JavaScript));
+        assert_eq!(language_from_extension("ts"), Some(Language::JavaScript));
+        assert_eq!(language_from_extension("py"), Some(Language::Python));
+        assert_eq!(language_from_extension("rs"), None);
+        assert_eq!(language_from_extension("md"), None);
+    }
+
+    #[test]
+    fn test_registry_for_language() {
+        assert_eq!(registry_for_language(&Language::JavaScript), Registry::Npm);
+        assert_eq!(registry_for_language(&Language::Python), Registry::PyPI);
+        assert_eq!(registry_for_language(&Language::Rust), Registry::CratesIo);
+    }
+
+    #[test]
+    fn test_python_stdlib_filtered() {
+        assert!(is_python_stdlib("os"));
+        assert!(is_python_stdlib("sys"));
+        assert!(is_python_stdlib("json"));
+        assert!(!is_python_stdlib("requests"));
+        assert!(!is_python_stdlib("flask"));
+    }
+}

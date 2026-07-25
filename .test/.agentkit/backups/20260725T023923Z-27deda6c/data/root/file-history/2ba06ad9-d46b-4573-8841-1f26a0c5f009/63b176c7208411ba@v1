@@ -1,0 +1,143 @@
+# CODEFLOW
+
+**AI coding cost intelligence engine.** Reduce token costs 40-65% while proving developer productivity is maintained.
+
+CODEFLOW intercepts AI coding tool output, compresses it via smart filters, deduplicates repeated reads, and tracks savings — all with <5ms overhead.
+
+## Quick Start
+
+```bash
+# Install
+curl -fsSL https://raw.githubusercontent.com/codeflow-dev/codeflow/main/install.sh | sh
+
+# Or with cargo
+cargo install --git https://github.com/codeflow-dev/codeflow codeflow --root ~/.local
+
+# Set up hooks for Claude Code
+codeflow init
+
+# View your savings
+codeflow stats
+```
+
+## How It Works
+
+CODEFLOW installs as a Claude Code hook that intercepts **all major tool calls** — Bash, Read, Grep, and Glob:
+
+```
+Claude Code → PreToolUse hook → codeflow processes → compressed/deduped output
+```
+
+**Layer 1 — Compression:** An 8-stage TOML filter pipeline strips noise from Bash command output:
+- ANSI codes, download progress bars, empty lines
+- Verbose compiler/test output condensed to errors + summary
+- Long outputs truncated with head/tail
+
+**Layer 2 — Dedup:** Content-addressed cache detects repeated Bash command output within a session and returns a one-line summary instead of full content.
+
+**Layer 2.5 — Read Dedup:** Intercepts Read/Grep/Glob tool calls. If a file was recently read and hasn't changed (mtime verified), injects `additionalContext` telling Claude the file is unchanged — saving 30-50% of session tokens from re-reads.
+
+**Session Context:** Every tool call is logged per-session (SQLite WAL, <1ms writes). This powers dedup checks and waste detection.
+
+**Waste Detection:** Analyzes session tool logs to surface waste patterns — files read 8x, identical greps, failed searches, glob spam.
+
+**Tracking:** Every compression and dedup event is logged locally (SQLite, 90-day retention) so you can see exactly how many tokens you're saving.
+
+## Filters
+
+15 built-in TOML filters for common commands:
+
+| Command | What it strips |
+|---------|---------------|
+| `git diff` | Index lines, no-newline markers, truncates long lines |
+| `git status` | Hint text, compact modified/added/deleted prefixes |
+| `git log` | Empty lines, truncates to 200 lines |
+| `cargo build/test` | Compiling/Downloading lines, timing normalization |
+| `npm test` | Warnings, stack traces, PASS/FAIL symbols |
+| `pytest` | Warnings summary, site-packages paths |
+| `tsc` | Empty lines, truncated long error lines |
+| `eslint` | Empty lines, problem count summaries |
+| `docker logs` | Timestamps stripped, head/tail |
+| `go test` | PASS/FAIL symbols, timing normalization |
+| `pip install` | Download/cache lines, collecting lines |
+| `find` | Permission denied errors, head/tail |
+| `grep` | Binary match lines, truncated long lines |
+| `ls` | Total line, head/tail for large directories |
+
+### Custom Filters
+
+Create TOML files in `~/.local/share/codeflow/filters/`:
+
+```toml
+strip_ansi = true
+on_empty = "(no output)"
+
+[command]
+name = "mycommand"
+args_contain = ["--verbose"]
+
+[[strip_lines]]
+pattern = '^DEBUG:'
+
+[head_tail]
+head = 20
+tail = 10
+separator = "\n... ({omitted} lines omitted) ...\n"
+
+max_lines = 100
+```
+
+## Commands
+
+```
+codeflow init [-g]              Install hooks (project or global)
+codeflow uninit [-g]            Remove hooks
+codeflow wrap <cmd> [args]      Manually compress a command
+codeflow stats [--json]         Show savings dashboard
+codeflow stats --waste [--json] Show waste pattern analysis
+codeflow cache clear            Clear dedup cache
+codeflow cache info             Show cache statistics
+codeflow sync [--once]          Sync events to cloud (Phase 2)
+codeflow update                 Show version and update info
+```
+
+## Fail-Open Design
+
+Any internal error → original output passed unchanged. CODEFLOW never breaks your workflow:
+- Invalid hook input → passthrough + stderr warning
+- Filter crash → original output returned
+- Database error → output still works, event not logged
+
+## Architecture
+
+```
+cli/                    Rust workspace
+├── crates/core/        Compression, dedup, events, tracking
+├── crates/cli/         Binary, hooks, stats, sync
+├── filters/            TOML filter definitions
+└── proto/              Protobuf event schema
+
+cloud/                  Go ingest server (Phase 2)
+├── cmd/ingest/         HTTP server
+└── internal/           ClickHouse client, API handlers
+
+dashboard/              Next.js + React (Phase 2)
+└── src/                Overview, settings pages
+```
+
+## Development
+
+```bash
+# Build
+cd cli && cargo build
+
+# Test (57 unit + 14 integration)
+cd cli && cargo test
+
+# Run locally
+cd cli && cargo run -- wrap git status
+```
+
+## License
+
+Apache-2.0

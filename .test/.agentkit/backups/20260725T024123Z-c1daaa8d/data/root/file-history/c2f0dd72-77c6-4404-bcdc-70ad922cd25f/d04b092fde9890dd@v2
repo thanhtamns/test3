@@ -1,0 +1,38 @@
+# Intelligence Architecture Upgrade
+
+**Date:** 2026-05-11
+**Commit:** `85871944` in master_investments
+**Plan:** `plans/260511-1049-intelligence-architecture-upgrade/`
+**Tests:** 222/222 passing, 33 new tests added
+
+## What Changed
+
+ThinkRunner pipeline upgraded from arithmetic scoring to LLM reasoning. Four modules added/modified:
+
+1. **StrategicReasoner** (`strategic_reasoner.py`, ~170 LOC) — 3-call LLM chain after SynthesisEngine scores facts. Produces causal chain, contradictions, asymmetric play, compound trap, GO/KILL/UNCERTAIN verdict. Uses dependency injection (`llm_fn` param) for testability. Falls back to `llm.factory.complete_with_fallback()` in production.
+
+2. **SBEBridge** (`sbe_bridge.py`, ~75 LOC) — Bridges ThinkRunner → SBE Orchestrator. Maps dimension scores + top-10 facts to SBE feature dict. Reduced budget (50 vs default) since ThinkRunner already did heavy research. Dynamic import from strategic-brain/ via sys.path.
+
+3. **Evolution Bootstrap** (`template_evolver.py`, +86 LOC) — Ground truth prediction seeding for future Brier scoring. Dimension quality tracking (K/T/? zone counts per dimension per session). `evolve_weights()` now actually called at end of pipeline.
+
+4. **Integration Tests** (`test_full_pipeline.py`, 7 e2e tests) — Full pipeline with mock research_fn and seeded vectors DB.
+
+## Key Decisions
+
+- **DI over patching**: `@patch` on lazily-imported functions fails silently. Injecting `llm_fn` via constructor is cleaner and actually works.
+- **SynthesisEngine stays LOCAL-ONLY**: `assert llm_calls_made == 0`. StrategicReasoner is a new layer after it, not a replacement.
+- **WEIGHT_CAP = 0.1**: Max 10% weight change per evolution cycle for stability.
+
+## Bugs Fixed During Implementation
+
+- `_calls_made` never reset between `reason()` calls — added reset at top
+- `synthesis_data` could be unbound in except handler — initialized before try block
+- `timeout` param accepted but never used — removed entirely
+
+## Pipeline Order (Post-Upgrade)
+
+```
+Decompose → Research → Assemble → Synthesize (local)
+  → SBE Bridge → Strategic Reasoner → Techniques → Strategy
+  → Record Evolution → Evolve Weights
+```

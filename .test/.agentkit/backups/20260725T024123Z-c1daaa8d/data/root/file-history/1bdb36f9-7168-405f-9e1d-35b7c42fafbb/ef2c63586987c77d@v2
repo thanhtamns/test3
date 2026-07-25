@@ -1,0 +1,90 @@
+"""
+SessionTrigger — fires on every stage0 query. Uses gap detector to find
+missing knowledge, fills top gaps via LLM, distills results to local DB.
+Budget: max 3 LLM calls per trigger invocation.
+"""
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
+
+import sys
+LIB_DIR = Path(__file__).resolve().parents[2]
+if str(LIB_DIR) not in sys.path:
+    sys.path.insert(0, str(LIB_DIR))
+
+from intelligence.coverage.tracker import CoverageTracker
+from intelligence.coverage.gap_detector import GapDetector, Gap
+from .distillation_bridge import DistillationBridge
+
+
+@dataclass
+class SessionEvolution:
+    gaps_found: int = 0
+    gaps_filled: int = 0
+    new_vectors: int = 0
+    domains_improved: list = field(default_factory=list)
+    skipped_reason: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "gaps_found": self.gaps_found,
+            "gaps_filled": self.gaps_filled,
+            "new_vectors": self.new_vectors,
+            "domains_improved": self.domains_improved,
+            "skipped_reason": self.skipped_reason,
+        }
+
+
+class SessionTrigger:
+    MAX_LLM_CALLS = 3
+    COVERAGE_THRESHOLD = 0.8
+
+    def __init__(
+        self,
+        coverage_tracker: Optional[CoverageTracker] = None,
+        gap_detector: Optional[GapDetector] = None,
+        distiller: Optional[DistillationBridge] = None,
+        llm_query_fn=None,
+    ):
+        self.coverage = coverage_tracker or CoverageTracker()
+        self.gap_detector = gap_detector or GapDetector()
+        self.distiller = distiller or DistillationBridge()
+        self.llm_query_fn = llm_query_fn
+
+    def on_query(self, query_features: dict) -> SessionEvolution:
+        coverage = self.coverage.check(query_features)
+
+        if coverage.score >= self.COVERAGE_THRESHOLD:
+            return SessionEvolution(skipped_reason=f"Coverage sufficient: {coverage.score:.0%}")
+
+        gaps = self.gap_detector.identify_gaps(query_features, coverage)
+        if not gaps:
+            return SessionEvolution(skipped_reason="No gaps identified")
+
+        top_gaps = sorted(gaps, key=lambda g: g.priority)[:self.MAX_LLM_CALLS]
+        result = SessionEvolution(gaps_found=len(gaps))
+
+        if not self.llm_query_fn:
+            result.skipped_reason = "No LLM query function configured"
+            return result
+
+        for gap in top_gaps:
+            try:
+                llm_result = self.llm_query_fn(gap.suggested_query)
+                if llm_result and isinstance(llm_result, list):
+                    vectors = self.distiller.distill(llm_result, gap.domain, source="session_trigger")
+                    result.new_vectors += len(vectors)
+                    result.gaps_filled += 1
+                    if gap.domain not in result.domains_improved:
+                        result.domains_improved.append(gap.domain)
+            except Exception:
+                continue
+
+        return result
+
+    def check_only(self, query_features: dict) -> list[Gap]:
+        coverage = self.coverage.check(query_features)
+        if coverage.score >= self.COVERAGE_THRESHOLD:
+            return []
+        return self.gap_detector.identify_gaps(query_features, coverage)

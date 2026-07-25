@@ -1,0 +1,746 @@
+package clickhouse
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"time"
+
+	ch "github.com/ClickHouse/clickhouse-go/v2"
+)
+
+type Client struct {
+	conn ch.Conn
+}
+
+type EventRow struct {
+	EventID          string
+	TenantID         string
+	Timestamp        time.Time
+	SessionID        string
+	ProjectDir       string
+	Command          string
+	EventType        string
+	InputBytes       uint64
+	OutputBytes      uint64
+	InputTokens      uint64
+	OutputTokens     uint64
+	TokensSaved      uint64
+	FilterName       string
+	CompressionLevel string
+	LatencyMs        float64
+	ContentHash      string
+	CacheHit         bool
+	CLIVersion       string
+	MachineID        string
+}
+
+type OverviewStats struct {
+	TotalInputTokens  uint64  `json:"total_input_tokens"`
+	TotalOutputTokens uint64  `json:"total_output_tokens"`
+	TotalSaved        uint64  `json:"total_saved"`
+	SavingsPct        float64 `json:"savings_pct"`
+	EventCount        uint64  `json:"event_count"`
+	TopCommands       []CommandStat `json:"top_commands"`
+}
+
+type CommandStat struct {
+	Command string `json:"command"`
+	Saved   uint64 `json:"saved"`
+	Count   uint64 `json:"count"`
+}
+
+func New(dsn string) (*Client, error) {
+	opts, err := ch.ParseDSN(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("parse dsn: %w", err)
+	}
+
+	conn, err := ch.Open(opts)
+	if err != nil {
+		return nil, fmt.Errorf("open connection: %w", err)
+	}
+
+	if err := conn.Ping(context.Background()); err != nil {
+		return nil, fmt.Errorf("ping: %w", err)
+	}
+
+	return &Client{conn: conn}, nil
+}
+
+func (c *Client) Ping(ctx context.Context) error {
+	return c.conn.Ping(ctx)
+}
+
+func (c *Client) Close() error {
+	return c.conn.Close()
+}
+
+func (c *Client) InsertEvents(ctx context.Context, rows []EventRow) error {
+	if len(rows) == 0 {
+		return nil
+	}
+
+	batch, err := c.conn.PrepareBatch(ctx, `INSERT INTO codeflow.events (
+		event_id, tenant_id, timestamp, session_id, project_dir, command,
+		event_type, input_bytes, output_bytes, input_tokens, output_tokens,
+		tokens_saved, filter_name, compression_level, latency_ms,
+		content_hash, cache_hit, cli_version, machine_id
+	)`)
+	if err != nil {
+		return fmt.Errorf("prepare batch: %w", err)
+	}
+
+	for _, r := range rows {
+		cacheHitVal := uint8(0)
+		if r.CacheHit {
+			cacheHitVal = 1
+		}
+		if err := batch.Append(
+			r.EventID, r.TenantID, r.Timestamp, r.SessionID, r.ProjectDir, r.Command,
+			r.EventType, r.InputBytes, r.OutputBytes, r.InputTokens, r.OutputTokens,
+			r.TokensSaved, r.FilterName, r.CompressionLevel, r.LatencyMs,
+			r.ContentHash, cacheHitVal, r.CLIVersion, r.MachineID,
+		); err != nil {
+			return fmt.Errorf("append row: %w", err)
+		}
+	}
+
+	return batch.Send()
+}
+
+func (c *Client) GetOverview(ctx context.Context, tenantID string) (*OverviewStats, error) {
+	var stats OverviewStats
+
+	row := c.conn.QueryRow(ctx, `
+		SELECT
+			sum(input_tokens) as total_input,
+			sum(output_tokens) as total_output,
+			sum(tokens_saved) as total_saved,
+			count() as event_count
+		FROM codeflow.events
+		WHERE tenant_id = $1
+	`, tenantID)
+
+	if err := row.Scan(&stats.TotalInputTokens, &stats.TotalOutputTokens, &stats.TotalSaved, &stats.EventCount); err != nil {
+		return nil, fmt.Errorf("overview query: %w", err)
+	}
+
+	if stats.TotalInputTokens > 0 {
+		stats.SavingsPct = float64(stats.TotalSaved) / float64(stats.TotalInputTokens) * 100
+	}
+
+	rows, err := c.conn.Query(ctx, `
+		SELECT command, sum(tokens_saved) as saved, count() as cnt
+		FROM codeflow.events
+		WHERE tenant_id = $1
+		GROUP BY command
+		ORDER BY saved DESC
+		LIMIT 10
+	`, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("top commands query: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cmd CommandStat
+		if err := rows.Scan(&cmd.Command, &cmd.Saved, &cmd.Count); err != nil {
+			slog.Warn("scan top commands row", "error", err)
+			continue
+		}
+		stats.TopCommands = append(stats.TopCommands, cmd)
+	}
+
+	return &stats, nil
+}
+
+type ProjectSummary struct {
+	ProjectDir  string  `json:"project_dir"`
+	TotalSaved  uint64  `json:"total_saved"`
+	TotalInput  uint64  `json:"total_input"`
+	EventCount  uint64  `json:"event_count"`
+	SavingsPct  float64 `json:"savings_pct"`
+	LastEventAt string  `json:"last_event_at"`
+}
+
+func (c *Client) GetProjects(ctx context.Context, tenantID string) ([]ProjectSummary, error) {
+	rows, err := c.conn.Query(ctx, `
+		SELECT
+			project_dir,
+			sum(tokens_saved) AS total_saved,
+			sum(input_tokens) AS total_input,
+			count() AS event_count,
+			max(timestamp) AS last_event
+		FROM codeflow.events
+		WHERE tenant_id = $1
+		GROUP BY project_dir
+		ORDER BY total_saved DESC
+	`, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("projects query: %w", err)
+	}
+	defer rows.Close()
+
+	var projects []ProjectSummary
+	for rows.Next() {
+		var p ProjectSummary
+		var lastEvent time.Time
+		if err := rows.Scan(&p.ProjectDir, &p.TotalSaved, &p.TotalInput, &p.EventCount, &lastEvent); err != nil {
+			slog.Warn("scan projects row", "error", err)
+			continue
+		}
+		if p.TotalInput > 0 {
+			p.SavingsPct = float64(p.TotalSaved) / float64(p.TotalInput) * 100
+		}
+		p.LastEventAt = lastEvent.Format(time.RFC3339)
+		projects = append(projects, p)
+	}
+	return projects, nil
+}
+
+type ProjectDailyStat struct {
+	Day        string `json:"day"`
+	TotalSaved uint64 `json:"total_saved"`
+	TotalInput uint64 `json:"total_input"`
+	EventCount uint64 `json:"event_count"`
+}
+
+type ProjectStats struct {
+	ProjectDir string             `json:"project_dir"`
+	Summary    ProjectSummary     `json:"summary"`
+	Daily      []ProjectDailyStat `json:"daily"`
+	TopFilters []CommandStat      `json:"top_filters"`
+}
+
+func (c *Client) GetProjectStats(ctx context.Context, tenantID, projectDir string) (*ProjectStats, error) {
+	ps := &ProjectStats{ProjectDir: projectDir}
+
+	row := c.conn.QueryRow(ctx, `
+		SELECT
+			sum(tokens_saved), sum(input_tokens), count(), max(timestamp)
+		FROM codeflow.events
+		WHERE tenant_id = $1 AND project_dir = $2
+	`, tenantID, projectDir)
+
+	var lastEvent time.Time
+	if err := row.Scan(&ps.Summary.TotalSaved, &ps.Summary.TotalInput, &ps.Summary.EventCount, &lastEvent); err != nil {
+		return nil, fmt.Errorf("project summary query: %w", err)
+	}
+	ps.Summary.ProjectDir = projectDir
+	ps.Summary.LastEventAt = lastEvent.Format(time.RFC3339)
+	if ps.Summary.TotalInput > 0 {
+		ps.Summary.SavingsPct = float64(ps.Summary.TotalSaved) / float64(ps.Summary.TotalInput) * 100
+	}
+
+	dailyRows, err := c.conn.Query(ctx, `
+		SELECT
+			toDate(timestamp) AS day,
+			sum(tokens_saved) AS total_saved,
+			sum(input_tokens) AS total_input,
+			count() AS event_count
+		FROM codeflow.events
+		WHERE tenant_id = $1 AND project_dir = $2
+		GROUP BY day
+		ORDER BY day
+	`, tenantID, projectDir)
+	if err != nil {
+		return nil, fmt.Errorf("project daily query: %w", err)
+	}
+	defer dailyRows.Close()
+
+	for dailyRows.Next() {
+		var d ProjectDailyStat
+		var day time.Time
+		if err := dailyRows.Scan(&day, &d.TotalSaved, &d.TotalInput, &d.EventCount); err != nil {
+			slog.Warn("scan project daily row", "error", err)
+			continue
+		}
+		d.Day = day.Format("2006-01-02")
+		ps.Daily = append(ps.Daily, d)
+	}
+
+	filterRows, err := c.conn.Query(ctx, `
+		SELECT command, sum(tokens_saved) AS saved, count() AS cnt
+		FROM codeflow.events
+		WHERE tenant_id = $1 AND project_dir = $2
+		GROUP BY command
+		ORDER BY saved DESC
+		LIMIT 10
+	`, tenantID, projectDir)
+	if err != nil {
+		return nil, fmt.Errorf("project filters query: %w", err)
+	}
+	defer filterRows.Close()
+
+	for filterRows.Next() {
+		var f CommandStat
+		if err := filterRows.Scan(&f.Command, &f.Saved, &f.Count); err != nil {
+			slog.Warn("scan project filters row", "error", err)
+			continue
+		}
+		ps.TopFilters = append(ps.TopFilters, f)
+	}
+
+	return ps, nil
+}
+
+type DailySavings struct {
+	Day         string `json:"day"`
+	TotalSaved  uint64 `json:"total_saved"`
+	TotalInput  uint64 `json:"total_input"`
+	EventCount  uint64 `json:"event_count"`
+	Compression uint64 `json:"compression_saved"`
+	Dedup       uint64 `json:"dedup_saved"`
+}
+
+func (c *Client) GetSavingsTrend(ctx context.Context, tenantID string, days int) ([]DailySavings, error) {
+	days = clampDays(days, 30)
+
+	query := fmt.Sprintf(`
+		SELECT
+			toDate(timestamp) AS day,
+			sum(tokens_saved) AS total_saved,
+			sum(input_tokens) AS total_input,
+			count() AS event_count,
+			sumIf(tokens_saved, event_type = 'compression') AS compression_saved,
+			sumIf(tokens_saved, event_type = 'dedup') AS dedup_saved
+		FROM codeflow.events
+		WHERE tenant_id = $1
+			AND timestamp >= now() - INTERVAL %d DAY
+		GROUP BY day
+		ORDER BY day
+	`, days)
+	rows, err := c.conn.Query(ctx, query, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("savings trend query: %w", err)
+	}
+	defer rows.Close()
+
+	var trend []DailySavings
+	for rows.Next() {
+		var d DailySavings
+		var day time.Time
+		if err := rows.Scan(&day, &d.TotalSaved, &d.TotalInput, &d.EventCount, &d.Compression, &d.Dedup); err != nil {
+			slog.Warn("scan savings trend row", "error", err)
+			continue
+		}
+		d.Day = day.Format("2006-01-02")
+		trend = append(trend, d)
+	}
+	return trend, nil
+}
+
+type WasteFinding struct {
+	TenantID     string `json:"tenant_id"`
+	SessionID    string `json:"session_id"`
+	ProjectDir   string `json:"project_dir"`
+	PatternType  string `json:"pattern_type"`
+	Command      string `json:"command"`
+	Occurrences  uint32 `json:"occurrences"`
+	TokensWasted uint64 `json:"tokens_wasted"`
+	Suggestion   string `json:"suggestion"`
+	AnalyzedAt   string `json:"analyzed_at"`
+}
+
+func (c *Client) InsertWasteFindings(ctx context.Context, findings []WasteFinding) error {
+	if len(findings) == 0 {
+		return nil
+	}
+
+	batch, err := c.conn.PrepareBatch(ctx, `INSERT INTO codeflow.waste_findings (
+		tenant_id, session_id, project_dir, pattern_type, command,
+		occurrences, tokens_wasted, suggestion
+	)`)
+	if err != nil {
+		return fmt.Errorf("prepare waste batch: %w", err)
+	}
+
+	for _, f := range findings {
+		if err := batch.Append(
+			f.TenantID, f.SessionID, f.ProjectDir, f.PatternType, f.Command,
+			f.Occurrences, f.TokensWasted, f.Suggestion,
+		); err != nil {
+			return fmt.Errorf("append waste row: %w", err)
+		}
+	}
+
+	return batch.Send()
+}
+
+type WasteReport struct {
+	PatternType  string `json:"pattern_type"`
+	Command      string `json:"command"`
+	TotalWasted  uint64 `json:"total_wasted"`
+	Occurrences  uint64 `json:"occurrences"`
+	SessionCount uint64 `json:"session_count"`
+	Suggestion   string `json:"suggestion"`
+}
+
+func (c *Client) GetWasteReport(ctx context.Context, tenantID string, days int) ([]WasteReport, error) {
+	days = clampDays(days, 30)
+
+	query := fmt.Sprintf(`
+		SELECT
+			pattern_type,
+			command,
+			sum(tokens_wasted) AS total_wasted,
+			sum(occurrences) AS total_occurrences,
+			uniq(session_id) AS session_count,
+			any(suggestion) AS suggestion
+		FROM codeflow.waste_findings
+		WHERE tenant_id = $1
+			AND analyzed_at >= now() - INTERVAL %d DAY
+		GROUP BY pattern_type, command
+		ORDER BY total_wasted DESC
+		LIMIT 50
+	`, days)
+
+	rows, err := c.conn.Query(ctx, query, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("waste report query: %w", err)
+	}
+	defer rows.Close()
+
+	var report []WasteReport
+	for rows.Next() {
+		var r WasteReport
+		if err := rows.Scan(&r.PatternType, &r.Command, &r.TotalWasted, &r.Occurrences, &r.SessionCount, &r.Suggestion); err != nil {
+			slog.Warn("scan waste report row", "error", err)
+			continue
+		}
+		report = append(report, r)
+	}
+	return report, nil
+}
+
+type ProjectWasteScore struct {
+	ProjectDir   string  `json:"project_dir"`
+	TotalWasted  uint64  `json:"total_wasted"`
+	TotalInput   uint64  `json:"total_input"`
+	WastePct     float64 `json:"waste_pct"`
+	PatternCount uint64  `json:"pattern_count"`
+}
+
+func (c *Client) GetProjectWasteScores(ctx context.Context, tenantID string, days int) ([]ProjectWasteScore, error) {
+	days = clampDays(days, 30)
+
+	query := fmt.Sprintf(`
+		SELECT
+			w.project_dir,
+			sum(w.tokens_wasted) AS total_wasted,
+			coalesce(e.total_input, 0) AS total_input,
+			count() AS pattern_count
+		FROM codeflow.waste_findings w
+		LEFT JOIN (
+			SELECT project_dir, sum(input_tokens) AS total_input
+			FROM codeflow.events
+			WHERE tenant_id = $1 AND timestamp >= now() - INTERVAL %d DAY
+			GROUP BY project_dir
+		) e ON w.project_dir = e.project_dir
+		WHERE w.tenant_id = $1
+			AND w.analyzed_at >= now() - INTERVAL %d DAY
+		GROUP BY w.project_dir, e.total_input
+		ORDER BY total_wasted DESC
+	`, days, days)
+
+	rows, err := c.conn.Query(ctx, query, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("project waste query: %w", err)
+	}
+	defer rows.Close()
+
+	var scores []ProjectWasteScore
+	for rows.Next() {
+		var s ProjectWasteScore
+		if err := rows.Scan(&s.ProjectDir, &s.TotalWasted, &s.TotalInput, &s.PatternCount); err != nil {
+			slog.Warn("scan project waste row", "error", err)
+			continue
+		}
+		if s.TotalInput > 0 {
+			s.WastePct = float64(s.TotalWasted) / float64(s.TotalInput) * 100
+		}
+		scores = append(scores, s)
+	}
+	return scores, nil
+}
+
+func (c *Client) GetSessionEvents(ctx context.Context, tenantID string, sessionIDs []string) (map[string][]EventRow, error) {
+	if len(sessionIDs) == 0 {
+		return nil, nil
+	}
+
+	rows, err := c.conn.Query(ctx, `
+		SELECT
+			event_id, tenant_id, timestamp, session_id, project_dir, command,
+			event_type, input_tokens, content_hash
+		FROM codeflow.events
+		WHERE tenant_id = $1 AND session_id IN $2
+		ORDER BY session_id, timestamp
+	`, tenantID, sessionIDs)
+	if err != nil {
+		return nil, fmt.Errorf("session events query: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[string][]EventRow)
+	for rows.Next() {
+		var r EventRow
+		if err := rows.Scan(
+			&r.EventID, &r.TenantID, &r.Timestamp, &r.SessionID, &r.ProjectDir, &r.Command,
+			&r.EventType, &r.InputTokens, &r.ContentHash,
+		); err != nil {
+			slog.Warn("scan session event row", "error", err)
+			continue
+		}
+		result[r.SessionID] = append(result[r.SessionID], r)
+	}
+	return result, nil
+}
+
+func (c *Client) GetRecentSessionIDs(ctx context.Context, tenantID string, since time.Time) ([]string, error) {
+	rows, err := c.conn.Query(ctx, `
+		SELECT DISTINCT session_id
+		FROM codeflow.events
+		WHERE tenant_id = $1 AND timestamp >= $2
+		ORDER BY session_id
+	`, tenantID, since)
+	if err != nil {
+		return nil, fmt.Errorf("recent sessions query: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+type SecurityAlert struct {
+	TenantID   string `json:"tenant_id"`
+	FindingType string `json:"finding_type"`
+	Severity    string `json:"severity"`
+	Action      string `json:"action"`
+	Command     string `json:"command"`
+	Redacted    string `json:"redacted_preview"`
+	DetectedAt  string `json:"detected_at"`
+	Count       uint64 `json:"count"`
+}
+
+func (c *Client) GetSecurityAlerts(ctx context.Context, tenantID string, days int) ([]SecurityAlert, error) {
+	days = clampDays(days, 30)
+
+	query := fmt.Sprintf(`
+		SELECT
+			finding_type,
+			severity,
+			action,
+			any(command) AS command,
+			any(redacted_preview) AS redacted,
+			max(detected_at) AS latest,
+			count() AS cnt
+		FROM codeflow.security_alerts
+		WHERE tenant_id = $1
+			AND detected_at >= now() - INTERVAL %d DAY
+		GROUP BY finding_type, severity, action
+		ORDER BY cnt DESC
+		LIMIT 50
+	`, days)
+
+	rows, err := c.conn.Query(ctx, query, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("security alerts query: %w", err)
+	}
+	defer rows.Close()
+
+	var alerts []SecurityAlert
+	for rows.Next() {
+		var a SecurityAlert
+		var latest time.Time
+		if err := rows.Scan(&a.FindingType, &a.Severity, &a.Action, &a.Command, &a.Redacted, &latest, &a.Count); err != nil {
+			slog.Warn("scan security alert row", "error", err)
+			continue
+		}
+		a.TenantID = tenantID
+		a.DetectedAt = latest.Format(time.RFC3339)
+		alerts = append(alerts, a)
+	}
+	return alerts, nil
+}
+
+type ExportRow struct {
+	Date         string `json:"date"`
+	Project      string `json:"project"`
+	Command      string `json:"command"`
+	EventType    string `json:"event_type"`
+	InputTokens  uint64 `json:"input_tokens"`
+	OutputTokens uint64 `json:"output_tokens"`
+	TokensSaved  uint64 `json:"tokens_saved"`
+	FilterName   string `json:"filter_name"`
+}
+
+func (c *Client) GetExportData(ctx context.Context, tenantID string, days int, project string) ([]ExportRow, error) {
+	days = clampDays(days, 30)
+
+	query := fmt.Sprintf(`
+		SELECT
+			toDate(timestamp) AS day,
+			project_dir,
+			command,
+			event_type,
+			input_tokens,
+			output_tokens,
+			tokens_saved,
+			filter_name
+		FROM codeflow.events
+		WHERE tenant_id = $1
+			AND timestamp >= now() - INTERVAL %d DAY
+	`, days)
+
+	args := []any{tenantID}
+	if project != "" {
+		query += " AND project_dir = $2"
+		args = append(args, project)
+	}
+	query += " ORDER BY timestamp"
+
+	rows, err := c.conn.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("export query: %w", err)
+	}
+	defer rows.Close()
+
+	var result []ExportRow
+	for rows.Next() {
+		var r ExportRow
+		var day time.Time
+		if err := rows.Scan(&day, &r.Project, &r.Command, &r.EventType,
+			&r.InputTokens, &r.OutputTokens, &r.TokensSaved, &r.FilterName); err != nil {
+			slog.Warn("scan export row", "error", err)
+			continue
+		}
+		r.Date = day.Format("2006-01-02")
+		result = append(result, r)
+	}
+	return result, nil
+}
+
+type ROISummary struct {
+	TotalInputTokens  uint64  `json:"total_input_tokens"`
+	TotalSaved        uint64  `json:"total_saved"`
+	EstimatedCostSaved float64 `json:"estimated_cost_saved"`
+	EventCount        uint64  `json:"event_count"`
+	ProjectCount      uint64  `json:"project_count"`
+	DaysTracked       int     `json:"days_tracked"`
+	SavingsPct        float64 `json:"savings_pct"`
+	Monthly           []MonthlySummary `json:"monthly"`
+}
+
+type MonthlySummary struct {
+	Month       string `json:"month"`
+	InputTokens uint64 `json:"input_tokens"`
+	TokensSaved uint64 `json:"tokens_saved"`
+	EventCount  uint64 `json:"event_count"`
+}
+
+func (c *Client) GetROISummary(ctx context.Context, tenantID string, days int) (*ROISummary, error) {
+	days = clampDays(days, 90)
+
+	row := c.conn.QueryRow(ctx, fmt.Sprintf(`
+		SELECT
+			sum(input_tokens),
+			sum(tokens_saved),
+			count(),
+			uniq(project_dir)
+		FROM codeflow.events
+		WHERE tenant_id = $1 AND timestamp >= now() - INTERVAL %d DAY
+	`, days), tenantID)
+
+	var s ROISummary
+	s.DaysTracked = days
+	if err := row.Scan(&s.TotalInputTokens, &s.TotalSaved, &s.EventCount, &s.ProjectCount); err != nil {
+		return nil, fmt.Errorf("roi summary query: %w", err)
+	}
+
+	if s.TotalInputTokens > 0 {
+		s.SavingsPct = float64(s.TotalSaved) / float64(s.TotalInputTokens) * 100
+	}
+	s.EstimatedCostSaved = float64(s.TotalSaved) / 1000.0 * 0.003
+
+	monthlyRows, err := c.conn.Query(ctx, fmt.Sprintf(`
+		SELECT
+			toStartOfMonth(timestamp) AS month,
+			sum(input_tokens),
+			sum(tokens_saved),
+			count()
+		FROM codeflow.events
+		WHERE tenant_id = $1 AND timestamp >= now() - INTERVAL %d DAY
+		GROUP BY month ORDER BY month
+	`, days), tenantID)
+	if err != nil {
+		return &s, nil
+	}
+	defer monthlyRows.Close()
+
+	for monthlyRows.Next() {
+		var m MonthlySummary
+		var month time.Time
+		if err := monthlyRows.Scan(&month, &m.InputTokens, &m.TokensSaved, &m.EventCount); err != nil {
+			continue
+		}
+		m.Month = month.Format("2006-01")
+		s.Monthly = append(s.Monthly, m)
+	}
+
+	return &s, nil
+}
+
+type BillingInfo struct {
+	TenantID string `json:"tenant_id"`
+	Plan     string `json:"plan"`
+	Status   string `json:"status"`
+}
+
+func (c *Client) GetBillingStatus(ctx context.Context, tenantID string) (*BillingInfo, error) {
+	return c.getBillingInfo(ctx, tenantID)
+}
+
+func (c *Client) SetBillingStatus(ctx context.Context, tenantID, plan, status string) error {
+	return c.SetBillingInfo(ctx, tenantID, plan, status)
+}
+
+func (c *Client) getBillingInfo(ctx context.Context, tenantID string) (*BillingInfo, error) {
+	row := c.conn.QueryRow(ctx, `
+		SELECT plan, status
+		FROM codeflow.tenant_billing FINAL
+		WHERE tenant_id = $1
+	`, tenantID)
+
+	var info BillingInfo
+	info.TenantID = tenantID
+	if err := row.Scan(&info.Plan, &info.Status); err != nil {
+		return &BillingInfo{TenantID: tenantID, Plan: "free", Status: "active"}, nil
+	}
+	return &info, nil
+}
+
+func (c *Client) SetBillingInfo(ctx context.Context, tenantID, plan, status string) error {
+	return c.conn.Exec(ctx, `
+		INSERT INTO codeflow.tenant_billing (tenant_id, plan, status)
+		VALUES ($1, $2, $3)
+	`, tenantID, plan, status)
+}
+
+// ClickHouse doesn't support INTERVAL as a parameterized value,
+// so days is interpolated via fmt.Sprintf with %d after clamping.
+func clampDays(days, fallback int) int {
+	if days <= 0 || days > 365 {
+		return fallback
+	}
+	return days
+}

@@ -1,0 +1,215 @@
+---
+phase: 2
+title: "Knowledge Graph (Structured Evidence Layer)"
+status: pending
+priority: P0
+effort: "8h"
+dependencies: [1]
+---
+
+# Phase 2: Knowledge Graph (Structured Evidence Layer)
+
+## Overview
+
+Replace the flat markdown evidence vault with a structured, queryable knowledge graph. The evidence vault remains as human-readable output, but underneath it, a Python knowledge graph tracks entities, claims, relationships, contradictions, and evidence gaps.
+
+Co-Scientist equivalent: structured databases (UniProt, AlphaFold, TEMPL) that hypotheses are verified AGAINST. Stage0 currently has no structured knowledge to reason against — evidence vault is a flat document that gets read once and summarized.
+
+**Key insight: contradictions are more valuable than confirmations.** The graph explicitly tracks where evidence conflicts. These conflict points are where genuine intelligence lives.
+
+## Requirements
+
+- Functional: KnowledgeGraph stores nodes (entities), claims (assertions about entities), and edges (relationships between entities)
+- Functional: Every claim has evidence_type: VERIFIED | INFERRED | CONTESTED | REFUTED
+- Functional: Explicit contradiction tracking: when two claims conflict, both are stored with a ContradictionEdge
+- Functional: Gap detection: identify claims with no supporting evidence (these become search targets)
+- Functional: Query interface: given a hypothesis, find all supporting + contradicting evidence
+- Functional: Populated from evidence vault output (Phase 2.5A) — vault writes to graph, graph enables reasoning
+- Non-functional: Pure Python, no external DB dependencies (SQLite optional for persistence across sessions)
+- Non-functional: Serializable to JSON for session checkpoint/resume
+- Non-functional: Graph size bounded: max 200 nodes, 500 claims per session
+
+## Architecture
+
+### Data Model
+
+```python
+@dataclass
+class KnowledgeNode:
+    id: str
+    entity: str                    # "OpenAI", "AI cost management market"
+    entity_type: str               # COMPANY | MARKET | TECHNOLOGY | PERSON | PRODUCT | CONCEPT
+    attributes: dict               # flexible key-value (revenue, employees, founded, etc.)
+    confidence: float              # 0.0-1.0
+    source_urls: list[str]
+    
+@dataclass  
+class KnowledgeClaim:
+    id: str
+    subject_id: str                # node ID
+    predicate: str                 # "has_revenue", "competes_with", "costs_monthly"
+    object_value: str              # "$50K-500K/mo", "Anthropic", "decreasing"
+    evidence_type: str             # VERIFIED | INFERRED | CONTESTED | REFUTED
+    evidence_sources: list[str]    # URLs or vault section refs
+    zone_tag: str                  # [K] | [T] | [?] (from evidence vault)
+    timestamp: str                 # when claim was added
+    
+@dataclass
+class ContradictionEdge:
+    claim_a_id: str
+    claim_b_id: str
+    description: str               # "Claim A says market growing, Claim B says market saturating"
+    resolution: str                # UNRESOLVED | A_WINS | B_WINS | BOTH_PARTIAL
+    resolution_evidence: str       # what resolved it (if resolved)
+
+@dataclass
+class KnowledgeGraph:
+    nodes: dict[str, KnowledgeNode]
+    claims: dict[str, KnowledgeClaim]
+    contradictions: list[ContradictionEdge]
+    
+    def query_hypothesis(self, hypothesis_text: str) -> HypothesisEvidence:
+        """Find all claims supporting or contradicting a hypothesis."""
+        
+    def find_contradictions(self) -> list[ContradictionEdge]:
+        """Return all unresolved contradictions — these are high-value research targets."""
+        
+    def find_gaps(self) -> list[str]:
+        """Return claims with evidence_type=INFERRED and no supporting source."""
+        
+    def strength_score(self, hypothesis_text: str) -> float:
+        """0.0-1.0 score: how well-supported is this hypothesis by the graph?"""
+        
+    def attack_vectors(self, hypothesis_text: str) -> list[str]:
+        """What evidence would DISPROVE this hypothesis? Check contradictions + gaps."""
+```
+
+### Relationship to Existing Components
+
+```
+Evidence Vault (Phase 2.5A)          Knowledge Graph (NEW)
+┌────────────────────────┐           ┌────────────────────────┐
+│ Flat markdown:         │──builds──→│ Structured Python:     │
+│ - Case studies         │           │ - Nodes (entities)     │
+│ - Market signals       │           │ - Claims (assertions)  │
+│ - Competitor data      │           │ - Contradictions       │
+│ - Failure cases        │           │ - Gaps                 │
+│ - [K]/[T]/[?] tags     │           │ - Query interface      │
+└────────────────────────┘           └────────────────────────┘
+                                              │
+                                     Used by: │
+                                     ├─ First Principles Generator (query context)
+                                     ├─ Tournament (evidence scoring)
+                                     ├─ Refinement Loop (gap-directed search)
+                                     └─ Synthesis (contradiction-aware output)
+```
+
+**Evidence vault is NOT replaced.** It remains as the human-readable research record. The knowledge graph is a structured INTERPRETATION layer on top of it, enabling programmatic reasoning.
+
+### Graph Population (from Evidence Vault)
+
+```python
+class VaultToGraphBuilder:
+    """Parses evidence-vault.md and populates KnowledgeGraph."""
+    
+    def build(self, vault_text: str) -> KnowledgeGraph:
+        graph = KnowledgeGraph()
+        
+        # Extract entities from case studies
+        for case_study in self._parse_case_studies(vault_text):
+            node = graph.add_node(case_study.company, "COMPANY", ...)
+            for metric in case_study.metrics:
+                graph.add_claim(node.id, metric.name, metric.value, 
+                               evidence_type=self._zone_to_type(metric.zone_tag))
+        
+        # Extract market signals as claims
+        for signal in self._parse_market_signals(vault_text):
+            graph.add_claim(signal.market_id, signal.predicate, signal.value, ...)
+        
+        # Detect contradictions
+        graph.detect_contradictions()  # compare claims on same subject+predicate
+        
+        return graph
+```
+
+### Contradiction Detection (Automatic)
+
+Two claims contradict when:
+1. Same `subject_id` + same `predicate` + different `object_value`
+2. Same `subject_id` + opposing predicates (e.g., "market_growing" vs "market_shrinking")
+
+```python
+OPPOSING_PREDICATES = {
+    "market_growing": "market_shrinking",
+    "costs_increasing": "costs_decreasing",
+    "demand_rising": "demand_falling",
+    "profitable": "unprofitable",
+}
+```
+
+When detected, create `ContradictionEdge` with `resolution=UNRESOLVED`. These become HIGH-PRIORITY research targets in the refinement loop (Phase 3).
+
+## Related Code Files
+
+- Create: `.claude/lib/intelligence/knowledge/knowledge_graph.py` (core graph + query)
+- Create: `.claude/lib/intelligence/knowledge/vault_to_graph.py` (parser from evidence vault)
+- Create: `.claude/lib/intelligence/knowledge/tests/test_knowledge_graph.py`
+- Create: `.claude/lib/intelligence/knowledge/tests/test_vault_to_graph.py`
+- Modify: `.claude/agents/core/intelligence/evidence-vault-protocol.md` — add "Graph Population" section at end
+- Modify: `.claude/agents/core/intelligence/first-principles-protocol.md` — use graph.query_hypothesis() for context
+- Read: `.claude/lib/intelligence/controller/money_flow_graph.py` — existing graph pattern (different domain but reusable patterns)
+
+## Implementation Steps
+
+1. Create `knowledge/` directory under `.claude/lib/intelligence/`
+2. Implement `knowledge_graph.py`:
+   - `KnowledgeNode`, `KnowledgeClaim`, `ContradictionEdge` dataclasses
+   - `KnowledgeGraph` class with add/query/contradiction methods
+   - `query_hypothesis(text)` — keyword matching against claim subjects + predicates
+   - `find_contradictions()` — return unresolved contradiction edges
+   - `find_gaps()` — claims with INFERRED type and <2 sources
+   - `strength_score(text)` — count supporting [K] claims / total relevant claims
+   - `attack_vectors(text)` — contradictions + gaps relevant to hypothesis
+   - `to_dict()` / `from_dict()` for JSON serialization
+3. Implement `vault_to_graph.py`:
+   - Parse evidence vault markdown sections (case studies, market signals, competitors, failures)
+   - Extract entities → nodes, metrics → claims, zone tags → evidence types
+   - `ZONE_TO_TYPE = {"[K]": "VERIFIED", "[T]": "INFERRED", "[?]": "CONTESTED"}`
+   - Auto-detect contradictions after population
+4. Write tests for knowledge_graph.py:
+   - Node/claim CRUD operations
+   - Contradiction detection (same subject, opposing predicates)
+   - Gap detection (INFERRED claims with no sources)
+   - query_hypothesis returns supporting + contradicting claims
+   - strength_score calculation
+   - Serialization roundtrip
+5. Write tests for vault_to_graph.py:
+   - Parse sample vault text → correct node count
+   - Zone tags mapped to evidence types correctly
+   - Contradictions auto-detected from conflicting claims
+6. Modify evidence-vault-protocol.md:
+   - Add Step 8: "After writing vault, populate KnowledgeGraph"
+   - Include graph summary at end of vault: "Graph: {N} nodes, {N} claims, {N} contradictions, {N} gaps"
+7. Modify first-principles-protocol.md (from Phase 1):
+   - Step FP1 can query knowledge graph for structural decomposition
+   - Step FP2 uses graph contradictions as inspiration for hypotheses
+
+## Success Criteria
+
+- [ ] KnowledgeGraph stores nodes, claims, contradictions with CRUD operations
+- [ ] Contradiction auto-detection finds conflicting claims on same subject
+- [ ] Gap detection identifies under-evidenced claims
+- [ ] query_hypothesis returns relevant supporting + contradicting evidence
+- [ ] VaultToGraphBuilder parses evidence vault markdown into graph
+- [ ] Zone tags ([K]/[T]/[?]) correctly mapped to evidence types
+- [ ] JSON serialization roundtrip preserves all data
+- [ ] 25+ unit tests covering graph operations + vault parsing
+
+## Risk Assessment
+
+- **Risk:** Vault markdown format is inconsistent across sessions → parser breaks
+  - Mitigation: Parser uses regex + section headers (## Section N:) which are enforced by evidence-vault-protocol.md. Graceful degradation: unparseable sections logged + skipped, graph still usable with partial data.
+- **Risk:** Keyword matching for query_hypothesis is too crude
+  - Mitigation: Sufficient for MVP. Claims already have structured subject_id + predicate. Future: add embedding-based semantic matching.
+- **Risk:** Graph grows too large for complex topics
+  - Mitigation: Hard cap 200 nodes, 500 claims. Prune low-confidence nodes (< 0.3) after each population cycle.

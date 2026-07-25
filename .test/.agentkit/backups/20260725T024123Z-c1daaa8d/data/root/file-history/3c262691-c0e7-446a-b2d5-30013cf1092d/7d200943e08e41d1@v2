@@ -1,0 +1,93 @@
+package api
+
+import (
+	"net/http"
+	"sync"
+	"time"
+)
+
+type bucket struct {
+	tokens    float64
+	lastFill  time.Time
+	ratePerSec float64
+	capacity  float64
+}
+
+type rateLimiter struct {
+	mu      sync.Mutex
+	buckets map[string]*bucket
+	free    float64
+	pro     float64
+}
+
+func newRateLimiter() *rateLimiter {
+	rl := &rateLimiter{
+		buckets: make(map[string]*bucket),
+		free:    100.0 / 60.0,
+		pro:     10000.0 / 60.0,
+	}
+	go rl.cleanup()
+	return rl
+}
+
+func (rl *rateLimiter) cleanup() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
+		rl.mu.Lock()
+		cutoff := time.Now().Add(-10 * time.Minute)
+		for k, b := range rl.buckets {
+			if b.lastFill.Before(cutoff) {
+				delete(rl.buckets, k)
+			}
+		}
+		rl.mu.Unlock()
+	}
+}
+
+func (rl *rateLimiter) allow(tenantID string) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	b, ok := rl.buckets[tenantID]
+	if !ok {
+		rate := rl.free
+		b = &bucket{
+			tokens:    rate * 60,
+			lastFill:  time.Now(),
+			ratePerSec: rate,
+			capacity:  rate * 60,
+		}
+		rl.buckets[tenantID] = b
+	}
+
+	now := time.Now()
+	elapsed := now.Sub(b.lastFill).Seconds()
+	b.tokens += elapsed * b.ratePerSec
+	if b.tokens > b.capacity {
+		b.tokens = b.capacity
+	}
+	b.lastFill = now
+
+	if b.tokens < 1 {
+		return false
+	}
+	b.tokens--
+	return true
+}
+
+func withRateLimit(rl *rateLimiter) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			tenantID := tenantFromCtx(r)
+
+			if !rl.allow(tenantID) {
+				w.Header().Set("Retry-After", "60")
+				http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}

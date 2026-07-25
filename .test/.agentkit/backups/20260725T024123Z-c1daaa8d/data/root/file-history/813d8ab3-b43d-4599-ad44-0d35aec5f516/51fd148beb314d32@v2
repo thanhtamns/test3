@@ -1,0 +1,138 @@
+"""AEVO-X end-to-end integration tests — full 3-loop lifecycle."""
+
+import json
+import threading
+import time
+
+import pytest
+
+from ..aevox_orchestrator import AEVOXOrchestrator
+from ..case_archiver import CaseArchiver
+from ..replay_engine import ReplayEngine
+from ...mechanism.strategy_evolution.schema import Strategy
+
+
+def _make_strategy(name="strat_a", scoring_formula="weighted_sum"):
+    return Strategy.create(
+        name=name,
+        wave1_agents=["niche-archaeologist", "market-reality-checker", "failure-archaeologist", "risk-mapper"],
+        wave2_agents=["competitive-intelligence", "pricing-psychology"],
+        gate_sequence=["mountain_test", "verdict"],
+        mountain_rubric={"revenue_potential": 0.3, "moat_strength": 0.3, "execution_feasibility": 0.2, "timing": 0.2},
+        scoring_formula=scoring_formula,
+    )
+
+
+def _make_case(case_id, topic="AI SaaS", verdict_class="MOUNTAIN_CANDIDATE"):
+    return {
+        "case_id": case_id,
+        "topic": topic,
+        "verdict_class": verdict_class,
+        "verdict_summary": f"Analysis of {topic}",
+        "strategy_used": "default_v25",
+        "research_cache": json.dumps({"websearch": [f"result_{i}" for i in range(10)]}),
+        "agent_outputs": json.dumps({
+            "niche-archaeologist": {"confidence": 0.8, "dimension_scores": {"revenue_potential": 8.0, "moat_strength": 6.0, "execution_feasibility": 7.0, "timing": 8.0}},
+            "market-reality-checker": {"confidence": 0.7, "dimension_scores": {"revenue_potential": 7.0, "moat_strength": 5.0, "execution_feasibility": 8.0, "timing": 7.0}},
+            "failure-archaeologist": {"confidence": 0.6, "dimension_scores": {"revenue_potential": 6.0, "moat_strength": 7.0, "execution_feasibility": 6.0, "timing": 6.0}},
+            "risk-mapper": {"confidence": 0.75, "dimension_scores": {"revenue_potential": 7.5, "moat_strength": 6.5, "execution_feasibility": 7.0, "timing": 7.5}},
+            "competitive-intelligence": {"confidence": 0.65, "dimension_scores": {"revenue_potential": 5.0, "moat_strength": 4.0, "execution_feasibility": 8.0, "timing": 7.0}},
+            "pricing-psychology": {"confidence": 0.7, "dimension_scores": {"revenue_potential": 8.0, "moat_strength": 5.0, "execution_feasibility": 7.0, "timing": 6.0}},
+        }),
+        "timestamp": "2026-05-16T10:00:00Z",
+    }
+
+
+class TestFullLifecycle:
+    def test_full_lifecycle_archive_to_replay(self, tmp_path):
+        orch = AEVOXOrchestrator(db_path=tmp_path / "test.db")
+        for i in range(5):
+            orch.run_post_stage0(_make_case(f"case_{i}", f"topic_{i}"))
+
+        strats = [_make_strategy("strat_a"), _make_strategy("strat_b", "bayesian_posterior")]
+        case_ids = [f"case_{i}" for i in range(5)]
+        results = orch.replay_engine.batch_replay(case_ids, strats)
+        assert len(results) == 10
+        assert all(r.mountain_score > 0 for r in results)
+
+    def test_full_lifecycle_with_outcome(self, tmp_path):
+        orch = AEVOXOrchestrator(db_path=tmp_path / "test.db")
+        orch.run_post_stage0(_make_case("case_out", "crypto bots", "KILL"))
+        orch.run_post_outcome("case_out", {"revenue": 0.0, "outcome": "confirmed_kill"})
+        state = orch.execution_tracker.get_state("case_out")
+        assert state["state"] == "outcome_reported"
+        case = orch.archiver.get_case("case_out")
+        assert case["actual_outcome"] == "confirmed_kill"
+
+    def test_dgm_triggered_at_threshold(self, tmp_path):
+        orch = AEVOXOrchestrator(db_path=tmp_path / "test.db")
+        orch._cycle_count = 49
+        orch.run_post_stage0(_make_case("case_dgm"))
+        assert orch._dgm_triggered_count == 1
+
+
+class TestPerformance:
+    def test_performance_100_replays(self, tmp_path):
+        archiver = CaseArchiver(db_path=tmp_path / "perf.db")
+        for i in range(10):
+            archiver.archive_case(_make_case(f"case_{i}", f"topic_{i}"))
+        engine = ReplayEngine(archiver=archiver)
+        strats = [_make_strategy(f"s{j}") for j in range(10)]
+        case_ids = [f"case_{i}" for i in range(10)]
+
+        start = time.perf_counter()
+        results = engine.batch_replay(case_ids, strats)
+        elapsed = time.perf_counter() - start
+
+        assert len(results) == 100
+        assert elapsed < 60.0
+
+
+class TestDBIntegrity:
+    def test_db_integrity_after_crash_simulation(self, tmp_path):
+        db_path = tmp_path / "crash.db"
+        archiver = CaseArchiver(db_path=db_path)
+        archiver.archive_case(_make_case("case_pre"))
+
+        # Simulate partial write by archiving then immediately reading
+        archiver.archive_case(_make_case("case_during"))
+        case = archiver.get_case("case_during")
+        assert case is not None
+        assert archiver.count() == 2
+
+    def test_concurrent_archive_and_replay(self, tmp_path):
+        db_path = tmp_path / "concurrent.db"
+        archiver = CaseArchiver(db_path=db_path)
+        engine = ReplayEngine(archiver=archiver)
+        strat = _make_strategy()
+
+        for i in range(5):
+            archiver.archive_case(_make_case(f"case_{i}"))
+
+        errors = []
+
+        def archive_worker():
+            try:
+                for i in range(5, 15):
+                    archiver.archive_case(_make_case(f"case_{i}"))
+                    time.sleep(0.01)
+            except Exception as e:
+                errors.append(e)
+
+        def replay_worker():
+            try:
+                for i in range(5):
+                    engine.replay_case(f"case_{i}", strat)
+                    time.sleep(0.01)
+            except Exception as e:
+                errors.append(e)
+
+        t1 = threading.Thread(target=archive_worker)
+        t2 = threading.Thread(target=replay_worker)
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        assert len(errors) == 0
+        assert archiver.count() == 15

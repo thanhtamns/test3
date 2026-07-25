@@ -1,0 +1,198 @@
+"""
+AgentOutputAdapter — extracts structured claims from prose agent output.
+Fallback when agents don't return JSON. All prose-extracted claims get -0.1 confidence penalty.
+"""
+
+import re
+from typing import Optional
+
+from .claim_parser import ParsedClaim, ParsedMechanism, ParsedContradiction, StructuredOutput
+
+PROSE_CONFIDENCE_PENALTY = 0.1
+
+
+class AgentOutputAdapter:
+
+    PERCENTAGE_PATTERN = re.compile(
+        r'(\d{1,3}(?:\.\d+)?)\s*%\s+(?:of\s+)?(.{10,80}?)(?:\.|,|\n|$)',
+        re.IGNORECASE,
+    )
+
+    DOLLAR_PATTERN = re.compile(
+        r'\$\s*([\d,.]+)\s*([KkMmBb]?)\s+(.{5,80}?)(?:\.|,|\n|$)',
+        re.IGNORECASE,
+    )
+
+    SOURCE_URL_PATTERN = re.compile(
+        r'(?:source|ref|link|url|from):\s*(https?://[^\s\)]+)',
+        re.IGNORECASE,
+    )
+
+    SOURCE_DATE_PATTERN = re.compile(
+        r'(?:20\d{2}[-/]\d{2}(?:[-/]\d{2})?)',
+    )
+
+    CAUSE_EFFECT_PATTERN = re.compile(
+        r'(?:because|due to|caused by|leads to|results in)\s+(.{10,100}?)(?:\.|,|\n|$)',
+        re.IGNORECASE,
+    )
+
+    CONTRADICTION_PATTERN = re.compile(
+        r'(?:however|but|contradicts?|conflict|versus|vs\.?)[,]?\s+(.{5,120}?)(?:\.|,|\n|$)',
+        re.IGNORECASE,
+    )
+
+    GAP_PATTERN = re.compile(
+        r'(?:no data|unknown|unclear|no information|gap|missing|insufficient)\s+(?:on|about|for|regarding)\s+(.{10,100}?)(?:\.|,|\n|$)',
+        re.IGNORECASE,
+    )
+
+    def extract_structured_output(self, text: str) -> StructuredOutput:
+        claims = self.extract_claims_from_prose(text)
+        mechanisms = self._extract_mechanisms(text)
+        contradictions = self._extract_contradictions(text)
+        gaps = self._extract_gaps(text)
+
+        return StructuredOutput(
+            claims=claims,
+            mechanisms=mechanisms,
+            contradictions=contradictions,
+            gaps=gaps,
+            parse_mode="prose",
+        )
+
+    def extract_claims_from_prose(self, text: str) -> list[ParsedClaim]:
+        claims = []
+        urls = self.SOURCE_URL_PATTERN.findall(text)
+        dates = self.SOURCE_DATE_PATTERN.findall(text)
+
+        default_url = urls[0] if urls else None
+        default_date = dates[0] if dates else None
+
+        claims.extend(self._extract_percentage_claims(text, default_url, default_date))
+        claims.extend(self._extract_dollar_claims(text, default_url, default_date))
+
+        seen = set()
+        unique = []
+        for c in claims:
+            key = c.fact.lower().strip()
+            if key not in seen:
+                seen.add(key)
+                unique.append(c)
+
+        return unique
+
+    def _extract_percentage_claims(
+        self, text: str, default_url: Optional[str], default_date: Optional[str]
+    ) -> list[ParsedClaim]:
+        claims = []
+        for match in self.PERCENTAGE_PATTERN.finditer(text):
+            pct = float(match.group(1))
+            context = match.group(2).strip()
+            fact = f"{pct}% {context}"
+
+            nearby_url = self._find_nearby_url(text, match.start())
+            nearby_date = self._find_nearby_date(text, match.start())
+
+            claims.append(ParsedClaim(
+                fact=fact,
+                value=pct / 100.0,
+                confidence=max(0.0, 0.6 - PROSE_CONFIDENCE_PENALTY),
+                zone_tag="T",
+                source_url=nearby_url or default_url,
+                source_date=nearby_date or default_date,
+                from_prose=True,
+            ))
+        return claims
+
+    def _extract_dollar_claims(
+        self, text: str, default_url: Optional[str], default_date: Optional[str]
+    ) -> list[ParsedClaim]:
+        claims = []
+        multipliers = {"k": 1_000, "m": 1_000_000, "b": 1_000_000_000}
+
+        for match in self.DOLLAR_PATTERN.finditer(text):
+            raw_num = match.group(1).replace(",", "")
+            suffix = match.group(2).lower()
+            context = match.group(3).strip()
+
+            try:
+                value = float(raw_num)
+            except ValueError:
+                continue
+
+            value *= multipliers.get(suffix, 1)
+            fact = f"${match.group(1)}{match.group(2)} {context}"
+
+            nearby_url = self._find_nearby_url(text, match.start())
+            nearby_date = self._find_nearby_date(text, match.start())
+
+            claims.append(ParsedClaim(
+                fact=fact,
+                value=value,
+                dimension="unit_economics",
+                confidence=max(0.0, 0.6 - PROSE_CONFIDENCE_PENALTY),
+                zone_tag="T",
+                source_url=nearby_url or default_url,
+                source_date=nearby_date or default_date,
+                from_prose=True,
+            ))
+        return claims
+
+    def _extract_mechanisms(self, text: str) -> list[ParsedMechanism]:
+        mechanisms = []
+        for match in self.CAUSE_EFFECT_PATTERN.finditer(text):
+            effect_text = match.group(1).strip()
+            start = max(0, match.start() - 120)
+            preceding = text[start:match.start()].strip()
+            parts = [p.strip() for p in preceding.split(".") if p.strip()]
+            preceding_sentence = parts[-1] if parts else ""
+
+            if preceding_sentence and effect_text:
+                mechanisms.append(ParsedMechanism(
+                    cause=preceding_sentence[:100],
+                    effect=effect_text[:100],
+                    strength=0.5,
+                ))
+        return mechanisms[:5]
+
+    def _extract_contradictions(self, text: str) -> list[ParsedContradiction]:
+        contradictions = []
+        for match in self.CONTRADICTION_PATTERN.finditer(text):
+            claim_b = match.group(1).strip()
+            start = max(0, match.start() - 150)
+            preceding = text[start:match.start()].strip()
+            parts = [p.strip() for p in preceding.split(".") if p.strip()]
+            preceding_sentence = parts[-1] if parts else ""
+
+            if preceding_sentence and claim_b:
+                contradictions.append(ParsedContradiction(
+                    claim_a=preceding_sentence[:120],
+                    claim_b=claim_b[:120],
+                ))
+        return contradictions[:5]
+
+    def _extract_gaps(self, text: str) -> list[str]:
+        gaps = []
+        for match in self.GAP_PATTERN.finditer(text):
+            gap = match.group(1).strip()
+            if gap and len(gap) > 5:
+                gaps.append(gap)
+        return gaps[:10]
+
+    def _find_nearby_url(self, text: str, position: int, window: int = 300) -> Optional[str]:
+        start = max(0, position - window)
+        end = min(len(text), position + window)
+        chunk = text[start:end]
+        match = self.SOURCE_URL_PATTERN.search(chunk)
+        if match:
+            return match.group(1)
+        url_match = re.search(r'https?://[^\s\)]+', chunk)
+        return url_match.group() if url_match else None
+
+    def _find_nearby_date(self, text: str, position: int, window: int = 200) -> Optional[str]:
+        start = max(0, position - window)
+        end = min(len(text), position + window)
+        chunk = text[start:end]
+        match = self.SOURCE_DATE_PATTERN.search(chunk)
+        return match.group() if match else None

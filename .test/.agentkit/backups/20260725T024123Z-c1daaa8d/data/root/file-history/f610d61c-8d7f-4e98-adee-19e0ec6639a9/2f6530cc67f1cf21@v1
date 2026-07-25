@@ -1,0 +1,217 @@
+"""
+HungerLoopOrchestrator — main loop that drives the knowledge hunger engine.
+Modes: 'full' (all domains, until satiated) | 'micro' (top 3 domains, max 10 calls).
+research_fn is injectable; default is a no-op returning empty string.
+"""
+
+from pathlib import Path
+from typing import Callable, Optional
+
+ROOT = Path(__file__).resolve().parents[4]
+VECTORS_DB = ROOT / ".claude" / "data" / "knowledge-distillation" / "decision-vectors.db"
+
+_NOOP_RESEARCH: Callable[[str], str] = lambda question: ""
+
+
+class HungerLoopOrchestrator:
+    def __init__(
+        self,
+        db_path: Optional[Path] = None,
+        research_fn: Optional[Callable[[str], str]] = None,
+    ):
+        self.db_path = db_path or VECTORS_DB
+        self.research_fn = research_fn or _NOOP_RESEARCH
+        self._init_components()
+
+    def _init_components(self) -> None:
+        from .domain_prioritizer import DomainPrioritizer
+        from .question_generator import QuestionGenerator
+        from .claim_parser import ClaimParser
+        from .claim_verifier import ClaimVerifier
+        from .satiation_detector import SatiationDetector
+        from .hunger_log import HungerLog
+
+        self.prioritizer = DomainPrioritizer(db_path=self.db_path)
+        self.question_gen = QuestionGenerator()
+        self.claim_parser = ClaimParser(db_path=self.db_path)
+        self.claim_verifier = ClaimVerifier(db_path=self.db_path)
+        self.satiation = SatiationDetector(db_path=self.db_path)
+        self.log = HungerLog(db_path=self.db_path)
+
+    def run(
+        self,
+        mode: str = "micro",
+        query_freq: Optional[dict] = None,
+    ) -> dict:
+        """
+        Run a hunger cycle.
+        Returns: {domains_fed, facts_added, coverage_delta, stop_reason}
+        """
+        assert mode in ("full", "micro"), f"Unknown mode: {mode}"
+
+        priorities = self.prioritizer.prioritize(query_freq)
+        domain_dims = self._select_domain_dims(priorities, mode)
+
+        total_facts_added = 0
+        total_coverage_before = 0.0
+        total_coverage_after = 0.0
+        domains_fed: list[str] = []
+        global_calls = 0
+        final_stop_reason = "completed"
+        max_calls = 10 if mode == "micro" else 50
+
+        for domain, dimension in domain_dims:
+            if global_calls >= max_calls:
+                final_stop_reason = "max_calls_reached"
+                break
+
+            status = self.satiation.check(domain, calls_made=global_calls)
+            if status == "STOP":
+                final_stop_reason = "satiated"
+                continue
+            if status == "SLOW_DOWN" and mode == "micro":
+                continue
+
+            coverage_before = self._get_coverage_pct(domain)
+            facts_added, calls_made, stop_reason = self._feed_dimension(
+                domain, dimension, max_calls - global_calls
+            )
+            global_calls += calls_made
+            coverage_after = self._get_coverage_pct(domain)
+
+            self.log.log_cycle(
+                domain=domain,
+                facts_added=facts_added,
+                coverage_before=coverage_before,
+                coverage_after=coverage_after,
+                calls_made=calls_made,
+                stop_reason=stop_reason,
+            )
+            self.log.update_domain_coverage(domain)
+
+            total_facts_added += facts_added
+            total_coverage_before += coverage_before
+            total_coverage_after += coverage_after
+            if domain not in domains_fed:
+                domains_fed.append(domain)
+
+        n = max(1, len(domains_fed))
+        return {
+            "domains_fed": len(domains_fed),
+            "facts_added": total_facts_added,
+            "coverage_delta": round((total_coverage_after - total_coverage_before) / n, 4),
+            "stop_reason": final_stop_reason,
+        }
+
+    def _feed_dimension(
+        self, domain: str, dimension: str, calls_budget: int
+    ) -> tuple[int, int, str]:
+        """Run questions for one domain/dimension. Returns (facts_added, calls_made, stop_reason)."""
+        existing_facts = self._load_existing_facts(domain, dimension)
+        questions = self.question_gen.generate(domain, dimension, existing_facts)
+
+        facts_added = 0
+        calls_made = 0
+
+        for q in questions:
+            if calls_made >= calls_budget:
+                return facts_added, calls_made, "budget_exhausted"
+
+            raw = self.research_fn(q["question"])
+            calls_made += 1
+
+            if not raw:
+                continue
+
+            structured = self.claim_parser.parse_agent_output(raw, domain=domain)
+            if not structured.claims:
+                continue
+
+            result = self.claim_verifier.verify(structured.claims)
+            verified = result["verified_claims"]
+
+            if verified:
+                self._store_claims(verified, domain)
+                facts_added += len(verified)
+
+        return facts_added, calls_made, "dimension_complete"
+
+    def _select_domain_dims(
+        self, priorities: list[tuple], mode: str
+    ) -> list[tuple[str, str]]:
+        """Extract unique (domain, dimension) pairs, respecting mode limits."""
+        seen_domains: set[str] = set()
+        result: list[tuple[str, str]] = []
+        domain_limit = 3 if mode == "micro" else 999
+
+        for domain, dimension, _ in priorities:
+            if len(seen_domains) >= domain_limit and domain not in seen_domains:
+                continue
+            seen_domains.add(domain)
+            result.append((domain, dimension))
+
+        return result
+
+    def _get_coverage_pct(self, domain: str) -> float:
+        import sqlite3
+        if not self.db_path.exists():
+            return 0.0
+        try:
+            with sqlite3.connect(str(self.db_path)) as conn:
+                row = conn.execute(
+                    "SELECT dimensions_filled, dimensions_total FROM domain_coverage WHERE domain=?",
+                    (domain,),
+                ).fetchone()
+                if not row:
+                    return 0.0
+                total = max(1, row[1] or 8)
+                return round(row[0] / total, 4) if row[0] else 0.0
+        except sqlite3.OperationalError:
+            return 0.0
+
+    def _load_existing_facts(self, domain: str, dimension: str) -> list[str]:
+        import sqlite3, json
+        if not self.db_path.exists():
+            return []
+        try:
+            with sqlite3.connect(str(self.db_path)) as conn:
+                rows = conn.execute(
+                    "SELECT features_json FROM decision_vectors WHERE industry=?",
+                    (domain,),
+                ).fetchall()
+                facts = []
+                for (fj,) in rows:
+                    d = json.loads(fj)
+                    if d.get("dimension") == dimension:
+                        f = d.get("fact") or d.get("description") or ""
+                        if f:
+                            facts.append(f)
+                return facts[:10]
+        except (sqlite3.OperationalError, json.JSONDecodeError):
+            return []
+
+    def _store_claims(self, claims, domain: str) -> None:
+        """Persist verified claims via DistillationBridge."""
+        try:
+            import sys
+            sys.path.insert(0, str(ROOT / ".claude" / "lib"))
+            from intelligence.evolution.distillation_bridge import DistillationBridge
+            bridge = DistillationBridge(vectors_db=self.db_path)
+            facts = [
+                {
+                    "fact": c.fact,
+                    "value": c.value,
+                    "dimension": c.dimension,
+                    "confidence": c.confidence,
+                    "zone_tag": c.zone_tag,
+                    "source_url": c.source_url,
+                    "source_date": c.source_date,
+                    "industry": domain,
+                    "business_model": "unknown",
+                    "outcome": "info",
+                }
+                for c in claims
+            ]
+            bridge.distill(facts, domain=domain, source="hunger_loop")
+        except Exception:
+            pass  # storage failure must not abort the loop

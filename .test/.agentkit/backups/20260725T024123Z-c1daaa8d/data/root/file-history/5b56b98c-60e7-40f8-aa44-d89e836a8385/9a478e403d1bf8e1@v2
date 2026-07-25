@@ -1,0 +1,471 @@
+"""
+StrategicReasoner — LLM reasoning layer AFTER SynthesisEngine scores facts.
+SynthesisEngine stays LOCAL-ONLY. This module is where LLM actually THINKS.
+Max 5 LLM calls per brainstorm, every claim references input facts.
+
+Call order:
+  1. Synthesis      — mechanism extraction
+  2. Founder Map    — map founder position to opportunity nodes
+  3. Strategy       — asymmetric play with founder constraints
+  4. Compound Asset — permanent asset blueprint
+  5. Verdict        — GO/KILL with field reasoning (Munger inversion)
+"""
+
+import json
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Callable, Optional
+
+
+@dataclass
+class StrategicInsight:
+    causal_chain: str
+    contradictions: list[dict] = field(default_factory=list)
+    inferred_gaps: list[dict] = field(default_factory=list)
+    asymmetric_play: str = ""
+    compound_trap: str = ""
+    kill_go_reasoning: str = ""
+    verdict: str = ""
+    kill_conditions: list[dict] = field(default_factory=list)
+    proceed_conditions: list[dict] = field(default_factory=list)
+    fact_references: list[str] = field(default_factory=list)
+    llm_calls_made: int = 0
+    total_latency_ms: int = 0
+    # New fields (calls 2 + 4)
+    founder_constraint_map: dict = field(default_factory=dict)
+    compound_asset_blueprint: dict = field(default_factory=dict)
+    side_doors: list[str] = field(default_factory=list)
+    mental_models_applied: list[str] = field(default_factory=list)
+    local_verdict: dict = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        d = {
+            "causal_chain": self.causal_chain,
+            "contradictions": self.contradictions,
+            "inferred_gaps": self.inferred_gaps,
+            "asymmetric_play": self.asymmetric_play,
+            "compound_trap": self.compound_trap,
+            "kill_go_reasoning": self.kill_go_reasoning,
+            "verdict": self.verdict,
+            "kill_conditions": self.kill_conditions,
+            "proceed_conditions": self.proceed_conditions,
+            "fact_references": self.fact_references,
+            "llm_calls_made": self.llm_calls_made,
+            "total_latency_ms": self.total_latency_ms,
+            "founder_constraint_map": self.founder_constraint_map,
+            "compound_asset_blueprint": self.compound_asset_blueprint,
+            "side_doors": self.side_doors,
+            "mental_models_applied": self.mental_models_applied,
+        }
+        if self.local_verdict:
+            d["local_verdict"] = self.local_verdict
+        return d
+
+
+def _empty_insight(reason: str = "degraded") -> StrategicInsight:
+    return StrategicInsight(causal_chain=f"[{reason}]", llm_calls_made=0)
+
+
+class StrategicReasoner:
+    def __init__(self, max_calls: int = 5, llm_fn: Optional[Callable] = None):
+        self.max_calls = max_calls
+        self._llm_fn = llm_fn
+        self._calls_made = 0
+
+    @staticmethod
+    def _compress_technique_results(tr: dict) -> str:
+        if not tr or tr.get("error"):
+            return ""
+        lines = []
+        consensus = tr.get("consensus", "UNKNOWN")
+        go = tr.get("techniques_agreeing_go", 0)
+        kill = tr.get("techniques_agreeing_kill", 0)
+        lines.append(f"15-technique consensus: {consensus} (GO={go} KILL={kill})")
+        results = tr.get("results", {})
+        for tid, tres in results.items():
+            if not isinstance(tres, dict):
+                continue
+            v = tres.get("verdict", "")
+            chain = tres.get("reasoning_chain", [])
+            reason_text = chain[0][:100] if chain else ""
+            if consensus == "GO" and v in ("KILL", "NEEDS_DATA"):
+                lines.append(f"CONTRARIAN {tid}: {v} — {reason_text}")
+            elif consensus == "KILL" and v == "GO":
+                lines.append(f"CONTRARIAN {tid}: GO — {reason_text}")
+        if tr.get("fragile_block"):
+            lines.append("FRAGILE revenue detected — durability concern")
+        if tr.get("staircase_override"):
+            lines.append("Staircase override: capital constraint has viable growth path")
+        return "\n".join(lines[:15])
+
+    def reason(
+        self,
+        facts: list,
+        dim_scores: dict,
+        query_context: dict,
+        founder_context: dict,
+        mental_models_context: str = "",
+        technique_context: str = "",
+        local_verdict_context: str = "",
+    ) -> StrategicInsight:
+        if not facts:
+            return _empty_insight("no_facts")
+
+        self._calls_made = 0
+        start = time.time()
+        fact_context = self._format_facts(facts, dim_scores)
+        fact_refs = [getattr(f, "fact", str(f))[:80] for f in facts[:20]]
+
+        synthesis_data: dict = {"causal_chain": "[error]"}
+        founder_map_data: dict = {}
+        strategy_data: dict = {}
+        compound_data: dict = {}
+        verdict_data: dict = {}
+
+        # --- Call 1: Synthesis ---
+        try:
+            synthesis = self._call_llm(
+                self._build_synthesis_prompt(fact_context, query_context, technique_context)
+            )
+            synthesis_data = self._parse_json(synthesis, {
+                "causal_chain": "Unknown mechanism",
+                "contradictions": [],
+                "inferred_gaps": [],
+            })
+        except Exception:
+            return StrategicInsight(
+                causal_chain=synthesis_data.get("causal_chain", "[error]"),
+                fact_references=fact_refs,
+                llm_calls_made=self._calls_made,
+                total_latency_ms=int((time.time() - start) * 1000),
+            )
+
+        # --- Call 2: Founder Constraint Map ---
+        try:
+            founder_map = self._call_llm(
+                self._build_founder_map_prompt(synthesis_data, founder_context, query_context, technique_context)
+            )
+            founder_map_data = self._parse_json(founder_map, {
+                "insertion_node": "unknown",
+                "advantages": [],
+                "biggest_constraint": "unknown",
+                "workaround": "none identified",
+            })
+        except Exception:
+            # Graceful degradation — continue without founder map
+            founder_map_data = {}
+
+        # --- Call 3: Strategy ---
+        try:
+            strategy = self._call_llm(
+                self._build_strategy_prompt(
+                    synthesis_data, founder_map_data, founder_context, query_context,
+                    mental_models_context, technique_context,
+                )
+            )
+            strategy_data = self._parse_json(strategy, {
+                "asymmetric_play": "None identified",
+                "compound_trap": "None identified",
+                "side_doors": [],
+                "mental_models": [],
+            })
+        except Exception:
+            strategy_data = {}
+
+        # --- Call 4: Compound Asset Design ---
+        try:
+            compound = self._call_llm(
+                self._build_compound_prompt(strategy_data, query_context, technique_context)
+            )
+            compound_data = self._parse_json(compound, {
+                "asset_name": "unknown",
+                "how_it_compounds": "unknown",
+                "moat_at_12_months": "unknown",
+                "self_reinforcing_at": "unknown",
+                "redesign_needed": False,
+            })
+        except Exception:
+            compound_data = {}
+
+        # --- Call 5: Verdict ---
+        try:
+            verdict = self._call_llm(
+                self._build_verdict_prompt(
+                    synthesis_data, founder_map_data, strategy_data, compound_data,
+                    query_context, technique_context, local_verdict_context,
+                )
+            )
+            verdict_data = self._parse_json(verdict, {
+                "verdict": "UNCERTAIN",
+                "kill_conditions": [],
+                "proceed_conditions": [],
+                "reasoning": "Insufficient data for mechanistic verdict",
+                "mental_models_applied": [],
+            })
+        except Exception:
+            verdict_data = {
+                "verdict": "UNCERTAIN",
+                "kill_conditions": [],
+                "proceed_conditions": [],
+                "reasoning": "Verdict call failed — partial analysis only",
+                "mental_models_applied": [],
+            }
+
+        side_doors: list[str] = strategy_data.get("side_doors", [])
+        if isinstance(side_doors, str):
+            side_doors = [side_doors]
+
+        mental_models: list[str] = verdict_data.get("mental_models_applied", [])
+        if isinstance(mental_models, str):
+            mental_models = [mental_models]
+
+        return StrategicInsight(
+            causal_chain=synthesis_data.get("causal_chain", ""),
+            contradictions=synthesis_data.get("contradictions", []),
+            inferred_gaps=synthesis_data.get("inferred_gaps", []),
+            asymmetric_play=strategy_data.get("asymmetric_play", ""),
+            compound_trap=strategy_data.get("compound_trap", ""),
+            kill_go_reasoning=verdict_data.get("reasoning", ""),
+            verdict=verdict_data.get("verdict", "UNCERTAIN"),
+            kill_conditions=verdict_data.get("kill_conditions", []),
+            proceed_conditions=verdict_data.get("proceed_conditions", []),
+            fact_references=fact_refs,
+            llm_calls_made=self._calls_made,
+            total_latency_ms=int((time.time() - start) * 1000),
+            founder_constraint_map=founder_map_data,
+            compound_asset_blueprint=compound_data,
+            side_doors=side_doors,
+            mental_models_applied=mental_models,
+        )
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _call_llm(self, prompt: str) -> str:
+        if self._calls_made >= self.max_calls:
+            raise RuntimeError(f"LLM call budget exhausted ({self.max_calls})")
+
+        self._calls_made += 1
+
+        if self._llm_fn:
+            result = self._llm_fn(prompt, max_tokens=2048, temperature=0.3)
+        else:
+            from ...llm.factory import complete_with_fallback
+            result = complete_with_fallback(prompt, max_tokens=2048, temperature=0.3)
+
+        if result is None or not hasattr(result, 'content'):
+            raise RuntimeError("LLM returned invalid response object")
+        return result.content or ""
+
+    def _parse_json(self, text: str, defaults: dict) -> dict:
+        text = text.strip()
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start >= 0 and end > start:
+            try:
+                return json.loads(text[start:end])
+            except json.JSONDecodeError:
+                pass
+        return {**defaults, "_raw": text[:500]}
+
+    def _format_facts(self, facts: list, dim_scores: dict) -> str:
+        by_dim: dict[str, list[str]] = {}
+        for f in facts:
+            dim = getattr(f, "dimension", "unknown")
+            fact_text = getattr(f, "fact", str(f))
+            zone = getattr(f, "zone_tag", "?")
+            by_dim.setdefault(dim, []).append(f"[{zone}] {fact_text[:150]}")
+
+        lines = []
+        for dim, dim_facts in by_dim.items():
+            score_obj = dim_scores.get(dim)
+            score_val = getattr(score_obj, "score", 0) if score_obj else 0
+            lines.append(f"\n## {dim} (score: {score_val:.2f})")
+            for ff in dim_facts[:5]:
+                lines.append(f"  - {ff}")
+        return "\n".join(lines)
+
+    # ------------------------------------------------------------------
+    # Prompts — cunning operator voice, not analyst voice
+    # ------------------------------------------------------------------
+
+    def _build_synthesis_prompt(self, fact_context: str, query_context: dict, technique_context: str = "") -> str:
+        query = query_context.get("original_query", query_context.get("query", ""))
+        technique_block = f"\n\n## 15-Technique Pre-Analysis\n{technique_context}" if technique_context else ""
+        return f"""You've operated across 1,000 deals in Southeast Asia. You've watched smart people fail because they copied visible paths instead of understanding invisible mechanisms. You think in bottleneck nodes, information asymmetry, and compound assets — not "market analysis" or "competitive landscape."
+
+You're given verified facts across multiple dimensions about: "{query}"
+
+FACTS:{fact_context}{technique_block}
+
+Your job is NOT to summarize. Your job is to find the mechanism.
+
+1. MECHANISM (not a summary): Write the causal chain as "A causes B because C, and the bottleneck is at node X." Where does VALUE actually get CREATED versus where the article says it does?
+
+2. CONTRADICTIONS: Which facts contradict each other? For each contradiction, state which is MORE LIKELY TRUE and WHY — don't hedge. What does the contradiction REVEAL about the system?
+
+3. CRITICAL GAPS: Which dimensions have insufficient data? Based on what you DO have, what can you INFER with confidence? Label inferences as [INFERRED]. What single missing fact would most change the verdict?
+
+Respond ONLY in JSON:
+{{"causal_chain": "...", "contradictions": [{{"fact_a": "...", "fact_b": "...", "resolution": "...", "reasoning": "...", "reveals": "..."}}], "inferred_gaps": [{{"dimension": "...", "inference": "...", "based_on": "...", "verdict_impact": "high|medium|low"}}]}}"""
+
+    def _build_founder_map_prompt(
+        self, synthesis: dict, founder_context: dict, query_context: dict,
+        technique_context: str = "",
+    ) -> str:
+        query = query_context.get("original_query", query_context.get("query", ""))
+        capital = founder_context.get("capital_usd", "unknown")
+        hours = founder_context.get("hours_per_day", "unknown")
+        skills = founder_context.get("skills", [])
+        location = founder_context.get("location", "unknown")
+        languages = founder_context.get("languages", [])
+        network = founder_context.get("network", "unknown")
+
+        return f"""You've built businesses with nothing but information asymmetry and a willingness to go where others won't. You know that every value chain has a node where an outsider with the right constraints can plug in and extract disproportionate value.
+
+Opportunity: "{query}"
+Mechanism: {synthesis.get("causal_chain", "Unknown")}
+
+Founder profile:
+- Capital: ${capital}
+- Hours/day: {hours}
+- Skills: {skills}
+- Location: {location}
+- Languages: {languages}
+- Network: {network}
+
+{f"Technique consensus: {technique_context[:200]}" if technique_context else ""}
+
+Map this founder onto the value chain:
+
+1. INSERTION NODE: Where EXACTLY does this founder plug in? Not "consulting" — which specific node in the mechanism? What does this founder do on day 1, week 1?
+
+2. STRUCTURAL ADVANTAGES: What does this specific profile have that 90% of competitors don't? Think: location edge, language access, cost structure, existing relationships, cultural context.
+
+3. BIGGEST CONSTRAINT: What single constraint could kill execution before month 3? Be specific — not "money" but "cannot fund inventory for first 2 purchase cycles."
+
+4. WORKAROUND: If the constraint hits, what's the concrete workaround that doesn't require the constraint to go away?
+
+Respond ONLY in JSON:
+{{"insertion_node": "...", "advantages": ["...", "..."], "biggest_constraint": "...", "workaround": "..."}}"""
+
+    def _build_strategy_prompt(
+        self,
+        synthesis: dict,
+        founder_map: dict,
+        founder_context: dict,
+        query_context: dict,
+        mental_models_context: str = "",
+        technique_context: str = "",
+    ) -> str:
+        query = query_context.get("original_query", query_context.get("query", ""))
+        capital = founder_context.get("capital_usd", "unknown")
+        hours = founder_context.get("hours_per_day", "unknown")
+        skills = founder_context.get("skills", [])
+
+        return f"""You think like a cunning operator, not a consultant. You've watched $0 founders out-maneuver funded competitors by finding the side door every gatekept industry has.
+
+Opportunity: "{query}"
+Mechanism: {synthesis.get("causal_chain", "Unknown")}
+Founder insertion node: {founder_map.get("insertion_node", "unknown")}
+Founder advantages: {founder_map.get("advantages", [])}
+Biggest constraint: {founder_map.get("biggest_constraint", "unknown")}
+Founder: capital=${capital}, hours/day={hours}, skills={skills}
+{f"""
+{mental_models_context}
+""" if mental_models_context else ""}{f"""
+Technique contrarian signals:
+{technique_context}
+""" if technique_context else ""}
+Your job: find the ASYMMETRIC MOVE. Not the obvious path. The move that takes this founder's specific constraints and turns them into advantages.
+
+1. ASYMMETRIC PLAY: What would a cunning operator with $0 and unlimited intelligence do? Not "start a newsletter" — what's the specific information or access asymmetry this founder can exploit FIRST?
+
+2. SIDE DOORS (list up to 3): Every gatekept industry has a side entrance that insiders don't advertise. What are they here? Who would let this founder in that would reject 100 other people?
+
+3. POWER SHIFT WINDOW: What is changing RIGHT NOW (regulation, technology, market structure, platform policy) that creates a 6-18 month window? When does this window close?
+
+4. WHY WOULD THE POWERFUL NEED THIS FOUNDER: Who already has power in this value chain, and why would they NEED someone with this founder's exact profile? This is the key to an unfair deal.
+
+5. COMPOUND TRAP CHECK: What asset accumulates during execution? If the answer is "experience" or "relationships" → this is a JOB not a POSITION. State explicitly: redesign_needed=true.
+
+Respond ONLY in JSON:
+{{"asymmetric_play": "...", "side_doors": ["...", "...", "..."], "timing_window": "...", "power_needs_founder": "...", "compound_trap": "...", "redesign_needed": false, "mental_models": ["..."]}}"""
+
+    def _build_compound_prompt(self, strategy: dict, query_context: dict, technique_context: str = "") -> str:
+        query = query_context.get("original_query", query_context.get("query", ""))
+        durability_signal = ""
+        if technique_context:
+            for line in technique_context.split("\n"):
+                if "FRAGILE" in line or "durability" in line.lower() or "staircase" in line.lower():
+                    durability_signal += line + "\n"
+        return f"""You think in permanent assets, not income streams. The difference between a position and a job is whether the asset survives if you stop working for 3 months.
+
+Opportunity: "{query}"
+{f"Durability signals from techniques: {durability_signal}" if durability_signal else ""}
+Asymmetric play: {strategy.get("asymmetric_play", "unknown")}
+Compound trap check: {strategy.get("compound_trap", "unknown")}
+Redesign flagged: {strategy.get("redesign_needed", False)}
+
+Design the PERMANENT ASSET this founder builds during execution:
+
+1. ASSET NAME AND NATURE: What exactly is it? A database, a network, a brand, a process, proprietary data, a distribution channel? Be specific.
+
+2. HOW IT COMPOUNDS: Month 1 vs Month 6 vs Month 12 — what does compounding look like mechanically? Not "grows" — what specific action causes what specific accumulation?
+
+3. MOAT AT 12 MONTHS: Why can't someone with 10x capital replicate this asset by month 13? What makes it defensible?
+
+4. SELF-REINFORCING TRIGGER: At what point does the asset attract new assets without additional effort? (e.g., "after 50 verified suppliers, buyers come inbound")
+
+5. REDESIGN FLAG: If the asset is "experience" or "trust" or "relationships" without a tangible artifact → redesign_needed=true. The test: can you sell or license this asset?
+
+Respond ONLY in JSON:
+{{"asset_name": "...", "how_it_compounds": "...", "moat_at_12_months": "...", "self_reinforcing_at": "...", "redesign_needed": false}}"""
+
+    def _build_verdict_prompt(
+        self,
+        synthesis: dict,
+        founder_map: dict,
+        strategy: dict,
+        compound: dict,
+        query_context: dict,
+        technique_context: str = "",
+        local_verdict_context: str = "",
+    ) -> str:
+        kill_conditions_template = (
+            "Generate 10 specific conditions that would make this CERTAINLY FAIL. "
+            "Then count how many are CURRENTLY PRESENT based on the facts above. "
+            "0-3 present → GO | 4-6 → CAUTION | 7-10 → KILL"
+        )
+        return f"""You've killed more deals than you've funded, and you're proud of it. Every GO you've given is mechanistic, not optimistic. You use Munger inversion: find the 10 ways this certainly fails FIRST, then check how many are present.
+
+Mechanism: {synthesis.get("causal_chain", "Unknown")}
+Contradictions found: {len(synthesis.get("contradictions", []))}
+Founder insertion: {founder_map.get("insertion_node", "unknown")}
+Biggest constraint: {founder_map.get("biggest_constraint", "unknown")}
+Workaround: {founder_map.get("workaround", "none")}
+Asymmetric play: {strategy.get("asymmetric_play", "None")}
+Compound asset: {compound.get("asset_name", "unknown")} — redesign needed: {compound.get("redesign_needed", False)}
+Moat at 12mo: {compound.get("moat_at_12_months", "unknown")}
+{f"""
+Technique pre-analysis:
+{technique_context}
+""" if technique_context else ""}{f"""
+{local_verdict_context}
+If you DISAGREE with the local verdict, you MUST explain WHY with mechanistic reasoning.
+""" if local_verdict_context else ""}
+{kill_conditions_template}
+
+For the REASONING: not "the market looks good" — write the MECHANISTIC reason why this bottleneck node is (or isn't) accessible to this specific founder. Reference the mechanism, not the score.
+
+Respond ONLY in JSON:
+{{
+  "verdict": "GO|CAUTION|KILL",
+  "kill_conditions_present_count": 0,
+  "kill_conditions": [{{"condition": "...", "present": true}}],
+  "proceed_conditions": [{{"condition": "...", "present": true}}],
+  "reasoning": "...",
+  "mental_models_applied": ["Munger Inversion", "..."]
+}}"""

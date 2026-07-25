@@ -1,0 +1,83 @@
+---
+title: "Local-First Intelligence Architecture"
+description: "Shift intelligence from LLM-dependent to local-first. LLM becomes research/fallback only. System thinks locally, evolves continuously, graduates to full autonomy."
+status: pending
+priority: P1
+branch: "master"
+tags: [architecture, intelligence, local-first, anti-hallucination]
+blockedBy: [260510-0914-knowledge-distillation-engine]
+blocks: []
+created: "2026-05-10T02:57:31.574Z"
+createdBy: "ck:plan"
+source: skill
+target_repo: D:/code/invesments/master_investments
+estimated_effort: "20-24 days"
+---
+
+# Local-First Intelligence Architecture (LFI)
+
+## Problem
+
+master_investments intelligence runs ~40% on LLM at runtime. This causes:
+1. **Hallucination** — LLM fabricates metrics, expresses false confidence, gives inconsistent verdicts
+2. **Vendor lock-in** — 6 files call `anthropic` SDK directly, bypassing provider interface
+3. **No evolution** — System doesn't learn from LLM interactions; each session starts fresh
+4. **Cost & latency** — LLM calls = $0.003-0.015/call + 5-30s vs <200ms local
+
+## Solution
+
+4-tier architecture where LLM is demoted to "research tool + fallback":
+
+```
+T4: AUTONOMY GOVERNOR — graduated auto/semi/human per domain accuracy
+T3: LOCAL REASONING    — decision vectors + chains + rules → VERDICT (<200ms)
+T2: KNOWLEDGE DISTILLER — LLM output → extract → verify → store locally
+T1: LLM INTERFACE      — structured extraction + anti-hallucination + provider-agnostic
+```
+
+## Architecture Principles
+
+1. **LLM never outputs verdicts** — only structured, verifiable facts
+2. **Every LLM fact gets provenance** — source_llm, query, date, verified_by
+3. **Cross-query validation** — same fact queried 2x with different wording
+4. **Coverage tracking** — system knows what it knows and what it doesn't
+5. **Graduated autonomy** — domain accuracy < 85% = human confirm
+
+## Phases
+
+| # | Phase | Effort | Status | Deps |
+|---|-------|--------|--------|------|
+| P1 | [LLM Provider Abstraction + Anti-Hallucination](./phase-01-llm-provider-abstraction-anti-hallucination.md) | 3-4d | pending | KDE P1-P2 |
+| P2 | [Coverage Tracker + Gap Detector](./phase-02-coverage-tracker-gap-detector.md) | 2-3d | pending | P1 |
+| P3 | [Reasoning Chain Engine](./phase-03-reasoning-chain-engine.md) | 4-5d | pending | KDE complete |
+| P4 | [Evolution Triggers](./phase-04-evolution-triggers-session-outcome-continuous.md) | 3-4d | pending | P1+P2 |
+| P5 | [Autonomy Governor](./phase-05-autonomy-governor.md) | 2-3d | pending | P3 |
+| P6 | [Integration Test + Calibration](./phase-06-integration-test-calibration.md) | 2-3d | pending | P1-P5 |
+
+KDE = Knowledge Distillation Engine (prerequisite plan: `260510-0914-knowledge-distillation-engine/`)
+
+## Dependencies
+
+- **blockedBy:** `260510-0914-knowledge-distillation-engine` — P1-P2 of KDE must complete first (need vectors + local engine)
+- P1 can start in parallel with KDE P3-P6
+- P3 requires KDE complete (needs distilled rules to chain)
+- P4 requires P1+P2 (needs provider abstraction + gap detection)
+- P5 requires P3 (needs local verdicts to govern)
+- P6 requires all phases
+
+## Success Criteria
+
+- [ ] LLM dependency ratio: ~40% → <10%
+- [ ] Zero direct `anthropic` SDK calls outside provider adapter
+- [ ] Every LLM fact has provenance tag in local DB
+- [ ] Hallucination rate measurable and tracked (target: <5% of verified facts)
+- [ ] 3 evolution triggers active (session, outcome, continuous)
+- [ ] Domain-level accuracy tracking with auto-graduation
+- [ ] Local verdict latency <200ms for 90%+ of cases
+- [ ] Token cost per case drops 5x for matched cases
+
+## Kill Criteria
+
+- Local engine accuracy < 70% on 50+ verdicts → redesign feature schema
+- Anti-hallucination overhead > 3x cost of raw LLM → simplify verification
+- Evolution triggers produce < 5 new vectors/week → triggers not detecting gaps

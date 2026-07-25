@@ -1,0 +1,550 @@
+"""
+DimensionRegistry — 15+ analysis dimensions with weighted query templates.
+Pure data + lookup. Zero LLM calls.
+"""
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
+
+
+@dataclass
+class Dimension:
+    name: str
+    weight: float
+    templates: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {"name": self.name, "weight": self.weight, "templates": self.templates}
+
+
+DIMENSION_REGISTRY: dict[str, Dimension] = {
+    "career_path": Dimension(
+        name="career_path",
+        weight=1.5,
+        templates=[
+            "Average age of {role} in {market}?",
+            "Required experience years for {role}?",
+            "Typical career ladder steps to reach {role}?",
+            "What credentials/degrees are common among {role}?",
+            "Salary/compensation range for {role} in {market}?",
+            "What corporate roles did {target} hold before {role}?",
+            "Fastest path from {current_position} to {role} without {target}'s background?",
+        ],
+    ),
+    "deal_skills": Dimension(
+        name="deal_skills",
+        weight=1.0,
+        templates=[
+            "Typical deal sizes for {industry} in {market}?",
+            "Standard due diligence checklist for {industry}?",
+            "Key financial metrics evaluated in {industry} deals?",
+            "Common deal structures in {industry}?",
+            # benchmark_comparison additions
+            "What deal sizes are typical for first-time {role} in {industry}?",
+            "Minimum track record to manage a {metric} fund?",
+        ],
+    ),
+    "network_access": Dimension(
+        name="network_access",
+        weight=1.5,
+        templates=[
+            "How to access {industry} professional circles in {market}?",
+            "Key networking events for {industry} in {market}?",
+            "Who are the gatekeepers in {industry} in {market}?",
+            "What professional associations exist for {industry}?",
+            "Active {industry} funds currently investing in {market} startups?",
+            "LP-GP relationships and how scouts get introduced in {industry}?",
+        ],
+    ),
+    "founder_experience": Dimension(
+        name="founder_experience",
+        weight=1.0,
+        templates=[
+            "Revenue benchmark for founders aged {target} in {industry}?",
+            "Typical team size at seed stage for {industry}?",
+            "Most common founder background for {industry}?",
+        ],
+    ),
+    "base_rates": Dimension(
+        name="base_rates",
+        weight=2.0,
+        templates=[
+            "What % of {industry} businesses fail in year 1?",
+            "What % of people achieve {target} by age 30?",
+            "Survivorship bias in {industry} career data?",
+            "Base rate of success for {target} globally?",
+            "Median vs mean outcome for {industry} entrants?",
+        ],
+    ),
+    "capital_requirements": Dimension(
+        name="capital_requirements",
+        weight=1.5,
+        templates=[
+            "Minimum capital to start {industry} business?",
+            "Typical GP commit % for {industry}?",
+            "Working capital cycle for {industry}?",
+            "Break-even timeline for {industry} ventures?",
+            "Management fee structure 2/20 for {industry} funds in {market}?",
+            "Carried interest vesting schedule for {role} in {industry}?",
+        ],
+    ),
+    "competitive_landscape": Dimension(
+        name="competitive_landscape",
+        weight=1.5,
+        templates=[
+            "Top 5 players in {industry} by {metric}?",
+            "Market leader's entry barriers in {industry}?",
+            "Free alternatives covering >70% of {target} value prop?",
+            "Recent new entrants in {industry} in last 2 years?",
+        ],
+    ),
+    "moat_patterns": Dimension(
+        name="moat_patterns",
+        weight=1.5,
+        templates=[
+            "What moat type works for {industry}?",
+            "Switching cost for customers in {industry}?",
+            "Network effects present in {industry}?",
+            "Data moat feasibility for {industry}?",
+        ],
+    ),
+    "timing_windows": Dimension(
+        name="timing_windows",
+        weight=1.0,
+        templates=[
+            "Current market cycle position for {industry}?",
+            "Regulatory deadlines affecting {industry}?",
+            "Seasonal demand patterns for {industry}?",
+            "Technology inflection points in {industry}?",
+        ],
+    ),
+    "unit_economics": Dimension(
+        name="unit_economics",
+        weight=1.5,
+        templates=[
+            "Typical CAC for {industry}?",
+            "Average LTV for {industry} customers?",
+            "Gross margins for {industry}?",
+            "Revenue per employee in {industry}?",
+        ],
+    ),
+    "regulatory_risks": Dimension(
+        name="regulatory_risks",
+        weight=1.0,
+        templates=[
+            "Legal barriers to entry in {industry} in {market}?",
+            "Compliance cost for {industry}?",
+            "Recent regulatory changes affecting {industry}?",
+        ],
+    ),
+    "failure_patterns": Dimension(
+        name="failure_patterns",
+        weight=2.0,
+        templates=[
+            "Top 3 failure reasons for {industry}?",
+            "% failure rate in first 2 years for {industry}?",
+            "Most common mistake by first-time {role}?",
+            "What kills {industry} businesses after initial traction?",
+        ],
+    ),
+    "compounding_mechanisms": Dimension(
+        name="compounding_mechanisms",
+        weight=1.0,
+        templates=[
+            "What compounds in {industry}? (data/network/brand)?",
+            "Time to flywheel activation for {industry}?",
+            "Compound growth rate for top performers in {industry}?",
+        ],
+    ),
+    "execution_distance": Dimension(
+        name="execution_distance",
+        weight=1.5,
+        templates=[
+            "Steps from {current_position} to {target}?",
+            "Skills gap between {current_position} and {target}?",
+            "Time estimate from {current_position} to {target}?",
+            "Prerequisite milestones before reaching {target}?",
+        ],
+    ),
+    "leverage_type": Dimension(
+        name="leverage_type",
+        weight=1.0,
+        templates=[
+            "Is {industry} code/media/capital/labor leverage?",
+            "Permissionless leverage available in {industry}?",
+            "How do top performers in {industry} leverage their time?",
+            "Can you build {industry} deal flow without being hired by a fund?",
+            "Independent {industry} scouts and venture partners compensation model?",
+        ],
+    ),
+    "indirect_entry": Dimension(
+        name="indirect_entry",
+        weight=1.5,
+        templates=[
+            "Who controls the supply chain for {target}?",
+            "What do gatekeepers in {industry} need that's underserved?",
+            "What free value could a newcomer provide to {industry} ecosystem?",
+            "What's the parasitic attachment opportunity in {industry}?",
+            "Who are the Level 3 underserved players in {industry}?",
+        ],
+    ),
+    "benchmark_comparison": Dimension(
+        name="benchmark_comparison",
+        weight=1.5,
+        templates=[
+            "Other people under {target_age} who achieved {role} in {market}?",
+            "What was {reference_person}'s exact career timeline?",
+            "Youngest {role} globally and their path?",
+            "Skills gap between average entrant and {reference_person}?",
+            "What mentors/sponsors enabled {reference_person}'s rise?",
+            "Replicable vs non-replicable factors in {reference_person}'s success?",
+            "Base rate: % of people attempting {role} who succeed by age {target_age}?",
+        ],
+    ),
+    "power_position": Dimension(
+        name="power_position",
+        weight=2.5,
+        templates=[
+            "{industry} investment committee decision process who approves deals {market}?",
+            "{role} salary carry compensation CVC corporate venture capital {market} 2024?",
+            "{industry} scout vs partner decision power difference actual role?",
+            "{industry} {market} who controls deal flow allocation specific names funds?",
+        ],
+    ),
+    "reverse_leverage": Dimension(
+        name="reverse_leverage",
+        weight=2.5,
+        templates=[
+            "people who became {industry} partner by bringing LP money deal flow first?",
+            "{industry} scout program how to join without experience examples?",
+            "started own {industry} fund without working at fund first examples success?",
+            "freelance {industry} advisor consultant who became indispensable examples?",
+        ],
+    ),
+    "information_supply_chain": Dimension(
+        name="information_supply_chain",
+        weight=2.0,
+        templates=[
+            "{industry} deal sourcing channels methods how scouts find deals {market}?",
+            "{industry} intelligence platforms pricing Tracxn PitchBook alternatives {market}?",
+            "{industry} information asymmetry what insiders know that outsiders don't?",
+            "proprietary startup data {market} not on Crunchbase where to find?",
+        ],
+    ),
+    "shortcut_paths": Dimension(
+        name="shortcut_paths",
+        weight=2.5,
+        templates=[
+            "youngest {industry} fund manager started own fund without experience timeline?",
+            "unconventional path into {industry} bypassed career ladder examples?",
+            "{industry} operator community groups Telegram Discord where deals happen?",
+            "solo GP micro fund {market} started from zero how timeline revenue?",
+        ],
+    ),
+    "community_as_asset": Dimension(
+        name="community_as_asset",
+        weight=2.0,
+        templates=[
+            "{industry} community builder became fund manager examples revenue?",
+            "{industry} newsletter curator monetization subscription pricing examples?",
+            "{industry} {market} investor community groups where LPs GPs network?",
+            "deal flow platform {industry} {market} who built it revenue model?",
+        ],
+    ),
+    "operator_intelligence": Dimension(
+        name="operator_intelligence",
+        weight=3.0,
+        templates=[
+            "who specifically approved last 3 investments at top {industry} fund in {market} name title?",
+            "specific decision makers at {industry} funds actively deploying in {market} 2024 2025 names?",
+            "what does {role} at {industry} fund personally need that no one provides {market}?",
+            "{industry} fund internal politics who competes for deal allocation {market}?",
+            "specific person who controls {industry} deal flow in {market} name fund LinkedIn?",
+        ],
+    ),
+    "economics_reality": Dimension(
+        name="economics_reality",
+        weight=2.5,
+        templates=[
+            "actual take-home income for {role} at {industry} fund {market} after expenses?",
+            "how long until {role} earns first carry payout from {industry} fund?",
+            "median income vs aspirational income for {role} in {industry} {market}?",
+            "what does {role} earn year 1 vs year 5 vs year 10 in {industry}?",
+        ],
+    ),
+    "alternative_money_flows": Dimension(
+        name="alternative_money_flows",
+        weight=2.0,
+        templates=[
+            "all capital flows into {market} innovation ecosystem beyond VC: PE family offices corporate government?",
+            "which capital source in {market} is easiest to access for newcomer without credentials?",
+            "government innovation funds grants {market} who allocates how to access?",
+            "corporate venture arms M&A teams in {market} who scouts deals for them?",
+        ],
+    ),
+    "solo_execution_ceiling": Dimension(
+        name="solo_execution_ceiling",
+        weight=2.0,
+        templates=[
+            "maximum revenue achieved by solo founder in {industry} without employees?",
+            "at what revenue does {industry} business require hiring first employee?",
+            "solo founder bottleneck in {industry} operations sales support?",
+            "automation potential for {industry} operations what % can be AI-assisted?",
+        ],
+    ),
+    "ai_disruption_risk": Dimension(
+        name="ai_disruption_risk",
+        weight=2.5,
+        templates=[
+            "which {industry} tasks are AI replacing in 2025 2026?",
+            "AI-proof aspects of {industry} what cannot be automated?",
+            "application SaaS vs infrastructure SaaS AI disruption {industry}?",
+            "{industry} businesses that died from AI competition examples?",
+        ],
+    ),
+    "compound_asset_velocity": Dimension(
+        name="compound_asset_velocity",
+        weight=2.0,
+        templates=[
+            "what asset accumulates in {industry} that increases value over time?",
+            "data moat feasibility in {industry} can competitors buy same data?",
+            "network effect strength in {industry} linear or exponential?",
+            "time to compound asset lock-in for {industry} months years?",
+        ],
+    ),
+    "customer_behavior_reality": Dimension(
+        name="customer_behavior_reality",
+        weight=2.0,
+        templates=[
+            "how do {industry} customers actually discover and buy products?",
+            "{industry} customer acquisition cost breakdown paid vs organic vs referral?",
+            "willingness to pay for {industry} tools subscription vs one-time vs free?",
+            "{industry} customer churn rate and primary churn reasons?",
+            "buying decision timeline for {industry} products days weeks months?",
+        ],
+    ),
+    "channel_durability": Dimension(
+        name="channel_durability",
+        weight=1.5,
+        templates=[
+            "{industry} primary acquisition channels that still work 2025 2026?",
+            "SEO vs PLG vs paid ads vs partnerships durability for {industry}?",
+            "platform dependency risk for {industry} Google algorithm TikTok policy changes?",
+            "affiliate commission rate trends for {industry} declining or stable?",
+        ],
+    ),
+    "cash_flow_mechanics": Dimension(
+        name="cash_flow_mechanics",
+        weight=2.0,
+        templates=[
+            "time to first revenue for {industry} bootstrapped business?",
+            "recurring vs one-time revenue split typical for {industry}?",
+            "gross margin benchmarks for {industry} businesses?",
+            "cash conversion cycle for {industry} how fast does money come back?",
+            "revenue per founder hour for top performers in {industry}?",
+        ],
+    ),
+    "macro_cycle_positioning": Dimension(
+        name="macro_cycle_positioning",
+        weight=3.0,
+        templates=[
+            "current economic cycle phase {market} 2025 2026 expansion contraction?",
+            "where is capital flowing {market} which sectors receiving most investment?",
+            "interest rate impact on {industry} capital allocation {market}?",
+            "which {industry} segments grow during recession vs expansion?",
+            "macro tailwinds headwinds for {industry} next 3-5 years?",
+        ],
+    ),
+    "value_chain_control_points": Dimension(
+        name="value_chain_control_points",
+        weight=3.0,
+        templates=[
+            "who controls the bottleneck in {industry} value chain {market}?",
+            "{industry} value chain map from raw input to end customer who captures most margin?",
+            "which node in {industry} supply chain has highest pricing power?",
+            "what happens when you control {industry} distribution vs production?",
+            "examples of solo operators who captured {industry} value chain bottleneck?",
+        ],
+    ),
+    "capital_velocity": Dimension(
+        name="capital_velocity",
+        weight=2.5,
+        templates=[
+            "cash conversion cycle for top {industry} operators days to revenue?",
+            "float economics in {industry} who gets paid before delivering?",
+            "leverage mechanics in {industry} how to use OPM (other people's money)?",
+            "working capital requirements vs revenue ratio in {industry}?",
+            "capital turnover ratio for best {industry} businesses?",
+        ],
+    ),
+    "institutional_capital_mechanics": Dimension(
+        name="institutional_capital_mechanics",
+        weight=2.5,
+        templates=[
+            "LP GP dynamics in {industry} who allocates capital and how?",
+            "fund lifecycle in {industry} deployment harvest timeline?",
+            "management fee vs carry economics for {industry} fund managers?",
+            "family office vs institutional vs retail capital flows into {industry}?",
+            "how do capital allocators in {industry} choose where to deploy {market}?",
+        ],
+    ),
+    "regulatory_moat_engineering": Dimension(
+        name="regulatory_moat_engineering",
+        weight=2.0,
+        templates=[
+            "which {industry} regulations create barriers that protect incumbents?",
+            "licensing requirements in {industry} {market} that limit competition?",
+            "compliance cost as moat in {industry} how much to become compliant?",
+            "examples of {industry} businesses that used regulation as competitive advantage?",
+            "upcoming regulations in {industry} that will create new opportunities?",
+        ],
+    ),
+    "cross_industry_arbitrage": Dimension(
+        name="cross_industry_arbitrage",
+        weight=2.0,
+        templates=[
+            "pricing arbitrage between {industry} and adjacent industries?",
+            "skills from {industry} that are undervalued in other sectors?",
+            "geographic arbitrage in {industry} between {market} and other markets?",
+            "information asymmetry between {industry} insiders and outsiders?",
+            "technology transfer from {industry} to underserved adjacent markets?",
+        ],
+    ),
+    "multi_generation_wealth": Dimension(
+        name="multi_generation_wealth",
+        weight=2.0,
+        templates=[
+            "{industry} businesses that survived 10+ years what made them durable?",
+            "asset types in {industry} that appreciate over decades not years?",
+            "how do {industry} operators build wealth that survives economic cycles?",
+            "compounding mechanisms in {industry} that accelerate with scale?",
+            "which {industry} assets generate income without active management?",
+        ],
+    ),
+}
+
+QUESTION_TYPE_DIMENSIONS: dict[str, list[tuple[str, float]]] = {
+    "career_path": [
+        ("power_position", 2.5), ("reverse_leverage", 2.0), ("shortcut_paths", 2.0),
+        ("career_path", 1.5), ("base_rates", 2.0), ("network_access", 1.5),
+        ("execution_distance", 1.5), ("capital_requirements", 1.0),
+        ("failure_patterns", 1.5), ("deal_skills", 1.0), ("leverage_type", 0.8),
+    ],
+    "deal_analysis": [
+        ("deal_skills", 2.0), ("competitive_landscape", 1.5), ("unit_economics", 1.5),
+        ("moat_patterns", 1.5), ("base_rates", 1.5), ("failure_patterns", 1.5),
+        ("capital_requirements", 1.0), ("timing_windows", 1.0),
+        ("information_supply_chain", 1.5),
+    ],
+    "market_entry": [
+        ("competitive_landscape", 2.0), ("base_rates", 2.0), ("unit_economics", 1.5),
+        ("regulatory_risks", 1.5), ("capital_requirements", 1.5),
+        ("failure_patterns", 1.5), ("timing_windows", 1.0), ("moat_patterns", 1.0),
+        ("shortcut_paths", 1.5), ("reverse_leverage", 1.0),
+    ],
+    "competitor_audit": [
+        ("competitive_landscape", 2.0), ("moat_patterns", 1.5), ("unit_economics", 1.5),
+        ("failure_patterns", 1.0), ("timing_windows", 1.0),
+    ],
+    "wealth_strategy": [
+        ("operator_intelligence", 2.5), ("economics_reality", 2.5),
+        ("power_position", 2.5), ("reverse_leverage", 2.5), ("shortcut_paths", 2.5),
+        ("alternative_money_flows", 2.0), ("capital_requirements", 2.0),
+        ("compounding_mechanisms", 2.0), ("leverage_type", 1.5),
+        ("base_rates", 1.5), ("execution_distance", 1.5),
+        ("community_as_asset", 1.5), ("information_supply_chain", 1.5),
+        ("failure_patterns", 1.0), ("timing_windows", 1.0),
+    ],
+    "indirect_strategy": [
+        ("reverse_leverage", 2.5), ("shortcut_paths", 2.5), ("power_position", 2.0),
+        ("indirect_entry", 2.0), ("network_access", 1.5), ("execution_distance", 1.5),
+        ("information_supply_chain", 2.0), ("community_as_asset", 1.5),
+        ("competitive_landscape", 1.0), ("failure_patterns", 1.0),
+        ("leverage_type", 1.0), ("capital_requirements", 0.8),
+    ],
+    "power_infiltration": [
+        ("operator_intelligence", 3.0), ("economics_reality", 2.5),
+        ("power_position", 2.5), ("reverse_leverage", 2.5), ("shortcut_paths", 2.5),
+        ("alternative_money_flows", 2.0), ("information_supply_chain", 2.0),
+        ("community_as_asset", 2.0), ("indirect_entry", 2.0),
+        ("network_access", 1.5), ("leverage_type", 1.5),
+        ("execution_distance", 1.5), ("failure_patterns", 1.0),
+    ],
+    "custom": [
+        ("base_rates", 1.5), ("failure_patterns", 1.5), ("competitive_landscape", 1.0),
+        ("unit_economics", 1.0), ("capital_requirements", 1.0),
+        ("execution_distance", 1.0), ("moat_patterns", 0.8), ("leverage_type", 0.8),
+        ("power_position", 1.0), ("reverse_leverage", 1.0),
+    ],
+    "benchmark_comparison": [
+        ("power_position", 2.0), ("career_path", 2.0), ("deal_skills", 2.0),
+        ("network_access", 1.5), ("founder_experience", 1.5), ("capital_requirements", 1.5),
+        ("execution_distance", 2.0), ("base_rates", 1.5), ("leverage_type", 1.0),
+        ("shortcut_paths", 1.5), ("timing_windows", 0.8), ("failure_patterns", 1.0),
+    ],
+    "capital_flow_architecture": [
+        ("macro_cycle_positioning", 3.0),
+        ("value_chain_control_points", 3.0),
+        ("capital_velocity", 2.5),
+        ("institutional_capital_mechanics", 2.5),
+        ("regulatory_moat_engineering", 2.0),
+        ("cross_industry_arbitrage", 2.0),
+        ("multi_generation_wealth", 2.0),
+        ("alternative_money_flows", 2.0),
+        ("compound_asset_velocity", 2.0),
+        ("operator_intelligence", 2.0),
+        ("power_position", 1.5),
+        ("economics_reality", 1.5),
+        ("base_rates", 1.5),
+        ("failure_patterns", 1.5),
+        ("cash_flow_mechanics", 1.5),
+    ],
+    "cash_flow_business": [
+        ("cash_flow_mechanics", 2.5), ("solo_execution_ceiling", 2.5),
+        ("ai_disruption_risk", 2.5), ("compound_asset_velocity", 2.0),
+        ("customer_behavior_reality", 2.0), ("channel_durability", 2.0),
+        ("competitive_landscape", 2.0), ("base_rates", 2.0),
+        ("failure_patterns", 2.0), ("unit_economics", 1.5),
+        ("moat_patterns", 1.5), ("compounding_mechanisms", 1.5),
+        ("leverage_type", 1.0), ("timing_windows", 1.0),
+        ("capital_requirements", 1.0),
+    ],
+}
+
+
+def get_dimensions(
+    question_type: str,
+    min_weight: float = 0.5,
+    weight_overrides: Optional[dict[str, float]] = None,
+) -> list[Dimension]:
+    type_dims = QUESTION_TYPE_DIMENSIONS.get(question_type, QUESTION_TYPE_DIMENSIONS["custom"])
+    result = []
+    for dim_name, weight_override in type_dims:
+        dim = DIMENSION_REGISTRY.get(dim_name)
+        if not dim:
+            continue
+        final_weight = weight_overrides.get(dim_name, weight_override) if weight_overrides else weight_override
+        if final_weight >= min_weight:
+            result.append(Dimension(
+                name=dim.name,
+                weight=final_weight,
+                templates=list(dim.templates),
+            ))
+    return result
+
+
+def load_evolved_weights(db_path: Path) -> dict[str, float]:
+    """Load evolved weights from template_metrics table. Returns dict, no global mutation."""
+    import sqlite3
+    if not db_path.exists():
+        return {}
+    try:
+        with sqlite3.connect(str(db_path)) as conn:
+            rows = conn.execute(
+                "SELECT dimension, current_weight FROM template_metrics "
+                "GROUP BY dimension"
+            ).fetchall()
+        return {dim_name: evolved_weight for dim_name, evolved_weight in rows}
+    except sqlite3.DatabaseError:
+        return {}

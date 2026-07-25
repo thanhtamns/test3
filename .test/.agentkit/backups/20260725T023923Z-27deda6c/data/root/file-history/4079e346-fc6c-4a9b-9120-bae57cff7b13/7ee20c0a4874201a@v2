@@ -1,0 +1,53 @@
+# Discord Observation Guide (Day 2 — 3 hours)
+
+## Target Servers
+
+| Server | Invite/Search | Why |
+|--------|---------------|-----|
+| Indie Hackers | Search "Indie Hackers" on Discord | Largest builder community |
+| WIP (Work in Progress) | wip.co Discord | Builders shipping daily |
+| MicroConf Connect | microconf.com community | Bootstrapped SaaS founders |
+| Ramen Club | Search Discord | Indie hacker community |
+| Ship Fast | Search Discord | Marc Lou's builder community |
+
+## Channels to Monitor
+
+Focus on: `#launches`, `#feedback`, `#struggles`, `#marketing`, `#growth`, `#general`
+
+## What to Record
+
+For each relevant post/thread, capture in `discord-observations.csv`:
+
+```
+server,channel,date,username,quote,friction_type,solution_tried,asking_for_help,willingness_to_pay
+```
+
+### Friction types:
+- `distribution` — can't find users, no traffic, launched but crickets
+- `pricing` — unsure how to price, too cheap/expensive
+- `churn` — users leave, can't retain
+- `technical` — build problems, scaling issues
+- `motivation` — burnout, giving up
+- `other` — specify
+
+## Observation Protocol
+
+1. **Read, don't post** (yet). Pure observation.
+2. Scroll back 30 days in each channel.
+3. Count: How many posts mention distribution/users/traffic as THE problem?
+4. Note EXACT language they use — this becomes landing page copy.
+5. Look for: "I wish there was a tool that..." moments.
+6. Track: Are people ASKING for help with distribution? Or just venting?
+
+## Key Questions to Answer
+
+- [ ] Is distribution the #1 topic in #struggles channels?
+- [ ] Do builders actively seek distribution help vs just complaining?
+- [ ] What solutions do they mention trying?
+- [ ] Any mentions of paying for distribution guidance?
+- [ ] What language patterns repeat? (exact phrases)
+
+## Time Budget
+
+- 30 min per server (5 servers × 30 min = 2.5 hours)
+- 30 min to compile notes into CSV

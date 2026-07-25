@@ -1,0 +1,183 @@
+import * as vscode from "vscode";
+import * as os from "os";
+
+export class StatsPanel {
+  private panel: vscode.WebviewPanel | undefined;
+  private refreshTimer: ReturnType<typeof setInterval> | undefined;
+
+  constructor(private extensionUri: vscode.Uri) {}
+
+  show(dbPath: string) {
+    if (this.panel) {
+      this.panel.reveal();
+      this.update(dbPath);
+      return;
+    }
+
+    this.panel = vscode.window.createWebviewPanel(
+      "codeflowStats",
+      "CODEFLOW Stats",
+      vscode.ViewColumn.Beside,
+      { enableScripts: false }
+    );
+
+    this.panel.onDidDispose(() => {
+      this.panel = undefined;
+      if (this.refreshTimer) clearInterval(this.refreshTimer);
+    });
+
+    this.update(dbPath);
+    this.refreshTimer = setInterval(() => this.update(dbPath), 10_000);
+  }
+
+  dispose() {
+    this.panel?.dispose();
+    if (this.refreshTimer) clearInterval(this.refreshTimer);
+  }
+
+  private async update(dbPath: string) {
+    if (!this.panel) return;
+
+    try {
+      const data = await this.queryDetailedStats(dbPath);
+      if (this.panel) this.panel.webview.html = this.renderHTML(data);
+    } catch {
+      if (this.panel) this.panel.webview.html = this.renderError();
+    }
+  }
+
+  private async queryDetailedStats(dbPath: string) {
+    const initSqlJs = require("sql.js");
+    const fs = require("fs");
+    const SQL = await initSqlJs();
+    const buffer = fs.readFileSync(dbPath);
+    const db = new SQL.Database(buffer);
+
+    try {
+      const summaryResult = db.exec(
+        `SELECT COALESCE(SUM(tokens_saved), 0), COALESCE(SUM(input_tokens), 0), COUNT(*)
+         FROM tracking WHERE timestamp > datetime('now', '-1 day')`
+      );
+      const [totalSaved, totalInput, eventCount] =
+        summaryResult.length > 0 && summaryResult[0].values.length > 0
+          ? (summaryResult[0].values[0] as [number, number, number])
+          : [0, 0, 0];
+
+      const cmdResult = db.exec(
+        `SELECT command, SUM(tokens_saved) as saved, COUNT(*) as cnt
+         FROM tracking WHERE timestamp > datetime('now', '-1 day')
+         GROUP BY command ORDER BY saved DESC LIMIT 10`
+      );
+      const topCommands =
+        cmdResult.length > 0
+          ? cmdResult[0].values.map(([command, saved, cnt]: [unknown, unknown, unknown]) => ({
+              command: command as string,
+              saved: saved as number,
+              cnt: cnt as number,
+            }))
+          : [];
+
+      const layerResult = db.exec(
+        `SELECT layer, SUM(tokens_saved) as saved, COUNT(*) as cnt
+         FROM tracking WHERE timestamp > datetime('now', '-1 day')
+         GROUP BY layer ORDER BY saved DESC`
+      );
+      const byLayer =
+        layerResult.length > 0
+          ? layerResult[0].values.map(([layer, saved, cnt]: [unknown, unknown, unknown]) => ({
+              layer: layer as string,
+              saved: saved as number,
+              cnt: cnt as number,
+            }))
+          : [];
+
+      return {
+        summary: { total_saved: totalSaved, total_input: totalInput, event_count: eventCount },
+        topCommands,
+        byLayer,
+      };
+    } finally {
+      db.close();
+    }
+  }
+
+  private renderHTML(data: {
+    summary: { total_saved: number; total_input: number; event_count: number };
+    topCommands: { command: string; saved: number; cnt: number }[];
+    byLayer: { layer: string; saved: number; cnt: number }[];
+  }) {
+    const pct =
+      data.summary.total_input > 0
+        ? ((data.summary.total_saved / data.summary.total_input) * 100).toFixed(1)
+        : "0";
+
+    const cmdRows = data.topCommands
+      .map(
+        (c) =>
+          `<tr><td><code>${esc(c.command)}</code></td><td>${fmt(c.saved)}</td><td>${c.cnt}x</td></tr>`
+      )
+      .join("");
+
+    const layerRows = data.byLayer
+      .map(
+        (l) =>
+          `<tr><td>${esc(l.layer)}</td><td>${fmt(l.saved)}</td><td>${l.cnt}x</td></tr>`
+      )
+      .join("");
+
+    return `<!DOCTYPE html>
+<html><head><style>
+  body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); padding: 16px; }
+  h1 { font-size: 1.4em; margin-bottom: 4px; }
+  .subtitle { color: var(--vscode-descriptionForeground); margin-bottom: 16px; }
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+  .card { background: var(--vscode-editor-background); border: 1px solid var(--vscode-widget-border); border-radius: 6px; padding: 12px; }
+  .card-label { font-size: 0.8em; color: var(--vscode-descriptionForeground); }
+  .card-value { font-size: 1.8em; font-weight: bold; margin: 4px 0; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--vscode-widget-border); }
+  th { color: var(--vscode-descriptionForeground); font-size: 0.85em; }
+  code { background: var(--vscode-textCodeBlock-background); padding: 2px 4px; border-radius: 3px; font-size: 0.9em; }
+  h2 { font-size: 1.1em; margin-top: 20px; }
+</style></head><body>
+  <h1>CODEFLOW Stats</h1>
+  <p class="subtitle">Last 24 hours &middot; auto-refreshes every 10s</p>
+  <div class="cards">
+    <div class="card"><div class="card-label">Tokens Saved</div><div class="card-value">${fmt(data.summary.total_saved)}</div></div>
+    <div class="card"><div class="card-label">Savings Rate</div><div class="card-value">${pct}%</div></div>
+    <div class="card"><div class="card-label">Events</div><div class="card-value">${data.summary.event_count}</div></div>
+  </div>
+  ${
+    data.topCommands.length > 0
+      ? `<h2>Top Commands</h2>
+    <table><tr><th>Command</th><th>Saved</th><th>Count</th></tr>${cmdRows}</table>`
+      : ""
+  }
+  ${
+    data.byLayer.length > 0
+      ? `<h2>By Layer</h2>
+    <table><tr><th>Layer</th><th>Saved</th><th>Count</th></tr>${layerRows}</table>`
+      : ""
+  }
+</body></html>`;
+  }
+
+  private renderError() {
+    return `<!DOCTYPE html>
+<html><body style="font-family: var(--vscode-font-family); color: var(--vscode-foreground); padding: 16px;">
+  <h1>CODEFLOW Stats</h1>
+  <p>No data available. Make sure the CODEFLOW CLI is installed and has been used.</p>
+  <p><code>cargo install codeflow && codeflow init</code></p>
+</body></html>`;
+  }
+}
+
+function fmt(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return n.toString();
+}
+
+function esc(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}

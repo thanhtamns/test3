@@ -1,0 +1,677 @@
+On branch master
+Changes not staged for commit:
+  (use "git add/rm <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .claude/commands/stage0-checklist.md
+	modified:   .claude/commands/stage0-spec-detail.md
+	modified:   .claude/commands/stage0.md
+	deleted:    .claude/data/evolution-backups/20260509-191601/contrarian-research-agent.md
+	deleted:    .claude/data/evolution-backups/20260509-191601/deep-reasoner.md
+	deleted:    .claude/data/evolution-backups/20260509-191601/failure-archaeologist.md
+	deleted:    .claude/data/evolution-backups/20260509-191601/fullstack-developer.md
+	deleted:    .claude/data/evolution-backups/20260509-191601/researcher.md
+	deleted:    .claude/data/evolution-backups/20260509-193611/contrarian-research-agent.md
+	deleted:    .claude/data/evolution-backups/20260509-193611/deep-reasoner.md
+	deleted:    .claude/data/evolution-backups/20260509-193611/failure-archaeologist.md
+	deleted:    .claude/data/evolution-backups/20260509-193611/fullstack-developer.md
+	deleted:    .claude/data/evolution-backups/20260509-193611/researcher.md
+	modified:   .claude/data/evolution-config.json
+	modified:   .claude/data/evolution-rollback-log.json
+	modified:   .claude/data/knowledge-distillation/decision-vectors.db
+	modified:   .claude/data/knowledge-integrity-status.json
+	modified:   .claude/data/llm-config.json
+	modified:   .claude/hooks/.logs/auto-evolve-stdout.log
+	modified:   .claude/hooks/.logs/brain-refresh-trigger.log
+	modified:   .claude/hooks/.logs/evolution-auto-evolve.lock
+	modified:   .claude/hooks/.logs/evolution-auto-runner.log
+	modified:   .claude/hooks/.logs/evolution-knowledge-hunt.lock
+	modified:   .claude/hooks/.logs/evolution-scheduled-evolution.lock
+	modified:   .claude/hooks/.logs/hook-log.jsonl
+	modified:   .claude/hooks/.logs/knowledge-hunt-last-run.txt
+	modified:   .claude/hooks/.logs/knowledge-hunt-stderr.log
+	modified:   .claude/hooks/.logs/knowledge-hunt-stdout.log
+	modified:   .claude/hooks/.logs/scheduled-evolution-stdout.log
+	modified:   .claude/hooks/evolution-auto-runner.cjs
+	modified:   .claude/hooks/session-init.cjs
+	modified:   .claude/lib/intelligence/decomposition/dimension_registry.py
+	modified:   .claude/lib/intelligence/decomposition/fact_assembler.py
+	modified:   .claude/lib/intelligence/decomposition/ladder_bridge.py
+	modified:   .claude/lib/intelligence/decomposition/live_think_runner.py
+	modified:   .claude/lib/intelligence/decomposition/micro_query_generator.py
+	modified:   .claude/lib/intelligence/decomposition/output_formatter.py
+	modified:   .claude/lib/intelligence/decomposition/persona_debate.py
+	modified:   .claude/lib/intelligence/decomposition/query_classifier.py
+	modified:   .claude/lib/intelligence/decomposition/synthesis_engine.py
+	modified:   .claude/lib/intelligence/decomposition/template_evolver.py
+	modified:   .claude/lib/intelligence/decomposition/tests/test_decomposer.py
+	modified:   .claude/lib/intelligence/decomposition/tests/test_micro_query_runner.py
+	modified:   .claude/lib/intelligence/decomposition/tests/test_persona_debate.py
+	modified:   .claude/lib/intelligence/decomposition/think_runner.py
+	modified:   .claude/lib/intelligence/evolution/outcome_trigger.py
+	modified:   .claude/lib/intelligence/hunger/claim_parser.py
+	modified:   .claude/lib/intelligence/hunger/domain_prioritizer.py
+	modified:   .claude/lib/intelligence/hunger/hunger_loop_orchestrator.py
+	modified:   .claude/lib/llm/factory.py
+	modified:   .claude/rules/learned-rules-proposals.md
+	modified:   .claude/rules/learned-rules.md
+	modified:   .claude/settings.json
+	modified:   .claude/skills/business/data_intelligence/anti_bot/headless_fallback.py
+	modified:   .claude/skills/business/data_intelligence/anti_bot/method_chain_fetcher.py
+	modified:   .claude/skills/business/money-intelligence/experience_layer/data/prototypes.json
+	modified:   .claude/skills/business/money-intelligence/money_mechanisms/leverage.py
+	modified:   .claude/skills/business/startup/SKILL.md
+	modified:   .claude/skills/business/transaction-layer/data/capital-tiers.json
+	modified:   .claude/skills/business/transaction-layer/data/founder-profile.json
+	modified:   .claude/skills/business/transaction-layer/data/tier-decision-questions.json
+	modified:   .claude/skills/business/transaction-layer/nui-hunter/kb/.embeddings-cache.npz
+	modified:   .claude/skills/business/transaction-layer/nui-hunter/kb/archetypes/acquisition-operator.json
+	modified:   .claude/skills/business/transaction-layer/nui-hunter/kb/archetypes/content-factory.json
+	modified:   .claude/skills/business/transaction-layer/nui-hunter/kb/archetypes/holding-company.json
+	modified:   .claude/skills/business/transaction-layer/nui-hunter/kb/archetypes/information-broker.json
+	modified:   .claude/skills/business/transaction-layer/nui-hunter/kb/archetypes/labor-arbitrage-operator.json
+	modified:   .claude/skills/business/transaction-layer/nui-hunter/kb/archetypes/saas-content-funnel.json
+	modified:   .claude/skills/business/transaction-layer/nui-hunter/kb/archetypes/trade-intermediary.json
+	modified:   .claude/skills/business/transaction-layer/nui-hunter/kb/memory.jsonl
+	modified:   .claude/skills/business/transaction-layer/nui-hunter/scripts/capital-path-classifier.py
+	modified:   .claude/skills/business/transaction-layer/nui-hunter/scripts/multi-path-comparator.py
+	modified:   .claude/skills/business/transaction-layer/nui-hunter/scripts/persist-knowledge.py
+	modified:   .claude/skills/business/transaction-layer/nui-hunter/scripts/persist-verdict.py
+	modified:   .claude/skills/business/transaction-layer/nui-hunter/scripts/stage0-quality-score.py
+	modified:   .claude/skills/business/transaction-layer/nui-hunter/scripts/tier-adjusted-dq-generator.py
+	modified:   .gitignore
+	modified:   .mcp.json
+	modified:   anti-confirmation-checklist.json
+	modified:   data/calibration/bias-log.jsonl
+	modified:   data/calibration/brier-history.jsonl
+	modified:   data/calibration/brier-scores.jsonl
+	modified:   data/calibration/cold-start-overrides.json
+	modified:   data/calibration/evolution-log.jsonl
+	modified:   data/calibration/evolution-policy.json
+	modified:   data/calibration/learned-rules-priority.json
+	modified:   data/cognitive/INDEX.json
+	modified:   data/cognitive/custom/bayesian.db
+	modified:   data/cognitive/custom/consolidation-log.jsonl
+	modified:   data/cognitive/custom/hebbian-edges.db
+	modified:   data/deep-intelligence/evolution_log.json
+	modified:   data/deep-intelligence/hunt_log.json
+	modified:   data/deep-intelligence/knowledge_base.json
+	modified:   data/kg/entities.jsonl
+	modified:   data/kg/index.json
+	modified:   data/kg/relations.jsonl
+	modified:   data/knowledge-sources/learning-state.json
+	modified:   data/patterns/cross-case-library.json
+	modified:   data/patterns/failure-signatures.json
+	modified:   data/patterns/success-signatures.json
+	modified:   data/reflexion/pending-prompts.jsonl
+	modified:   data/training/INDEX.json
+	modified:   data/training/mental-models.md
+	modified:   data/training/tracked-channels.json
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	.claude/agents/core/intelligence/tournament-protocol.md
+	.claude/commands/archive/hunt-v4-checklist.md
+	.claude/commands/archive/hunt-v4.md
+	.claude/commands/feed.md
+	.claude/commands/hunt-checklist.md
+	.claude/commands/hunt-lib/asymmetry-filter.md
+	.claude/commands/hunt-lib/deal-dashboard.md
+	.claude/commands/hunt-lib/deal-learner.md
+	.claude/commands/hunt-lib/deal-tracker.md
+	.claude/commands/hunt-lib/flow-tracer.md
+	.claude/commands/hunt-lib/gap-finder.md
+	.claude/commands/hunt-lib/intelligence-controller-integration.md
+	.claude/commands/hunt-lib/margin-calculator.md
+	.claude/commands/hunt-lib/offer-designer.md
+	.claude/commands/hunt-lib/pain-miner.md
+	.claude/commands/hunt-lib/prey-profiler.md
+	.claude/commands/hunt-lib/proof-tracker.md
+	.claude/commands/hunt-lib/scanners/cross-language-scanner.md
+	.claude/commands/hunt-lib/scanners/cross-price-scanner.md
+	.claude/commands/hunt-lib/scanners/founder-network-scanner.md
+	.claude/commands/hunt-lib/scanners/money-flow-scanner.md
+	.claude/commands/hunt-lib/scanners/regulatory-scanner.md
+	.claude/commands/hunt-lib/scanners/timing-scanner.md
+	.claude/commands/hunt-lib/script-writer.md
+	.claude/commands/hunt.md
+	.claude/commands/meta-status.md
+	.claude/data/decomposition/evolution.db
+	.claude/data/depth-tracking/e08c40f9cb08/2b9b282b59186b5b.json
+	.claude/data/depth-tracking/e08c40f9cb08/50e071ee0b6ca08b.json
+	.claude/data/depth-tracking/e08c40f9cb08/73ebf909f91b85df.json
+	.claude/data/depth-tracking/e08c40f9cb08/82c33bb020b645d9.json
+	.claude/data/depth-tracking/e08c40f9cb08/ac8da7d0333b3caa.json
+	.claude/data/evolution-backups/20260524-210303/contrarian-research-agent.md
+	.claude/data/evolution-backups/20260524-210303/deep-reasoner.md
+	.claude/data/evolution-backups/20260524-210303/failure-archaeologist.md
+	.claude/data/evolution-backups/20260524-210303/fullstack-developer.md
+	.claude/data/evolution-backups/20260524-210303/researcher.md
+	.claude/data/evolution-backups/20260525-093107/contrarian-research-agent.md
+	.claude/data/evolution-backups/20260525-093107/deep-reasoner.md
+	.claude/data/evolution-backups/20260525-093107/failure-archaeologist.md
+	.claude/data/evolution-backups/20260525-093107/fullstack-developer.md
+	.claude/data/evolution-backups/20260525-093107/researcher.md
+	.claude/data/evolution-backups/20260525-101148/contrarian-research-agent.md
+	.claude/data/evolution-backups/20260525-101148/deep-reasoner.md
+	.claude/data/evolution-backups/20260525-101148/failure-archaeologist.md
+	.claude/data/evolution-backups/20260525-101148/fullstack-developer.md
+	.claude/data/evolution-backups/20260525-101148/researcher.md
+	.claude/data/evolution-backups/20260525-105329/contrarian-research-agent.md
+	.claude/data/evolution-backups/20260525-105329/deep-reasoner.md
+	.claude/data/evolution-backups/20260525-105329/failure-archaeologist.md
+	.claude/data/evolution-backups/20260525-105329/fullstack-developer.md
+	.claude/data/evolution-backups/20260525-105329/researcher.md
+	.claude/data/evolution-backups/20260525-164755/contrarian-research-agent.md
+	.claude/data/evolution-backups/20260525-164755/deep-reasoner.md
+	.claude/data/evolution-backups/20260525-164755/failure-archaeologist.md
+	.claude/data/evolution-backups/20260525-164755/fullstack-developer.md
+	.claude/data/evolution-backups/20260525-164755/researcher.md
+	.claude/data/founder/capabilities.db
+	.claude/hooks/.logs/stage2-debug.log
+	.claude/hooks/__tests__/stage2/audit-engine.test.cjs
+	.claude/hooks/__tests__/stage2/convergence-detector.test.cjs
+	.claude/hooks/__tests__/stage2/real-data-e2e.test.cjs
+	.claude/hooks/hunger-post-verdict.cjs
+	.claude/hooks/hunger-session-start.cjs
+	.claude/hooks/lib/audit-engine.cjs
+	.claude/hooks/lib/audit-history.cjs
+	.claude/hooks/lib/audit-schemas/brainstorm.json
+	.claude/hooks/lib/audit-schemas/code-impl.json
+	.claude/hooks/lib/audit-schemas/coffee.json
+	.claude/hooks/lib/audit-schemas/default.json
+	.claude/hooks/lib/audit-schemas/invest.json
+	.claude/hooks/lib/audit-schemas/plan.json
+	.claude/hooks/lib/audit-schemas/stage0.json
+	.claude/hooks/lib/audit-schemas/think.json
+	.claude/hooks/lib/convergence-detector.cjs
+	.claude/hooks/lib/gap-classifier.cjs
+	.claude/hooks/stage2-audit-completion.cjs
+	.claude/lib/data/reflexion-archive/pruned-indirect_bridge-20260525.jsonl
+	.claude/lib/intelligence/brains/__init__.py
+	.claude/lib/intelligence/brains/anomaly_crossref.py
+	.claude/lib/intelligence/brains/forced_flow_engine.py
+	.claude/lib/intelligence/brains/hunt_runner.py
+	.claude/lib/intelligence/brains/models.py
+	.claude/lib/intelligence/brains/price_delta_engine.py
+	.claude/lib/intelligence/brains/run_live_hunt_test.py
+	.claude/lib/intelligence/brains/tests/__init__.py
+	.claude/lib/intelligence/brains/tests/test_anomaly_crossref.py
+	.claude/lib/intelligence/brains/tests/test_forced_flow.py
+	.claude/lib/intelligence/brains/tests/test_models.py
+	.claude/lib/intelligence/brains/tests/test_price_delta.py
+	.claude/lib/intelligence/controller/__init__.py
+	.claude/lib/intelligence/controller/completion_judge.py
+	.claude/lib/intelligence/controller/graph_updater.py
+	.claude/lib/intelligence/controller/hypothesis_generator.py
+	.claude/lib/intelligence/controller/intelligence_controller.py
+	.claude/lib/intelligence/controller/money_flow_graph.py
+	.claude/lib/intelligence/controller/search_director.py
+	.claude/lib/intelligence/controller/seeder.py
+	.claude/lib/intelligence/controller/tests/__init__.py
+	.claude/lib/intelligence/controller/tests/test_intelligence_controller.py
+	.claude/lib/intelligence/controller/think_runner_bridge.py
+	.claude/lib/intelligence/data/reflexion-archive/pruned-indirect_bridge-20260513.jsonl
+	.claude/lib/intelligence/db/benchmark_cache.sqlite
+	.claude/lib/intelligence/decomposition/hierarchical_context_engine.py
+	.claude/lib/intelligence/decomposition/macro_context_prompts.py
+	.claude/lib/intelligence/decomposition/synthesis_validator.py
+	.claude/lib/intelligence/decomposition/tests/test_synthesis_validator.py
+	.claude/lib/intelligence/evolution/mutation_prompts.py
+	.claude/lib/intelligence/evolution/promoter.py
+	.claude/lib/intelligence/evolution/registry.py
+	.claude/lib/intelligence/evolution/sandbox_runner.py
+	.claude/lib/intelligence/evolution/schemas.py
+	.claude/lib/intelligence/evolution/template_mutator.py
+	.claude/lib/intelligence/evolution/tests/test_mutator.py
+	.claude/lib/intelligence/evolution/tests/test_orchestrator.py
+	.claude/lib/intelligence/evolution/tests/test_registry.py
+	.claude/lib/intelligence/evolution/tests/test_sandbox.py
+	.claude/lib/intelligence/mechanism/__init__.py
+	.claude/lib/intelligence/mechanism/bayesian_knob_updater.py
+	.claude/lib/intelligence/mechanism/error_attributor.py
+	.claude/lib/intelligence/mechanism/knob_registry.py
+	.claude/lib/intelligence/mechanism/meta_edit_controller.py
+	.claude/lib/intelligence/mechanism/meta_evolution_orchestrator.py
+	.claude/lib/intelligence/mechanism/safety_harness.py
+	.claude/lib/intelligence/mechanism/segment_evaluator.py
+	.claude/lib/intelligence/mechanism/tests/__init__.py
+	.claude/lib/intelligence/mechanism/tests/test_error_attributor.py
+	.claude/lib/intelligence/mechanism/tests/test_knob_registry.py
+	.claude/lib/intelligence/mechanism/tests/test_meta_edit_controller.py
+	.claude/lib/intelligence/mechanism/tests/test_meta_evolution_orchestrator.py
+	.claude/lib/intelligence/mechanism/tests/test_safety_harness.py
+	.claude/lib/intelligence/mechanism/tests/test_trace_cli.py
+	.claude/lib/intelligence/mechanism/tests/test_trace_logger.py
+	.claude/lib/intelligence/mechanism/trace_cli.py
+	.claude/lib/intelligence/mechanism/trace_logger.py
+	.claude/lib/intelligence/store/__init__.py
+	.claude/lib/intelligence/store/anomaly_store.py
+	.claude/lib/intelligence/store/schema.sql
+	.claude/lib/intelligence/store/tests/__init__.py
+	.claude/lib/intelligence/store/tests/test_anomaly_store.py
+	.claude/lib/intelligence/tests/__init__.py
+	.claude/lib/intelligence/tests/test_e2e_hunt_pipeline.py
+	.claude/lib/intelligence/tournament/__init__.py
+	.claude/lib/intelligence/tournament/elo_engine.py
+	.claude/lib/intelligence/tournament/models.py
+	.claude/lib/intelligence/tournament/tests/__init__.py
+	.claude/lib/intelligence/tournament/tests/test_elo_engine.py
+	.claude/lib/intelligence/tournament/tests/test_models.py
+	.claude/skills/business/data_intelligence/anti_bot/Dockerfile.cloakbrowser
+	.claude/skills/business/data_intelligence/anti_bot/docker-compose.cloakbrowser.yml
+	.claude/skills/business/transaction-layer/nui-hunter/kb/archetypes-history/2026-05-17/acquisition-operator.json
+	.claude/skills/business/transaction-layer/nui-hunter/kb/archetypes-history/2026-05-17/content-factory.json
+	.claude/skills/business/transaction-layer/nui-hunter/kb/archetypes-history/2026-05-17/holding-company.json
+	.claude/skills/business/transaction-layer/nui-hunter/kb/archetypes-history/2026-05-17/information-broker.json
+	.claude/skills/business/transaction-layer/nui-hunter/kb/archetypes-history/2026-05-17/labor-arbitrage-operator.json
+	.claude/skills/business/transaction-layer/nui-hunter/kb/archetypes-history/2026-05-17/saas-content-funnel.json
+	.claude/skills/business/transaction-layer/nui-hunter/kb/archetypes-history/2026-05-17/trade-intermediary.json
+	.claude/skills/business/transaction-layer/nui-hunter/kb/archetypes-history/2026-05-24/acquisition-operator.json
+	.claude/skills/business/transaction-layer/nui-hunter/kb/archetypes-history/2026-05-24/content-factory.json
+	.claude/skills/business/transaction-layer/nui-hunter/kb/archetypes-history/2026-05-24/holding-company.json
+	.claude/skills/business/transaction-layer/nui-hunter/kb/archetypes-history/2026-05-24/information-broker.json
+	.claude/skills/business/transaction-layer/nui-hunter/kb/archetypes-history/2026-05-24/labor-arbitrage-operator.json
+	.claude/skills/business/transaction-layer/nui-hunter/kb/archetypes-history/2026-05-24/saas-content-funnel.json
+	.claude/skills/business/transaction-layer/nui-hunter/kb/archetypes-history/2026-05-24/trade-intermediary.json
+	.claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260510-information-arbitrage-replacement.json
+	.claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260513-10-money-models-large-cashflow.json
+	.claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260517-business-models-0-500-large-cashflow.json
+	.claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260517-dev-first-service-sale.json
+	.claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260517-zero-capital-large-cashflow.json
+	.claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260517-zero-capital-smart-models.json
+	.claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260517-zero-capital-smart-models.md
+	.claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260518-breadth-micro-models.json
+	.claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260518-micro-capital-breadth-scan.json
+	.claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260518-micro-niche-breadth-scan.json
+	.claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260518-micro-niche-breadth.json
+	.claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260518-zero-capital-breadth.json
+	.claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260522-brain-leverage-breadth-scan.json
+	.claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260522-brain-leverage-breadth.json
+	.claude/skills/business/transaction-layer/nui-hunter/kb/schema-instance-model.json
+	.claude/skills/business/transaction-layer/nui-hunter/scripts/instance-research-prompt-builder.py
+	.claude/skills/business/transaction-layer/nui-hunter/scripts/portfolio-optimizer.py
+	.claude/skills/business/transaction-layer/nui-hunter/scripts/search-rewriter.py
+	.claude/skills/business/transaction-layer/nui-hunter/scripts/tests/test-capital-path-classifier.py
+	.claude/skills/business/transaction-layer/nui-hunter/verdicts/verdict-260510-information-arbitrage-replacement.md
+	.claude/skills/business/transaction-layer/nui-hunter/verdicts/verdict-260513-10-money-models-large-cashflow.md
+	.claude/skills/business/transaction-layer/nui-hunter/verdicts/verdict-260517-business-models-0-500-large-cashflow.md
+	.claude/skills/business/transaction-layer/nui-hunter/verdicts/verdict-260517-dev-first-service-sale.md
+	.claude/skills/business/transaction-layer/nui-hunter/verdicts/verdict-260517-zero-capital-large-cashflow.md
+	.claude/skills/business/transaction-layer/nui-hunter/verdicts/verdict-260517-zero-capital-smart-models.md
+	.claude/skills/business/transaction-layer/nui-hunter/verdicts/verdict-260518-breadth-micro-models.md
+	.claude/skills/business/transaction-layer/nui-hunter/verdicts/verdict-260518-micro-capital-breadth-scan.md
+	.claude/skills/business/transaction-layer/nui-hunter/verdicts/verdict-260518-micro-niche-breadth-scan.md
+	.claude/skills/business/transaction-layer/nui-hunter/verdicts/verdict-260518-micro-niche-breadth.md
+	.claude/skills/business/transaction-layer/nui-hunter/verdicts/verdict-260518-zero-capital-breadth.md
+	.claude/skills/business/transaction-layer/nui-hunter/verdicts/verdict-260522-brain-leverage-breadth-scan.md
+	.claude/skills/business/transaction-layer/nui-hunter/verdicts/verdict-260522-brain-leverage-breadth.md
+	data/anomalies.duckdb
+	data/calibration/brain-refresh-2026-05-17.md
+	data/calibration/brain-refresh-2026-05-24.md
+	data/calibration/brier-scores.jsonl.bak-20260517-082030
+	data/calibration/mechanism-errors.jsonl
+	data/calibration/outcomes.jsonl
+	data/calibration/process-pending-reflexions.py
+	data/calibration/seed-compound-cache.py
+	data/case-studies/stage0/stage0-260510-information-arbitrage-replacement.json
+	data/case-studies/stage0/stage0-260513-10-money-models-large-cashflow.json
+	data/case-studies/stage0/stage0-260517-business-models-0-500-large-cashflow.json
+	data/case-studies/stage0/stage0-260517-dev-first-service-sale.json
+	data/case-studies/stage0/stage0-260517-zero-capital-large-cashflow.json
+	data/case-studies/stage0/stage0-260517-zero-capital-smart-models.json
+	data/case-studies/stage0/stage0-260518-breadth-micro-models.json
+	data/case-studies/stage0/stage0-260518-micro-capital-breadth-scan.json
+	data/case-studies/stage0/stage0-260518-micro-niche-breadth-scan.json
+	data/case-studies/stage0/stage0-260518-micro-niche-breadth.json
+	data/case-studies/stage0/stage0-260518-zero-capital-breadth.json
+	data/case-studies/stage0/stage0-260522-brain-leverage-breadth-scan.json
+	data/case-studies/stage0/stage0-260522-brain-leverage-breadth.json
+	data/cases/stage0-260518-zero-capital-breadth.json
+	data/cognitive/custom/ingested-claims.jsonl
+	data/cognitive/custom/surprise-explorations.db
+	data/cognitive/scripts/agentmemory-config.json
+	data/cognitive/scripts/agentmemory-sync-bridge.py
+	data/cognitive/scripts/claim-classifier.py
+	data/cognitive/scripts/dedup-checker.py
+	data/cognitive/scripts/memory-tree-ingestor.py
+	data/config/mechanism-invariants.json
+	data/config/mechanism-knobs-history.jsonl
+	data/evolution/.gitkeep
+	data/evolution/evolution-registry.db
+	data/evolution/snapshots/260516-1238-mutation-1.json
+	data/evolution/snapshots/260516-1242-mutation-1.json
+	data/evolution/snapshots/260516-1243-mutation-1.json
+	data/evolution/snapshots/260516-1245-mutation-1.json
+	data/evolution/snapshots/260516-1248-mutation-1.json
+	data/evolution/snapshots/260516-1422-mutation-1.json
+	data/evolution/snapshots/260516-1424-mutation-1.json
+	data/evolution/snapshots/260517-0011-mutation-1.json
+	data/evolution/snapshots/260524-1407-mutation-1.json
+	data/evolution/snapshots/260524-1409-mutation-1.json
+	data/hunts/HUNT-260522-elite-position-models/hunt-meta.json
+	data/hunts/HUNT-260522-elite-position-models/raw_signals.json
+	data/hunts/HUNT-260524-global-position-scan/hunt-meta.json
+	data/hunts/HUNT-V5-LIVE-TEST-B-v2.md
+	data/hunts/HUNT-V5-LIVE-TEST-B-v3.md
+	data/hunts/HUNT-V5-LIVE-TEST-B-v4.md
+	data/hunts/HUNT-V5-LIVE-TEST-B-v5.md
+	data/hunts/HUNT-V5-LIVE-TEST-B.md
+	data/hunts/v5-test-summary.txt
+	data/intelligence/asset-class-schema.json
+	data/intelligence/asset-classes.json
+	data/intelligence/search-templates.json
+	data/knowledge-sources/cache/ai-tools-grey-best-business-models-zero-to-500-capital-brain-leverage-sustainable-10-years-lar-f1d2f4a672.json
+	data/knowledge-sources/cache/ai-tools-grey-broad-business-models-usr-bin-bash-500-capital-brain-leverage-not-labor-sustaina-afab5ca16a.json
+	data/knowledge-sources/cache/ai-tools-grey-global-business-models-0-500-capital-brain-leverage-10yr-sustainability-large-ca-d59ba5b417.json
+	data/knowledge-sources/cache/supply-chain-sourcing-h-y-review-l-i-m-i-n-ng-c-p-trong-master-investments-v-n-kh-ng-ho-t-ng-v-l-m-vi--9472043f12.json
+	data/knowledge-sources/cache/supply-chain-sourcing-h-y-review-y-l-output-stage0-10-20-m-h-nh-kinh-doanh-0-500-v-n-b-n-v-ng-10-n-m-d-9671bc0ff4.json
+	data/knowledge-sources/cache/supply-chain-sourcing-review-chi-ti-t-to-n-b-t-duy-c-a-h-th-ng-investments-v-stage0-y-th-c-ch-t-l-v-n--d4294a8697.json
+	data/knowledge-sources/cache/supply-chain-sourcing-v-n-l-n-nh-t-c-a-h-th-ng-master-investments-v-n-qu-t-m-th-ng-trong-t-duy-kh-ng-t-d8d828a60f.json
+	data/knowledge-sources/cache/technical-deep-research-best-business-models-zero-to-500-capital-brain-leverage-sustainable-10-years-lar-e56ac6849e.json
+	data/knowledge-sources/cache/technical-deep-research-broad-business-models-usr-bin-bash-500-capital-brain-leverage-not-labor-sustaina-08c03bfa5c.json
+	data/knowledge-sources/cache/technical-deep-research-global-business-models-0-500-capital-brain-leverage-10yr-sustainability-large-ca-0de6ba2513.json
+	data/knowledge-sources/cache/technical-deep-research-review-chi-ti-t-to-n-b-t-duy-c-a-h-th-ng-investments-v-stage0-y-th-c-ch-t-l-v-n--ce40ce3cda.json
+	data/knowledge-sources/cache/technical-deep-research-task-notification-task-id-a0e190cf43e5379d5-task-id-tool-use-id-toolu-01njgjnhsd-b1cba98186.json
+	data/knowledge-sources/cache/technical-deep-research-task-notification-task-id-a5f06e3cc7318f3ce-task-id-tool-use-id-toolu-011hcv9igd-760db42acd.json
+	data/knowledge-sources/cache/technical-deep-research-task-notification-task-id-aaf5eede95cb39706-task-id-tool-use-id-toolu-01umxew7mc-e5325ecc4a.json
+	data/knowledge-sources/cache/technical-deep-research-wte-project-development-broker-vietnam-infrastructure-advisory-zero-capital-74ffd242e5.json
+	data/knowledge-sources/cache/vn-greyhat-mmo-ai-virtual-human-digital-avatar-livestream-selling-e-commerce-zero-capital-cashf-5722cde4a2.json
+	data/knowledge-sources/cache/vn-greyhat-mmo-h-y-review-l-i-v-n-kh-ng-ho-t-ng-v-l-m-vi-c-ng-thi-t-k-v-ch-t-l-ng-kh-k-m-y-l-ou-6cfe903660.json
+	data/knowledge-sources/cache/vn-greyhat-mmo-wte-project-development-broker-vietnam-infrastructure-advisory-zero-capital-9258a41a89.json
+	data/knowledge-sources/cache/vn-legitimate-business-amazon-seller-non-saturated-business-models-2025-amazon-influencer-program-book--dec79874ca.json
+	data/knowledge-sources/cache/vn-legitimate-business-m-h-nh-kinh-doanh-b-n-v-ng-vi-t-nam-v-n-0-ng-d-ng-ti-n-l-n-xu-t-kh-u-gia-c-ng-d--f022eee475.json
+	data/knowledge-sources/cache/vn-legitimate-business-review-chi-ti-t-to-n-b-t-duy-c-a-h-th-ng-investments-v-stage0-y-th-c-ch-t-l-v-n--488887f66d.json
+	data/knowledge-sources/cache/vn-legitimate-business-vietnam-cross-border-asymmetry-opportunities-hidden-money-flows-2025-2026-595818e05b.json
+	data/knowledge-sources/cache/vn-legitimate-business-vietnam-luxury-content-creator-business-model-antique-dealing-business-vietnam-k-c2fd6d228a.json
+	data/knowledge-sources/cache/western-bootstrap-saas-10-20-m-h-nh-kinh-doanh-0-500-v-n-b-n-v-ng-10-n-m-d-ng-ti-n-l-n-ng-ch-nh-7ff13e2469.json
+	data/knowledge-sources/cache/western-bootstrap-saas-10-20-m-h-nh-kinh-doanh-0-500-v-n-b-n-v-ng-10-n-m-d-ng-ti-n-l-n-ng-ch-nh-t-duy-t-35773527b3.json
+	data/knowledge-sources/cache/western-bootstrap-saas-10-20-m-h-nh-kinh-doanh-0-500-v-n-b-n-v-ng-10-n-m-d-ng-ti-n-l-n-ng-ch-nh-t-nh-to-a3ff558d94.json
+	data/knowledge-sources/cache/western-bootstrap-saas-10-20-m-h-nh-kinh-doanh-usr-bin-bash-500-v-n-b-n-v-ng-10-n-m-d-ng-ti-n-th-c-s-l--55d0c660d1.json
+	data/knowledge-sources/cache/western-bootstrap-saas-10-m-h-nh-kinh-doanh-b-n-v-ng-10-n-m-v-n-0-500-usd-d-ng-ti-n-l-n-kh-ng-theo-s-ng-1aa7d343e2.json
+	data/knowledge-sources/cache/western-bootstrap-saas-amazon-global-marketplace-selling-analysis-successful-shops-operations-low-capit-e923270d2c.json
+	data/knowledge-sources/cache/western-bootstrap-saas-developer-v-i-0-kinh-nghi-m-sales-mu-n-b-n-service-u-ti-n-t-m-mechanism-leverage-80067dd6f0.json
+	data/knowledge-sources/cache/western-bootstrap-saas-h-y-review-l-i-m-i-n-ng-c-p-trong-master-investments-v-n-kh-ng-ho-t-ng-v-l-m-vi--1c327244ec.json
+	data/knowledge-sources/cache/western-bootstrap-saas-h-y-review-l-i-v-n-kh-ng-ho-t-ng-v-l-m-vi-c-ng-thi-t-k-v-ch-t-l-ng-kh-k-m-y-l-ou-66695e2a10.json
+	data/knowledge-sources/cache/western-bootstrap-saas-h-y-review-y-l-output-stage0-10-20-m-h-nh-kinh-doanh-0-500-v-n-b-n-v-ng-10-n-m-d-a2f5baac73.json
+	data/knowledge-sources/cache/western-bootstrap-saas-m-h-nh-kinh-doanh-0-500-v-n-b-n-v-ng-10-n-m-d-ng-ti-n-th-c-s-l-n-8443b9227e.json
+	data/knowledge-sources/cache/western-bootstrap-saas-review-chi-ti-t-to-n-b-t-duy-c-a-h-th-ng-investments-v-stage0-y-th-c-ch-t-l-v-n--fdb861d7ab.json
+	data/meta-learning/2026-W20-digest.md
+	data/meta-learning/2026-W21-digest.md
+	data/meta-learning/2026-W22-digest.md
+	data/reflexion-archive/pruned-indirect_bridge-20260510.jsonl
+	data/reflexion-archive/pruned-indirect_bridge-20260511.jsonl
+	data/reflexion-archive/pruned-indirect_bridge-20260513.jsonl
+	data/reflexion-archive/pruned-indirect_bridge-20260515.jsonl
+	data/reflexion-archive/pruned-indirect_bridge-20260516.jsonl
+	data/reflexion-archive/pruned-indirect_bridge-20260524.jsonl
+	data/trace-outputs/2026-05-10/unknown-1778422967824.md
+	data/trace-outputs/2026-05-13/unknown-1778672078738.md
+	data/trace-outputs/2026-05-17/unknown-1778988451167.md
+	data/trace-outputs/2026-05-17/unknown-1778989387307.md
+	data/trace-outputs/2026-05-17/unknown-1778989408361.md
+	data/trace-outputs/2026-05-17/unknown-1778991468759.md
+	data/trace-outputs/2026-05-17/unknown-1778991567460.md
+	data/trace-outputs/2026-05-17/unknown-1779003580079.md
+	data/trace-outputs/2026-05-17/unknown-1779003600209.md
+	data/trace-outputs/2026-05-17/unknown-1779003650499.md
+	data/trace-outputs/2026-05-17/unknown-1779003721889.md
+	data/trace-outputs/2026-05-17/unknown-1779004802871.md
+	data/trace-outputs/2026-05-17/unknown-1779004854265.md
+	data/trace-outputs/2026-05-17/unknown-1779005162944.md
+	data/trace-outputs/2026-05-17/unknown-1779021498125.md
+	data/trace-outputs/2026-05-17/unknown-1779021534395.md
+	data/trace-outputs/2026-05-17/unknown-1779021543507.md
+	data/trace-outputs/2026-05-17/unknown-1779021690540.md
+	data/trace-outputs/2026-05-18/unknown-1779074259901.md
+	data/trace-outputs/2026-05-18/unknown-1779074296150.md
+	data/trace-outputs/2026-05-18/unknown-1779074387891.md
+	data/trace-outputs/2026-05-18/unknown-1779074453156.md
+	data/trace-outputs/2026-05-18/unknown-1779074459866.md
+	data/trace-outputs/2026-05-18/unknown-1779077797976.md
+	data/trace-outputs/2026-05-18/unknown-1779078030024.md
+	data/trace-outputs/2026-05-18/unknown-1779078061581.md
+	data/trace-outputs/2026-05-18/unknown-1779078102840.md
+	data/trace-outputs/2026-05-18/unknown-1779078612081.md
+	data/trace-outputs/2026-05-18/unknown-1779078786621.md
+	data/trace-outputs/2026-05-18/unknown-1779078976557.md
+	data/trace-outputs/2026-05-18/unknown-1779086380993.md
+	data/trace-outputs/2026-05-18/unknown-1779097010414.md
+	data/trace-outputs/2026-05-18/unknown-1779098180999.md
+	data/trace-outputs/2026-05-18/unknown-1779104636707.md
+	data/trace-outputs/2026-05-18/unknown-1779105014643.md
+	data/trace-outputs/2026-05-18/unknown-1779116002737.md
+	data/trace-outputs/2026-05-18/unknown-1779116333286.md
+	data/trace-outputs/2026-05-18/unknown-1779116492829.md
+	data/trace-outputs/2026-05-22/unknown-1779420085383.md
+	data/trace-outputs/2026-05-22/unknown-1779420572294.md
+	data/trace-outputs/2026-05-22/unknown-1779420587531.md
+	data/trace-outputs/2026-05-22/unknown-1779426208845.md
+	data/trace-outputs/2026-05-22/unknown-1779428926387.md
+	data/trace-outputs/2026-05-22/unknown-1779428993737.md
+	data/trace-outputs/2026-05-22/unknown-1779429096181.md
+	data/trace-outputs/2026-05-22/unknown-1779439866048.md
+	data/trace-outputs/2026-05-22/unknown-1779440201661.md
+	data/trace-outputs/2026-05-22/unknown-1779445041441.md
+	data/trace-outputs/2026-05-22/unknown-1779464269399.md
+	data/trace-outputs/2026-05-22/unknown-1779464647989.md
+	data/trace-outputs/2026-05-22/unknown-1779464662345.md
+	data/trace-outputs/2026-05-22/unknown-1779464888093.md
+	data/trace-outputs/2026-05-24/unknown-1779626008277.md
+	data/trace-outputs/2026-05-24/unknown-1779627008201.md
+	data/trace-outputs/2026-05-24/unknown-1779627057862.md
+	data/trace-outputs/2026-05-24/unknown-1779627122336.md
+	data/trace-outputs/2026-05-24/unknown-1779627402373.md
+	data/trace-outputs/2026-05-24/unknown-1779627496740.md
+	data/trace-outputs/2026-05-24/unknown-1779627598861.md
+	data/trace-outputs/2026-05-24/unknown-1779627606194.md
+	data/trace-outputs/2026-05-24/unknown-1779628564658.md
+	data/trace-outputs/2026-05-24/unknown-1779629681346.md
+	data/trace-outputs/2026-05-24/unknown-1779631849288.md
+	data/trace-outputs/2026-05-24/unknown-1779632051806.md
+	data/trace-outputs/2026-05-25/unknown-1779667569839.md
+	data/trace-outputs/2026-05-25/unknown-1779676434289.md
+	data/trace-outputs/2026-05-25/unknown-1779676471609.md
+	data/trace-outputs/2026-05-25/unknown-1779677816568.md
+	data/trace-outputs/2026-05-25/unknown-1779679079591.md
+	data/trace-outputs/2026-05-25/unknown-1779679323280.md
+	data/trace-outputs/2026-05-25/unknown-1779679425173.md
+	data/trace-outputs/2026-05-25/unknown-1779680765816.md
+	data/trace-outputs/2026-05-25/unknown-1779681035951.md
+	data/trace-outputs/2026-05-25/unknown-1779681781124.md
+	data/trace-outputs/2026-05-25/unknown-1779702864607.md
+	data/trace-tools/2026-05-10/unknown-1778422967824.jsonl
+	data/trace-tools/2026-05-13/unknown-1778672078738.jsonl
+	data/trace-tools/2026-05-17/unknown-1778988451167.jsonl
+	data/trace-tools/2026-05-17/unknown-1778989387307.jsonl
+	data/trace-tools/2026-05-17/unknown-1778989408361.jsonl
+	data/trace-tools/2026-05-17/unknown-1778991468759.jsonl
+	data/trace-tools/2026-05-17/unknown-1778991567460.jsonl
+	data/trace-tools/2026-05-17/unknown-1779003580079.jsonl
+	data/trace-tools/2026-05-17/unknown-1779003600209.jsonl
+	data/trace-tools/2026-05-17/unknown-1779003650499.jsonl
+	data/trace-tools/2026-05-17/unknown-1779003721889.jsonl
+	data/trace-tools/2026-05-17/unknown-1779004802871.jsonl
+	data/trace-tools/2026-05-17/unknown-1779004854265.jsonl
+	data/trace-tools/2026-05-17/unknown-1779005162944.jsonl
+	data/trace-tools/2026-05-17/unknown-1779021498125.jsonl
+	data/trace-tools/2026-05-17/unknown-1779021534395.jsonl
+	data/trace-tools/2026-05-17/unknown-1779021543507.jsonl
+	data/trace-tools/2026-05-17/unknown-1779021690540.jsonl
+	data/trace-tools/2026-05-18/unknown-1779074259901.jsonl
+	data/trace-tools/2026-05-18/unknown-1779074296150.jsonl
+	data/trace-tools/2026-05-18/unknown-1779074387891.jsonl
+	data/trace-tools/2026-05-18/unknown-1779074453156.jsonl
+	data/trace-tools/2026-05-18/unknown-1779074459866.jsonl
+	data/trace-tools/2026-05-18/unknown-1779077797976.jsonl
+	data/trace-tools/2026-05-18/unknown-1779078030024.jsonl
+	data/trace-tools/2026-05-18/unknown-1779078061581.jsonl
+	data/trace-tools/2026-05-18/unknown-1779078102840.jsonl
+	data/trace-tools/2026-05-18/unknown-1779078612081.jsonl
+	data/trace-tools/2026-05-18/unknown-1779078786621.jsonl
+	data/trace-tools/2026-05-18/unknown-1779078976557.jsonl
+	data/trace-tools/2026-05-18/unknown-1779086380993.jsonl
+	data/trace-tools/2026-05-18/unknown-1779097010414.jsonl
+	data/trace-tools/2026-05-18/unknown-1779098180999.jsonl
+	data/trace-tools/2026-05-18/unknown-1779104636707.jsonl
+	data/trace-tools/2026-05-18/unknown-1779105014643.jsonl
+	data/trace-tools/2026-05-18/unknown-1779116002737.jsonl
+	data/trace-tools/2026-05-18/unknown-1779116333286.jsonl
+	data/trace-tools/2026-05-18/unknown-1779116492829.jsonl
+	data/trace-tools/2026-05-22/unknown-1779420085383.jsonl
+	data/trace-tools/2026-05-22/unknown-1779420572294.jsonl
+	data/trace-tools/2026-05-22/unknown-1779420587531.jsonl
+	data/trace-tools/2026-05-22/unknown-1779426208845.jsonl
+	data/trace-tools/2026-05-22/unknown-1779428926387.jsonl
+	data/trace-tools/2026-05-22/unknown-1779428993737.jsonl
+	data/trace-tools/2026-05-22/unknown-1779429096181.jsonl
+	data/trace-tools/2026-05-22/unknown-1779439866048.jsonl
+	data/trace-tools/2026-05-22/unknown-1779440201661.jsonl
+	data/trace-tools/2026-05-22/unknown-1779445041441.jsonl
+	data/trace-tools/2026-05-22/unknown-1779464269399.jsonl
+	data/trace-tools/2026-05-22/unknown-1779464647989.jsonl
+	data/trace-tools/2026-05-22/unknown-1779464662345.jsonl
+	data/trace-tools/2026-05-22/unknown-1779464888093.jsonl
+	data/trace-tools/2026-05-24/unknown-1779626008277.jsonl
+	data/trace-tools/2026-05-24/unknown-1779627008201.jsonl
+	data/trace-tools/2026-05-24/unknown-1779627057862.jsonl
+	data/trace-tools/2026-05-24/unknown-1779627122336.jsonl
+	data/trace-tools/2026-05-24/unknown-1779627402373.jsonl
+	data/trace-tools/2026-05-24/unknown-1779627496740.jsonl
+	data/trace-tools/2026-05-24/unknown-1779627598861.jsonl
+	data/trace-tools/2026-05-24/unknown-1779627606194.jsonl
+	data/trace-tools/2026-05-24/unknown-1779628564658.jsonl
+	data/trace-tools/2026-05-24/unknown-1779629681346.jsonl
+	data/trace-tools/2026-05-24/unknown-1779631849288.jsonl
+	data/trace-tools/2026-05-24/unknown-1779632051806.jsonl
+	data/trace-tools/2026-05-25/unknown-1779667569839.jsonl
+	data/trace-tools/2026-05-25/unknown-1779676434289.jsonl
+	data/trace-tools/2026-05-25/unknown-1779676471609.jsonl
+	data/trace-tools/2026-05-25/unknown-1779677816568.jsonl
+	data/trace-tools/2026-05-25/unknown-1779679079591.jsonl
+	data/trace-tools/2026-05-25/unknown-1779679323280.jsonl
+	data/trace-tools/2026-05-25/unknown-1779679425173.jsonl
+	data/trace-tools/2026-05-25/unknown-1779680765816.jsonl
+	data/trace-tools/2026-05-25/unknown-1779681035951.jsonl
+	data/trace-tools/2026-05-25/unknown-1779681781124.jsonl
+	data/trace-tools/2026-05-25/unknown-1779702864607.jsonl
+	data/traces/stage0-trace-CLI-TEST-001.json
+	data/traces/stage0-trace-CLI-TEST-INC.json
+	data/traces/stage0-trace-CLI-TEST-VERD.json
+	data/traces/stage0-trace-stage0-260517-zero-capital-large-cashflow.json
+	data/traces/stage0-trace-stage0-260517-zero-capital-smart-models.json
+	data/traces/stage0-trace-stage0-260518-micro-capital-breadth-scan.json
+	data/traces/stage0-trace-stage0-260518-micro-niche-breadth-scan.json
+	data/traces/stage0-trace-stage0-260518-zero-capital-breadth.json
+	data/traces/stage0-trace-stage0-260522-brain-leverage-breadth-scan.json
+	data/training/domain-heuristics/ai-augmented-services.json
+	data/training/domain-heuristics/b2b-data-services.json
+	data/training/domain-heuristics/developer-tools.json
+	data/training/domain-heuristics/embedded-fintech.json
+	data/training/domain-heuristics/western-bootstrap-saas.json
+	data/training/verified-intelligence-school-of-hard-knocks.json
+	data/trajectories/260510-unknown-1778422967824.jsonl
+	data/trajectories/260513-unknown-1778672078738.jsonl
+	data/trajectories/260517-unknown-1778988451167.jsonl
+	data/trajectories/260517-unknown-1778989387307.jsonl
+	data/trajectories/260517-unknown-1778989408361.jsonl
+	data/trajectories/260517-unknown-1778991468759.jsonl
+	data/trajectories/260517-unknown-1778991567460.jsonl
+	data/trajectories/260517-unknown-1779003580079.jsonl
+	data/trajectories/260517-unknown-1779003600209.jsonl
+	data/trajectories/260517-unknown-1779003650499.jsonl
+	data/trajectories/260517-unknown-1779003721889.jsonl
+	data/trajectories/260517-unknown-1779004802871.jsonl
+	data/trajectories/260517-unknown-1779004854265.jsonl
+	data/trajectories/260517-unknown-1779005162944.jsonl
+	data/trajectories/260517-unknown-1779021498125.jsonl
+	data/trajectories/260517-unknown-1779021534395.jsonl
+	data/trajectories/260517-unknown-1779021543507.jsonl
+	data/trajectories/260517-unknown-1779021690540.jsonl
+	data/trajectories/260518-unknown-1779074259901.jsonl
+	data/trajectories/260518-unknown-1779074296150.jsonl
+	data/trajectories/260518-unknown-1779074387891.jsonl
+	data/trajectories/260518-unknown-1779074453156.jsonl
+	data/trajectories/260518-unknown-1779074459866.jsonl
+	data/trajectories/260518-unknown-1779077797976.jsonl
+	data/trajectories/260518-unknown-1779078030024.jsonl
+	data/trajectories/260518-unknown-1779078061581.jsonl
+	data/trajectories/260518-unknown-1779078102840.jsonl
+	data/trajectories/260518-unknown-1779078612081.jsonl
+	data/trajectories/260518-unknown-1779078786621.jsonl
+	data/trajectories/260518-unknown-1779078976557.jsonl
+	data/trajectories/260518-unknown-1779086380993.jsonl
+	data/trajectories/260518-unknown-1779097010414.jsonl
+	data/trajectories/260518-unknown-1779098180999.jsonl
+	data/trajectories/260518-unknown-1779104636707.jsonl
+	data/trajectories/260518-unknown-1779105014643.jsonl
+	data/trajectories/260518-unknown-1779116002737.jsonl
+	data/trajectories/260518-unknown-1779116333286.jsonl
+	data/trajectories/260518-unknown-1779116492829.jsonl
+	data/trajectories/260522-unknown-1779420085383.jsonl
+	data/trajectories/260522-unknown-1779420572294.jsonl
+	data/trajectories/260522-unknown-1779420587531.jsonl
+	data/trajectories/260522-unknown-1779426208845.jsonl
+	data/trajectories/260522-unknown-1779428926387.jsonl
+	data/trajectories/260522-unknown-1779428993737.jsonl
+	data/trajectories/260522-unknown-1779429096181.jsonl
+	data/trajectories/260522-unknown-1779439866048.jsonl
+	data/trajectories/260522-unknown-1779440201661.jsonl
+	data/trajectories/260522-unknown-1779445041441.jsonl
+	data/trajectories/260522-unknown-1779464269399.jsonl
+	data/trajectories/260522-unknown-1779464647989.jsonl
+	data/trajectories/260522-unknown-1779464662345.jsonl
+	data/trajectories/260522-unknown-1779464888093.jsonl
+	data/trajectories/260524-unknown-1779626008277.jsonl
+	data/trajectories/260524-unknown-1779627008201.jsonl
+	data/trajectories/260524-unknown-1779627057862.jsonl
+	data/trajectories/260524-unknown-1779627122336.jsonl
+	data/trajectories/260524-unknown-1779627402373.jsonl
+	data/trajectories/260524-unknown-1779627496740.jsonl
+	data/trajectories/260524-unknown-1779627598861.jsonl
+	data/trajectories/260524-unknown-1779627606194.jsonl
+	data/trajectories/260524-unknown-1779628564658.jsonl
+	data/trajectories/260524-unknown-1779629681346.jsonl
+	data/trajectories/260524-unknown-1779631849288.jsonl
+	data/trajectories/260524-unknown-1779632051806.jsonl
+	data/trajectories/260525-unknown-1779667569839.jsonl
+	data/trajectories/260525-unknown-1779676434289.jsonl
+	data/trajectories/260525-unknown-1779676471609.jsonl
+	data/trajectories/260525-unknown-1779677816568.jsonl
+	data/trajectories/260525-unknown-1779679079591.jsonl
+	data/trajectories/260525-unknown-1779679323280.jsonl
+	data/trajectories/260525-unknown-1779679425173.jsonl
+	data/trajectories/260525-unknown-1779680765816.jsonl
+	data/trajectories/260525-unknown-1779681035951.jsonl
+	data/trajectories/260525-unknown-1779681781124.jsonl
+	data/trajectories/260525-unknown-1779702864607.jsonl
+	docs/journals/260527-idea-tournament-engine.md
+	tests/stage0/test_asset_class_database.py
+	tests/stage0/test_capital_deployment.py
+	tests/stage0/test_leverage_scoring.py
+	tests/stage0/test_portfolio_optimizer.py
+	tests/stage0/test_search_rewriter.py
+	tiktok_frames/frame_001.jpg
+	tiktok_frames/frame_002.jpg
+	tiktok_frames/frame_003.jpg
+	tiktok_frames/frame_004.jpg
+	tiktok_frames/frame_005.jpg
+	tiktok_frames/frame_006.jpg
+	tiktok_frames/frame_007.jpg
+	tiktok_frames/frame_008.jpg
+	tiktok_frames/frame_009.jpg
+	tiktok_frames/frame_010.jpg
+	tiktok_frames/frame_011.jpg
+	tiktok_frames/frame_012.jpg
+	tiktok_frames/frame_013.jpg
+	tiktok_frames/frame_014.jpg
+	tiktok_frames/frame_015.jpg
+	tiktok_frames/frame_016.jpg
+	tiktok_frames/frame_017.jpg
+	tiktok_frames/frame_018.jpg
+	tiktok_frames/frame_019.jpg
+	tiktok_frames/frame_020.jpg
+	tiktok_frames/frame_021.jpg
+	tiktok_video.mp4
+	verdicts/verdict-260510-information-arbitrage-replacement.md
+
+no changes added to commit (use "git add" and/or "git commit -a")

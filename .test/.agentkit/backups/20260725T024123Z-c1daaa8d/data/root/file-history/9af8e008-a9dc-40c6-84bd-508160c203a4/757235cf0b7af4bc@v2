@@ -1,0 +1,44 @@
+-- Anomaly Intelligence Store Schema v1
+
+CREATE TABLE IF NOT EXISTS anomaly_cards (
+    id TEXT PRIMARY KEY,
+    anomaly_type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    position_type TEXT,
+    margin_per_unit REAL DEFAULT 0,
+    monthly_income REAL DEFAULT 0,
+    anomaly_score REAL DEFAULT 0,
+    founder_fit REAL DEFAULT 0,
+    confidence TEXT DEFAULT '[?]',
+    first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_verified TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    delta_trend TEXT DEFAULT 'STABLE',
+    status TEXT DEFAULT 'ACTIVE',
+    raw_json TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS anomaly_signals (
+    signal_id TEXT PRIMARY KEY,
+    anomaly_id TEXT NOT NULL REFERENCES anomaly_cards(id),
+    signal_type TEXT NOT NULL,
+    raw_json TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS anomaly_history (
+    id TEXT NOT NULL,
+    verified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    anomaly_score REAL,
+    monthly_income REAL,
+    delta_pct REAL,
+    notes TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_anomaly_history_id ON anomaly_history(id);
+
+CREATE TABLE IF NOT EXISTS schema_version (
+    version INTEGER PRIMARY KEY,
+    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT OR IGNORE INTO schema_version (version) VALUES (1);

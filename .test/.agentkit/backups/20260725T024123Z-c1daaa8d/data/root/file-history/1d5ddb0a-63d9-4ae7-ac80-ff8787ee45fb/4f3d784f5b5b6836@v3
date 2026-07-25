@@ -1,0 +1,168 @@
+---
+phase: 2
+title: "Xây Dựng MVP Cốt Lõi"
+status: pending
+priority: P1
+effort: "15 giờ (Tuần 2)"
+dependencies: [1]
+---
+
+# Giai đoạn 2: Xây Dựng MVP Cốt Lõi
+
+## Tổng quan
+
+Xây dựng hạ tầng cốt lõi: bộ thu thập URL, kho kênh phân phối, giao diện đơn giản và thanh toán. CHƯA có AI matching — đó là Giai đoạn 3. Giai đoạn này tạo phiên bản curated thủ công để chứng minh giá trị.
+
+## Yêu cầu
+
+- Chức năng: Người dùng dán URL → thấy phân tích sản phẩm + gợi ý kênh
+- Phi chức năng: Phản hồi <3 giây, thân thiện di động, chạy trên Cloudflare gói miễn phí
+
+## Kiến trúc
+
+```
+Người dùng → Trang Landing (HTMX)
+  → Form dán URL
+  → POST /api/analyze
+    → Thu thập URL (Cheerio)
+    → Trích xuất: tiêu đề, mô tả, tính năng, giá, danh mục
+    → So khớp với kho kênh (matching từ khoá v1)
+    → Trả về kênh xếp hạng + mẫu tiếp cận tổng quát
+  → Trang kết quả (render phía server)
+  → Thanh toán Stripe ($19/tháng hoặc $9 một lần)
+```
+
+## Tệp mã nguồn liên quan
+
+- Tạo: `src/index.ts` — Điểm vào Hono worker
+- Tạo: `src/scraper.ts` — Bộ thu thập URL (Cheerio + fetch)
+- Tạo: `src/channels.ts` — Kho kênh + matching
+- Tạo: `src/templates/` — Mẫu HTML (landing, kết quả, thanh toán)
+- Tạo: `src/data/channels.json` — Kho kênh ban đầu
+- Tạo: `wrangler.toml` — Cấu hình Cloudflare Workers
+- Tạo: `package.json`
+
+## Các bước thực hiện
+
+### Bước 1: Khởi tạo dự án (2 giờ)
+
+1. Khởi tạo:
+   ```bash
+   mkdir distro-intel && cd distro-intel
+   npm init -y
+   npm install hono @hono/node-server cheerio stripe
+   npm install -D wrangler typescript @types/node
+   ```
+
+2. Cấu hình `wrangler.toml`:
+   ```toml
+   name = "distro-intel"
+   main = "src/index.ts"
+   compatibility_date = "2026-05-01"
+   [vars]
+   ENVIRONMENT = "production"
+   ```
+
+3. Tạo điểm vào Hono với các route:
+   - `GET /` → trang landing
+   - `POST /api/analyze` → endpoint phân tích
+   - `GET /results/:id` → trang kết quả
+   - `POST /api/checkout` → chuyển hướng Stripe
+
+### Bước 2: Bộ thu thập URL (4 giờ)
+
+4. Xây dựng module thu thập:
+   - Fetch URL với timeout (5 giây)
+   - Trích xuất bằng Cheerio: `<title>`, `<meta name="description">`, `<h1>`, `<h2>`, văn bản giá
+   - Phát hiện danh mục: SaaS, marketplace, ứng dụng di động, tiện ích Chrome, API, template, nội dung
+   - Trích xuất tính năng từ danh sách bullet points
+   - Xử lý lỗi mượt mà (404, timeout, bị chặn)
+   - Đầu ra: đối tượng `ProductProfile`
+
+   ```typescript
+   interface ProductProfile {
+     url: string;
+     title: string;
+     description: string;
+     category: 'saas' | 'marketplace' | 'api' | 'extension' | 'template' | 'content' | 'other';
+     features: string[];
+     pricing: string | null;
+     targetAudience: string | null;
+   }
+   ```
+
+### Bước 3: Kho kênh phân phối (4 giờ)
+
+5. Xây kho kênh ban đầu (500 mục):
+   - 200 subreddit (phân loại: dev, design, startup, chuyên ngành)
+   - 100 server Discord (cộng đồng builder)
+   - 100 nhóm Facebook (toàn cầu + VN)
+   - 50 diễn đàn (HN, IndieHackers, ProductHunt, diễn đàn chuyên ngành)
+   - 50 khác (hashtag Twitter, newsletter nhận bài, podcast)
+
+6. Mỗi mục kênh:
+   ```json
+   {
+     "id": "reddit-sideproject",
+     "platform": "reddit",
+     "name": "r/SideProject",
+     "url": "https://reddit.com/r/SideProject",
+     "category": ["saas", "marketplace", "api", "template"],
+     "audience_size": 150000,
+     "commercial_tolerance": "high",
+     "best_format": "Bài Show với cách tiếp cận giá trị trước",
+     "best_timing": "Thứ 3-5, 9-11 giờ sáng EST",
+     "dont_do": "Không đăng quảng cáo trực tiếp, cung cấp giá trị trước",
+     "tags": ["launch", "feedback", "side-project"]
+   }
+   ```
+
+7. Matching dựa trên từ khoá v1 (chưa có AI):
+   - So khớp danh mục sản phẩm → danh mục kênh
+   - Xếp hạng theo: điểm liên quan × quy mô đối tượng × mức chấp nhận quảng cáo
+   - Trả về 15 kênh hàng đầu
+
+### Bước 4: Giao diện (3 giờ)
+
+8. Trang landing — dùng chính xác ngôn ngữ từ Giai đoạn 1:
+   - Hero: "Đã xây xong sản phẩm? Tìm 50 người dùng đầu tiên."
+   - Phụ đề: "Dán URL. Nhận danh sách xếp hạng NƠI đăng + NÓI GÌ."
+   - Một ô nhập: trường URL + nút "Phân tích"
+   - Phần bằng chứng xã hội (thêm sau khi có người dùng đầu tiên)
+
+9. Trang kết quả:
+   - Thẻ tóm tắt sản phẩm (những gì chúng tôi phát hiện)
+   - Danh sách kênh xếp hạng (15 kênh)
+   - Mỗi kênh: tên, lý do liên quan, quy mô đối tượng, format tốt nhất, thời điểm, mẫu
+   - CTA: "Nhận báo cáo đầy đủ với kịch bản AI" → Stripe
+
+10. Giữ giao diện tối giản: font hệ thống, 1 màu nhấn, không framework CSS
+
+### Bước 5: Tích hợp thanh toán (2 giờ)
+
+11. Thiết lập Stripe:
+    - Sản phẩm: "Báo Cáo Phân Tích Phân Phối"
+    - Giá 1: $9 một lần (báo cáo đơn lẻ)
+    - Giá 2: $19/tháng (không giới hạn báo cáo)
+    - Luồng thanh toán: xem trước kết quả (5 kênh miễn phí) → báo cáo đầy đủ (15 kênh + kịch bản) sau paywall
+    - Webhook: `POST /api/webhook` → đánh dấu người dùng đã trả tiền
+
+## Tiêu chí thành công
+
+- [ ] `wrangler dev` chạy cục bộ không lỗi
+- [ ] Bộ thu thập trích xuất đúng thông tin sản phẩm từ 10 URL thử nghiệm
+- [ ] Kho kênh có 500+ mục với danh mục
+- [ ] Matching trả về kênh liên quan (QA thủ công: 8/10 độ liên quan)
+- [ ] Trang landing hiển thị tốt trên di động
+- [ ] Luồng thanh toán Stripe hoạt động đầu-cuối
+- [ ] Đã triển khai lên Cloudflare Workers (`wrangler deploy`)
+- [ ] Tổng chi phí hạ tầng <$10/tháng
+
+## Đánh giá rủi ro
+
+| Rủi ro | Xác suất | Cách giảm thiểu |
+|--------|----------|-----------------|
+| Bị chặn khi thu thập trang đích | 20% | Dùng OG meta tags làm phương án dự phòng; đa số trang indie không chặn |
+| Kho kênh quá chung chung | 30% | Bắt đầu với 200 mục chất lượng cao, mở rộng theo phản hồi |
+| Vượt giới hạn Cloudflare Worker | 10% | Gói miễn phí = 100K req/ngày; không đạt mức này ở giai đoạn MVP |
+| Phức tạp thiết lập Stripe | 5% | Tích hợp chuẩn, tài liệu đầy đủ |

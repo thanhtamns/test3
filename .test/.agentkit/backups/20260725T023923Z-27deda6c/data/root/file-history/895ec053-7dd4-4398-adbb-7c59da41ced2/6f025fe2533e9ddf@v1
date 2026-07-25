@@ -1,0 +1,91 @@
+---
+phase: 04
+status: pending
+priority: critical
+solution: S-1
+---
+
+# Phase 04: Multi-Agent Adversarial Orchestrator
+
+## Overview
+Create a Python orchestrator that the brainstorm SKILL.md can call to run Analyst→Critic→Synthesizer pipeline. This is the highest-impact change: transforms single-LLM-single-pass into adversarial multi-agent.
+
+## Design Decision
+This is NOT a Claude agent spawner (that requires Agent tool in conversation). This is a **structured prompt pipeline** that produces 3 distinct outputs (analysis, critique, synthesis) which the brainstorm skill can feed to 3 separate Agent() calls.
+
+The orchestrator PREPARES the prompts — the SKILL.md EXECUTES them via Agent() tool.
+
+## Files to Create
+- `D:/code/invesments/master_investments/.claude/lib/intelligence/decomposition/adversarial_orchestrator.py`
+- `D:/code/invesments/master_investments/.claude/lib/intelligence/decomposition/tests/test_adversarial_orchestrator.py`
+
+## Implementation Steps
+
+### adversarial_orchestrator.py (~180 lines)
+
+1. `AdversarialOrchestrator` class:
+   - `__init__(thinkrunner_output: dict, query: str, vemra_draft: str = None)`
+   - `generate_analyst_prompt() -> str`
+   - `generate_critic_prompt(analyst_output: str) -> str`
+   - `generate_synthesizer_prompt(analyst_output: str, critic_output: str) -> str`
+
+2. `generate_analyst_prompt()`:
+   - Embeds ThinkRunner facts + scores
+   - Instructs: produce VEMRA draft (800 words max)
+   - Includes gate requirements inline (NAME 5 HUMANS, ECONOMICS, etc.)
+   - Returns complete prompt ready for Agent() call
+
+3. `generate_critic_prompt(analyst_output)`:
+   - Loads bullshit-detector protocol from agent file
+   - Embeds analyst VEMRA output as "document to challenge"
+   - Specific challenge instructions:
+     - "For each named human: verify they exist, verify their role, verify the claimed need"
+     - "For each economics claim: show the math, challenge assumptions"
+     - "For each action step: simulate Day 1 with realistic response rates"
+     - "Kill score: 0-10 per recommendation"
+   - Returns prompt for bullshit-detector Agent() call
+
+4. `generate_synthesizer_prompt(analyst, critic)`:
+   - Embeds both analyst output and critic challenges
+   - Instructions: 
+     - "Keep claims that survived critique unchanged"
+     - "Remove or revise claims that were killed"
+     - "Highlight unresolved disagreements"
+     - "Produce final VEMRA (800 words max)"
+   - Returns prompt for synthesizer Agent() call
+
+5. CLI entry point:
+   ```bash
+   python adversarial_orchestrator.py \
+     --thinkrunner-output path/to/thinkrunner.json \
+     --query "penetrate VN VC money flow" \
+     --stage analyst|critic|synthesizer \
+     --input path/to/previous_stage.txt
+   ```
+
+### Integration with SKILL.md (Phase 06)
+
+The brainstorm SKILL.md will call:
+```python
+# Step 1: Run ThinkRunner (existing)
+# Step 2: Generate analyst prompt
+orch = AdversarialOrchestrator(thinkrunner_output, query)
+analyst_prompt = orch.generate_analyst_prompt()
+# → Feed to Agent(subagent_type="general-purpose", prompt=analyst_prompt)
+
+# Step 3: Generate critic prompt  
+critic_prompt = orch.generate_critic_prompt(analyst_output)
+# → Feed to Agent(subagent_type="bullshit-detector", prompt=critic_prompt)
+
+# Step 4: Generate synthesizer prompt
+synth_prompt = orch.generate_synthesizer_prompt(analyst_output, critic_output)
+# → Feed to Agent(subagent_type="general-purpose", prompt=synth_prompt)
+```
+
+## Success Criteria
+- [ ] `generate_analyst_prompt()` produces complete prompt with embedded facts
+- [ ] `generate_critic_prompt()` loads bullshit-detector protocol
+- [ ] `generate_synthesizer_prompt()` merges both inputs
+- [ ] CLI mode works for each stage
+- [ ] Tests verify prompt structure (contains required sections)
+- [ ] Prompts are < 8000 tokens each (context window aware)

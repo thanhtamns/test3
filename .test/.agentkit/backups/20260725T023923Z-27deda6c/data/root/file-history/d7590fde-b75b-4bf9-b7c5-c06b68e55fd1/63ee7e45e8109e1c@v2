@@ -1,0 +1,143 @@
+---
+phase: 4
+title: "Pipeline Integration"
+status: pending
+priority: P1
+effort: "4h"
+dependencies: [1, 2, 3]
+---
+
+# Phase 4: Pipeline Integration
+
+## Overview
+
+Wire the Intelligence Layer (asset DB + optimizer + rewriter) into the stage0 pipeline spec and checklist. Add Step 2.5, modify Step 3.5 research queries, update Mountain Test and quality scoring.
+
+## Requirements
+
+- Functional: New Step 2.5 in stage0.md runs portfolio-optimizer after capital classification
+- Functional: Step 3.5 Wave 1 uses Search Rewriter output instead of generic queries
+- Functional: Mountain Test gains Q8-PORTFOLIO-OPTIMAL check
+- Functional: Quality scorer checks for portfolio context presence
+- Non-functional: Backward compatible — old verdicts without portfolio still score, just miss bonus points
+
+## Architecture
+
+```
+Stage0 Pipeline (updated flow):
+  Step 1: Profile capture → profile.json
+  Step 2: Capital classification → capital-path-classifier.py → tier + track
+  Step 2.5: [NEW] portfolio-optimizer.py → portfolio allocation
+  Step 3: DQ generation (enhanced with portfolio context)
+  Step 3.5: [CHANGED] search-rewriter.py → targeted queries (replaces generic WebSearch)
+  Step 4-5: Analysis (benchmark against portfolio P50)
+  Step 6: Mountain Test (+ Q8-PORTFOLIO-OPTIMAL)
+  Step 7: Verdict (+ Deployment Portfolio section)
+```
+
+## Related Code Files
+
+- Modify: `D:\code\invesments\master_investments\.claude\commands\stage0.md`
+- Modify: `D:\code\invesments\master_investments\.claude\commands\stage0-checklist.md`
+- Modify: `D:\code\invesments\master_investments\.claude\skills\business\transaction-layer\nui-hunter\scripts\stage0-quality-score.py`
+- Modify: `D:\code\invesments\master_investments\.claude\skills\business\transaction-layer\nui-hunter\scripts\capital-path-classifier.py` (minor: emit portfolio_context flag)
+
+## Implementation Steps
+
+### A. stage0.md Updates
+
+1. **Add Step 2.5 — Portfolio Computation** (after Step 2, before Step 3):
+   ```
+   ## Step 2.5: Portfolio Computation (TIER_0/TIER_1 only)
+
+   Run portfolio-optimizer.py with founder profile:
+   ```python
+   python portfolio-optimizer.py --profile-file <profile_path>
+   ```
+
+   Inject output as PORTFOLIO_CONTEXT into all subsequent steps.
+
+   PORTFOLIO_CONTEXT contains:
+   - Winning asset classes with allocation amounts
+   - P10/P50/P90 portfolio return
+   - Monthly passive income estimate
+   - Excluded classes with reasons
+   - Labor comparison (hourly rate equivalents)
+
+   If TIER_2/TIER_3: skip (these tiers have specific product/acquisition focus)
+   ```
+
+2. **Modify Step 3.5 — Wave 1 Research**:
+   - Replace DEPLOYMENT_CONTEXT search block (#6) with Search Rewriter output
+   - Current: `SEARCH FOR: "micro business $500 capital profitable 2024"` (generic)
+   - New: `SEARCH FOR: [queries from search-rewriter.py output]` (targeted per asset class)
+   - Keep non-deployment research blocks (#1-5) unchanged
+
+3. **Modify Step 5 — ROI Hypothesis**:
+   - Add comparison: "Model ROI vs Portfolio P50"
+   - If model ROI < portfolio P50 AND model is labor class → flag as SUBOPTIMAL
+   - Template addition:
+     ```
+     PORTFOLIO COMPARISON:
+     - This model P50 ROI: X.Xx
+     - Portfolio P50 ROI: Y.Yx
+     - Verdict: OUTPERFORMS / MATCHES / UNDERPERFORMS portfolio
+     - If UNDERPERFORMS + labor: "This model earns less per dollar than a passive portfolio"
+     ```
+
+4. **Modify Step 6 — Mountain Test v25 → v26**:
+   - Add Q8-PORTFOLIO-OPTIMAL: "Does this model outperform computed portfolio allocation?"
+   - Scoring: YES=pass, NO=flag (not kill — some labor models worth doing as bridge)
+   - Version bump: v25→v26
+
+5. **Add Deployment Portfolio section to Step 7 verdict template** (if not already present from v25.5):
+   - Include full portfolio allocation table from optimizer
+   - Include P10/P50/P90 portfolio return
+   - Include "vs labor" comparison
+
+### B. stage0-checklist.md Updates
+
+1. Add Step 2.5 checkpoint: "Portfolio optimizer ran for TIER_0/TIER_1?"
+2. Update Step 3.5 checkpoint: "Search queries from Search Rewriter (not generic)?"
+3. Add Step 6 Q8 checkpoint: "Portfolio comparison computed?"
+4. Update quality self-check: "Portfolio context present in verdict?"
+
+### C. stage0-quality-score.py Updates
+
+1. Add `check_portfolio_context(text)` function:
+   - Check for "PORTFOLIO COMPARISON" or "Portfolio P50" or "portfolio allocation"
+   - Check for P10/P50/P90 numbers in portfolio section
+   - Check for labor comparison section
+   - Max score: 10 points (portfolio present=5, comparison computed=3, labor comparison=2)
+
+2. Add to `check_capital_deployment()` or as separate dimension in `score_verdict()`:
+   - If TIER_0/TIER_1 verdict and no portfolio context → 0 bonus
+   - If portfolio context present → up to 10 bonus points
+
+3. Update max score: 180 → 190 (or keep 180 and redistribute)
+   - Decision: redistribute within existing 180 to avoid grade threshold cascade
+   - Take 10 points from existing padding and assign to portfolio_context check
+
+### D. capital-path-classifier.py Minor Update
+
+1. Add `"portfolio_computation_required": True` to TIER_0 and TIER_1 output
+2. Add `"portfolio_computation_required": False` to TIER_2 and TIER_3 output
+
+## Success Criteria
+
+- [ ] Step 2.5 present in stage0.md with portfolio-optimizer invocation
+- [ ] Step 3.5 references Search Rewriter queries, not generic searches
+- [ ] Step 5 includes portfolio comparison template
+- [ ] Step 6 Mountain Test v26 with Q8-PORTFOLIO-OPTIMAL
+- [ ] Checklist aligned with all spec changes
+- [ ] Quality scorer has portfolio_context check
+- [ ] capital-path-classifier emits portfolio_computation_required flag
+- [ ] Backward compatible: old verdicts still score (just miss portfolio bonus)
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|------|------------|
+| Max score change breaks grade thresholds | Redistribute within 180, don't increase max |
+| LLM ignores portfolio context | Checklist enforces; quality scorer penalizes absence |
+| TIER_2/3 users confused by missing portfolio | Explicit "skip for TIER_2/3" in spec |

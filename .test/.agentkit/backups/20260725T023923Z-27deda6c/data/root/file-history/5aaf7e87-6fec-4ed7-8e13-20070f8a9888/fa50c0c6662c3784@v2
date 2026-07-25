@@ -1,0 +1,235 @@
+---
+name: tournament-protocol
+description: >-
+  Pairwise debate tournament for Stage0 Phase 2.7. Harvests opportunity
+  hypotheses from evidence vault + pattern matcher, runs round-robin
+  LLM-judged debates, computes Elo rankings, enforces diversity.
+  Inspired by DeepMind Co-Scientist.
+---
+
+# Idea Tournament Protocol
+
+## Purpose
+
+Force opportunity hypotheses to compete HEAD-TO-HEAD before synthesis.
+Linear merge loses signal — adversarial debate surfaces the strongest
+ideas by testing each against every alternative on 5 scoring criteria.
+
+## When This Runs
+
+Phase 2.7 in Stage0 pipeline. ONLY activated when:
+1. Pattern matcher (Phase 2.5C) found >= 3 distinct patterns, AND
+2. Keyword pre-filter detects >= 3 opportunity-related keywords in Phase 2.5C output
+
+If either condition fails, tournament is SKIPPED — zero cost.
+
+## Input
+
+The tournament-executor agent receives:
+- `evidence_vault_path` — path to session's evidence-vault.md
+- `pattern_matcher_top5` — Phase 2.5C output (top 5 scored patterns)
+- `founder_context` — Phase 0 intent_meta (capital, skills, location, timeline)
+
+## Output
+
+Write to session plan directory:
+```
+plans/{session_id}/tournament-result.md
+```
+
+Format:
+```markdown
+# Tournament Result — {session_topic}
+Generated: {timestamp}
+Hypotheses entered: {N}
+Debates completed: {N} (retries: {N})
+Diversity: {N} clusters in top-5
+
+## RANKED HYPOTHESES
+
+### Rank #1: {title} (Elo: {score})
+**Thesis:** {thesis}
+**Business Model:** {type} | **Segment:** {segment}
+**Revenue Range:** {range}
+**Key Debate Wins:**
+- vs {opponent}: {key_argument}
+
+### Rank #2: ...
+(repeat for all hypotheses)
+
+## DEBATE LOG
+
+### Debate #{N}: {A.title} vs {B.title}
+| Criterion | A Score | B Score |
+|-----------|---------|---------|
+| evidence_strength | {N} | {N} |
+| founder_fit | {N} | {N} |
+| compound_potential | {N} | {N} |
+| execution_risk | {N} | {N} |
+| timing | {N} | {N} |
+| **TOTAL** | **{N}** | **{N}** |
+**Winner:** {A|B|DRAW}
+**Key Argument:** {one sentence}
+
+## DIVERSITY REPORT
+
+Clusters represented in top-5: {list}
+Promotions made: {N} ({details})
+Demotions made: {N} ({details})
+```
+
+---
+
+## Step T1: HARVEST
+
+Extract distinct opportunity hypotheses from evidence vault + pattern matcher output.
+
+**Sources to scan:**
+- Pattern matcher archetypes (T1-T6, N1-N6) — each scored pattern = 1 hypothesis
+- Evidence vault Section 1 (Case Studies) — each distinct business model mentioned
+- Evidence vault Section 2 (Market Signals) — demand signals implying new opportunity
+- Contrarian angles from reasoning chain (if available)
+
+**For each hypothesis, extract:**
+- `id`: sequential (H01, H02, ...)
+- `title`: short name (e.g., "AI-graded premium coffee lots")
+- `thesis`: 1 sentence (e.g., "Sell SCA-scored lots at 30% premium via Algrano")
+- `business_model_type`: SaaS | Service | Commerce | Content | Arbitrage | Infrastructure
+- `customer_segment`: B2B | B2C | B2B2C
+- `evidence_refs`: references to evidence vault sections backing this hypothesis
+- `estimated_revenue_range`: "$1K-5K/mo" format
+- `source_phase`: "pattern_matcher" | "evidence_vault" | "reasoning_chain"
+
+**De-duplication:** If two hypotheses target same market with same business model, merge.
+
+**Hard cap: 10.** If > 10 hypotheses after de-duplication, keep the 10 with strongest
+evidence backing (most evidence_refs). Log dropped hypotheses.
+
+**Minimum: 3.** If < 3 hypotheses extracted, ABORT tournament — output null, log reason.
+
+---
+
+## Step T2: CLUSTER
+
+Assign `cluster` to each hypothesis using keyword matching:
+
+```
+SaaS:           subscription, platform, software, tool, app, api
+Service:        consulting, agency, freelance, done-for-you, coaching
+Commerce:       sell, product, ecommerce, dropship, fba, export
+Content:        course, ebook, newsletter, media, youtube, community
+Arbitrage:      arbitrage, flip, spread, middleman, broker, resell
+Infrastructure: api, data, hosting, picks-and-shovels, tooling
+```
+
+Scan thesis text. Assign cluster with most keyword hits.
+If ambiguous (0 hits or tied), classify with a single LLM reasoning step.
+
+---
+
+## Step T3: DEBATE (Round-Robin)
+
+For every unique pair of hypotheses, run one debate.
+
+**Debate prompt template:**
+
+```
+You are judging a structured debate between two business opportunities.
+
+HYPOTHESIS A: {a.title}
+Thesis: {a.thesis}
+Business Model: {a.business_model_type} | Segment: {a.customer_segment}
+Revenue Range: {a.estimated_revenue_range}
+Evidence: {a.evidence_refs — include actual vault excerpts}
+
+HYPOTHESIS B: {b.title}
+Thesis: {b.thesis}
+Business Model: {b.business_model_type} | Segment: {b.customer_segment}
+Revenue Range: {b.estimated_revenue_range}
+Evidence: {b.evidence_refs — include actual vault excerpts}
+
+FOUNDER CONTEXT:
+{founder capital, skills, location, timeline from Phase 0 intent_meta}
+
+Score each hypothesis on these 5 criteria (0-10 each):
+1. evidence_strength — How well-sourced? Verified [K] claims vs [T]/[?]
+2. founder_fit — Matches founder's capital, skills, location, timeline?
+3. compound_potential — Creates assets that appreciate over time?
+4. execution_risk — How likely to succeed? (higher = lower risk)
+5. timing — Time-sensitive catalyst within 180 days?
+
+Output ONLY valid JSON:
+{
+  "scores_a": {"evidence_strength": N, "founder_fit": N, "compound_potential": N, "execution_risk": N, "timing": N},
+  "scores_b": {"evidence_strength": N, "founder_fit": N, "compound_potential": N, "execution_risk": N, "timing": N},
+  "total_a": N,
+  "total_b": N,
+  "winner": "A" | "B" | "DRAW",
+  "key_argument": "One sentence explaining the decisive factor"
+}
+
+DRAW rule: if |total_a - total_b| <= 2 (within ~5% of 50-point max), declare DRAW.
+```
+
+**Retry rules:**
+- If JSON is malformed: retry once with stricter prompt ("Output ONLY the JSON object, no other text"). If still malformed, score as DRAW with key_argument "malformed_json".
+- If score gap < 5% (|total_a - total_b| <= 2): retry once to confirm. Use the retry result.
+- Max 1 retry per debate (malformed and marginal retries are separate triggers but share the 1-retry cap per debate).
+
+**Batching for context management:**
+If N > 7 (more than 21 debates), process in batches of 10 debates.
+After each batch, summarize current Elo standings before proceeding.
+
+**After each debate:** Call Python Elo engine to update ratings:
+```python
+from .elo_engine import elo_update
+new_a, new_b = elo_update(ha.elo_rating, hb.elo_rating, winner, k=32)
+```
+
+---
+
+## Step T4: RANK
+
+After all debates complete:
+1. Sort hypotheses by final Elo rating (descending)
+2. Record matches_played and wins for each
+3. Collect debate_highlights (key_arguments from wins)
+
+---
+
+## Step T5: DIVERSITY CHECK
+
+Ensure top-5 hypotheses span >= 3 distinct clusters.
+
+If top-5 has < 3 clusters:
+1. Find highest-ranked hypothesis from an underrepresented cluster (outside top-5)
+2. Find lowest-ranked hypothesis in top-5 that shares a cluster with another top-5 entry
+3. Swap: promote the underrepresented, demote the duplicate-cluster entry
+4. Demoted hypothesis is NOT killed — moves to rank 6+
+5. Repeat until top-5 has >= 3 clusters or no more candidates
+
+Log all promotions/demotions in diversity report.
+
+---
+
+## Error Handling
+
+| Error | Action |
+|-------|--------|
+| < 3 hypotheses harvested | ABORT tournament, set tournament_context = null |
+| Debate returns malformed JSON | Retry once with strict prompt, then DRAW |
+| Debate timeout (single pair) | Score as DRAW, continue tournament |
+| Full tournament timeout (300s) | Output partial results (whatever debates completed so far) |
+| Elo engine error | Log error, skip that debate, continue |
+
+On any ABORT: pipeline falls back to Phase 2.5C top_5 → Phase 4 (current behavior).
+
+---
+
+## Rules
+
+1. **Every debate references actual evidence** — include vault excerpts in debate prompt, not just titles
+2. **Founder context is mandatory** — debates without founder constraints produce generic rankings
+3. **No hypothesis is killed** — tournament RANKS, it does not eliminate. Kill gate remains in Phase 4.
+4. **Diversity is enforced, not suggested** — top-5 MUST span 3+ clusters (unless fewer than 3 clusters exist total)
+5. **Partial results are valid** — if tournament times out mid-debate, output rankings from completed debates

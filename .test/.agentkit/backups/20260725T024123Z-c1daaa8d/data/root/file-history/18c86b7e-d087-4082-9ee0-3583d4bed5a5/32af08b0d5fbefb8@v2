@@ -1,0 +1,77 @@
+use clap::{Parser, Subcommand};
+use tracing_subscriber::EnvFilter;
+
+#[derive(Parser)]
+#[command(name = "codeflow", version, about = "AI coding cost intelligence engine")]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Install Claude Code hooks
+    Init {
+        /// Install globally
+        #[arg(short, long)]
+        global: bool,
+    },
+    /// Wrap and compress a command's output
+    Wrap {
+        /// Command to execute
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        command: Vec<String>,
+    },
+    /// Show local savings statistics
+    Stats {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Manage the dedup cache
+    Cache {
+        #[command(subcommand)]
+        action: CacheAction,
+    },
+    /// Check for updates
+    Update,
+}
+
+#[derive(Subcommand)]
+enum CacheAction {
+    /// Clear the dedup cache
+    Clear,
+}
+
+fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .init();
+
+    let cli = Cli::parse();
+
+    match cli.command {
+        Commands::Init { global: _ } => {
+            println!("Hook installation not yet implemented");
+        }
+        Commands::Wrap { command } => {
+            if command.is_empty() {
+                anyhow::bail!("No command specified");
+            }
+            println!("Wrap not yet implemented: {:?}", command);
+        }
+        Commands::Stats { json: _ } => {
+            println!("Stats not yet implemented");
+        }
+        Commands::Cache { action } => match action {
+            CacheAction::Clear => {
+                println!("Cache clear not yet implemented");
+            }
+        },
+        Commands::Update => {
+            println!("Update not yet implemented");
+        }
+    }
+
+    Ok(())
+}

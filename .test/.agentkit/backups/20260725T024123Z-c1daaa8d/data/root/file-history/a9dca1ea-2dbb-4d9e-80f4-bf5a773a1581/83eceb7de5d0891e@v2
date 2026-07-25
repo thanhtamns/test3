@@ -1,0 +1,191 @@
+---
+phase: 5
+title: "Safety Harness and Rollback"
+status: pending
+priority: P1
+effort: "3d"
+dependencies: [4]
+---
+
+# Phase 5: Safety Harness and Rollback
+
+## Overview
+
+AEVO's key insight: without a harness, 2/3 of evolution runs fall into reward hacking. This phase implements safety bounds that prevent meta-edits from destroying system behavior.
+
+**AEVO parallel:** The "evaluator protection layer" that prevents gaming. Without it, the meta-editor could drift knobs to extreme values that technically reduce errors but produce garbage verdicts.
+
+## Requirements
+
+**Functional:**
+- Hard invariants that NO meta-edit can violate (quality gates, hook enforcement)
+- Soft bounds: max 20% change per knob per edit cycle
+- Auto-rollback: if Brier worsens >10% over 5 verdicts → revert
+- Edit budget: max 3 knob edits per calendar week
+- Manual override: user can force-revert or force-apply any edit
+
+**Non-functional:**
+- Safety checks run in <100ms (pure validation)
+- Rollback is atomic (single JSON write)
+- All safety violations logged for audit
+
+## Related Code Files
+
+**Target repo:** `D:/code/invesments/master_investments`
+
+- Create: `.claude/lib/intelligence/mechanism/safety_harness.py`
+- Create: `data/config/mechanism-invariants.json` — hard invariants
+- Modify: `.claude/lib/intelligence/mechanism/knob_registry.py` — add safety validation
+- Modify: `.claude/lib/intelligence/mechanism/meta_edit_controller.py` — wire harness
+
+## Implementation Steps
+
+### Step 1: Define hard invariants (NEVER modifiable)
+
+```json
+{
+  "invariants": [
+    {
+      "id": "quality_gate_exists",
+      "description": "persist-verdict.py MUST reject agents_fired < 8",
+      "type": "existence",
+      "protected_knob": "agents_fired_minimum",
+      "min_value": 4
+    },
+    {
+      "id": "kill_hook_active",
+      "description": "stage0-tool-call-audit.cjs CANNOT be disabled",
+      "type": "system",
+      "cannot_modify": true
+    },
+    {
+      "id": "confidence_floor",
+      "description": "confidence_gate_minimum cannot drop below 0.50",
+      "type": "floor",
+      "protected_knob": "confidence_gate_minimum",
+      "min_value": 0.50
+    },
+    {
+      "id": "mountain_definition_stable",
+      "description": "mountain_threshold cannot change by more than 30% total",
+      "type": "drift_limit",
+      "protected_knob": "mountain_threshold_monthly",
+      "max_total_drift_pct": 30
+    }
+  ]
+}
+```
+
+### Step 2: Implement safety_harness.py
+
+```python
+class SafetyHarness:
+    def __init__(self, invariants_path: Path, history_path: Path):
+        self.invariants = self._load_invariants(invariants_path)
+        self.history = self._load_history(history_path)
+    
+    def validate_edit(self, edit: KnobEdit) -> SafetyResult:
+        """Check edit against all safety constraints. Returns ALLOW/BLOCK."""
+        violations = []
+        
+        # Check 1: Hard invariant violation
+        for inv in self.invariants:
+            if inv.protected_knob == edit.knob_id:
+                if not self._check_invariant(inv, edit.new_value):
+                    violations.append(SafetyViolation(
+                        type="hard_invariant", invariant=inv.id,
+                        message=f"Violates {inv.description}"))
+        
+        # Check 2: Max 20% change per cycle
+        pct_change = abs(edit.new_value - edit.old_value) / abs(edit.old_value)
+        if pct_change > 0.20:
+            violations.append(SafetyViolation(
+                type="magnitude_limit",
+                message=f"Change {pct_change:.0%} exceeds 20% limit"))
+        
+        # Check 3: Weekly budget
+        edits_this_week = self._count_edits_this_week()
+        if edits_this_week >= 3:
+            violations.append(SafetyViolation(
+                type="budget_exhausted",
+                message=f"Already {edits_this_week} edits this week (max 3)"))
+        
+        # Check 4: Total drift from original
+        total_drift = self._calc_total_drift(edit.knob_id, edit.new_value)
+        drift_inv = self._get_drift_invariant(edit.knob_id)
+        if drift_inv and total_drift > drift_inv.max_total_drift_pct / 100:
+            violations.append(SafetyViolation(
+                type="total_drift_exceeded",
+                message=f"Total drift {total_drift:.0%} exceeds {drift_inv.max_total_drift_pct}%"))
+        
+        if violations:
+            return SafetyResult(allowed=False, violations=violations)
+        return SafetyResult(allowed=True)
+    
+    def auto_rollback_check(self, segment_brier_before: float, 
+                            segment_brier_after: float) -> bool:
+        """Return True if rollback needed (Brier worsened >10%)."""
+        if segment_brier_after > segment_brier_before * 1.10:
+            return True
+        return False
+    
+    def rollback(self, edit: KnobEdit):
+        """Atomically revert a knob to its pre-edit value."""
+        self.registry.set(edit.knob_id, edit.old_value,
+                         reason=f"AUTO-ROLLBACK: Brier worsened",
+                         source="safety_harness")
+```
+
+### Step 3: Wire into knob_registry.py
+
+```python
+class KnobRegistry:
+    def set(self, knob_id, value, reason, source):
+        # SAFETY CHECK (always runs)
+        if source != "manual_override":
+            result = self.harness.validate_edit(
+                KnobEdit(knob_id, self.get(knob_id), value))
+            if not result.allowed:
+                self._log_blocked_edit(knob_id, value, result.violations)
+                raise SafetyViolationError(result.violations)
+        
+        # Apply edit
+        self._write_knob(knob_id, value)
+        self._append_history(knob_id, old, value, reason, source)
+```
+
+### Step 4: Manual override command
+
+Add to stage0 or standalone:
+```
+/meta-revert <knob_id>          # Revert last edit for this knob
+/meta-force <knob_id> <value>   # Force-set (bypasses bounds, logs warning)
+/meta-status                    # Show current segment + pending edits
+/meta-freeze                    # Pause all meta-edits (exam mode)
+```
+
+### Step 5: Tests
+
+- Hard invariant blocks below-floor edit
+- 20% magnitude limit enforced
+- Weekly budget blocks 4th edit
+- Total drift limit blocks cumulative drift
+- Auto-rollback fires on Brier regression >10%
+- Manual override bypasses bounds with audit trail
+
+## Success Criteria
+
+- [ ] Hard invariants cannot be violated by meta-edit controller
+- [ ] 20% per-edit and 30% total-drift limits enforced
+- [ ] Weekly budget of 3 edits enforced
+- [ ] Auto-rollback triggers on >10% Brier regression
+- [ ] All blocked edits logged with violation details
+- [ ] Manual override works with full audit trail
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|------|------------|
+| Safety too restrictive → no evolution | Start with generous bounds, tighten over time |
+| Rollback leaves inconsistent state | Atomic JSON write; single file source of truth |
+| User confused by auto-rollback | Clear log message + /meta-status shows what happened |

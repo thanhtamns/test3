@@ -1,0 +1,346 @@
+"""
+Outcome Tracker - Log predictions and decisions to SQLite via db/timeseries.py.
+
+Designed to extend the existing /log-outcome skill with intelligence-layer
+tracking (market predictions, opportunity bets, operator decisions).
+
+Storage contract
+----------------
+Depends on `.claude/lib/intelligence/db/timeseries.py` (Phase 0A).
+If that module is not yet available, falls back to local JSON files so this
+module is independently usable during parallel development.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Optional
+from uuid import uuid4
+
+from .schemas import Decision, OutcomeCode, Prediction
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Storage backend abstraction (thin wrapper — swapped when timeseries is ready)
+# ---------------------------------------------------------------------------
+
+_DB_AVAILABLE = False
+
+try:
+    # Phase 0A delivers this module; import lazily so we don't hard-block
+    from ..db.timeseries import TimeseriesDB  # type: ignore[import]
+    _DB_AVAILABLE = True
+except ImportError:
+    TimeseriesDB = None  # type: ignore[assignment,misc]
+
+
+class _JsonFallbackStore:
+    """
+    Minimal append-only JSON store used when timeseries.py is unavailable.
+    Two files: predictions.json + decisions.json under data_dir.
+    """
+
+    def __init__(self, data_dir: Path) -> None:
+        data_dir.mkdir(parents=True, exist_ok=True)
+        self._predictions_file = data_dir / "predictions.json"
+        self._decisions_file = data_dir / "decisions.json"
+
+    def _load(self, path: Path) -> list[dict]:
+        if not path.exists():
+            return []
+        with open(path, "r", encoding="utf-8") as fh:
+            try:
+                return json.load(fh)
+            except json.JSONDecodeError:
+                logger.warning("Corrupt JSON at %s — starting fresh", path)
+                return []
+
+    def _save(self, path: Path, records: list[dict]) -> None:
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(records, fh, indent=2, ensure_ascii=False)
+
+    # --- predictions ---
+
+    def insert_prediction(self, pred: Prediction) -> None:
+        records = self._load(self._predictions_file)
+        records.append(pred.to_dict())
+        self._save(self._predictions_file, records)
+
+    def update_prediction(self, pred: Prediction) -> None:
+        records = self._load(self._predictions_file)
+        for i, r in enumerate(records):
+            if r["id"] == pred.id:
+                records[i] = pred.to_dict()
+                break
+        self._save(self._predictions_file, records)
+
+    def get_prediction(self, pred_id: str) -> Optional[dict]:
+        for r in self._load(self._predictions_file):
+            if r["id"] == pred_id:
+                return r
+        return None
+
+    def list_predictions(self) -> list[dict]:
+        return self._load(self._predictions_file)
+
+    # --- decisions ---
+
+    def insert_decision(self, dec: Decision) -> None:
+        records = self._load(self._decisions_file)
+        records.append(dec.to_dict())
+        self._save(self._decisions_file, records)
+
+    def update_decision(self, dec: Decision) -> None:
+        records = self._load(self._decisions_file)
+        for i, r in enumerate(records):
+            if r["id"] == dec.id:
+                records[i] = dec.to_dict()
+                break
+        self._save(self._decisions_file, records)
+
+    def get_decision(self, dec_id: str) -> Optional[dict]:
+        for r in self._load(self._decisions_file):
+            if r["id"] == dec_id:
+                return r
+        return None
+
+    def list_decisions(self) -> list[dict]:
+        return self._load(self._decisions_file)
+
+
+# ---------------------------------------------------------------------------
+# OutcomeTracker (public API)
+# ---------------------------------------------------------------------------
+
+_DEFAULT_DATA_DIR = (
+    Path(__file__).resolve().parents[4]  # repo root: master_investments/
+    / "data"
+    / "intelligence"
+)
+
+# Reminder thresholds: warn when prediction is older than these without resolution
+_REMINDER_DAYS = [7, 30, 90]
+
+
+class OutcomeTracker:
+    """
+    Log and query predictions/decisions made by the intelligence system.
+
+    Parameters
+    ----------
+    data_dir:
+        Directory for JSON fallback storage. Defaults to
+        ``<repo>/data/intelligence/``.
+
+    Example
+    -------
+    >>> tracker = OutcomeTracker()
+    >>> pid = tracker.log_prediction(
+    ...     prediction="BTC breaks $100K within 90 days",
+    ...     confidence=0.65,
+    ...     timeframe="90d",
+    ...     signals=["hash-rate-ath", "etf-inflow-spike"],
+    ...     reasoning="Hash rate at ATH + institutional inflows accelerating",
+    ... )
+    >>> tracker.get_prediction(pid)
+    """
+
+    def __init__(self, data_dir: Optional[Path] = None) -> None:
+        self._data_dir = Path(data_dir) if data_dir else _DEFAULT_DATA_DIR
+        self._store = _JsonFallbackStore(self._data_dir)
+        if _DB_AVAILABLE:
+            logger.info("timeseries.py available — will use DB backend when wired")
+        else:
+            logger.debug("timeseries.py not yet available — using JSON fallback store")
+
+    # ------------------------------------------------------------------
+    # Prediction logging
+    # ------------------------------------------------------------------
+
+    def log_prediction(
+        self,
+        prediction: str,
+        confidence: float,
+        timeframe: str,
+        signals: list[str],
+        reasoning: str,
+    ) -> str:
+        """
+        Record a new forward-looking prediction.
+
+        Parameters
+        ----------
+        prediction:
+            Plain-text statement of what is predicted.
+        confidence:
+            Probability 0.0–1.0 at time of logging.
+        timeframe:
+            Resolution window, e.g. ``"30d"``, ``"90d"``, ``"6mo"``.
+        signals:
+            List of signal IDs or descriptors used to derive the prediction.
+        reasoning:
+            Narrative explaining how signals lead to the prediction.
+
+        Returns
+        -------
+        str
+            Prediction ID (``PRED-YYYYMMDD-HHMMSS-<hex6>``).
+        """
+        if not prediction.strip():
+            raise ValueError("prediction text must not be empty")
+        if not 0.0 <= confidence <= 1.0:
+            raise ValueError(f"confidence must be 0.0–1.0, got {confidence}")
+        if not timeframe.strip():
+            raise ValueError("timeframe must not be empty")
+
+        pred_id = f"PRED-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{uuid4().hex[:6]}"
+        pred = Prediction(
+            id=pred_id,
+            made_at=datetime.now(timezone.utc),
+            prediction=prediction.strip(),
+            confidence=confidence,
+            timeframe=timeframe.strip(),
+            signals_used=list(signals),
+            reasoning=reasoning.strip(),
+        )
+        self._store.insert_prediction(pred)
+        logger.info("Logged prediction %s (confidence=%.2f, timeframe=%s)", pred_id, confidence, timeframe)
+        return pred_id
+
+    # ------------------------------------------------------------------
+    # Decision logging
+    # ------------------------------------------------------------------
+
+    def log_decision(
+        self,
+        decision: str,
+        alternatives: list[str],
+        expected_outcome: str,
+    ) -> str:
+        """
+        Record an operator decision for accountability and later review.
+
+        Parameters
+        ----------
+        decision:
+            Plain-text description of the action taken.
+        alternatives:
+            Other options that were considered but not chosen.
+        expected_outcome:
+            What the decision-maker expects to happen as a result.
+
+        Returns
+        -------
+        str
+            Decision ID (``DEC-YYYYMMDD-HHMMSS-<hex6>``).
+        """
+        if not decision.strip():
+            raise ValueError("decision text must not be empty")
+
+        dec_id = f"DEC-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{uuid4().hex[:6]}"
+        dec = Decision(
+            id=dec_id,
+            made_at=datetime.now(timezone.utc),
+            decision=decision.strip(),
+            alternatives=list(alternatives),
+            expected_outcome=expected_outcome.strip(),
+        )
+        self._store.insert_decision(dec)
+        logger.info("Logged decision %s", dec_id)
+        return dec_id
+
+    # ------------------------------------------------------------------
+    # Queries
+    # ------------------------------------------------------------------
+
+    def get_prediction(self, pred_id: str) -> Optional[Prediction]:
+        """
+        Retrieve a prediction by ID.
+
+        Returns ``None`` if not found.
+        """
+        raw = self._store.get_prediction(pred_id)
+        if raw is None:
+            return None
+        return Prediction.from_dict(raw)
+
+    def get_decision(self, dec_id: str) -> Optional[Decision]:
+        """
+        Retrieve a decision by ID.
+
+        Returns ``None`` if not found.
+        """
+        raw = self._store.get_decision(dec_id)
+        if raw is None:
+            return None
+        return Decision.from_dict(raw)
+
+    def get_unresolved_predictions(self, older_than_days: int = 0) -> list[Prediction]:
+        """
+        Return all predictions that have not yet been resolved.
+
+        Parameters
+        ----------
+        older_than_days:
+            When > 0, only return predictions whose ``made_at`` is older than
+            this many days. Use this to surface stale predictions that need
+            attention (e.g. ``older_than_days=30``).
+
+        Returns
+        -------
+        list[Prediction]
+            Sorted oldest-first.
+        """
+        cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days) if older_than_days > 0 else None
+
+        unresolved: list[Prediction] = []
+        for raw in self._store.list_predictions():
+            pred = Prediction.from_dict(raw)
+            if pred.is_resolved:
+                continue
+            if cutoff is not None and pred.made_at > cutoff:
+                continue  # too recent — skip
+            unresolved.append(pred)
+
+        return sorted(unresolved, key=lambda p: p.made_at)
+
+    def get_due_reminders(self) -> list[tuple[Prediction, int]]:
+        """
+        Return predictions that have crossed a reminder threshold
+        (7, 30, or 90 days old) without resolution.
+
+        Returns
+        -------
+        list[tuple[Prediction, int]]
+            Each element is ``(prediction, days_threshold_crossed)``.
+        """
+        now = datetime.now(timezone.utc)
+        due: list[tuple[Prediction, int]] = []
+
+        for raw in self._store.list_predictions():
+            pred = Prediction.from_dict(raw)
+            if pred.is_resolved:
+                continue
+            age_days = (now - pred.made_at).days
+            for threshold in sorted(_REMINDER_DAYS, reverse=True):
+                if age_days >= threshold:
+                    due.append((pred, threshold))
+                    break  # only emit highest crossed threshold per prediction
+
+        return due
+
+    # ------------------------------------------------------------------
+    # Internal helpers (used by resolver.py)
+    # ------------------------------------------------------------------
+
+    def _update_prediction(self, pred: Prediction) -> None:
+        """Persist an updated Prediction (called by resolver)."""
+        self._store.update_prediction(pred)
+
+    def _update_decision(self, dec: Decision) -> None:
+        """Persist an updated Decision (called by resolver)."""
+        self._store.update_decision(dec)

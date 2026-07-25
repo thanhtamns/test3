@@ -1,0 +1,185 @@
+# Chẩn đoán: Tại sao master_investments vẫn tư duy bình thường
+
+**Ngày:** 2026-05-13 | **Loại:** System self-diagnostic
+
+---
+
+## Bằng chứng thất bại
+
+Bài VEMRA vừa xuất ra về "thâm nhập dòng tiền VC" — hãy đọc lại bằng con mắt khắt khe:
+
+**Khuyến nghị chính:** "Xây database startup + newsletter cho VC nước ngoài"
+
+Đây CHÍNH XÁC là lời khuyên mà bất kỳ cố vấn khởi nghiệp nào cũng nói. Hệ thống chỉ mặc áo VC cho lời khuyên "xây blog + xây audience." MM-19 cấm rõ: *"If a 45-year-old career advisor would give the same advice → it's not asymmetric enough."* Nhưng hệ thống vẫn sản xuất chính xác điều bị cấm.
+
+**Tệ hơn:** Khuyến nghị "raise micro-fund $2-5M sau 12 tháng" mà KHÔNG tính toán: management fee trên $3M = $60K/năm. Carry cần 7-10 năm fund life + exits thành công. Thu nhập thực tế năm 1-3 = thấp hơn lương quản lý tại Lotte mà Thành bỏ. Hệ thống không tự kill khuyến nghị bằng toán.
+
+---
+
+## 7 Nguyên nhân gốc (Root Causes)
+
+### RC-1: MM-19 được áp dụng như template fill, không phải tư duy chiến lược
+
+**Bằng chứng:** Output VEMRA có đúng 5 heading match 5 lens của MM-19: "Information asymmetry exploitation," "Side door," "Reverse leverage," "Timing window," "Compound Trap." Hệ thống điền mẫu, không suy nghĩ.
+
+**Tệ hơn:** MM-19 có SẴN ví dụ: *"VCs in Thailand/Korea can't read Vietnamese startup news → user creates a Vietnamese startup intelligence product."* Hệ thống COPY ví dụ từ chính mental model của nó thay vì tạo ra chiến lược mới. Đây là circular reasoning — model dạy chính nó rồi tự trích dẫn.
+
+**Root cause kỹ thuật:** LLM pattern-match ví dụ trong prompt. Khi MM-19 có ví dụ cụ thể, LLM sẽ paraphrase ví dụ đó thay vì tạo ví dụ mới. Ví dụ trở thành anchor, không phải inspiration.
+
+### RC-2: Không có "NAME THE HUMANS" forcing function
+
+**Bằng chứng:** Output viết "30-50 fund Vietnam reps" — đây là demographic, không phải intelligence. Tư duy đỉnh cao sẽ nói: "Eddie Thai (500 Global Vietnam GP), Trung Hoang (VinaCapital Ventures Deputy MD), Binh Tran (500 Startups), Nuthaphong (KVision) — mỗi người CẦN gì, THÍCH gì, yếu điểm gì."
+
+**Root cause kỹ thuật:** Gate B2 Money Flow yêu cầu "Who decides?" nhưng chấp nhận câu trả lời institutional ("investment committee"). Không có blocker yêu cầu TÊN NGƯỜI CỤ THỂ + LinkedIn profile. dimension_registry.py có template "Who are the gatekeepers in {industry}?" — vẫn là câu hỏi generic, không ép ra tên cụ thể.
+
+### RC-3: Không có Economics Self-Kill
+
+**Bằng chứng:** Khuyến nghị "scout carry 10-20%" mà không tính:
+- Source 1 deal/năm được đầu tư $2M
+- Fund returns 3x over 7 năm
+- Carry = 20% (GP share) × 10% (scout share) × ($6M - $2M profit) = $80K
+- Chia cho 7 năm = $11.4K/năm
+- Kết luận: KHÔNG PHẢI con đường giàu. Là side income.
+
+Hệ thống nên tự kill khuyến nghị này bằng phép tính trên. Nhưng không có gate nào bắt buộc tính economics CHO CHÍNH khuyến nghị của mình.
+
+### RC-4: ThinkRunner dimensions là Industry-Generic, không phải Intelligence-Grade
+
+**Bằng chứng:** dimension_registry.py chứa templates như:
+- "Top 5 players in {industry} by {metric}?" → tạo industry report
+- "What moat type works for {industry}?" → tạo framework exercise
+- "How to access {industry} professional circles?" → tạo LinkedIn advice
+
+**Thiếu hoàn toàn:**
+- "Ai QUYẾT ĐỊNH phê duyệt deal tại {fund}? Tên, chức danh, background?"
+- "Người đó đã đầu tư vào deal nào trong 6 tháng gần nhất?"
+- "Người đó CẦN gì mà chưa ai cung cấp?"
+- "Ai là kẻ thù/đối thủ của người đó trong nội bộ fund?"
+
+Templates hiện tại tạo ra ANALYSIS (báo cáo ngành). Templates cần thiết tạo ra INTELLIGENCE (ai kiểm soát gì, cần gì, yếu ở đâu).
+
+### RC-5: VEMRA format tạo structured mediocrity
+
+**Bằng chứng:** V-E-M-R-A buộc hệ thống điền 5 section, mỗi section 200-300 từ. Kết quả = 1500 từ đều đều, không có đỉnh insight nào. Tư duy đỉnh cao có thể chỉ cần 5 câu:
+
+> "Nuthaphong tại KVision phải deploy $336M nhưng không có deal flow. Anh ta cần người Việt hiểu thị trường. Nhưng đừng làm nhân viên cho anh ta — hãy xây thứ mà anh ta phải MUA. Cụ thể: [X]. Sau 12 tháng, anh ta không thể sa thải bạn vì bạn không phải nhân viên, và anh ta không thể tự xây vì [Y]."
+
+5 câu này CÓ GIÁ TRỊ HƠN 1500 từ VEMRA vì nó CỤ THỂ, TÍNH TOÁN ĐƯỢC, VÀ HÀNH ĐỘNG NGAY.
+
+### RC-6: Không có Execution Reality Simulation
+
+**Bằng chứng:** Action 2 viết "Gửi briefing cho 30-50 fund reps qua LinkedIn." Thực tế:
+- Open rate cold InMail: 5-15%
+- Response rate: 1-5%
+- 50 người × 5% = 2.5 người đọc
+- Người lạ từ Thanh Hóa gửi email cho fund manager HCMC = CƠ HỘI PHẢN HỒI GẦN ZERO
+
+Hệ thống không simulate execution reality. Nó viết action steps như slide deck McKinsey — trông logic trên giấy, thất bại ngoài đời.
+
+### RC-7: Chỉ phân tích 1 dòng tiền (VC), trong khi user hỏi "dòng tiền LỚN"
+
+**Bằng chứng:** User hỏi "đứng ở giữa dòng tiền lớn." Hệ thống assume VC là dòng tiền duy nhất. Không phân tích:
+- PE (Private Equity) → Mekong Capital, VinaCapital Fund, Dragon Capital
+- Family Offices → 15+ gia đình giàu nhất VN đầu tư startup
+- Government Innovation Funds → NATIF, Quỹ Đổi mới Sáng tạo Quốc gia
+- Corporate M&A → VNG, FPT, Viettel đang mua startup
+- ODA/Development Finance → World Bank, ADB, JICA funding VN tech
+- Crypto/Web3 → VN là top 5 global adoption
+
+Mỗi dòng tiền có bottleneck khác nhau. User cần MAP TẤT CẢ rồi chọn dòng nào có insertion point phù hợp nhất. Hệ thống chọn hộ user mà không đưa ra lựa chọn.
+
+---
+
+## Tại sao vấn đề lặp lại dù đã có MM-17/18/19?
+
+**Câu trả lời ngắn:** Models tồn tại nhưng được áp dụng MECHANICAL, không phải COGNITIVE.
+
+Giải thích: MM-19 nói "apply 5 asymmetric lenses." LLM đọc → tạo 5 heading → điền nội dung cho mỗi heading. Đây là COMPLIANCE, không phải THINKING. Giống như sinh viên đọc rubric rồi viết bài đúng tiêu chí mà không hiểu vấn đề.
+
+**Vấn đề cấu trúc sâu hơn:** ThinkRunner (code as thinker) tạo ra dimension scores bằng keyword search. LLM (narrator) narrate scores. Không ai THỰC SỰ suy nghĩ chiến lược. Code search → LLM narrate → output. Không có bước "STOP and think: nếu tôi là người này, với $1000, ở Thanh Hóa, tôi sẽ làm gì ĐẦU TIÊN vào sáng mai?"
+
+---
+
+## 7 Solutions
+
+### S-1: Thêm "NAME 5 HUMANS" gate vào B2
+
+**Cụ thể:** Sau khi trace money flow, hệ thống PHẢI tìm và đặt tên 5 người cụ thể (tên, chức danh, fund, LinkedIn URL nếu có) kiểm soát bottleneck node. Không chấp nhận "investment committee" hay "fund reps." PHẢI CÓ TÊN NGƯỜI.
+
+**Impact:** Buộc output chuyển từ "ngành VC" sang "Nuthaphong cần X, Eddie Thai cần Y." Từ industry report sang intelligence.
+
+### S-2: Thêm "ECONOMICS SELF-KILL" gate
+
+**Cụ thể:** Mỗi khuyến nghị PHẢI có phép tính:
+```
+Revenue = [units] × [price] = $/tháng
+Thời gian đến revenue: N tháng
+So sánh với income hiện tại: cao hơn / thấp hơn
+Nếu thấp hơn → tự kill hoặc cảnh báo rõ ràng
+```
+
+**Impact:** Kill "raise micro-fund" recommendation khi math cho thấy $60K/năm management fee < entry-level salary tại HCMC.
+
+### S-3: Xóa ví dụ khỏi MM-19 hoặc thêm anti-copy guard
+
+**Cụ thể:** MM-19 hiện có ví dụ: "creates Vietnamese startup intelligence product." LLM sẽ luôn copy ví dụ này cho mọi query liên quan VN+VC. Thay bằng:
+
+> "NOTE: Nếu output của bạn giống ví dụ trong model definition → bạn đang copy, không phải thinking. Tạo chiến lược KHÁC HOÀN TOÀN với ví dụ này."
+
+### S-4: Thêm "OPERATOR INTELLIGENCE" dimension vào ThinkRunner
+
+**Templates mới:**
+```python
+"operator_intelligence": Dimension(
+    name="operator_intelligence",
+    weight=2.5,  # highest weight
+    templates=[
+        "Who specifically approved the last 3 investments at {fund} in {market}? Name, title?",
+        "What did {specific_person} invest in during last 12 months?",
+        "What does {gatekeeper} personally need that no one provides?",
+        "{fund} internal politics: who competes with whom for deal allocation?",
+        "What information does {gatekeeper} lack about {market} that would change their decisions?",
+    ],
+)
+```
+
+### S-5: Thêm "EXECUTION REALITY" gate
+
+**Cụ thể:** Mỗi action step phải qua simulation:
+```
+Action: Gửi email cho 50 fund reps
+Reality check:
+- Open rate cold email: 5-15%
+- Response rate: 1-5%
+- Expected responses: 0.5-2.5 người
+- Time to first meaningful response: 4-8 tuần
+- ADJUSTED action: Thay vì email 50 người, tìm 1 MỐI GIỚI THIỆU đến 1 người cụ thể
+```
+
+### S-6: Giảm VEMRA word limit từ 1500 → 500
+
+**Lý do:** 1500 từ tạo incentive điền đầy space bằng analysis. 500 từ buộc hệ thống chỉ nói insight quan trọng nhất. Insight thực sự không cần nhiều từ — nó cần đúng từ.
+
+### S-7: Thêm "ALTERNATIVE MONEY FLOWS" gate
+
+**Cụ thể:** Khi user hỏi "dòng tiền lớn," hệ thống PHẢI liệt kê TẤT CẢ dòng tiền trong hệ sinh thái, không chỉ dòng đầu tiên match keyword. Mỗi dòng cần:
+- Quy mô ($)
+- Bottleneck node
+- Founder insertion point (có/không)
+- Thời gian đến insertion
+
+User chọn. Hệ thống không chọn hộ.
+
+---
+
+## Tóm tắt 1 câu
+
+**Hệ thống follow checklist đúng nhưng không THỰC SỰ suy nghĩ — giống sinh viên điền rubric đúng format mà không hiểu bài. Root fix: thêm 4 forcing functions (NAME HUMANS, ECONOMICS SELF-KILL, EXECUTION REALITY, ALTERNATIVE FLOWS) và xóa ví dụ tự-copy trong MM-19.**
+
+---
+
+## Câu hỏi chưa giải quyết
+
+1. S-1 đến S-7 nên implement theo thứ tự nào? S-1 (Name Humans) + S-2 (Economics Self-Kill) có impact cao nhất với effort thấp nhất.
+2. VEMRA format có nên thay thế hoàn toàn hay giữ cho certain query types?
+3. ThinkRunner có nên gọi LLM 1 lần ở cuối để "genuine strategic reasoning" thay vì pure narration?

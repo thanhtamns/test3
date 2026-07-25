@@ -1,0 +1,192 @@
+#!/usr/bin/env python3
+"""Tests for SBE Orchestrator + LLM Constraint Generator."""
+
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "integration"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "engine"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "mtde"))
+
+from sbe_orchestrator import SBEOrchestrator, SBEResult, VALID_VERDICTS
+from llm_constraint_generator import LLMConstraintGenerator
+
+
+def mock_search(query, max_results=3):
+    return [{"snippet": f"Found 12 competitors in this market segment as of 2025", "url": "https://statista.com/report/123"}]
+
+
+def mock_extract(prompt):
+    return '{"field": "competition_count", "value": 12, "date": "2025", "confidence": 0.8}'
+
+
+def failing_search(query, max_results=3):
+    raise TimeoutError("Search timed out")
+
+
+def test_full_pipeline_dry_run():
+    orch = SBEOrchestrator()
+    result = orch.run("coffee export Japan", {"industry": "agriculture"})
+    assert result.verdict in VALID_VERDICTS
+    assert result.trace is not None
+    assert len(result.trace.steps) >= 2
+
+
+def test_short_circuit_on_kill():
+    orch = SBEOrchestrator()
+    features = {
+        "competition_count": 500,
+        "unique_moat_score": 0,
+        "differentiation_signals": 0,
+        "info_advantage_score": 0,
+        "tutorial_count": 200,
+    }
+    result = orch.run("generic dropshipping", features)
+    assert result.short_circuited is True
+    assert result.verdict == "KILL"
+    assert result.confidence >= 0.85
+
+
+def test_principles_only_mode():
+    orch = SBEOrchestrator()
+    result = orch.run("specialty coffee", {"industry": "agriculture"}, principles_only=True)
+    assert result.verdict in VALID_VERDICTS
+    assert result.constrained_prompt is not None
+    assert "Pass 1" in result.constrained_prompt
+
+
+def test_with_mock_search_extract():
+    orch = SBEOrchestrator()
+    result = orch.run(
+        "SaaS pricing tool",
+        {"industry": "tech", "competition_count": 8},
+        search_fn=mock_search,
+        extract_fn=mock_extract,
+        budget=20,
+    )
+    assert result.verdict in VALID_VERDICTS
+    assert result.constrained_prompt is not None
+    assert "MUST RESPOND TO EACH" in result.constrained_prompt
+
+
+def test_constrained_prompt_has_sections():
+    orch = SBEOrchestrator()
+    result = orch.run(
+        "test topic",
+        {"competition_count": 5, "unique_moat_score": 7},
+        search_fn=mock_search,
+        extract_fn=mock_extract,
+        budget=10,
+    )
+    prompt = result.constrained_prompt
+    assert "Agent Constraints" in prompt
+    assert "SBE Pre-Analysis" in prompt
+
+
+def test_graceful_degradation_on_search_failure():
+    orch = SBEOrchestrator()
+    result = orch.run(
+        "test topic",
+        {"competition_count": 5},
+        search_fn=failing_search,
+        extract_fn=mock_extract,
+    )
+    assert result.verdict in VALID_VERDICTS
+    step_names = [s["step"] for s in result.trace.steps]
+    assert "retrieve" in step_names
+    assert "pass2" in step_names
+
+
+def test_trace_captures_all_steps():
+    orch = SBEOrchestrator()
+    result = orch.run("test topic", {"industry": "tech"})
+    step_names = [s["step"] for s in result.trace.steps]
+    assert "pass1" in step_names
+    assert "decompose" in step_names
+    assert "retrieve" in step_names
+    assert "aggregate" in step_names
+    assert "pass2" in step_names
+
+
+def test_trace_has_timing():
+    orch = SBEOrchestrator()
+    result = orch.run("test", {})
+    for step in result.trace.steps:
+        assert "elapsed_ms" in step
+        assert step["elapsed_ms"] >= 0
+
+
+def test_result_serializable():
+    orch = SBEOrchestrator()
+    result = orch.run("test", {"competition_count": 5}, search_fn=mock_search, extract_fn=mock_extract, budget=5)
+    output = result.to_dict()
+    serialized = json.dumps(output)
+    assert isinstance(serialized, str)
+    parsed = json.loads(serialized)
+    assert "verdict" in parsed
+    assert "trace" in parsed
+
+
+def test_budget_limits_questions():
+    orch = SBEOrchestrator()
+    result = orch.run("test", {}, budget=5)
+    decompose_step = next(s for s in result.trace.steps if s["step"] == "decompose")
+    assert decompose_step["data"]["question_count"] <= 5
+
+
+def test_enriched_features_passed_to_pass2():
+    orch = SBEOrchestrator()
+    result = orch.run(
+        "test",
+        {"competition_count": "unknown"},
+        search_fn=mock_search,
+        extract_fn=mock_extract,
+        budget=10,
+    )
+    assert result.enriched_features.get("competition_count") == 12
+
+
+def test_llm_constraint_gen_from_pass1():
+    gen = LLMConstraintGenerator()
+    from principle_engine import PrincipleEngine
+
+    DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+    engine = PrincipleEngine(DATA_DIR / "principles.json", DATA_DIR / "contrarian-rules.json")
+    pass1 = engine.evaluate_pass1({"competition_count": 5, "unique_moat_score": 7})
+    prompt = gen.generate_from_pass1(pass1)
+    assert "Pass 1" in prompt
+    assert "Unanswered Questions" in prompt
+
+
+if __name__ == "__main__":
+    tests = [
+        test_full_pipeline_dry_run,
+        test_short_circuit_on_kill,
+        test_principles_only_mode,
+        test_with_mock_search_extract,
+        test_constrained_prompt_has_sections,
+        test_graceful_degradation_on_search_failure,
+        test_trace_captures_all_steps,
+        test_trace_has_timing,
+        test_result_serializable,
+        test_budget_limits_questions,
+        test_enriched_features_passed_to_pass2,
+        test_llm_constraint_gen_from_pass1,
+    ]
+
+    passed = 0
+    failed = 0
+    for test in tests:
+        try:
+            test()
+            print(f"  PASS {test.__name__}")
+            passed += 1
+        except Exception as e:
+            print(f"  FAIL {test.__name__}: {e}")
+            failed += 1
+
+    print(f"\n{'='*50}")
+    print(f"Results: {passed} passed, {failed} failed, {len(tests)} total")
+    if failed > 0:
+        sys.exit(1)

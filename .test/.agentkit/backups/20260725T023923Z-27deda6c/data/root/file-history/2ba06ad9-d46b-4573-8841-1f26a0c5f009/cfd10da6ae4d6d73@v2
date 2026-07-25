@@ -1,0 +1,108 @@
+# Full stack: ClickHouse + NATS + Go API + seed + Next.js dashboard
+# Usage: docker compose up -d && docker compose --profile seed up seed
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    environment:
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  nats:
+    image: nats:2.10-alpine
+    command: ["--jetstream", "--store_dir", "/data"]
+    ports:
+      - "4222:4222"
+    volumes:
+      - nats-data:/data
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nc -z localhost 4222 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  migrate:
+    build:
+      context: ./cloud
+      dockerfile: Dockerfile.migrate
+    environment:
+      CLICKHOUSE_DSN: "clickhouse://clickhouse:9000/"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
+  ingest:
+    build: ./cloud
+    ports:
+      - "8080:8080"
+    environment:
+      CLICKHOUSE_DSN: "clickhouse://clickhouse:9000/codeflow"
+      NATS_URL: "nats://nats:4222"
+      LISTEN_ADDR: ":8080"
+      CORS_ORIGIN: "http://localhost:3000"
+      CODEFLOW_AUTH_DISABLED: "true"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  writer:
+    build:
+      context: ./cloud
+      dockerfile: Dockerfile.writer
+    environment:
+      CLICKHOUSE_DSN: "clickhouse://clickhouse:9000/codeflow"
+      NATS_URL: "nats://nats:4222"
+      CODEFLOW_AUTH_DISABLED: "true"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  seed:
+    build:
+      context: ./cloud
+      dockerfile: Dockerfile.seed
+    environment:
+      CODEFLOW_API_URL: "http://ingest:8080"
+    depends_on:
+      ingest:
+        condition: service_started
+    profiles:
+      - seed
+
+  dashboard:
+    build: ./dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      CODEFLOW_AUTH_DISABLED: "true"
+      NEXT_PUBLIC_CODEFLOW_AUTH_DISABLED: "true"
+      NEXT_PUBLIC_API_URL: "http://localhost:8080"
+      NEXT_PUBLIC_TENANT_ID: "demo-tenant"
+    depends_on:
+      ingest:
+        condition: service_started
+
+volumes:
+  clickhouse-data:
+  nats-data:

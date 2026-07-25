@@ -1,0 +1,153 @@
+---
+phase: 3A
+title: "Proximity & Diversity Enforcer"
+status: pending
+priority: P1
+effort: "3h"
+dependencies: [3]
+---
+
+# Phase 3A: Proximity & Diversity Enforcer
+
+## Overview
+
+Prevent the hypothesis pool from converging too fast to a single archetype during refinement rounds. Co-Scientist's Proximity agent ensures diverse ideas survive even when one type dominates early tournament rounds.
+
+**Problem being solved:** Without diversity enforcement, refinement loop tends to produce 3 variations of the same idea. Example: if "SaaS tool" type wins Round 1, the EVOLVE step merges other SaaS ideas together, and by Round 3 all top-3 are SaaS variants — missing the regulatory arbitrage opportunity that was ranked #4.
+
+## Requirements
+
+- Functional: Each hypothesis tagged with archetype (e.g., SaaS_TOOL, ARBITRAGE, MARKETPLACE, SERVICE, CONTENT, INFRASTRUCTURE)
+- Functional: Top-3 CANNOT all be same archetype — if tournament produces 3 of same type, bump the #3 and promote highest-ranked different-archetype hypothesis
+- Functional: Proximity detection: hypotheses addressing same customer_segment + same mechanism = "proximate" — proximate pairs penalized in Elo by -50 points before ranking
+- Functional: Diversity report per round: count of archetypes represented in top-5, log if diversity dropped vs previous round
+- Non-functional: Implemented as a POST-TOURNAMENT filter, not modifying Elo engine itself
+- Non-functional: Deterministic Python, no LLM call needed
+
+## Architecture
+
+### Archetype Classification
+
+```python
+ARCHETYPES = {
+    "SAAS_TOOL": ["software", "platform", "tool", "dashboard", "app", "API"],
+    "ARBITRAGE": ["arbitrage", "price gap", "spread", "delta", "cross-border"],
+    "MARKETPLACE": ["marketplace", "matching", "connect", "two-sided", "exchange"],
+    "SERVICE": ["agency", "consulting", "freelance", "done-for-you", "service"],
+    "CONTENT": ["course", "training", "community", "newsletter", "media"],
+    "INFRASTRUCTURE": ["compliance", "certification", "testing", "audit", "infrastructure"],
+    "INTELLIGENCE": ["data", "intelligence", "insight", "research", "advisory"],
+}
+
+def classify_archetype(hypothesis_text: str) -> str:
+    """Classify by keyword matching. Returns archetype with highest keyword hits."""
+```
+
+### Proximity Detection
+
+Two hypotheses are "proximate" if:
+1. Same archetype AND
+2. Same target customer segment (extracted from hypothesis text) AND
+3. Cosine similarity of mechanism descriptions > 0.7 (simple word overlap metric, no embeddings)
+
+Proximate pairs receive Elo PENALTY before final ranking:
+
+```python
+PROXIMITY_PENALTY = 50  # Elo points
+
+def apply_proximity_penalties(rankings: list[RankedHypothesis]) -> list[RankedHypothesis]:
+    """For each proximate pair in top-5, penalize the lower-ranked one by -50 Elo."""
+```
+
+### Diversity Tax on Top-3
+
+```python
+def enforce_top3_diversity(rankings: list[RankedHypothesis]) -> list[RankedHypothesis]:
+    """
+    If top-3 all same archetype:
+      - Keep #1 and #2
+      - Replace #3 with highest-ranked DIFFERENT archetype from #4-#10
+      - Log the swap with reason
+    If top-3 has 2 of same:
+      - No action (2 of same type is acceptable)
+    """
+```
+
+### Integration with Refinement Loop
+
+```
+Refinement Round N:
+  ... STRENGTHEN → ATTACK → EVOLVE ...
+  → RE-TOURNAMENT (Elo debate)
+  → PROXIMITY PENALTY (penalize proximate pairs)
+  → DIVERSITY TAX (enforce top-3 variety)
+  → CONVERGENCE CHECK (on diversity-adjusted ranking)
+```
+
+Proximity runs AFTER each tournament round, BEFORE convergence check. This prevents false convergence where top-3 looks "stable" but it's because 3 near-identical ideas dominated.
+
+### Diversity Metrics
+
+```python
+@dataclass
+class DiversityReport:
+    round_number: int
+    archetype_counts: dict[str, int]       # {"SAAS_TOOL": 3, "ARBITRAGE": 1, ...}
+    unique_archetypes_in_top5: int          # target: >= 3
+    proximity_penalties_applied: int
+    diversity_swaps_applied: int            # top-3 enforcements
+    diversity_score: float                  # unique_archetypes / 5 (for top-5)
+
+    @property
+    def is_healthy(self) -> bool:
+        return self.unique_archetypes_in_top5 >= 3
+```
+
+## Related Code Files
+
+- Create: `.claude/lib/intelligence/refinement/proximity_enforcer.py` (classify, penalty, diversity tax, report)
+- Create: `.claude/lib/intelligence/refinement/tests/test_proximity_enforcer.py`
+- Modify: `.claude/lib/intelligence/refinement/convergence_checker.py` — convergence check receives diversity-adjusted rankings
+
+## Implementation Steps
+
+1. Create `proximity_enforcer.py`:
+   - `ARCHETYPES` dict with keyword lists
+   - `classify_archetype(text)` — keyword-count classification
+   - `word_overlap_similarity(text_a, text_b)` — simple word-set Jaccard similarity
+   - `detect_proximate_pairs(hypotheses)` — find pairs with same archetype + segment + high similarity
+   - `apply_proximity_penalties(rankings)` — penalize lower-ranked member of each pair
+   - `enforce_top3_diversity(rankings)` — swap if all top-3 same archetype
+   - `DiversityReport` dataclass
+   - `generate_report(rankings, round_number)` — count archetypes, score diversity
+2. Write unit tests:
+   - `test_classify_saas` — "AI dashboard tool" → SAAS_TOOL
+   - `test_classify_arbitrage` — "cross-border price gap" → ARBITRAGE
+   - `test_classify_unknown` — unclassifiable → "OTHER"
+   - `test_proximate_pair_detected` — same archetype + high similarity → proximate
+   - `test_non_proximate_different_archetype` — different archetype → not proximate
+   - `test_penalty_applied_to_lower_ranked` — proximate pair → lower one penalized
+   - `test_diversity_swap_triggered` — 3 SAAS_TOOL in top-3 → #3 replaced
+   - `test_diversity_no_swap_two_same` — 2 SAAS_TOOL + 1 ARBITRAGE → no swap
+   - `test_diversity_report_healthy` — >=3 unique archetypes → healthy
+   - `test_diversity_report_unhealthy` — <3 unique archetypes → not healthy
+3. Modify `convergence_checker.py`:
+   - `check_convergence()` now receives `diversity_adjusted_rankings` instead of raw rankings
+   - No change to convergence logic itself — just operates on adjusted input
+
+## Success Criteria
+
+- [ ] Archetype classification covers 7 business model types
+- [ ] Proximate pairs detected by archetype + segment + word overlap
+- [ ] Proximity penalty applied to lower-ranked member of each pair
+- [ ] Top-3 diversity enforced: all-same-archetype triggers swap
+- [ ] DiversityReport tracks archetype counts and health per round
+- [ ] 10+ unit tests pass
+- [ ] Convergence check operates on diversity-adjusted rankings
+
+## Risk Assessment
+
+- **Risk:** Keyword-based archetype classification too crude — misclassifies hypotheses
+  - Mitigation: 7 archetypes is coarse enough that keyword matching works well. Ambiguous cases get "OTHER" which never triggers proximity penalty. Future: LLM-based classification for precision.
+- **Risk:** Diversity tax forces a weak hypothesis into top-3 just for variety
+  - Mitigation: Only triggers when ALL THREE top spots are same archetype. The replacement is the highest-ranked different-archetype hypothesis — it still had to survive tournament debate. If the best different-archetype is ranked #8, that's a signal the market really is dominated by one model type — log a warning but still enforce diversity to prevent blind spots.

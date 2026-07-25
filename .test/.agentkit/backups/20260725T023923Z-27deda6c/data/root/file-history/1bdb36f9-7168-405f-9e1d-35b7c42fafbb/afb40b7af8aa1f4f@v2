@@ -1,0 +1,73 @@
+"""
+ChainAssembler — chains resolved atomic answers, detects contradictions,
+computes aggregate confidence via geometric mean.
+"""
+
+import math
+from dataclasses import dataclass, field
+
+from .atomic_resolver import Resolution
+from .contradiction_detector import ContradictionDetector, Contradiction
+
+
+@dataclass
+class ChainResult:
+    resolved: list[Resolution]
+    gaps: list[Resolution]
+    contradictions: list[Contradiction]
+    aggregate_confidence: float
+    coverage_ratio: float
+    weighted_score: float = 0.0
+
+    def to_dict(self) -> dict:
+        return {
+            "resolved_count": len(self.resolved),
+            "gap_count": len(self.gaps),
+            "contradiction_count": len(self.contradictions),
+            "aggregate_confidence": round(self.aggregate_confidence, 3),
+            "coverage_ratio": round(self.coverage_ratio, 3),
+            "weighted_score": round(self.weighted_score, 3),
+            "resolved": [r.to_dict() for r in self.resolved],
+            "gaps": [r.to_dict() for r in self.gaps],
+            "contradictions": [c.to_dict() for c in self.contradictions],
+        }
+
+
+class ChainAssembler:
+    def __init__(self):
+        self.contradiction_detector = ContradictionDetector()
+
+    def assemble(self, resolutions: list[Resolution]) -> ChainResult:
+        resolved = [r for r in resolutions if r.status == "RESOLVED"]
+        gaps = [r for r in resolutions if r.status == "GAP"]
+
+        contradictions = self.contradiction_detector.detect(resolved)
+        aggregate_conf = self._geometric_mean([r.confidence for r in resolved])
+        total = len(resolved) + len(gaps)
+        coverage = len(resolved) / total if total > 0 else 0.0
+        weighted = self._weighted_score(resolved)
+
+        return ChainResult(
+            resolved=resolved,
+            gaps=gaps,
+            contradictions=contradictions,
+            aggregate_confidence=aggregate_conf,
+            coverage_ratio=coverage,
+            weighted_score=weighted,
+        )
+
+    def _geometric_mean(self, values: list[float]) -> float:
+        if not values:
+            return 0.0
+        positive = [v for v in values if v > 0]
+        if not positive:
+            return 0.0
+        return math.exp(sum(math.log(v) for v in positive) / len(positive))
+
+    def _weighted_score(self, resolved: list[Resolution]) -> float:
+        if not resolved:
+            return 0.0
+        total_weight = sum(r.question.weight for r in resolved)
+        if total_weight == 0:
+            return 0.0
+        return sum(r.confidence * r.question.weight for r in resolved) / total_weight

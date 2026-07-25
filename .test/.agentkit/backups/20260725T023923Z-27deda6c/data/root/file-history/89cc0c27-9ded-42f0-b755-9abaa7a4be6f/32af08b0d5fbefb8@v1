@@ -1,0 +1,764 @@
+mod auth;
+mod budget_cmd;
+mod cost_cmd;
+mod hooks;
+mod paths;
+mod stats;
+mod sync;
+mod wrap;
+
+use clap::{Parser, Subcommand};
+use tracing_subscriber::EnvFilter;
+
+#[derive(Parser)]
+#[command(name = "codeflow", version, about = "AI coding cost intelligence engine")]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Install Claude Code hooks
+    Init {
+        /// Install globally (~/.claude/settings.json)
+        #[arg(short, long)]
+        global: bool,
+    },
+    /// Remove Claude Code hooks
+    Uninit {
+        /// Remove from global settings
+        #[arg(short, long)]
+        global: bool,
+    },
+    /// Wrap and compress a command's output
+    Wrap {
+        /// Command and arguments to execute
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        command: Vec<String>,
+    },
+    /// Show local savings statistics
+    Stats {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+        /// Number of days to include (default: 90)
+        #[arg(long)]
+        days: Option<i64>,
+        /// Show waste pattern analysis
+        #[arg(long)]
+        waste: bool,
+    },
+    /// Sync local events to cloud
+    Sync {
+        /// Sync once and exit (default: continuous daemon)
+        #[arg(long)]
+        once: bool,
+        /// API URL override
+        #[arg(long, env = "CODEFLOW_API_URL")]
+        api_url: Option<String>,
+    },
+    /// Authenticate with CODEFLOW cloud
+    Login {
+        /// Auth server URL override
+        #[arg(long, env = "CODEFLOW_AUTH_URL")]
+        auth_url: Option<String>,
+    },
+    /// Show authentication status
+    Status,
+    /// Remove stored credentials
+    Logout,
+    /// Dry-run model routing classification
+    Route {
+        /// Command to classify (quoted string)
+        command: String,
+        /// Simulated context token count
+        #[arg(long, default_value = "5000")]
+        tokens: u64,
+        /// File paths involved (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        files: Vec<String>,
+    },
+    /// Manage the dedup cache
+    Cache {
+        #[command(subcommand)]
+        action: CacheAction,
+    },
+    /// Hook entry points (called by Claude Code, not by users)
+    #[command(hide = true)]
+    Hook {
+        #[command(subcommand)]
+        action: HookAction,
+    },
+    /// Show AI attribution for a file (line-by-line provenance)
+    Blame {
+        /// File to show attribution for
+        file: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+        /// Filter by session ID
+        #[arg(long)]
+        session: Option<String>,
+        /// Export as Agent Trace v0.1.0 JSON
+        #[arg(long)]
+        trace: bool,
+    },
+    /// Show AI cost attribution (per-session, per-PR, per-model breakdown)
+    Cost {
+        /// Group by: pr, dev, model, day, session
+        #[arg(long)]
+        by: Option<String>,
+        /// Show cost detail for a specific PR
+        #[arg(long)]
+        pr: Option<String>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+        /// Number of days to include (default: 90)
+        #[arg(long)]
+        days: Option<i64>,
+        #[command(subcommand)]
+        action: Option<CostAction>,
+    },
+    /// Show budget governance status and spending limits
+    Budget {
+        #[command(subcommand)]
+        action: BudgetAction,
+    },
+    /// Check for updates
+    Update,
+}
+
+#[derive(Subcommand)]
+enum CostAction {
+    /// Manually record a cost entry
+    Record {
+        /// Session ID
+        #[arg(long)]
+        session: String,
+        /// Model ID (e.g., claude-opus-4)
+        #[arg(long)]
+        model: String,
+        /// Input tokens
+        #[arg(long)]
+        input_tokens: u64,
+        /// Output tokens
+        #[arg(long)]
+        output_tokens: u64,
+        /// Override calculated cost (USD)
+        #[arg(long)]
+        cost: Option<f64>,
+    },
+}
+
+#[derive(Subcommand)]
+enum CacheAction {
+    /// Clear the dedup cache
+    Clear,
+    /// Show cache statistics
+    Info,
+}
+
+#[derive(Subcommand)]
+enum BudgetAction {
+    /// Show current spend vs limits
+    Status {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show spending history
+    History {
+        /// Number of days (default: policy period)
+        #[arg(long)]
+        days: Option<i64>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum HookAction {
+    /// PreToolUse hook handler
+    PreToolUse,
+    /// PostToolUse hook handler
+    PostToolUse,
+}
+
+fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .with_writer(std::io::stderr)
+        .init();
+
+    let cli = Cli::parse();
+
+    let result = match cli.command {
+        Commands::Init { global } => hooks::install(global),
+        Commands::Uninit { global } => hooks::uninstall(global),
+        Commands::Wrap { command } => wrap::execute(&command),
+        Commands::Stats { json, days, waste } => stats::show(json, days, waste),
+        Commands::Sync { once, api_url } => {
+            let mut config = sync::SyncConfig { one_shot: once, ..Default::default() };
+            if let Some(url) = api_url {
+                config.api_url = url;
+            }
+            sync::run(config)
+        }
+        Commands::Login { auth_url } => auth::login(auth_url.as_deref()),
+        Commands::Status => auth::status(),
+        Commands::Logout => auth::logout(),
+        Commands::Route { command, tokens, files } => handle_route(&command, tokens, &files),
+
+        Commands::Blame { file, json, session, trace } => {
+            handle_blame(&file, json, session.as_deref(), trace)
+        }
+        Commands::Cost { by, pr, json, days, action } => {
+            if let Some(act) = action {
+                match act {
+                    CostAction::Record { session, model, input_tokens, output_tokens, cost } => {
+                        cost_cmd::record_manual(&session, &model, input_tokens, output_tokens, cost)
+                    }
+                }
+            } else {
+                cost_cmd::show(by.as_deref(), pr.as_deref(), json, days)
+            }
+        }
+        Commands::Budget { action } => match action {
+            BudgetAction::Status { json } => budget_cmd::status(json),
+            BudgetAction::History { days, json } => budget_cmd::history(days, json),
+        },
+        Commands::Cache { action } => handle_cache(action),
+        Commands::Hook { action } => handle_hook(action),
+        Commands::Update => {
+            println!("codeflow {}", env!("CARGO_PKG_VERSION"));
+            println!("commit:  {}", option_env!("CODEFLOW_GIT_SHA").unwrap_or("dev"));
+            println!("target:  {}", env!("TARGET"));
+            println!();
+            println!("Update: download latest from https://github.com/codeflow-dev/codeflow/releases");
+            Ok(())
+        }
+    };
+
+    if let Err(e) = result {
+        tracing::error!("{:#}", e);
+        std::process::exit(1);
+    }
+}
+
+fn handle_blame(file: &str, json: bool, session: Option<&str>, trace: bool) -> anyhow::Result<()> {
+    let db_path = paths::db_path();
+    let store = codeflow_core::provenance::ProvenanceStore::open(&db_path)?;
+
+    let project_dir = std::env::current_dir().unwrap_or_default();
+    let abs_path = if std::path::Path::new(file).is_absolute() {
+        std::path::PathBuf::from(file)
+    } else {
+        project_dir.join(file)
+    };
+
+    let rel_path = abs_path
+        .strip_prefix(&project_dir)
+        .map(|r| r.to_string_lossy().replace('\\', "/"))
+        .unwrap_or_else(|_| file.to_string());
+
+    let mut records = store.query_by_file(&rel_path)?;
+    if let Some(sid) = session {
+        records.retain(|r| r.session_id == sid);
+    }
+
+    if trace {
+        println!("{}", codeflow_core::agent_trace::export_agent_trace(&records)?);
+        return Ok(());
+    }
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&records)?);
+        return Ok(());
+    }
+
+    if records.is_empty() {
+        println!("No provenance records for {}", rel_path);
+        return Ok(());
+    }
+
+    let file_content = std::fs::read_to_string(&abs_path).unwrap_or_default();
+    let lines: Vec<&str> = file_content.lines().collect();
+
+    println!("Provenance: {} ({} records)\n", rel_path, records.len());
+
+    for rec in &records {
+        let ts = chrono::DateTime::from_timestamp_millis(rec.timestamp_ms)
+            .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+            .unwrap_or_else(|| "?".to_string());
+
+        let ct_label = match rec.contributor_type {
+            codeflow_core::provenance::ContributorType::Human => "\x1b[32mhuman\x1b[0m",
+            codeflow_core::provenance::ContributorType::Ai => "\x1b[33mai\x1b[0m",
+            codeflow_core::provenance::ContributorType::Mixed => "\x1b[36mmixed\x1b[0m",
+            codeflow_core::provenance::ContributorType::Unknown => "\x1b[90munknown\x1b[0m",
+        };
+
+        println!(
+            "  {} | {} | {} | L{}-{} | {}",
+            ts, ct_label, rec.model_id, rec.start_line, rec.end_line,
+            &rec.code_hash[..rec.code_hash.len().min(12)]
+        );
+    }
+
+    if !lines.is_empty() {
+        println!("\nLine attribution:");
+        for (i, line) in lines.iter().enumerate() {
+            let line_num = (i + 1) as u32;
+            let attr = records.iter().find(|r| {
+                r.start_line <= line_num && r.end_line >= line_num
+            });
+            let prefix = match attr {
+                Some(r) => match r.contributor_type {
+                    codeflow_core::provenance::ContributorType::Ai => "\x1b[33m AI \x1b[0m",
+                    codeflow_core::provenance::ContributorType::Human => "\x1b[32m HU \x1b[0m",
+                    codeflow_core::provenance::ContributorType::Mixed => "\x1b[36m MX \x1b[0m",
+                    codeflow_core::provenance::ContributorType::Unknown => "\x1b[90m ?? \x1b[0m",
+                },
+                None => "\x1b[90m -- \x1b[0m",
+            };
+            println!("{:>4} |{}| {}", line_num, prefix, line);
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_route(command: &str, tokens: u64, files: &[String]) -> anyhow::Result<()> {
+    let cmd = command.to_string();
+    if cmd.is_empty() {
+        anyhow::bail!("no command provided");
+    }
+
+    let file_refs: Vec<&str> = files.iter().map(|f| f.as_str()).collect();
+    let extensions = codeflow_core::router::extensions_from_paths(&file_refs);
+
+    let input = codeflow_core::router::RoutingInput {
+        command: cmd.clone(),
+        context_tokens: tokens,
+        file_extensions: extensions,
+        session_event_count: 0,
+    };
+
+    let decision = codeflow_core::router::classify(&input);
+
+    println!("Command:    {}", cmd);
+    println!("Tokens:     {}", tokens);
+    println!("Score:      {:.2}", decision.score);
+    println!("Complexity: {:?}", decision.complexity);
+    println!("Route to:   {} (${}/1M tokens)", decision.tier.name(), decision.tier.cost_per_million_tokens());
+    println!("Savings:    {:.0}% vs Opus", decision.estimated_savings_pct);
+    if !decision.reason.is_empty() {
+        println!("Reason:     {}", decision.reason);
+    }
+
+    Ok(())
+}
+
+fn handle_cache(action: CacheAction) -> anyhow::Result<()> {
+    let db_path = paths::db_path();
+    match action {
+        CacheAction::Clear => {
+            if db_path.exists() {
+                let cache = codeflow_core::dedup::DedupCache::open(&db_path, "")?;
+                let removed = cache.clear()?;
+                println!("Cleared {} cache entries.", removed);
+            } else {
+                println!("Cache is empty.");
+            }
+            Ok(())
+        }
+        CacheAction::Info => {
+            if db_path.exists() {
+                let cache = codeflow_core::dedup::DedupCache::open(&db_path, "")?;
+                let count = cache.entry_count()?;
+                println!("Cache entries: {}", count);
+                println!("Database: {}", db_path.display());
+            } else {
+                println!("No cache database found.");
+            }
+            Ok(())
+        }
+    }
+}
+
+fn handle_hook(action: HookAction) -> anyhow::Result<()> {
+    match action {
+        HookAction::PreToolUse => handle_pre_tool_use(),
+        HookAction::PostToolUse => handle_post_tool_use(),
+    }
+}
+
+fn capture_provenance(
+    session_id: &str,
+    tool_name: &str,
+    tool_input: &serde_json::Value,
+) -> anyhow::Result<()> {
+    let db_path = paths::db_path();
+    let store = codeflow_core::provenance::ProvenanceStore::open(&db_path)?;
+    let keypair = codeflow_core::attestation::load_or_generate()?;
+    let project_dir = std::env::current_dir().unwrap_or_default();
+
+    // Step 1: diff against previous snapshots → record provenance for prior tool's changes
+    let changes = codeflow_core::provenance::detect_changes(
+        &project_dir,
+        session_id,
+        &store,
+        &keypair,
+    )?;
+    for rec in &changes {
+        store.record(rec)?;
+        // Update snapshot to current state after recording
+        if let Ok(hash) = codeflow_core::content_hash::hash_file(&project_dir.join(&rec.file_path)) {
+            let mtime = codeflow_core::util::get_file_mtime_ns(
+                project_dir.join(&rec.file_path).to_str().unwrap_or(""),
+            )
+            .unwrap_or(0);
+            store.save_snapshot(session_id, &rec.file_path, &hash, mtime)?;
+        }
+    }
+
+    // Step 2: snapshot files targeted by the current tool for next comparison
+    let files_to_snapshot = extract_target_files(tool_name, tool_input, &project_dir);
+    if !files_to_snapshot.is_empty() {
+        codeflow_core::provenance::snapshot_files(
+            &project_dir,
+            session_id,
+            &store,
+            &files_to_snapshot,
+        )?;
+    }
+
+    Ok(())
+}
+
+fn extract_target_files(
+    tool_name: &str,
+    tool_input: &serde_json::Value,
+    project_dir: &std::path::Path,
+) -> Vec<String> {
+    let mut files = Vec::new();
+    match tool_name {
+        "Edit" | "Write" | "MultiEdit" | "NotebookEdit" => {
+            if let Some(fp) = tool_input.get("file_path").and_then(|v| v.as_str()) {
+                if let Some(rel) = to_relative(fp, project_dir) {
+                    files.push(rel);
+                }
+            }
+        }
+        "Bash" => {
+            // Bash can modify files; we can't know which ones ahead of time.
+            // Snapshot tracked files that git reports as modified after the command runs.
+            // Since PreToolUse fires BEFORE execution, we can only snapshot what's
+            // already tracked. The diff-on-next-PreToolUse pattern handles detection.
+        }
+        _ => {}
+    }
+    files
+}
+
+fn to_relative(abs_path: &str, project_dir: &std::path::Path) -> Option<String> {
+    let p = std::path::Path::new(abs_path);
+    p.strip_prefix(project_dir)
+        .ok()
+        .map(|r| r.to_string_lossy().replace('\\', "/"))
+}
+
+fn handle_pre_tool_use() -> anyhow::Result<()> {
+    let input = match read_stdin() {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("[codeflow] hook health-check: stdin read failed: {}", e);
+            println!("{{}}");
+            return Ok(());
+        }
+    };
+
+    let parsed: serde_json::Value = match serde_json::from_str(&input) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!(
+                "[codeflow] hook health-check: invalid JSON from Claude Code: {}",
+                e
+            );
+            println!("{{}}");
+            return Ok(());
+        }
+    };
+
+    if !parsed.is_object() {
+        eprintln!(
+            "[codeflow] hook health-check: expected JSON object, got {}",
+            parsed
+        );
+        println!("{{}}");
+        return Ok(());
+    }
+
+    let tool_name = match parsed.get("tool_name").and_then(|v| v.as_str()) {
+        Some(name) => name,
+        None => {
+            println!("{{}}");
+            return Ok(());
+        }
+    };
+
+    let tool_input = match parsed.get("tool_input") {
+        Some(v) if v.is_object() => v,
+        _ => {
+            println!("{{}}");
+            return Ok(());
+        }
+    };
+
+    // Log to session + dedup check (single connection, best-effort)
+    let session_id = codeflow_core::util::session_id();
+    let file_path = codeflow_core::session::extract_file_path(tool_name, tool_input);
+    let session_log = open_session_log(&session_id).ok();
+
+    if let Some(ref sl) = session_log {
+        let tool_input_str = serde_json::to_string(tool_input).unwrap_or_default();
+        if let Ok(row_id) =
+            sl.record_pre(tool_name, &tool_input_str, file_path.as_deref())
+        {
+            sl.write_pre_id(tool_name, file_path.as_deref(), row_id);
+        }
+    }
+
+    if std::env::var("CODEFLOW_PROVENANCE").as_deref() != Ok("0") {
+        let _ = capture_provenance(&session_id, tool_name, tool_input);
+    }
+
+    if std::env::var("CODEFLOW_BUDGET").as_deref() != Ok("0") {
+        match check_budget() {
+            Ok(codeflow_core::budget_policy::Verdict::Block(reason)) => {
+                let response = serde_json::json!({
+                    "error": format!("budget_exceeded: {}", reason)
+                });
+                println!("{}", serde_json::to_string(&response)?);
+                return Ok(());
+            }
+            Ok(codeflow_core::budget_policy::Verdict::Warn(msg)) => {
+                eprintln!("[codeflow] ⚠ {}", msg);
+            }
+            Ok(codeflow_core::budget_policy::Verdict::Allow) => {}
+            Err(e) => {
+                eprintln!("[codeflow] budget check error (fail-open): {}", e);
+            }
+        }
+    }
+
+    match tool_name {
+        "Bash" => {
+            if let Some(command) = tool_input.get("command").and_then(|c| c.as_str()) {
+                if should_wrap(command) {
+                    let codeflow_bin = std::env::current_exe()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_else(|_| "codeflow".to_string());
+                    let quoted_bin = shell_quote(&codeflow_bin);
+                    let rewritten = format!("{} wrap {}", quoted_bin, command);
+                    let response = serde_json::json!({
+                        "tool_input": {
+                            "command": rewritten
+                        }
+                    });
+                    println!("{}", serde_json::to_string(&response)?);
+                    return Ok(());
+                }
+            }
+            println!("{{}}");
+        }
+        "Read" | "Grep" | "Glob" => {
+            if let Some(ref session_log) = session_log {
+                let window_secs = std::env::var("CODEFLOW_DEDUP_WINDOW_SECS")
+                    .ok()
+                    .and_then(|v| v.parse().ok());
+                let dedup =
+                    codeflow_core::read_dedup::ReadDedup::new(session_log, window_secs);
+                let tool_input_str = serde_json::to_string(tool_input).unwrap_or_default();
+
+                let result = match tool_name {
+                    "Read" => {
+                        if let Some(fp) = file_path.as_deref() {
+                            dedup.check_read(fp)
+                        } else {
+                            codeflow_core::read_dedup::ReadDedupResult::Miss
+                        }
+                    }
+                    "Grep" => dedup.check_grep(&tool_input_str),
+                    "Glob" => dedup.check_glob(&tool_input_str),
+                    _ => codeflow_core::read_dedup::ReadDedupResult::Miss,
+                };
+
+                match result {
+                    codeflow_core::read_dedup::ReadDedupResult::Hit {
+                        context_message,
+                        tokens_saved,
+                    } => {
+                        let response = serde_json::json!({
+                            "additionalContext": context_message
+                        });
+                        println!("{}", serde_json::to_string(&response).unwrap_or_default());
+
+                        // Track savings
+                        if tokens_saved > 0 {
+                            if let Ok(tracking) =
+                                codeflow_core::tracking::TrackingDb::open(&paths::db_path())
+                            {
+                                let _ = tracking.record(
+                                    &codeflow_core::tracking::TrackingEvent {
+                                        command: tool_name.to_string(),
+                                        input_tokens: tokens_saved,
+                                        output_tokens: 0,
+                                        tokens_saved,
+                                        layer:
+                                            codeflow_core::tracking::SavingsLayer::ReadDedup,
+                                        project: std::env::current_dir()
+                                            .unwrap_or_default()
+                                            .to_string_lossy()
+                                            .to_string(),
+                                        session_id: session_id.clone(),
+                                    },
+                                );
+                            }
+                        }
+                        return Ok(());
+                    }
+                    codeflow_core::read_dedup::ReadDedupResult::Miss => {
+                        println!("{{}}");
+                    }
+                }
+            } else {
+                println!("{{}}");
+            }
+        }
+        _ => {
+            println!("{{}}");
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_post_tool_use() -> anyhow::Result<()> {
+    let input = match read_stdin() {
+        Ok(s) => s,
+        Err(_) => {
+            println!("{{}}");
+            return Ok(());
+        }
+    };
+
+    let parsed: serde_json::Value = serde_json::from_str(&input).unwrap_or_default();
+    let tool_name = parsed.get("tool_name").and_then(|v| v.as_str());
+    let tool_result = parsed
+        .get("tool_result")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    if let Some(tn) = tool_name {
+        if matches!(tn, "Read" | "Grep" | "Glob" | "Bash") {
+            let file_path = parsed
+                .get("tool_input")
+                .and_then(|ti| codeflow_core::session::extract_file_path(tn, ti));
+
+            let session_id = codeflow_core::util::session_id();
+            if let Ok(session_log) = open_session_log(&session_id) {
+                if let Some(row_id) = session_log.take_pre_id(tn, file_path.as_deref()) {
+                    let capped = if tool_result.len() > 1_048_576 {
+                        &tool_result[..1_048_576]
+                    } else {
+                        tool_result
+                    };
+                    let content_hash =
+                        blake3::hash(capped.as_bytes()).to_hex().to_string();
+                    let token_count = codeflow_core::util::estimate_tokens(tool_result.len()) as i64;
+
+                    let mtime_ns =
+                        file_path.as_deref().and_then(codeflow_core::util::get_file_mtime_ns);
+
+                    let _ = session_log.record_post(
+                        row_id,
+                        &content_hash,
+                        token_count,
+                        mtime_ns,
+                    );
+                }
+            }
+        }
+    }
+
+    println!("{{}}");
+    Ok(())
+}
+
+fn open_session_log(
+    session_id: &str,
+) -> anyhow::Result<codeflow_core::session::SessionLog> {
+    let db_path = paths::db_path();
+    let data_dir = paths::data_dir();
+    std::fs::create_dir_all(&data_dir)?;
+    codeflow_core::session::SessionLog::open(&db_path, session_id)
+}
+
+
+
+fn should_wrap(command: &str) -> bool {
+    let first_word = command.split_whitespace().next().unwrap_or("");
+    let stem = std::path::Path::new(first_word)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(first_word);
+    let wrappable = [
+        "git", "npm", "npx", "pnpm", "yarn", "cargo", "pytest", "python",
+        "tsc", "eslint", "ls", "find", "grep", "cat", "head", "tail",
+        "docker", "kubectl", "go", "make", "pip", "ruff", "mypy", "vitest",
+    ];
+    wrappable.contains(&stem)
+}
+
+fn shell_quote(s: &str) -> String {
+    if s.contains(' ') || s.contains('\\') || s.contains('\'') || s.contains('"') {
+        format!("'{}'", s.replace('\'', "'\\''"))
+    } else {
+        s.to_string()
+    }
+}
+
+fn read_stdin() -> anyhow::Result<String> {
+    use std::io::Read;
+    let mut buf = String::new();
+    std::io::stdin().read_to_string(&mut buf)?;
+    Ok(buf)
+}
+
+fn check_budget() -> anyhow::Result<codeflow_core::budget_policy::Verdict> {
+    let config = codeflow_core::budget_policy::PolicyConfig::load();
+    let engine = codeflow_core::budget_policy::PolicyEngine::new(config.clone());
+    let days = Some(codeflow_core::budget_policy::period_days(&config.global.period));
+
+    let db_path = paths::data_dir().join("cost.db");
+    if !db_path.exists() {
+        return Ok(codeflow_core::budget_policy::Verdict::Allow);
+    }
+
+    let store = codeflow_core::cost::CostStore::open(&db_path)?;
+    let developer_id = codeflow_core::util::developer_id();
+    let project_dir = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+
+    let acc_dev = store.accumulated_cost_by_dev(&developer_id, days)?;
+    let acc_project = store.accumulated_cost(&project_dir, days)?;
+
+    Ok(engine.evaluate(&developer_id, &project_dir, acc_dev, acc_project))
+}
+

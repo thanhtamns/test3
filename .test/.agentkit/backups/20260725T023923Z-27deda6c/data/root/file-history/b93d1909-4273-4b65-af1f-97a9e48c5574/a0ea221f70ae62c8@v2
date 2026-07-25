@@ -1,0 +1,74 @@
+'use strict';
+
+const path = require('path');
+const { audit, detectType, evaluateRule, runChecks, loadSchema } = require('../../lib/audit-engine.cjs');
+const { reset } = require('../../lib/audit-history.cjs');
+
+beforeEach(() => reset());
+
+describe('evaluateRule', () => {
+  test('contains() matches case-insensitive', () => {
+    expect(evaluateRule('Hello World', "contains('hello')")).toBe(true);
+    expect(evaluateRule('Goodbye', "contains('hello')")).toBe(false);
+  });
+
+  test('not_contains() rejects matches', () => {
+    expect(evaluateRule('Clean output', "not_contains('TODO|PLACEHOLDER')")).toBe(true);
+    expect(evaluateRule('Has TODO here', "not_contains('TODO|PLACEHOLDER')")).toBe(false);
+  });
+
+  test('min_length() checks char count', () => {
+    expect(evaluateRule('short', 'min_length(200)')).toBe(false);
+    expect(evaluateRule('x'.repeat(201), 'min_length(200)')).toBe(true);
+  });
+
+  test('count_pattern() with comparison', () => {
+    expect(evaluateRule('option A, option B, option C', "count_pattern('option') >= 2")).toBe(true);
+    expect(evaluateRule('only one option', "count_pattern('option') >= 2")).toBe(false);
+  });
+
+  test('OR combinator works', () => {
+    expect(evaluateRule('has revenue info', "contains('revenue') OR contains('cost')")).toBe(true);
+    expect(evaluateRule('nothing relevant', "contains('revenue') OR contains('cost')")).toBe(false);
+  });
+
+  test('statement_ratio() detects question-heavy output', () => {
+    const questions = 'What? Why? How? When? Where? Who? Which? Really?';
+    expect(evaluateRule(questions, 'statement_ratio(0.3)')).toBe(false);
+    const statements = 'This works. The system processes. Data flows here. Output generated.';
+    expect(evaluateRule(statements, 'statement_ratio(0.3)')).toBe(true);
+  });
+
+  test('section_exists() finds markdown headers', () => {
+    expect(evaluateRule('# Problem Statement\nSome text', "section_exists('problem|issue')")).toBe(true);
+    expect(evaluateRule('Just plain text', "section_exists('problem|issue')")).toBe(false);
+  });
+});
+
+describe('detectType', () => {
+  test('returns default when no patterns match', () => {
+    expect(detectType('Hello, how are you?')).toBe('default');
+  });
+});
+
+describe('audit', () => {
+  test('passes short outputs (below min_length)', () => {
+    const result = audit('Short reply.');
+    expect(result.passed).toBe(true);
+    expect(result.reason).toBe('below_min_length');
+  });
+
+  test('catches TODO in substantive output', () => {
+    const text = 'x'.repeat(400) + '\n\nHere is the implementation:\n\n// TODO: finish this later\n\n' + 'y'.repeat(200);
+    const result = audit(text);
+    expect(result.passed).toBe(false);
+    expect(result.gaps.critical.length).toBeGreaterThan(0);
+    expect(result.gaps.critical.some(g => g.id === 'default_no_todo')).toBe(true);
+  });
+
+  test('passes clean substantive output', () => {
+    const text = `# Analysis Report\n\nThis is a comprehensive analysis of the market.\n\n## Findings\n\nThe data shows strong growth in Q1. Revenue increased by 45% according to the annual report.\n\n## Recommendations\n\nWe recommend expanding into the European market based on the following evidence.\n\n${'Additional context and detail. '.repeat(30)}`;
+    const result = audit(text);
+    expect(result.passed).toBe(true);
+  });
+});

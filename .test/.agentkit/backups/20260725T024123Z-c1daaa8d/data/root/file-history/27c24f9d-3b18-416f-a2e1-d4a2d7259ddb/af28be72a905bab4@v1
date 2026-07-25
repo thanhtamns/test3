@@ -1,0 +1,203 @@
+"""
+MicroQueryRunner — fires micro-queries to LLM via injectable research_fn.
+Enforces single-fact JSON responses. LLM = search engine only.
+"""
+
+import json
+import time
+from dataclasses import dataclass, field
+from typing import Callable, Optional
+
+from .micro_query_generator import MicroQuery
+
+MICRO_FACT_PROMPT = """Answer this factual question with a SINGLE data point.
+Format: {{"fact": "...", "value": "...", "confidence": 0.0-1.0, "source": "...", "date": "YYYY-MM-DD"}}
+
+Question: {question}
+Expected answer type: {expected_type}
+
+Rules:
+- ONE fact only. No reasoning, no explanation, no context.
+- If you don't know, return {{"fact": null, "confidence": 0.0}}
+- Include source URL or publication name if available."""
+
+BATCH_SIZE = 5
+BATCH_DELAY_S = 1.0
+
+
+@dataclass
+class MicroQueryResult:
+    query: MicroQuery
+    raw_response: str
+    parsed_fact: Optional[dict] = None
+    parse_success: bool = False
+
+    def to_dict(self) -> dict:
+        return {
+            "query": self.query.to_dict(),
+            "raw_response": self.raw_response[:500],
+            "parsed_fact": self.parsed_fact,
+            "parse_success": self.parse_success,
+        }
+
+
+@dataclass
+class RunnerStats:
+    queries_fired: int = 0
+    responses_received: int = 0
+    parse_successes: int = 0
+    parse_failures: int = 0
+
+    def to_dict(self) -> dict:
+        return {
+            "queries_fired": self.queries_fired,
+            "responses_received": self.responses_received,
+            "parse_successes": self.parse_successes,
+            "parse_failures": self.parse_failures,
+            "parse_success_rate": round(
+                self.parse_successes / max(self.responses_received, 1), 3
+            ),
+        }
+
+
+class MicroQueryRunner:
+    def __init__(
+        self,
+        research_fn: Callable[[str], str],
+        batch_size: int = BATCH_SIZE,
+        batch_delay: float = BATCH_DELAY_S,
+    ):
+        self.research_fn = research_fn
+        self.batch_size = batch_size
+        self.batch_delay = batch_delay
+
+    def run_batch(self, queries: list[MicroQuery]) -> tuple[list[MicroQueryResult], RunnerStats]:
+        results: list[MicroQueryResult] = []
+        stats = RunnerStats()
+
+        for i in range(0, len(queries), self.batch_size):
+            batch = queries[i : i + self.batch_size]
+
+            if i > 0 and self.batch_delay > 0:
+                time.sleep(self.batch_delay)
+
+            for query in batch:
+                result = self._run_single(query)
+                results.append(result)
+                stats.queries_fired += 1
+                if result.raw_response:
+                    stats.responses_received += 1
+                if result.parse_success:
+                    stats.parse_successes += 1
+                else:
+                    stats.parse_failures += 1
+
+        return results, stats
+
+    def _run_single(self, query: MicroQuery) -> MicroQueryResult:
+        prompt = MICRO_FACT_PROMPT.format(
+            question=query.text,
+            expected_type=query.expected_type,
+        )
+
+        try:
+            raw = self.research_fn(prompt)
+        except Exception:
+            return MicroQueryResult(query=query, raw_response="")
+
+        parsed = self._parse_response(raw)
+        if parsed:
+            return MicroQueryResult(
+                query=query,
+                raw_response=raw,
+                parsed_fact=parsed,
+                parse_success=True,
+            )
+
+        # Fallback: try prose extraction
+        parsed = self._parse_prose_fallback(raw, query)
+        return MicroQueryResult(
+            query=query,
+            raw_response=raw,
+            parsed_fact=parsed,
+            parse_success=parsed is not None,
+        )
+
+    def _parse_response(self, raw: str) -> Optional[dict]:
+        if not raw:
+            return None
+        text = raw.strip()
+        # Find JSON in response
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start < 0 or end <= start:
+            return None
+        try:
+            data = json.loads(text[start:end])
+        except json.JSONDecodeError:
+            return None
+
+        if "fact" not in data:
+            return None
+        if data["fact"] is None:
+            return None
+
+        return {
+            "fact": str(data["fact"]),
+            "value": data.get("value"),
+            "confidence": float(data.get("confidence", 0.5)),
+            "source": data.get("source"),
+            "date": data.get("date"),
+        }
+
+    def _parse_prose_fallback(self, raw: str, query: MicroQuery) -> Optional[dict]:
+        if not raw or len(raw.strip()) < 10:
+            return None
+        text = raw.strip()
+        if len(text) > 500:
+            text = text[:500]
+
+        confidence = self._score_prose_confidence(text)
+        return {
+            "fact": text,
+            "value": self._extract_numeric_from_prose(text),
+            "confidence": confidence,
+            "source": "prose_extraction",
+            "date": self._extract_date_from_prose(text),
+        }
+
+    def _score_prose_confidence(self, text: str) -> float:
+        import re
+        score = 0.35
+        signals = [
+            (re.compile(r'\$[\d,.]+[KMBkmb]?'), 0.12),
+            (re.compile(r'\d{4}'), 0.08),
+            (re.compile(r'https?://\S+'), 0.10),
+            (re.compile(r'[A-Z][a-z]+\s+[A-Z][a-z]+'), 0.08),
+            (re.compile(r'\d+%'), 0.10),
+            (re.compile(r'(?:founded|launched|started|raised|acquired|sold|earned)'), 0.07),
+            (re.compile(r'(?:million|billion|thousand|revenue|salary|fund|portfolio)'), 0.07),
+            (re.compile(r'(?:CEO|CTO|GP|LP|partner|director|founder|manager)', re.IGNORECASE), 0.05),
+        ]
+        for pattern, boost in signals:
+            if pattern.search(text):
+                score += boost
+        return min(0.85, score)
+
+    def _extract_numeric_from_prose(self, text: str) -> Optional[float]:
+        import re
+        match = re.search(r'\$\s*([\d,.]+)\s*([KMBkmb]?)', text)
+        if match:
+            num_str = match.group(1).replace(",", "")
+            try:
+                val = float(num_str)
+                multiplier = {"k": 1e3, "m": 1e6, "b": 1e9}.get(match.group(2).lower(), 1)
+                return val * multiplier
+            except ValueError:
+                pass
+        return None
+
+    def _extract_date_from_prose(self, text: str) -> Optional[str]:
+        import re
+        match = re.search(r'(20[12]\d)', text)
+        return f"{match.group(1)}-01-01" if match else None

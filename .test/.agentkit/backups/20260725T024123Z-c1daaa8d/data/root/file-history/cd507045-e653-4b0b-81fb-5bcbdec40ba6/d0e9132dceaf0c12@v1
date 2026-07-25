@@ -1,0 +1,127 @@
+"""Fitness Scorer — Brier-based composite scoring and evaluation for mutations."""
+
+from statistics import mean
+from typing import Optional
+
+from .registry import EvolutionRegistry
+from .schemas import EvalResult
+
+BRIER_WEIGHT = 0.6
+YIELD_WEIGHT = 0.25
+PARSE_WEIGHT = 0.15
+MIN_CASES = 5
+PROMOTION_THRESHOLD = 1.15
+ROLLBACK_THRESHOLD = 0.20
+ROLLBACK_WINDOW = 3
+
+
+class FitnessScorer:
+    def __init__(self, registry: EvolutionRegistry):
+        self.registry = registry
+
+    def compute_fitness(self, variant_id: int) -> Optional[float]:
+        """Compute composite fitness from all fitness_log entries for this variant."""
+        entries = self.registry.get_fitness_entries(variant_id)
+        if not entries:
+            return None
+
+        brier_scores = [e.brier_score for e in entries if e.brier_score is not None]
+        yields = [e.fact_yield for e in entries]
+        parses = [e.parse_success for e in entries]
+
+        if not yields:
+            return None
+
+        brier_component = (1.0 - mean(brier_scores)) if brier_scores else 0.5
+        yield_component = min(mean(yields) / 3.0, 1.0)  # normalize: 3 facts = max
+        parse_component = mean(parses)
+
+        return (
+            brier_component * BRIER_WEIGHT
+            + yield_component * YIELD_WEIGHT
+            + parse_component * PARSE_WEIGHT
+        )
+
+    def evaluate(self, mutation_id: int) -> EvalResult:
+        """Evaluate mutation: PENDING, PROMOTE, or KILL."""
+        variants = self.registry.get_variants(mutation_id)
+        if not variants:
+            return EvalResult(decision="KILL", reason="no variants")
+
+        original = next((v for v in variants if v.variant_index == 0), None)
+        if not original:
+            return EvalResult(decision="KILL", reason="no original variant")
+
+        if original.cases_tested < MIN_CASES:
+            return EvalResult(
+                decision="PENDING",
+                reason=f"insufficient cases ({original.cases_tested}/{MIN_CASES})",
+            )
+
+        scores: dict[int, float] = {}
+        for v in variants:
+            score = self.compute_fitness(v.id)
+            if score is not None:
+                scores[v.id] = score
+
+        original_score = scores.get(original.id)
+        if original_score is None or original_score == 0.0:
+            return EvalResult(decision="PENDING", reason="original not scored yet")
+
+        best_id = None
+        best_score = 0.0
+        for vid, score in scores.items():
+            if vid != original.id and score > best_score:
+                best_id = vid
+                best_score = score
+
+        if best_id and best_score >= original_score * PROMOTION_THRESHOLD:
+            improvement = (best_score - original_score) / original_score
+            return EvalResult(
+                decision="PROMOTE",
+                winner_id=best_id,
+                improvement_pct=round(improvement, 4),
+                reason=f"variant beats original by {improvement:.1%}",
+            )
+
+        return EvalResult(
+            decision="KILL",
+            reason=f"best={best_score:.3f} < threshold={original_score * PROMOTION_THRESHOLD:.3f}",
+        )
+
+    def check_regression(self, mutation_id: int) -> bool:
+        """Post-promotion regression check. Returns True if rollback needed."""
+        variants = self.registry.get_variants(mutation_id)
+        winner = next((v for v in variants if v.is_winner), None)
+        original = next((v for v in variants if v.variant_index == 0), None)
+
+        if not winner or not original:
+            return False
+
+        winner_entries = self.registry.get_fitness_entries(winner.id)
+        if len(winner_entries) < ROLLBACK_WINDOW:
+            return False
+
+        recent = winner_entries[-ROLLBACK_WINDOW:]
+        recent_yields = [e.fact_yield for e in recent]
+        recent_parses = [e.parse_success for e in recent]
+
+        all_entries = self.registry.get_fitness_entries(winner.id)
+        pre_promo = all_entries[:-ROLLBACK_WINDOW] if len(all_entries) > ROLLBACK_WINDOW else []
+
+        if not pre_promo:
+            return False
+
+        pre_yield = mean([e.fact_yield for e in pre_promo])
+        post_yield = mean(recent_yields)
+
+        if pre_yield > 0 and (pre_yield - post_yield) / pre_yield > ROLLBACK_THRESHOLD:
+            return True
+
+        pre_parse = mean([e.parse_success for e in pre_promo])
+        post_parse = mean(recent_parses)
+
+        if pre_parse > 0 and (pre_parse - post_parse) / pre_parse > ROLLBACK_THRESHOLD:
+            return True
+
+        return False

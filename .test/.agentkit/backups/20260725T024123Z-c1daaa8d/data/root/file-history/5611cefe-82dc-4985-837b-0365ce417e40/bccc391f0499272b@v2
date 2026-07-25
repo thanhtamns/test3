@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+"""
+LLM Constraint Generator — produces structured prompts that constrain
+downstream Wave 1 agents to RESPOND to evidence rather than hallucinate.
+"""
+
+from typing import Optional
+
+
+class LLMConstraintGenerator:
+    MAX_FACTS_PER_DIM = 5
+    MAX_PROMPT_CHARS = 6000
+
+    def generate(self, verdict, evidence) -> str:
+        sections = []
+
+        sections.append(f"## SBE Pre-Analysis: {verdict.verdict} (confidence: {verdict.confidence:.2f})")
+        sections.append(f"Total score: {verdict.total_score:.1f}/10")
+        sections.append("")
+
+        if verdict.kill_reasons:
+            sections.append("## Kill Signals from Principles")
+            for reason in verdict.kill_reasons[:5]:
+                sections.append(f"- {reason}")
+            sections.append("")
+
+        if verdict.bonus_reasons:
+            sections.append("## Positive Signals from Principles")
+            for reason in verdict.bonus_reasons[:5]:
+                sections.append(f"- {reason}")
+            sections.append("")
+
+        if evidence and hasattr(evidence, "dimensions"):
+            sections.append("## Verified Evidence (MUST RESPOND TO EACH)")
+            for dim_id, dim_ev in evidence.dimensions.items():
+                if dim_ev.fact_count == 0:
+                    continue
+                facts = dim_ev.facts[:self.MAX_FACTS_PER_DIM]
+                for f in facts:
+                    field_name = getattr(f, "field_name", "") if not isinstance(f, dict) else f.get("field_name", "")
+                    value = getattr(f, "value", "") if not isinstance(f, dict) else f.get("value", "")
+                    tier = getattr(f, "source_tier", "") if not isinstance(f, dict) else f.get("source_tier", "")
+                    if field_name and value:
+                        sections.append(f"- [{dim_id}] {field_name}: {value} (tier: {tier})")
+            sections.append("")
+
+        if evidence and hasattr(evidence, "cross_patterns") and evidence.cross_patterns:
+            sections.append("## Cross-Dimension Patterns")
+            for p in evidence.cross_patterns[:5]:
+                sections.append(f"- {p.name} (support: {p.support_count}, dims: {', '.join(p.dimensions)})")
+            sections.append("")
+
+        if evidence and hasattr(evidence, "kill_signals") and evidence.kill_signals:
+            sections.append("## KILL Signals from Evidence")
+            for ks in evidence.kill_signals[:5]:
+                sections.append(f"- {ks.get('signal', 'unknown')}: value={ks.get('value')}, threshold={ks.get('threshold')}")
+            sections.append("")
+
+        if evidence and hasattr(evidence, "dimensions"):
+            gaps = []
+            for dim_id, dim_ev in evidence.dimensions.items():
+                if dim_ev.gaps:
+                    gaps.append(f"- [{dim_id}] Missing: {', '.join(dim_ev.gaps)}")
+            if gaps:
+                sections.append("## Evidence Gaps (YOUR TASK: investigate these)")
+                sections.extend(gaps[:10])
+                sections.append("")
+
+        sections.append("""## Agent Constraints
+1. You MUST agree or disagree with each verified fact above (cite counter-evidence if disagree)
+2. You MUST investigate each evidence gap listed above
+3. You MUST NOT repeat facts already provided — add NEW information only
+4. You MUST NOT change the SBE verdict unless you provide 3+ counter-facts with Tier A/B sources
+5. If you find the verdict WRONG, state explicitly with evidence — do not silently override""")
+
+        result = "\n".join(sections)
+        if len(result) > self.MAX_PROMPT_CHARS:
+            result = result[:self.MAX_PROMPT_CHARS] + "\n\n[TRUNCATED — full evidence available in SBE trace]"
+        return result
+
+    def generate_from_pass1(self, pass1_verdict) -> str:
+        sections = []
+        sections.append(f"## SBE Pass 1 (Principles Only): {pass1_verdict.verdict} (confidence: {pass1_verdict.confidence:.2f})")
+        sections.append(f"Total score: {pass1_verdict.total_score:.1f}/10")
+        sections.append("")
+
+        if pass1_verdict.kills:
+            sections.append("## Kill Triggers")
+            for k in pass1_verdict.kills[:5]:
+                sections.append(f"- {k.principle_name}: {k.reasoning}")
+            sections.append("")
+
+        if pass1_verdict.bonuses:
+            sections.append("## Bonus Triggers")
+            for b in pass1_verdict.bonuses[:5]:
+                sections.append(f"- {b.principle_name}: {b.reasoning}")
+            sections.append("")
+
+        if pass1_verdict.micro_questions:
+            sections.append("## Unanswered Questions (YOUR TASK)")
+            for q in pass1_verdict.micro_questions[:15]:
+                sections.append(f"- {q}")
+            sections.append("")
+
+        sections.append("""## Agent Constraints (Pass 1 Mode)
+1. Evidence is LIMITED — principles-only evaluation, no web research yet
+2. Your PRIMARY task: answer the unanswered questions above with verified facts
+3. If your findings contradict the principle verdict, state explicitly with sources""")
+
+        return "\n".join(sections)

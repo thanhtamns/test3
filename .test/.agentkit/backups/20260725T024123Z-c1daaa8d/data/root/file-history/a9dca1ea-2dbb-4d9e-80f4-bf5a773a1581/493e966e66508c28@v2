@@ -1,0 +1,198 @@
+---
+phase: 6
+title: "Integration and Wiring"
+status: pending
+priority: P2
+effort: "3d"
+dependencies: [4, 5]
+---
+
+# Phase 6: Integration and Wiring
+
+## Overview
+
+Wire all components together into the complete AEVO-style outer loop. This phase connects:
+- SessionStart hooks → auto-outcome detection
+- Outcome recording → error attribution → meta-edit trigger
+- Meta-edit → safety harness → knob modification → stage0 reads new knobs
+- Stage0 execution → trace logging → back to outcome
+
+**AEVO parallel:** Closing the loop. Individual components exist; this wires them into a continuous cycle.
+
+## Requirements
+
+**Functional:**
+- Full loop runs autonomously without user intervention
+- SessionStart hook triggers: auto-outcome → check segment → maybe run meta-edit
+- Stage0 automatically reads latest knobs (no manual reload)
+- Dashboard command shows full meta-evolution status
+
+**Non-functional:**
+- Total hook overhead <5s at SessionStart
+- No interference with existing evolution hooks
+- Graceful degradation: if any component fails, others continue
+
+## Related Code Files
+
+**Target repo:** `D:/code/invesments/master_investments`
+
+- Modify: `.claude/hooks/session-start-evolution.cjs` — add meta-edit orchestration
+- Create: `.claude/lib/intelligence/mechanism/meta_evolution_orchestrator.py` — top-level orchestrator
+- Modify: `.claude/commands/stage0.md` — knob loading at Step 0.5, trace at each step
+- Create: `.claude/commands/meta-status.md` — dashboard command
+- Modify: `.claude/skills/business/feedback_loop/feedback-cycle-runner.py` — wire meta-edit trigger
+
+## Implementation Steps
+
+### Step 1: Create meta_evolution_orchestrator.py
+
+Single entry point that coordinates all phases:
+
+```python
+class MetaEvolutionOrchestrator:
+    """
+    Runs at SessionStart and after outcomes.
+    Coordinates: outcome detection → attribution → meta-edit → safety.
+    """
+    
+    def run_session_start(self) -> dict:
+        """Called by session-start-evolution.cjs"""
+        results = {}
+        
+        # 1. Auto-detect outcomes
+        detector = OutcomeSignalDetector(...)
+        candidates = detector.detect_all()
+        results["auto_outcomes"] = len(candidates)
+        
+        # 2. For each high-confidence outcome, run attribution
+        for candidate in candidates:
+            if candidate.confidence >= 0.8:
+                self._commit_outcome(candidate)
+                self._run_attribution(candidate)
+        
+        # 3. Check if meta-edit controller should fire
+        outcome_count = self._count_outcomes_since_last_edit()
+        if outcome_count >= 5:
+            controller = MetaEditController()
+            edit_result = controller.run()
+            results["meta_edit"] = edit_result.to_dict()
+        
+        # 4. Check active segment
+        if self._has_active_segment():
+            segment_status = self._check_segment()
+            results["segment"] = segment_status
+        
+        return results
+    
+    def run_after_outcome(self, case_id: str, outcome: str, verdict: str):
+        """Called by real-outcome-recorder.py after manual /log-outcome"""
+        # Run attribution
+        attributor = ErrorAttributor()
+        errors = attributor.attribute(case_id, outcome, verdict)
+        
+        # Check if meta-edit trigger fires
+        outcome_count = self._count_outcomes_since_last_edit()
+        if outcome_count >= 5:
+            controller = MetaEditController()
+            controller.run()
+```
+
+### Step 2: Update session-start-evolution.cjs
+
+Add meta-evolution orchestration call alongside existing triggers:
+
+```javascript
+// Existing: 4 evolution scripts
+// NEW: meta-evolution orchestrator
+const metaResult = await runPython(
+    'meta_evolution_orchestrator.py', ['--mode', 'session_start']
+);
+if (metaResult.meta_edit?.action === 'edit_applied') {
+    console.log(`🧬 Meta-edit applied: ${metaResult.meta_edit.edit.knob_id}`);
+}
+if (metaResult.auto_outcomes > 0) {
+    console.log(`📊 ${metaResult.auto_outcomes} outcomes auto-detected`);
+}
+```
+
+### Step 3: Wire stage0 knob loading
+
+At Stage0 Step 0.5, after runtime assertions:
+```
+# Load mechanism knobs (Phase 1 + Phase 6 integration)
+knobs = KnobRegistry("data/config/mechanism-knobs.json")
+MOUNTAIN_THRESHOLD = knobs.get("mountain_threshold_monthly")
+CONFIDENCE_GATE = knobs.get("confidence_gate_minimum")
+AGENTS_MINIMUM = knobs.get("agents_fired_minimum")
+# ... inject into downstream prompts
+```
+
+### Step 4: Wire stage0 trace logging
+
+At each of the 12 traced steps, add trace call. Example:
+```
+# After Wave 1 completes:
+trace.log_step("3.5_wave1", "Wave 1 Agent Dispatch",
+    knobs_used=["wave1_base_agents", "max_web_calls_per_step"],
+    signal={"direction": consensus, "confidence": avg_conf},
+    agents=agent_names, cost=total_tokens)
+```
+
+At end of stage0 (Step 8):
+```
+trace.log_verdict_composition(final_verdict, step_contributions)
+trace.save()  # → data/traces/stage0-trace-{case_id}.json
+```
+
+### Step 5: Create /meta-status command
+
+```markdown
+# /meta-status — Meta-Evolution Dashboard
+
+## Current State
+- Controller status: {IDLE | SEGMENT_RUNNING}
+- Active segment: {segment_id or "none"}
+- Knobs modified total: {count}
+- Last meta-edit: {date} — {knob_id}: {old}→{new}
+
+## Recent Edits (last 5)
+| Date | Knob | Old | New | Result |
+|------|------|-----|-----|--------|
+| ... | ... | ... | ... | KEPT/REVERTED |
+
+## Error Attribution Summary
+- Total mechanism errors: {count}
+- Top culprit knob: {knob_id} ({n} errors)
+- Next meta-edit triggers at: {n} more outcomes
+
+## Safety Status
+- Weekly budget: {used}/3 edits
+- Any invariant violations: {count}
+- Auto-rollbacks: {count}
+```
+
+### Step 6: End-to-end integration test
+
+Simulate full loop:
+1. Mock stage0 run → produces trace
+2. Mock outcome logged → triggers attribution
+3. Accumulate 5 outcomes → triggers meta-edit
+4. Meta-edit proposes change → safety validates → applies
+5. Next 5 verdicts → segment evaluates → keep/revert
+
+## Success Criteria
+
+- [ ] Full loop runs autonomously at SessionStart
+- [ ] Stage0 reads knobs and produces traces without manual intervention
+- [ ] Meta-edit triggers after 5th outcome automatically
+- [ ] /meta-status shows complete system state
+- [ ] Graceful degradation: missing files → warnings, not crashes
+- [ ] Existing evolution hooks unaffected (no regression)
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|------|------------|
+| Hook overhead slows SessionStart | Orchestrator budget <5s; early-exit on no-op |
+| Stage0 becomes more complex | Trace logging is append-only; knob loading is 1 JSON read |
+| Circular dependency | Clear sequence: outcome → attribute → edit → [wait N cases] → evaluate |

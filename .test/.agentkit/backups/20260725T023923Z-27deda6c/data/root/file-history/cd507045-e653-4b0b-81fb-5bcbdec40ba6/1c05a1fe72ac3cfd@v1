@@ -1,0 +1,119 @@
+"""Integration test — full evolution cycle end-to-end."""
+
+import json
+
+import pytest
+
+from ..fitness_scorer import FitnessScorer
+from ..orchestrator import EvolutionOrchestrator
+from ..promoter import Promoter
+from ..registry import EvolutionRegistry
+from ..sandbox_runner import SandboxRunner
+from ..template_mutator import TemplateMutator
+
+
+@pytest.fixture
+def full_stack(tmp_path):
+    def research_fn(q):
+        return (
+            "The market reached $500B in 2024, growing 18% YoY.\n"
+            "Vietnam exported 1.8M tonnes worth $4.2 billion.\n"
+            "Top competitor has 23% market share valued at $115B.\n"
+        )
+
+    def llm_fn(prompt):
+        return json.dumps([
+            "{topic} total addressable market size 2024 revenue",
+            "{topic} industry growth rate YoY compound annual",
+            "{topic} competitive landscape market share leaders",
+        ])
+
+    return EvolutionOrchestrator(
+        research_fn=research_fn,
+        llm_fn=llm_fn,
+        db_path=tmp_path / "evo.db",
+        evolver_db_path=tmp_path / "evolver.db",
+    )
+
+
+def test_full_cycle_flag_mutate_compete_promote(full_stack):
+    orch = full_stack
+
+    # Simulate flagged template
+    orch.evolver.flag_poor_templates = lambda: [
+        {"dimension": "market_size", "template": "basic {topic} search", "reasons": ["low_yield"]}
+    ]
+    orch.evolver.get_exemplars = lambda dim, top_n=3: []
+    orch.evolver.replace_template = lambda **kw: None
+
+    # Step 1: trigger mutation via post_think_hook (no active mutations)
+    orch.post_think_hook("test", {})
+    active = orch.registry.get_active_mutations()
+    assert len(active) == 1
+
+    mutation = active[0]
+    variants = orch.registry.get_variants(mutation.id)
+    assert len(variants) == 4  # original + 3
+
+    # Step 2: sandbox competition
+    result = orch.run_sandbox_competition(mutation.id, "coffee export vietnam")
+    assert result.best_variant_id is not None
+    assert len(result.variant_scores) == 4
+
+    # Step 3: accumulate fitness data to reach MIN_CASES
+    for i in range(6):
+        for v in variants:
+            yield_val = 3.0 if v.variant_index > 0 else 1.0
+            orch.registry.log_fitness(v.id, f"eval-{i}", brier=0.1, fact_yield=yield_val, parse_success=1.0)
+
+    # Step 4: evaluate — variant should beat original
+    scorer = FitnessScorer(orch.registry)
+    eval_result = scorer.evaluate(mutation.id)
+    assert eval_result.decision == "PROMOTE"
+
+    # Step 5: promote
+    orch.promoter.promote(eval_result, mutation.id)
+    updated = orch.registry.get_mutation(mutation.id)
+    assert updated.status == "promoted"
+
+
+def test_full_cycle_kill_when_no_improvement(full_stack):
+    orch = full_stack
+
+    orch.evolver.flag_poor_templates = lambda: [
+        {"dimension": "pricing", "template": "pricing {topic}", "reasons": ["low_yield"]}
+    ]
+    orch.evolver.get_exemplars = lambda dim, top_n=3: []
+
+    orch.post_think_hook("test", {})
+    active = orch.registry.get_active_mutations()
+    mutation = active[0]
+    variants = orch.registry.get_variants(mutation.id)
+
+    # All variants perform equally
+    for i in range(6):
+        for v in variants:
+            orch.registry.log_fitness(v.id, f"eq-{i}", brier=0.2, fact_yield=2.0, parse_success=1.0)
+
+    scorer = FitnessScorer(orch.registry)
+    eval_result = scorer.evaluate(mutation.id)
+    assert eval_result.decision == "KILL"
+
+
+def test_brier_update_triggers_evaluation(full_stack):
+    orch = full_stack
+    m = orch.registry.create_mutation("template", "dimension:x")
+    v0 = orch.registry.add_variant(m.id, 0, "orig {topic}")
+    v1 = orch.registry.add_variant(m.id, 1, "alt {topic}")
+
+    for i in range(6):
+        orch.registry.log_fitness(v0.id, f"b-{i}", None, 1.0, 0.8)
+        orch.registry.log_fitness(v1.id, f"b-{i}", None, 3.0, 1.0)
+
+    # Brier update resolves scores
+    for i in range(6):
+        orch.on_brier_update(f"b-{i}", 0.2)
+
+    # After brier update, evaluation runs internally
+    updated = orch.registry.get_mutation(m.id)
+    assert updated.status in ("promoted", "killed", "testing")

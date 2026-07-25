@@ -1,0 +1,82 @@
+services:
+  nats:
+    image: nats:2.10-alpine
+    command: ["--jetstream", "--store_dir", "/data"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    volumes:
+      - nats-data:/data
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nc -z localhost 4222 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    environment:
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.migrate
+    environment:
+      CLICKHOUSE_DSN: "clickhouse://clickhouse:9000/"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
+  ingest:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      CLICKHOUSE_DSN: "clickhouse://clickhouse:9000/codeflow"
+      NATS_URL: "nats://nats:4222"
+      LISTEN_ADDR: ":8080"
+      CORS_ORIGIN: "http://localhost:3000"
+      CODEFLOW_AUTH_DISABLED: "true"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  writer:
+    build:
+      context: .
+      dockerfile: Dockerfile.writer
+    environment:
+      CLICKHOUSE_DSN: "clickhouse://clickhouse:9000/codeflow"
+      NATS_URL: "nats://nats:4222"
+      CODEFLOW_AUTH_DISABLED: "true"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  clickhouse-data:
+  nats-data:

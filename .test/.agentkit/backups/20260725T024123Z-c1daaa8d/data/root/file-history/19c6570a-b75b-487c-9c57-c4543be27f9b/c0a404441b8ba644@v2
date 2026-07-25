@@ -1,0 +1,33 @@
+{
+  "type": "coffee_meeting",
+  "description": "Template for coffee meeting intel capture (Phase 2)",
+  "required_fields": ["person_name", "person_role", "key_intel"],
+  "golden_questions": [
+    "Ai là người quan trọng nhất trong ngành mà ít người ngoài biết?",
+    "Deal gần đây nào anh/chị thấy thú vị nhất? Tại sao?",
+    "Nếu anh/chị mới vào ngành bây giờ, anh/chị sẽ bắt đầu từ đâu?"
+  ],
+  "template": {
+    "id": "meet-YYMMDD-NNNN",
+    "type": "coffee_meeting",
+    "date": "",
+    "person": {
+      "name": "",
+      "role": "",
+      "company": "",
+      "how_connected": ""
+    },
+    "key_intel": [],
+    "names_mentioned": [
+      { "name": "", "context": "", "potential_target": false }
+    ],
+    "answers_to_golden_questions": {
+      "important_hidden_player": "",
+      "interesting_recent_deal": "",
+      "entry_point_advice": ""
+    },
+    "follow_up_action": "",
+    "intel_value_score": "1-10",
+    "cost_vnd": 0
+  }
+}

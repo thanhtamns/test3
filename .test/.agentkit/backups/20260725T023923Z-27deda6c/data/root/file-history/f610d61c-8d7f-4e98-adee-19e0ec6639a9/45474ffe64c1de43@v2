@@ -1,0 +1,141 @@
+"""Lateral inhibition — winner-takes-all competition within semantic clusters.
+
+Neurons that fire together wire together (Hebbian), but neurons in the SAME
+cluster COMPETE: strongest activation suppresses neighbors. This sharpens
+retrieval by preventing the graph from becoming uniformly connected noise.
+
+Usage (post spreading-activation):
+    from primitives.lateral_inhibition import inhibit
+    sharpened = inhibit(candidates, budget=5, suppression=0.4)
+"""
+from __future__ import annotations
+
+from itertools import combinations
+from typing import Sequence
+
+WINNER_BOOST = 1.3
+SUPPRESSION_FACTOR = 0.4
+DEFAULT_BUDGET = 5
+SIMILARITY_THRESHOLD = 0.7
+
+
+def _cosine(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = sum(x * x for x in a) ** 0.5
+    norm_b = sum(x * x for x in b) ** 0.5
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
+def _cluster_by_text_overlap(
+    candidates: list[dict],
+    threshold: float = SIMILARITY_THRESHOLD,
+) -> list[list[dict]]:
+    """Cluster candidates by keyword Jaccard similarity (no embeddings needed)."""
+    n = len(candidates)
+    parent = list(range(n))
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(x: int, y: int) -> None:
+        px, py = find(x), find(y)
+        if px != py:
+            parent[px] = py
+
+    for i, j in combinations(range(n), 2):
+        words_i = set(candidates[i].get("text", "").lower().split())
+        words_j = set(candidates[j].get("text", "").lower().split())
+        if not words_i or not words_j:
+            continue
+        jaccard = len(words_i & words_j) / len(words_i | words_j)
+        if jaccard >= threshold:
+            union(i, j)
+
+    clusters: dict[int, list[dict]] = {}
+    for i in range(n):
+        root = find(i)
+        clusters.setdefault(root, []).append(candidates[i])
+    return list(clusters.values())
+
+
+def cluster_by_embedding(
+    candidates: list[dict],
+    threshold: float = SIMILARITY_THRESHOLD,
+) -> list[list[dict]]:
+    """Cluster by embedding vectors if available, else fall back to text overlap."""
+    has_embeddings = all("embedding" in c for c in candidates)
+    if not has_embeddings:
+        return _cluster_by_text_overlap(candidates, threshold)
+
+    n = len(candidates)
+    parent = list(range(n))
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(x: int, y: int) -> None:
+        px, py = find(x), find(y)
+        if px != py:
+            parent[px] = py
+
+    for i, j in combinations(range(n), 2):
+        sim = _cosine(candidates[i]["embedding"], candidates[j]["embedding"])
+        if sim >= threshold:
+            union(i, j)
+
+    clusters: dict[int, list[dict]] = {}
+    for i in range(n):
+        root = find(i)
+        clusters.setdefault(root, []).append(candidates[i])
+    return list(clusters.values())
+
+
+def inhibit(
+    candidates: list[dict],
+    budget: int = DEFAULT_BUDGET,
+    suppression: float = SUPPRESSION_FACTOR,
+    boost: float = WINNER_BOOST,
+    threshold: float = SIMILARITY_THRESHOLD,
+) -> list[dict]:
+    """Apply lateral inhibition: within each cluster, winner boosts, losers suppress.
+
+    Args:
+        candidates: list of dicts with at minimum 'activation' (float) and 'text' (str).
+        budget: max number of surviving nodes returned.
+        suppression: multiplier applied to non-winner activations (0-1).
+        boost: multiplier applied to cluster winner activation (>1).
+        threshold: Jaccard/cosine similarity threshold for same-cluster grouping.
+
+    Returns:
+        Top-budget candidates after inhibition, sorted by activation descending.
+    """
+    if not candidates:
+        return []
+
+    clusters = cluster_by_embedding(candidates, threshold)
+    all_nodes: list[dict] = []
+
+    for cluster in clusters:
+        sorted_cluster = sorted(
+            cluster, key=lambda x: x.get("activation", 0.0), reverse=True
+        )
+        winner = sorted_cluster[0]
+        winner["activation"] = winner.get("activation", 0.0) * boost
+        winner["inhibition_role"] = "winner"
+
+        for loser in sorted_cluster[1:]:
+            loser["activation"] = loser.get("activation", 0.0) * suppression
+            loser["inhibition_role"] = "suppressed"
+
+        all_nodes.extend(sorted_cluster)
+
+    all_nodes.sort(key=lambda x: x.get("activation", 0.0), reverse=True)
+    return all_nodes[:budget]

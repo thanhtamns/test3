@@ -1,0 +1,75 @@
+---
+phase: 4
+title: "Cloud Test Coverage (P2)"
+status: complete
+priority: P2
+effort: "3h"
+dependencies: [3]
+---
+
+# Phase 4: Cloud Test Coverage (P2)
+
+## Overview
+
+Add tests for untested Cloud handlers (query, export, billing), middleware edge cases, and waste detector. Existing tests cover middleware_auth, handler_events, and fake_storage.
+
+## Requirements
+
+- Functional: Every handler has at least 1 happy-path + 1 error-path test
+- Non-functional: Tests use fake_storage (already exists). No ClickHouse required for unit tests.
+
+## Related Code Files
+
+- Modify: `cloud/internal/api/handler_query_test.go` (add/expand tests)
+- Create: `cloud/internal/api/handler_export_test.go`
+- Create: `cloud/internal/api/handler_billing_test.go` (if no tests exist)
+- Modify: `cloud/internal/api/middleware_test.go` (add edge cases)
+- Modify: `cloud/internal/waste/patterns_test.go` (verify coverage)
+
+## Implementation Steps
+
+### Step 1: Test query handlers (E1)
+
+1. Test `handleOverview`: valid tenant → 200 + expected JSON shape
+2. Test `handleListProjects`: empty result → 200 + empty array
+3. Test `handleProjectStats`: valid project → 200 + stats fields present
+4. Test `handleSavingsTrend`: valid days param → 200 + trend data
+5. Test `handleWasteReport`: valid request → 200 + waste findings
+6. Test `handleROISummary`: valid request → 200 + ROI fields
+
+### Step 2: Test export handler (E1)
+
+1. Test `handleExportCSV`: valid auth + days → 200 + CSV content-type
+2. Test `handleExportCSV`: missing auth → 401
+3. Test `handleExportCSV`: invalid days param → 400
+
+### Step 3: Test middleware edge cases (E2)
+
+1. Test `withRateLimit`: burst of 100 requests → some get 429
+2. Test `withCORS`: preflight OPTIONS → correct headers
+3. Test auth middleware with `CODEFLOW_AUTH_DISABLED=true` → passes with demo-tenant
+4. Test auth middleware with expired JWT → 401
+
+### Step 4: Test waste detector (E3)
+
+1. Test `patterns.go`: repeated file read pattern detected
+2. Test `patterns.go`: no waste → empty findings
+3. Test main.go entry point: verify CLI flags parse correctly
+
+### Step 5: Run full suite
+
+1. `go test ./...` — all pass
+2. `go test -race ./...` — no data races
+
+## Success Criteria
+
+- [ ] Query handlers: 6+ tests covering all 6 endpoints
+- [ ] Export handler: 3+ tests covering auth + error paths
+- [ ] Middleware: 4+ edge case tests
+- [ ] Waste detector: 3+ tests
+- [ ] `go test ./...` all pass, `go test -race` clean
+
+## Risk Assessment
+
+- **Low risk:** Tests are additive. fake_storage already handles mock data.
+- **Rate limit test:** May be timing-sensitive. Use deterministic rate limiter config for tests.

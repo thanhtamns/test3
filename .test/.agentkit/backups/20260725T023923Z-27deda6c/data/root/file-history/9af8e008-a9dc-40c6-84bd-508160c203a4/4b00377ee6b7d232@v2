@@ -1,0 +1,176 @@
+# /hunt Checklist (v5) — Anomaly-First Intelligence
+
+RULE: Execute EVERY step in order. Single unified flow — no mode flags.
+Budget: 75 web calls max (30 Brain 1 + 30 Brain 2 + 15 Graph).
+Engine code: `.claude/lib/intelligence/brains/` and `.claude/lib/intelligence/controller/`.
+
+---
+
+## Pre-flight
+
+- [ ] Read `hunt.md` (this is the detailed spec — checklist is the execution guide)
+- [ ] Confirm Python venv available: `.claude/skills/.venv/Scripts/python.exe` (Win) or `.claude/skills/.venv/bin/python3` (Unix)
+- [ ] Confirm DuckDB importable: `python -c "import duckdb; print(duckdb.__version__)"`
+
+---
+
+## Step 1: LOAD
+
+- [ ] Load founder profile from `data/profiles/` or `kb/profiles/`
+  - Required fields: industries, languages, location, domain_expertise, capital_range
+  - If missing: run 3-question interactive (Q1: reach, Q2: domain knowledge, Q3: observable money)
+  - Build `FounderProfile` dataclass from `intelligence.brains.models`
+- [ ] Load historical anomalies from DuckDB (`data/anomalies.duckdb`)
+  - `store = AnomalyStore("data/anomalies.duckdb")`
+  - `historical_cards = store.load_active_cards()`
+  - If DB doesn't exist yet, proceed with empty history
+- [ ] Extract topic into seed_products, seed_markets, seed_industries, seed_geographies
+  - GATE: reject vague topics ("make money", "online business") — require industry + geography
+
+**Output:** `founder` (FounderProfile), `historical_cards` (list), `seed_config` (dict)
+
+---
+
+## Step 2: SEED
+
+- [ ] Resolve Brain 1 seeds (products + markets):
+  - Priority: explicit args > founder.industries > historical GROWING products > defaults
+  - Deduplicate (case-insensitive)
+- [ ] Resolve Brain 2 seeds (geographies + industries):
+  - Priority: explicit args > founder.location/languages > Brain 1 markets > defaults
+- [ ] Assemble `seed_config` dict with all resolved seeds + founder + historical_cards
+
+**Output:** `seed_config` dict
+
+---
+
+## Step 3: BRAIN 1 — Price Delta Engine
+
+- [ ] Instantiate: `PriceDeltaEngine(research_fn, llm_fn, max_calls=30, spread_threshold=30.0)`
+- [ ] Run: `deltas = engine.scan(seed_products=..., markets=..., founder=...)`
+- [ ] Log: calls used, pairs scanned, deltas found
+- [ ] **QUALITY GATE:**
+  - [ ] deltas >= 1 with spread > 30%? If 0: WARN, continue to Brain 2
+  - [ ] Any delta with confidence != [?]? If all [?]: WARN, tag speculative
+  - [ ] Budget check: `engine.budget.calls_used <= 30`
+
+**Output:** `deltas` (list[PriceDelta])
+
+---
+
+## Step 4: BRAIN 2 — Forced Flow Engine
+
+- [ ] Instantiate: `ForcedFlowEngine(research_fn, llm_fn, max_calls=30)`
+- [ ] Run: `flows = engine.scan(geographies=..., industries=..., founder=...)`
+- [ ] Log: calls used, geographies scanned, flows found
+- [ ] **QUALITY GATE:**
+  - [ ] flows >= 1? If 0: WARN, continue to Graph
+  - [ ] Any flow with deadline < 1 year? If none: note speculative
+  - [ ] Any provider_gap found? If none: note thin opportunity
+  - [ ] Budget check: `engine.budget.calls_used <= 30`
+
+**Output:** `flows` (list[ForcedFlow])
+
+---
+
+## Step 5: GRAPH — MoneyFlowGraph
+
+- [ ] Instantiate: `graph = MoneyFlowGraph()`
+- [ ] Pre-seed historical entities (if any): `graph.pre_seed(historical_entities)`
+- [ ] Add anomaly overlay: `graph.add_anomaly_overlay(deltas_dicts, flows_dicts)`
+- [ ] (Optional) Run IntelligenceController hypothesis loop (max 15 calls, 3 cycles)
+- [ ] Extract bottleneck positions: `graph.bottleneck_positions()`
+- [ ] Extract graph stats: `graph.to_dict()["stats"]`
+- [ ] Log: node count, edge count, anomaly nodes, bottleneck positions
+
+**Output:** `graph` (MoneyFlowGraph)
+
+---
+
+## Step 6: BRAIN 3 — Cross-Reference
+
+- [ ] Instantiate: `xref = AnomalyCrossReferencer(historical=historical_cards_as_AnomalyCard)`
+- [ ] Run: `cards = xref.cross_reference(deltas, flows, founder)`
+- [ ] Log: cards produced, intersection count, top rank
+- [ ] **QUALITY GATE (BLOCKING):**
+  - [ ] cards >= 1? If 0: **KILL** — "No anomalies detected. Try different topic."
+  - [ ] cards >= 3? If < 3: WARN thin results
+  - [ ] top card final_rank >= 0.1? If < 0.1: WARN weak signals
+  - [ ] Any INTERSECTION cards? If 0: note single-signal only
+
+**Output:** `cards` (list[AnomalyCard], sorted by final_rank desc)
+
+---
+
+## Step 7: OUTPUT
+
+- [ ] **Page 1: Money Flow Map**
+  - Render ASCII graph from `graph` showing nodes, edges, anomaly overlay
+  - Show stats: node count, edge count, confidence, monthly flow
+  - Highlight bottleneck positions
+- [ ] **Page 2: Anomaly Cards** (top 5-10)
+  - For each card display: title, type, score, rank
+  - Delta section (if applicable): product, markets, prices, spread, bridge cost, net margin
+  - Flow section (if applicable): regulation, jurisdiction, deadline, entity count, cost, gap
+  - Position design: type, action, supply side, demand side, channel
+  - Economics: revenue/cost/margin per unit, monthly income estimate
+  - Founder fit + urgency scores
+  - 5 contacts with copy-paste scripts
+  - Kill criteria + deadline
+- [ ] **Page 3: Persistence Summary**
+  - New/updated/unchanged anomaly counts
+  - Delta trends: GROWING/STABLE/SHRINKING counts
+  - Historical card count
+
+---
+
+## Step 8: PERSIST
+
+- [ ] Save cards to DuckDB:
+  ```python
+  store = AnomalyStore("data/anomalies.duckdb")
+  for card in cards:
+      store.save_card(card)
+      store.record_history(card.id, card.anomaly_score,
+                           card.delta.get("net_margin") if card.delta else None)
+  ```
+- [ ] Compute delta trends: `store.compute_delta_trend(card.id)` for each card
+- [ ] Close store: `store.close()`
+- [ ] Create hunt directory: `data/hunts/HUNT-<YYMMDD-HHMM>/`
+- [ ] Write `report.md` (Pages 1-3 from Step 7)
+- [ ] Write `anomalies.json` (card list as JSON)
+- [ ] Write `graph.json` (graph.to_json())
+- [ ] Write `hunt-meta.json` (id, version, topic, budget used, result counts, status)
+
+---
+
+## Step 9: STOP
+
+- [ ] Display results to user (Pages 1-3)
+- [ ] Suggest next steps (do NOT auto-run):
+  - `/hunt continue <hunt_id>` — after contacting people from cards
+  - `/blueprint` — to build execution plan for top card
+  - `/exec` — to track outreach execution
+- [ ] **DO NOT** chain to other commands
+
+---
+
+## Budget Ledger
+
+Track calls across all steps:
+
+| Brain | Budget | Used | Remaining |
+|-------|--------|------|-----------|
+| Brain 1 (Price Delta) | 30 | __ | __ |
+| Brain 2 (Forced Flow) | 30 | __ | __ |
+| Graph (Hypothesis) | 15 | __ | __ |
+| **Total** | **75** | __ | __ |
+
+---
+
+## Kill Conditions (any = abort hunt)
+
+- Brain 3 produces 0 cards -> KILL
+- Brain 1 + Brain 2 both produce 0 results -> KILL
+- Topic rejected as vague in Step 1 -> KILL (ask user to refine)
+- Total budget exceeded -> STOP (display partial results)

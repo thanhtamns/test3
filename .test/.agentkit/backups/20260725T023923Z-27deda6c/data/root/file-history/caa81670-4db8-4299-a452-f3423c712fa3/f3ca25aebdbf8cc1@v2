@@ -1,0 +1,261 @@
+#!/usr/bin/env python3
+"""
+Process pending reflexion prompts WITHOUT LLM calls.
+Extracts structural lessons from prediction vs outcome data using rules.
+Outputs processed reflexions to evolution-log and clears pending queue.
+"""
+
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+PENDING = ROOT / "data" / "reflexion" / "pending-prompts.jsonl"
+EVOLUTION_LOG = ROOT / "data" / "calibration" / "evolution-log.jsonl"
+BRIER_SCORES = ROOT / "data" / "calibration" / "brier-scores.jsonl"
+LEARNED_RULES = ROOT / "data" / "calibration" / "learned-rules-priority.json"
+
+VERDICT_LESSONS = {
+    "KILL": {
+        "correct": "KILL verdict confirmed — model correctly identified non-viable opportunity.",
+        "lesson": "High-confidence kills (p>0.85) are reliable. Trust kill signals.",
+    },
+    "PROVISIONAL_MOUNTAIN": {
+        "correct": "Mountain prediction confirmed — compounding mechanism was real.",
+        "lesson": "When compound asset is identifiable and AI-resistant, mountain verdict is reliable.",
+    },
+    "EXPLORATION_ONGOING": {
+        "correct": "Exploration correctly identified — more data needed before verdict.",
+        "lesson": "Low-confidence explorations that succeed had hidden compound assets not initially visible.",
+    },
+    "META_QUERY_PRODUCED_TOOLBOX": {
+        "wrong": "Meta-query toolbox outputs are not predictions — should not have p_mountain score.",
+        "lesson": "Meta-queries (system improvements) should be excluded from Brier scoring.",
+    },
+    "CONDITIONAL": {
+        "wrong": "Conditional verdicts with no execution path = effectively KILL.",
+        "lesson": "CONDITIONAL without specific next action is intellectual hedging, not analysis.",
+    },
+    "UNKNOWN": {
+        "wrong": "UNKNOWN verdict indicates insufficient research, not uncertainty about outcome.",
+        "lesson": "UNKNOWN verdicts should trigger re-research, not be stored as predictions.",
+    },
+}
+
+
+def load_brier_lookup():
+    lookup = {}
+    if not BRIER_SCORES.exists():
+        return lookup
+    with open(BRIER_SCORES, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+                case_id = entry.get("case_id", "")
+                if case_id:
+                    lookup[case_id] = entry
+            except json.JSONDecodeError:
+                continue
+    return lookup
+
+
+def process_reflexion(prompt_entry, brier_lookup):
+    case_id = prompt_entry.get("case_id", "")
+    delta = prompt_entry.get("delta", 0)
+
+    brier_entry = brier_lookup.get(case_id, {})
+    verdict = brier_entry.get("verdict", "")
+    observed = brier_entry.get("observed")
+    brier = brier_entry.get("brier")
+    p_mountain = brier_entry.get("p_mountain", 0)
+
+    was_correct = observed == 1
+    was_wrong = observed == 0
+
+    lesson_cfg = VERDICT_LESSONS.get(verdict, {})
+
+    if was_correct:
+        structural_lesson = lesson_cfg.get("correct", f"Verdict {verdict} was confirmed at p={p_mountain:.2f}")
+        should_have_asked = "N/A — prediction was correct"
+        why_wrong = "N/A — prediction was correct"
+    elif was_wrong:
+        structural_lesson = lesson_cfg.get("wrong", lesson_cfg.get("lesson", f"Verdict {verdict} failed at p={p_mountain:.2f}, brier={brier:.4f}"))
+        if p_mountain > 0.85:
+            should_have_asked = "What specific evidence CONTRADICTS this high-confidence prediction?"
+            why_wrong = f"Overconfidence: p={p_mountain:.2f} but outcome was negative. Model assigned high probability without sufficient disconfirming evidence."
+        elif p_mountain > 0.70:
+            should_have_asked = "What is the base rate failure for this verdict category?"
+            why_wrong = f"Moderate overconfidence: p={p_mountain:.2f}. Model did not adequately weight historical failure rates for {verdict} verdicts."
+        else:
+            should_have_asked = "Is there a compounding mechanism that survives 6-month pressure test?"
+            why_wrong = f"Low-confidence prediction failed. p={p_mountain:.2f} correctly signaled uncertainty but was still wrong."
+    else:
+        structural_lesson = lesson_cfg.get("lesson", f"Verdict {verdict} has no observed outcome yet.")
+        should_have_asked = "When will verifiable outcome be available?"
+        why_wrong = "No outcome data — reflexion premature."
+
+    return {
+        "case_id": case_id,
+        "verdict": verdict,
+        "p_mountain": p_mountain,
+        "observed": observed,
+        "brier": brier,
+        "was_correct": was_correct,
+        "structural_lesson": structural_lesson,
+        "should_have_asked": should_have_asked,
+        "why_wrong": why_wrong,
+        "processed_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def extract_calibration_rules(processed):
+    rules = []
+
+    correct = [p for p in processed if p["was_correct"]]
+    wrong = [p for p in processed if p["observed"] == 0]
+
+    if wrong:
+        high_conf_wrong = [p for p in wrong if p["p_mountain"] > 0.85]
+        if high_conf_wrong:
+            rules.append({
+                "rule": f"High-confidence predictions (p>0.85) wrong {len(high_conf_wrong)} times. Enforce disconfirming evidence search for p>0.80.",
+                "priority": 1,
+                "source": "reflexion-batch-process",
+                "count": len(high_conf_wrong),
+            })
+
+        kill_wrong = [p for p in wrong if p["verdict"] == "KILL" and p["brier"] and p["brier"] < 0.5]
+        if kill_wrong:
+            rules.append({
+                "rule": f"Some KILL verdicts had low Brier (correct kills). KILL is the most reliable verdict category.",
+                "priority": 2,
+                "source": "reflexion-batch-process",
+                "count": len(kill_wrong),
+            })
+
+    meta_queries = [p for p in processed if "META_QUERY" in (p.get("verdict") or "")]
+    if meta_queries:
+        rules.append({
+            "rule": f"Exclude META_QUERY verdicts from Brier scoring — they are system artifacts, not predictions.",
+            "priority": 1,
+            "source": "reflexion-batch-process",
+            "count": len(meta_queries),
+        })
+
+    unknown_verdicts = [p for p in processed if p.get("verdict") == "UNKNOWN"]
+    if unknown_verdicts:
+        rules.append({
+            "rule": f"UNKNOWN verdicts ({len(unknown_verdicts)} cases) should trigger re-research, not be stored as predictions.",
+            "priority": 2,
+            "source": "reflexion-batch-process",
+            "count": len(unknown_verdicts),
+        })
+
+    conditional_wrong = [p for p in wrong if "CONDITIONAL" in (p.get("verdict") or "")]
+    if conditional_wrong:
+        rules.append({
+            "rule": f"CONDITIONAL verdicts without execution path are effectively KILL ({len(conditional_wrong)} cases failed).",
+            "priority": 2,
+            "source": "reflexion-batch-process",
+            "count": len(conditional_wrong),
+        })
+
+    return rules
+
+
+def main():
+    if not PENDING.exists():
+        print("No pending reflexions found.")
+        return
+
+    with open(PENDING, "r", encoding="utf-8") as f:
+        pending = [json.loads(line.strip()) for line in f if line.strip()]
+
+    print(f"Processing {len(pending)} pending reflexions...")
+
+    brier_lookup = load_brier_lookup()
+    processed = []
+
+    for entry in pending:
+        result = process_reflexion(entry, brier_lookup)
+        processed.append(result)
+
+    # Write to evolution log
+    with open(EVOLUTION_LOG, "a", encoding="utf-8") as f:
+        summary = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "trigger_id": "REFLEXION_BATCH_PROCESS",
+            "reflexions_processed": len(processed),
+            "correct_predictions": sum(1 for p in processed if p["was_correct"]),
+            "wrong_predictions": sum(1 for p in processed if p["observed"] == 0),
+            "no_outcome": sum(1 for p in processed if p["observed"] is None),
+            "lessons": [p["structural_lesson"] for p in processed if p["structural_lesson"]],
+        }
+        f.write(json.dumps(summary, ensure_ascii=False) + "\n")
+
+    # Extract and save calibration rules
+    rules = extract_calibration_rules(processed)
+    if rules:
+        existing_data = {}
+        if LEARNED_RULES.exists():
+            try:
+                existing_data = json.loads(LEARNED_RULES.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, TypeError):
+                existing_data = {}
+
+        if isinstance(existing_data, dict):
+            existing_list = existing_data.get("rules", [])
+            existing_list.extend(rules)
+            existing_data["rules"] = existing_list
+            existing_data["last_reflexion_batch"] = datetime.now(timezone.utc).isoformat()
+        else:
+            existing_data = rules
+
+        LEARNED_RULES.write_text(
+            json.dumps(existing_data, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        print(f"  {len(rules)} calibration rules extracted")
+
+    # Clear pending queue
+    PENDING.write_text("", encoding="utf-8")
+
+    # Summary
+    correct = sum(1 for p in processed if p["was_correct"])
+    wrong = sum(1 for p in processed if p["observed"] == 0)
+    no_data = sum(1 for p in processed if p["observed"] is None)
+
+    print(f"\nResults:")
+    print(f"  Correct predictions: {correct}")
+    print(f"  Wrong predictions: {wrong}")
+    print(f"  No outcome data: {no_data}")
+    print(f"  Calibration rules: {len(rules)}")
+    print(f"  Evolution log: {EVOLUTION_LOG}")
+    print(f"  Pending queue cleared: {PENDING}")
+
+    # Per-verdict breakdown
+    verdict_stats = {}
+    for p in processed:
+        v = p.get("verdict", "?")
+        if v not in verdict_stats:
+            verdict_stats[v] = {"correct": 0, "wrong": 0, "none": 0}
+        if p["was_correct"]:
+            verdict_stats[v]["correct"] += 1
+        elif p["observed"] == 0:
+            verdict_stats[v]["wrong"] += 1
+        else:
+            verdict_stats[v]["none"] += 1
+
+    print("\nPer-verdict accuracy:")
+    for v, stats in sorted(verdict_stats.items()):
+        total = stats["correct"] + stats["wrong"]
+        rate = (stats["correct"] / total * 100) if total > 0 else 0
+        print(f"  {v}: {stats['correct']}/{total} correct ({rate:.0f}%), {stats['none']} no outcome")
+
+
+if __name__ == "__main__":
+    main()

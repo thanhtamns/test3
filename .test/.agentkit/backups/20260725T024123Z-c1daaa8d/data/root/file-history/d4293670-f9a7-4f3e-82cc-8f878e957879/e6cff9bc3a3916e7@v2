@@ -1,0 +1,107 @@
+---
+phase: 5
+title: "Compliance Export Engine"
+status: complete
+priority: P2
+effort: "2w"
+dependencies: [1, 2, 3, 4]
+---
+
+# Phase 5: Compliance Export Engine
+
+## Overview
+
+Generate audit-ready compliance packages from provenance + cost + quality data. **MVP: SLSA attestation only** (most adopted standard). CycloneDX, SOC 2, EU AI Act deferred to iterative releases — each compliance spec is multi-week work alone. `codeflow audit` CLI command.
+
+**Red-team finding #12:** Original plan bundled 4 compliance specs in 1.5 weeks. Each spec requires reading the spec, structured output, schema validation, and test fixtures. MVP ships SLSA first, adds others incrementally.
+
+## Requirements
+
+- Functional: **MVP: SLSA provenance attestation (Level 2+) only**; `codeflow audit` CLI; configurable retention (default 90 days, enterprise 7 years). CycloneDX, SOC 2, EU AI Act = post-MVP iterations.
+- Non-functional: export completes in <30s for 90-day window; SLSA output validates against slsa.dev spec v1.0
+
+## Architecture
+
+```
+codeflow audit --format slsa|cyclonedx|soc2|eu-ai-act --range 90d
+    ↓
+Query tracking.db: provenance_records + cost_records + quality findings (single DB)
+    ↓
+ComplianceEngine.generate(format, date_range, filters)
+    ↓
+Format-specific renderer (MVP: SLSA only):
+  SLSA → JSON attestation bundle (in-toto format)
+  [POST-MVP] CycloneDX → XML/JSON AI-BOM
+  [POST-MVP] SOC 2 → Markdown/PDF evidence package
+  [POST-MVP] EU AI Act → JSON + PDF transparency report
+    ↓
+Output: file(s) in ./codeflow-audit/{timestamp}/
+```
+
+## Related Code Files
+
+- Modify: `src/main.rs` — add `audit` subcommand
+- Create: `src/compliance/mod.rs` — module root
+- Create: `src/compliance/slsa_export.rs` — SLSA provenance attestation bundle
+- Create (POST-MVP): `src/compliance/cyclonedx_export.rs` — CycloneDX AI-BOM
+- Create (POST-MVP): `src/compliance/soc2_export.rs` — SOC 2 evidence package
+- Create (POST-MVP): `src/compliance/eu_ai_act_export.rs` — EU AI Act transparency report
+- Create: `src/compliance/report_common.rs` — shared types (date ranges, filters, stats)
+- Create: `src/cmds/audit_cmd.rs` — `codeflow audit` CLI command
+
+## Implementation Steps
+
+1. **Create `src/compliance/report_common.rs`**
+   - `struct AuditRequest { format, date_range, project_filter, dev_filter }`
+   - `struct AuditStats { total_events, ai_pct, cost_total, quality_findings, ... }`
+   - `fn query_provenance_range(start, end) -> Vec<ProvenanceRecord>`
+   - `fn query_cost_range(start, end) -> Vec<CostRecord>`
+   - `fn query_quality_range(start, end) -> Vec<QualityEvent>`
+
+2. **Create `src/compliance/slsa_export.rs`**
+   - Implement SLSA Provenance v1.0 attestation format (in-toto envelope)
+   - `struct SlsaAttestation` matching slsa.dev/spec/v1.0
+   - Builder fields: buildType, externalParameters, resolvedDependencies
+   - Ed25519 sign the attestation envelope (reuse attestation.rs from Phase 1)
+   - Output: `{timestamp}-slsa-provenance.json`
+
+3. **(POST-MVP) CycloneDX, SOC 2, EU AI Act** — deferred to iterative releases. Each is multi-week work alone. Stub modules with `unimplemented!()` + clear error message pointing to roadmap.
+
+4. **Create `src/cmds/audit_cmd.rs`**
+   - `codeflow audit` — default: SLSA export
+   - `codeflow audit --format slsa` — SLSA attestation (MVP)
+   - `codeflow audit --format all` — generate all available formats (MVP: SLSA only)
+   - `codeflow audit --range 30d|90d|1y|all` — date range
+   - `codeflow audit --project <name>` — project filter
+   - `codeflow audit --output <dir>` — custom output directory
+   - `codeflow audit --json` — machine-readable summary
+
+5. **Data retention**
+   - `codeflow audit --retention set 90d|1y|7y` — configure retention period
+   - `codeflow audit --retention cleanup` — delete records beyond retention
+   - Default: 90 days. Enterprise: up to 7 years (configurable)
+
+6. **Wire into main.rs** — add `Audit` variant; add `compliance` module to main
+
+7. **Tests**
+   - Unit: SLSA attestation format validation, CycloneDX schema validation
+   - Integration: generate audit from fixture data → validate output structure
+   - 10+ new tests
+
+## Success Criteria
+
+- [x] SLSA attestation output follows slsa.dev spec v1.0 structure with DSSE PAE signing
+- [x] `rtk audit` generates SLSA attestation bundle as JSON file in `./codeflow-audit/`
+- [x] CycloneDX/SOC2/EU-AI-Act return clear "coming in a future release" message
+- [ ] Retention cleanup (descoped to post-MVP — audit export works without it)
+- [x] 32 new tests (slsa_export 12, report_common 9, audit_cmd 11)
+- [x] Ed25519 signature over DSSE PAE(payloadType, payload) for external verifier compatibility
+- [x] Graceful handling of missing DBs (empty but valid attestation)
+
+## Risk Assessment
+
+| Risk | Severity | Mitigation |
+|------|----------|------------|
+| SLSA/CycloneDX specs evolve | MEDIUM | Version-lock output format; update when spec stabilizes |
+| EU AI Act requirements unclear until enforcement | MEDIUM | Conservative interpretation; update post-Aug 2026 |
+| PDF generation requires external tool | LOW | Start with Markdown; PDF as optional feature |

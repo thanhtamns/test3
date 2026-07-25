@@ -1,0 +1,63 @@
+{
+  "case_id": "stage0-260517-zero-capital-large-cashflow",
+  "title_en": "Business model $0-500 capital, sustainable 10 years, truly large cash flow",
+  "title_vn": "Mô hình kinh doanh $0-500 vốn, bền vững 10 năm, dòng tiền thực sự lớn",
+  "domain": "bootstrap_service_to_commerce",
+  "topic": "mô hình kinh doanh $0-500 vốn, bền vững 10 năm, dòng tiền thực sự lớn",
+  "verdict": "SIDE_HUSTLE with stair-step to MOUNTAIN. Three models identified with specific instance data. Q1=yes (founder URLs verified), Q2=no (no KG cohort), Compounding=yes. TIER_0 founder must bridge from service to commerce.",
+  "verdict_class": "SIDE_HUSTLE",
+  "confidence": 0.72,
+  "agents_fired": 12,
+  "founder_profile_fit": {
+    "capital_tier": "TIER_0",
+    "track": "SERVICE_ENTRY",
+    "constraints": ["no_product_dev", "no_paid_ads", "service_first"],
+    "location": "Vietnam"
+  },
+  "knowledge_fired": ["MM-03", "SCH-012", "SCH-018"],
+  "new_artifacts": [],
+  "source_urls": [
+    "https://medium.com/@deividas_tokaris/how-i-scaled-my-agency-to-50k-month-8d9d4f4bc6e7",
+    "https://startupbros.com/service-arbitrage/",
+    "https://www.starterstory.com/ideas/growth-agency/success-stories",
+    "https://assembly.com/blog/productized-services",
+    "https://www.shareuhack.com/en/posts/what-is-drop-servicing",
+    "https://cashflowfrog.com/blog/10-great-business-ideas-for-high-cash-flow/"
+  ],
+  "mountain_test_v2": {
+    "Q1_founder_url": "https://medium.com/@deividas_tokaris/how-i-scaled-my-agency-to-50k-month-8d9d4f4bc6e7",
+    "Q1_result": true,
+    "Q2_kg_cohort": false,
+    "Q3_lindy": true,
+    "lindy_category": "professional_service + commodity_trade",
+    "lindy_age_years": 200,
+    "compounding": true,
+    "compounding_type": "relationship + data + SOPs",
+    "asymmetry_ratio": 20,
+    "stair_step_check": "bypass_approved"
+  },
+  "pulse_replies": null,
+  "voice_mode": "analyst",
+  "positioning_data": {
+    "has_positioning_data": false,
+    "deals_observed": 0,
+    "failures_logged": 0
+  },
+  "instance_models": [
+    {
+      "sub_niche_name": "B2B Cold Email Lead Gen for US SaaS",
+      "specific_product": "Outsourced SDR pipeline via cold email for $1M-10M ARR SaaS",
+      "flow_type": "#2 service-at-scale"
+    },
+    {
+      "sub_niche_name": "Vietnam Cashew/Pepper Export Broker",
+      "specific_product": "Commission-based connecting VN cooperatives to foreign importers",
+      "flow_type": "#4 rent"
+    },
+    {
+      "sub_niche_name": "AI Podcast Post-Production Service",
+      "specific_product": "Show notes + clips + blog posts for B2B podcasters",
+      "flow_type": "#2 service-at-scale"
+    }
+  ]
+}

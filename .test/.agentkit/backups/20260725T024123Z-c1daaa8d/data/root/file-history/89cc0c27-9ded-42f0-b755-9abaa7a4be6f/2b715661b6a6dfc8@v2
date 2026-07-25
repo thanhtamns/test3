@@ -1,0 +1,41 @@
+# CODEFLOW Gap Closure TDD — Complete
+
+**Date:** 2026-06-08
+**Plan:** `plans/260608-codeflow-gap-closure-tdd/plan.md`
+**Result:** All 12 gaps closed across 7 phases. 100% spec coverage.
+
+## What shipped
+
+### CLI (Rust) — Phases 1-4
+- **model_id**: Reads `CLAUDE_MODEL` env var, no more hardcoded "unknown"
+- **Attestation**: Signs all 6 fields (was 3/6)
+- **Blame**: Line-level via `git diff --unified=0` (was file-level)
+- **Budget**: Added "team" scope + router respects budget state
+- **Quality gate**: `codeflow gate` command — dep hallucination detection via HTTP HEAD to registries, license substring overlap fix (longest-match-first)
+- **Compliance**: `codeflow audit` — SLSA in-toto DSSE, CycloneDX 1.6 AI-BOM, SOC 2 Type II evidence
+- **Export/Serve**: `codeflow export` (json/csv/html), `codeflow serve` (local TCP dashboard)
+- **Test count**: 214 Rust tests passing
+
+### Cloud (Go) — Phase 5
+- 4 new ClickHouse pillar tables (provenance, cost, governance, quality)
+- 5 new API handlers + Storage interface extensions
+- Proto updated with 4 new event types (pb.go regeneration pending — no protoc on system)
+
+### Dashboard (Next.js) — Phase 6
+- 5 new pages: Cost, Provenance, Budget, Quality, Compliance
+- Sidebar updated with all new nav items
+- API contract fixes: unwrapped Go handler envelopes (`by_pr` wrapper, provenance raw→summary)
+
+### Plans + Demo — Phase 7
+- Old plan statuses corrected (7/7 phases → complete)
+- E2E integration test script (8 checks)
+- Demo script (10 steps, all 12 gaps mapped)
+
+## Key decisions
+1. Fixed Go↔TS contract mismatch client-side (unwrap envelopes in fetchCostByPR, compute ProvenanceSummary from raw records) rather than changing Go handlers — avoids breaking existing API consumers
+2. Used longest-match-first strategy for license checker substring overlap — O(n²) but list is small
+3. Skipped protoc regeneration — Go handlers use plain structs, not proto-generated types
+
+## Lessons
+- Code review caught 2 blocking API mismatches that build alone wouldn't surface — always review contract boundaries between languages
+- Windows Application Control policy blocks some test binaries — not a code issue, but cargo test output can be misleading

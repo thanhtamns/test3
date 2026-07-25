@@ -1,0 +1,275 @@
+"""
+meta_meta.py — Meta-meta loop: evolves the evolution strategy itself.
+
+Detects stagnation in strategy evolution and mutates selection/variation parameters.
+Extremely conservative: monthly cadence, 10% max adjustment, auto-revert.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from dataclasses import dataclass, field
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+from typing import Optional
+
+from .schema import Strategy
+
+logger = logging.getLogger(__name__)
+
+_REPO_ROOT = Path(__file__).resolve().parents[5]
+_META_META_HISTORY = _REPO_ROOT / "data" / "evolution" / "meta-meta-history.jsonl"
+_META_META_CONFIG = _REPO_ROOT / "data" / "evolution" / "meta-meta-config.json"
+
+MIN_CYCLES_BEFORE_FIRST_RUN = 6
+MAX_PARAM_ADJUSTMENT = 0.10
+MIN_INTERVAL_DAYS = 30
+
+
+@dataclass
+class StagnationSignal:
+    signal_type: str  # fitness_plateau | diversity_collapse | kill_breed_loop | outcome_surprise
+    severity: float  # 0-1
+    detail: str
+
+    def to_dict(self) -> dict:
+        return {"type": self.signal_type, "severity": self.severity, "detail": self.detail}
+
+
+@dataclass
+class MetaMetaResult:
+    stagnation_detected: bool
+    signal: Optional[StagnationSignal] = None
+    mutation_applied: Optional[str] = None
+    old_value: Optional[float] = None
+    new_value: Optional[float] = None
+    blocked_reason: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        return {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "stagnation_detected": self.stagnation_detected,
+            "signal": self.signal.to_dict() if self.signal else None,
+            "mutation_applied": self.mutation_applied,
+            "old_value": self.old_value,
+            "new_value": self.new_value,
+            "blocked_reason": self.blocked_reason,
+        }
+
+
+class StagnationDetector:
+    def detect(
+        self,
+        population: list[Strategy],
+        selection_history: list[dict],
+    ) -> Optional[StagnationSignal]:
+        """Check all stagnation signals, return first triggered."""
+        signal = self._check_fitness_plateau(population)
+        if signal:
+            return signal
+
+        signal = self._check_diversity_collapse(population)
+        if signal:
+            return signal
+
+        signal = self._check_kill_breed_loop(selection_history)
+        if signal:
+            return signal
+
+        return None
+
+    def _check_fitness_plateau(self, population: list[Strategy]) -> Optional[StagnationSignal]:
+        """Best strategy fitness unchanged for 3 consecutive windows."""
+        for strategy in population:
+            if strategy.status != "active":
+                continue
+            history = strategy.fitness_history
+            if len(history) < 3:
+                return None
+            last_3 = [h.get("total", 0) for h in history[-3:]]
+            if max(last_3) - min(last_3) < 0.01:
+                return StagnationSignal(
+                    signal_type="fitness_plateau",
+                    severity=0.7,
+                    detail=f"Active strategy fitness flat at ~{last_3[-1]:.3f} for 3 windows",
+                )
+        return None
+
+    def _check_diversity_collapse(self, population: list[Strategy]) -> Optional[StagnationSignal]:
+        """Population too similar (avg Jaccard similarity > 0.8)."""
+        if len(population) < 2:
+            return None
+        total_sim = 0.0
+        pairs = 0
+        for i, a in enumerate(population):
+            for b in population[i + 1:]:
+                total_sim += (1.0 - a.jaccard_distance(b))
+                pairs += 1
+        if pairs == 0:
+            return None
+        avg_sim = total_sim / pairs
+        if avg_sim > 0.8:
+            return StagnationSignal(
+                signal_type="diversity_collapse",
+                severity=0.8,
+                detail=f"Population avg similarity {avg_sim:.2f} > 0.8 threshold",
+            )
+        return None
+
+    def _check_kill_breed_loop(self, selection_history: list[dict]) -> Optional[StagnationSignal]:
+        """Same lineage killed 3+ times."""
+        kill_counts: dict[str, int] = {}
+        for entry in selection_history[-20:]:
+            if entry.get("killed"):
+                kid = entry["killed"]
+                kill_counts[kid] = kill_counts.get(kid, 0) + 1
+
+        for kid, count in kill_counts.items():
+            if count >= 3:
+                return StagnationSignal(
+                    signal_type="kill_breed_loop",
+                    severity=0.6,
+                    detail=f"Strategy {kid[:8]} lineage killed {count} times",
+                )
+        return None
+
+
+class MetaMetaController:
+    def __init__(self):
+        self._history_path = _META_META_HISTORY
+        self._config_path = _META_META_CONFIG
+        self._history_path.parent.mkdir(parents=True, exist_ok=True)
+        self.detector = StagnationDetector()
+
+    def run(
+        self,
+        population: list[Strategy],
+        selection_history: list[dict],
+    ) -> MetaMetaResult:
+        """Run meta-meta check. Apply mutation if stagnation detected."""
+        if not self._can_run():
+            return MetaMetaResult(
+                stagnation_detected=False,
+                blocked_reason="Rate limited (min 30 days between runs)",
+            )
+
+        signal = self.detector.detect(population, selection_history)
+        if signal is None:
+            return MetaMetaResult(stagnation_detected=False)
+
+        config = self._load_config()
+        mutation = self._propose_mutation(signal, config)
+
+        if mutation:
+            result = MetaMetaResult(
+                stagnation_detected=True,
+                signal=signal,
+                mutation_applied=mutation["param"],
+                old_value=mutation["old"],
+                new_value=mutation["new"],
+            )
+            config[mutation["param"]] = mutation["new"]
+            self._save_config(config)
+            self._persist_result(result)
+            logger.info("Meta-meta applied: %s %s→%s", mutation["param"], mutation["old"], mutation["new"])
+            return result
+
+        return MetaMetaResult(stagnation_detected=True, signal=signal, blocked_reason="No viable mutation")
+
+    def check_regression_and_revert(self, recent_scores: list[float]) -> bool:
+        """Auto-revert if last meta-meta made things worse."""
+        history = self._load_history()
+        if not history:
+            return False
+
+        last = history[-1]
+        if not last.get("mutation_applied"):
+            return False
+
+        if len(recent_scores) < 2:
+            return False
+
+        if all(s < recent_scores[0] for s in recent_scores[1:]):
+            config = self._load_config()
+            param = last["mutation_applied"]
+            old_val = last.get("old_value")
+            if old_val is not None and param in config:
+                config[param] = old_val
+                self._save_config(config)
+                logger.warning("Meta-meta REVERTED: %s back to %s", param, old_val)
+                return True
+        return False
+
+    def _can_run(self) -> bool:
+        history = self._load_history()
+        if not history:
+            return True
+        last_ts = history[-1].get("timestamp", "")
+        if not last_ts:
+            return True
+        try:
+            last_dt = datetime.fromisoformat(last_ts)
+            return (datetime.now(timezone.utc) - last_dt) > timedelta(days=MIN_INTERVAL_DAYS)
+        except (ValueError, TypeError):
+            return True
+
+    def _propose_mutation(self, signal: StagnationSignal, config: dict) -> Optional[dict]:
+        """Propose a parameter adjustment based on stagnation signal."""
+        if signal.signal_type == "fitness_plateau":
+            param = "mutation_diversity_pressure"
+            old = config.get(param, 0.5)
+            new = min(1.0, old + MAX_PARAM_ADJUSTMENT)
+            return {"param": param, "old": old, "new": round(new, 2)}
+
+        elif signal.signal_type == "diversity_collapse":
+            param = "wild_injection_interval"
+            old = config.get(param, 3)
+            new = max(1, old - 1)
+            if new == old:
+                return None
+            return {"param": param, "old": old, "new": new}
+
+        elif signal.signal_type == "kill_breed_loop":
+            param = "grace_period_verdicts"
+            old = config.get(param, 5)
+            new = min(10, old + 1)
+            return {"param": param, "old": old, "new": new}
+
+        return None
+
+    def _load_config(self) -> dict:
+        if self._config_path.exists():
+            try:
+                return json.loads(self._config_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                pass
+        return {
+            "mutation_diversity_pressure": 0.5,
+            "wild_injection_interval": 3,
+            "grace_period_verdicts": 5,
+            "window_size": 10,
+            "max_population": 5,
+        }
+
+    def _save_config(self, config: dict):
+        self._config_path.parent.mkdir(parents=True, exist_ok=True)
+        self._config_path.write_text(
+            json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+
+    def _load_history(self) -> list[dict]:
+        if not self._history_path.exists():
+            return []
+        results = []
+        for line in self._history_path.read_text(encoding="utf-8").strip().split("\n"):
+            if line.strip():
+                try:
+                    results.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+        return results
+
+    def _persist_result(self, result: MetaMetaResult):
+        with open(self._history_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(result.to_dict(), ensure_ascii=False) + "\n")

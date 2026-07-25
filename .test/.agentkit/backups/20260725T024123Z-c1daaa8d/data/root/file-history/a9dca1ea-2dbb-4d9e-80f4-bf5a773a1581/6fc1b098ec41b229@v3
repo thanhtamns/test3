@@ -1,0 +1,292 @@
+"""
+meta_edit_controller.py — The AEVO outer loop for mechanism self-evolution.
+
+State machine: IDLE → OBSERVING → EDITING → SEGMENT_RUNNING → EVALUATING → IDLE
+
+Called after every Nth outcome (default 5). Reads mechanism errors, proposes
+knob edits via Bayesian updater, applies within safety bounds, tracks segment,
+evaluates keep/revert/amplify.
+
+Usage:
+    controller = MetaEditController()
+    result = controller.run()
+    # result.action in: "no_edit", "edit_applied", "segment_evaluated", "segment_running"
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from dataclasses import dataclass, asdict
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+from .knob_registry import KnobRegistry, KnobValidationError
+from .error_attributor import ErrorAttributor
+from .bayesian_knob_updater import BayesianKnobUpdater, KnobEdit
+from .segment_evaluator import SegmentEvaluator, EvalDecision
+from .safety_harness import SafetyHarness
+
+logger = logging.getLogger(__name__)
+
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+_DEFAULT_CONTROLLER_STATE = _REPO_ROOT / "data" / "config" / "meta-edit-controller-state.json"
+_DEFAULT_BRIER_PATH = _REPO_ROOT / "data" / "calibration" / "brier-scores.jsonl"
+
+
+@dataclass
+class MetaEditResult:
+    action: str  # no_edit, edit_applied, segment_evaluated, segment_running, error
+    reason: str = ""
+    edit: Optional[dict] = None
+    eval_decision: Optional[dict] = None
+    segment_id: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "action": self.action,
+            "reason": self.reason,
+            "edit": self.edit,
+            "eval_decision": self.eval_decision,
+            "segment_id": self.segment_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+
+class MetaEditController:
+    """
+    The outer-loop meta-edit controller.
+
+    Observes mechanism errors, proposes edits, runs evaluation segments,
+    and decides keep/revert/amplify — all deterministically, no LLM.
+    """
+
+    def __init__(
+        self,
+        registry: Optional[KnobRegistry] = None,
+        attributor: Optional[ErrorAttributor] = None,
+        evaluator: Optional[SegmentEvaluator] = None,
+        updater: Optional[BayesianKnobUpdater] = None,
+        harness: Optional[SafetyHarness] = None,
+        state_path: Optional[Path] = None,
+        brier_path: Optional[Path] = None,
+        min_errors_to_propose: int = 3,
+        trigger_interval: int = 5,
+    ):
+        self.registry = registry or KnobRegistry()
+        self.attributor = attributor or ErrorAttributor()
+        self.evaluator = evaluator or SegmentEvaluator()
+        self.updater = updater or BayesianKnobUpdater(self.registry)
+        self.harness = harness or SafetyHarness()
+        self.state_path = Path(state_path or _DEFAULT_CONTROLLER_STATE)
+        self.brier_path = Path(brier_path or _DEFAULT_BRIER_PATH)
+        self.min_errors_to_propose = min_errors_to_propose
+        self.trigger_interval = trigger_interval
+
+    def run(self) -> MetaEditResult:
+        """
+        Main entry point. Called after every Nth outcome.
+
+        State machine:
+        1. If segment running → check if ready → evaluate
+        2. If idle → observe errors → propose edit → apply → start segment
+        """
+        state = self._load_state()
+
+        if state.get("status") == "segment_running":
+            return self._handle_running_segment(state)
+
+        return self._handle_idle(state)
+
+    def should_run(self, outcome_count: int) -> bool:
+        """Check if controller should run based on outcome count."""
+        return outcome_count >= self.trigger_interval
+
+    def _handle_running_segment(self, state: dict) -> MetaEditResult:
+        """Check active segment and evaluate if ready."""
+        segment_id = state.get("segment_id", "")
+        if not segment_id:
+            self._reset_state()
+            return MetaEditResult(action="error", reason="corrupt state: no segment_id")
+
+        result = self.evaluator.check_segment(segment_id)
+
+        if not result.ready:
+            return MetaEditResult(
+                action="segment_running",
+                reason=f"{result.verdicts_collected}/{result.verdicts_needed} verdicts collected",
+                segment_id=segment_id,
+            )
+
+        decision = self.evaluator.evaluate(segment_id)
+        if decision is None:
+            self._reset_state()
+            return MetaEditResult(action="error", reason="evaluation failed")
+
+        self._apply_eval_decision(decision)
+
+        self._update_state(status="idle", segment_id="")
+
+        return MetaEditResult(
+            action="segment_evaluated",
+            reason=decision.reason,
+            eval_decision=decision.to_dict(),
+            segment_id=segment_id,
+        )
+
+    def _handle_idle(self, state: dict) -> MetaEditResult:
+        """Observe errors, propose edit, apply, start segment."""
+        knob_errors = self._observe_errors(state)
+        if not knob_errors:
+            return MetaEditResult(action="no_edit", reason="no mechanism errors found")
+
+        top_knob, its_errors = max(
+            knob_errors.items(), key=lambda x: len(x[1])
+        )
+
+        if len(its_errors) < self.min_errors_to_propose:
+            return MetaEditResult(
+                action="no_edit",
+                reason=f"only {len(its_errors)} errors for {top_knob} "
+                       f"(need {self.min_errors_to_propose})",
+            )
+
+        edit = self.updater.propose_edit(top_knob, its_errors)
+        if edit is None:
+            return MetaEditResult(
+                action="no_edit",
+                reason=f"Bayesian updater found no actionable edit for {top_knob}",
+            )
+
+        knob_range = self.registry.get_range(edit.knob_id)
+        safety = self.harness.validate_edit(
+            edit.knob_id, edit.old_value, edit.new_value,
+            knob_range=knob_range, source="meta_edit_controller",
+        )
+        if not safety.allowed:
+            reasons = "; ".join(v.message for v in safety.violations)
+            logger.warning("Safety harness blocked edit %s: %s", edit.knob_id, reasons)
+            return MetaEditResult(action="no_edit", reason=f"safety blocked: {reasons}")
+
+        try:
+            self.registry.set(
+                edit.knob_id,
+                edit.new_value,
+                reason=f"meta-edit: {edit.evidence_count} errors, "
+                       f"avg_sev={edit.avg_severity:.2f}, conf={edit.confidence:.2f}",
+                source="meta_edit_controller",
+            )
+        except (KnobValidationError, KeyError) as e:
+            return MetaEditResult(action="error", reason=f"edit rejected: {e}")
+
+        brier_before = self._get_recent_brier_avg()
+        segment_id = self.evaluator.start_segment(edit.to_dict(), brier_before)
+
+        self._update_state(
+            status="segment_running",
+            segment_id=segment_id,
+            last_edit=edit.to_dict(),
+            last_edit_time=datetime.now(timezone.utc).isoformat(),
+        )
+
+        logger.info("Meta-edit applied: %s %s → %s (segment=%s)",
+                     edit.knob_id, edit.old_value, edit.new_value, segment_id)
+
+        return MetaEditResult(
+            action="edit_applied",
+            reason=edit.reason,
+            edit=edit.to_dict(),
+            segment_id=segment_id,
+        )
+
+    def _observe_errors(self, state: dict) -> dict[str, list[dict]]:
+        """Group recent mechanism errors by knob."""
+        last_edit_time = state.get("last_edit_time")
+        all_errors = self.attributor.load_errors(n=100)
+
+        if last_edit_time:
+            all_errors = [
+                e for e in all_errors
+                if e.get("timestamp", "") > last_edit_time
+            ]
+
+        knob_groups: dict[str, list[dict]] = {}
+        for err in all_errors:
+            for knob in err.get("knobs_implicated", []):
+                knob_groups.setdefault(knob, []).append(err)
+
+        return knob_groups
+
+    def _apply_eval_decision(self, decision: EvalDecision):
+        """Apply keep/revert/amplify decision."""
+        if decision.decision == "REVERT":
+            try:
+                self.registry.set(
+                    decision.knob_id,
+                    decision.old_value,
+                    reason=f"meta-revert: Brier worsened {decision.brier_delta_pct:+.1%}",
+                    source="meta_edit_controller",
+                )
+                logger.info("Reverted %s to %s", decision.knob_id, decision.old_value)
+            except (KnobValidationError, KeyError) as e:
+                logger.error("Revert failed for %s: %s", decision.knob_id, e)
+
+        elif decision.decision == "AMPLIFY":
+            current = self.registry.get(decision.knob_id)
+            original_delta = decision.new_value - decision.old_value
+            amplified = current + original_delta
+            try:
+                self.registry.set(
+                    decision.knob_id,
+                    amplified,
+                    reason=f"meta-amplify: Brier improved {abs(decision.brier_delta_pct):.1%}",
+                    source="meta_edit_controller",
+                )
+                logger.info("Amplified %s: %s → %s", decision.knob_id, current, amplified)
+            except (KnobValidationError, KeyError) as e:
+                logger.info("Amplify capped for %s: %s (keeping current)", decision.knob_id, e)
+
+        self.evaluator.clear_segment()
+
+    def _get_recent_brier_avg(self, n: int = 10) -> float:
+        """Get average Brier score from recent verdicts."""
+        if not self.brier_path.exists():
+            return 0.5
+
+        scores = []
+        try:
+            for line in self.brier_path.read_text(encoding="utf-8").strip().split("\n"):
+                if not line.strip():
+                    continue
+                record = json.loads(line)
+                score = record.get("brier_score", record.get("score"))
+                if score is not None:
+                    scores.append(float(score))
+        except (json.JSONDecodeError, OSError, ValueError):
+            return 0.5
+
+        if not scores:
+            return 0.5
+
+        return sum(scores[-n:]) / len(scores[-n:])
+
+    def _load_state(self) -> dict:
+        if not self.state_path.exists():
+            return {"status": "idle"}
+        try:
+            return json.loads(self.state_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return {"status": "idle"}
+
+    def _update_state(self, **kwargs):
+        state = self._load_state()
+        state.update(kwargs)
+        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        self.state_path.write_text(
+            json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+
+    def _reset_state(self):
+        self._update_state(status="idle", segment_id="")
+        self.evaluator.clear_segment()

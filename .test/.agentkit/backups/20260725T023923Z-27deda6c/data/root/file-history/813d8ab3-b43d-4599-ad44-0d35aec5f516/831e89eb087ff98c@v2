@@ -1,0 +1,194 @@
+"""AEVO-X Replay Engine — deterministic batch replay from case archive.
+
+Replays historical cases through candidate strategies WITHOUT network calls.
+Uses cached agent outputs from CaseArchiver, applies strategy scoring formulas.
+Same case + same strategy = same verdict (deterministic).
+"""
+
+from __future__ import annotations
+
+import json
+import math
+from dataclasses import dataclass, field
+from typing import Optional
+
+from .case_archiver import CaseArchiver
+from ..mechanism.strategy_evolution.schema import Strategy
+
+VERDICT_THRESHOLDS = {"MOUNTAIN_CANDIDATE": 7.0, "SIDE_HUSTLE": 4.5}
+MISSING_AGENT_PENALTY = 0.85
+
+
+@dataclass
+class ReplayVerdict:
+    case_id: str
+    strategy_id: str
+    strategy_name: str
+    verdict_class: str
+    mountain_score: float
+    confidence: float
+    dimension_scores: dict[str, float] = field(default_factory=dict)
+    agent_contributions: dict[str, float] = field(default_factory=dict)
+
+
+class ReplayEngine:
+    def __init__(self, archiver: CaseArchiver):
+        self.archiver = archiver
+
+    def replay_case(self, case_id: str, strategy: Strategy) -> Optional[ReplayVerdict]:
+        case = self.archiver.get_case(case_id)
+        if case is None:
+            return None
+
+        agent_outputs = {}
+        if case.get("agent_outputs"):
+            agent_outputs = json.loads(case["agent_outputs"])
+
+        dimension_scores, agent_contributions = self._score_dimensions(
+            agent_outputs, strategy
+        )
+
+        mountain_score = self._apply_formula(
+            dimension_scores, strategy.mountain_rubric, strategy.scoring_formula
+        )
+
+        confidence = self._compute_confidence(agent_outputs, strategy)
+
+        verdict_class = self._classify(mountain_score)
+
+        return ReplayVerdict(
+            case_id=case_id,
+            strategy_id=strategy.id,
+            strategy_name=strategy.name,
+            verdict_class=verdict_class,
+            mountain_score=round(mountain_score, 4),
+            confidence=round(confidence, 4),
+            dimension_scores=dimension_scores,
+            agent_contributions=agent_contributions,
+        )
+
+    def batch_replay(
+        self, case_ids: list[str], strategies: list[Strategy]
+    ) -> list[ReplayVerdict]:
+        results = []
+        for case_id in case_ids:
+            for strategy in strategies:
+                verdict = self.replay_case(case_id, strategy)
+                if verdict is not None:
+                    results.append(verdict)
+        return results
+
+    def compute_fitness_delta(
+        self,
+        replay_verdict: ReplayVerdict,
+        original_verdict_class: str,
+        actual_outcome: Optional[str],
+    ) -> float:
+        if actual_outcome is None:
+            return 0.0
+
+        replay_dist = self._distance_to_outcome(replay_verdict.verdict_class, actual_outcome)
+        original_dist = self._distance_to_outcome(original_verdict_class, actual_outcome)
+
+        return original_dist - replay_dist
+
+    def _score_dimensions(
+        self, agent_outputs: dict, strategy: Strategy
+    ) -> tuple[dict[str, float], dict[str, float]]:
+        expected_agents = set(strategy.wave1_agents + strategy.wave2_agents)
+        available_agents = set(agent_outputs.keys())
+        active_agents = expected_agents & available_agents
+
+        dimension_scores: dict[str, float] = {}
+        agent_contributions: dict[str, float] = {}
+
+        for dim in strategy.mountain_rubric:
+            dim_values = []
+            for agent_id in active_agents:
+                output = agent_outputs.get(agent_id, {})
+                if not isinstance(output, dict):
+                    continue
+                scores = output.get("dimension_scores", output.get("scores", {}))
+                if dim in scores:
+                    dim_values.append(scores[dim])
+                    agent_contributions[agent_id] = agent_contributions.get(agent_id, 0) + 1
+
+            if dim_values:
+                dimension_scores[dim] = sum(dim_values) / len(dim_values)
+            else:
+                dimension_scores[dim] = 5.0
+
+        missing_count = len(expected_agents - available_agents)
+        if missing_count > 0:
+            penalty = MISSING_AGENT_PENALTY ** missing_count
+            for dim in dimension_scores:
+                dimension_scores[dim] *= penalty
+
+        return dimension_scores, agent_contributions
+
+    def _apply_formula(
+        self, scores: dict[str, float], rubric: dict[str, float], formula: str
+    ) -> float:
+        if formula == "weighted_sum":
+            return sum(scores.get(dim, 5.0) * weight for dim, weight in rubric.items())
+        elif formula == "min_gate":
+            values = [scores.get(dim, 0.0) for dim in rubric]
+            return min(values) if values else 0.0
+        elif formula == "bayesian_posterior":
+            return self._bayesian_aggregate(scores, rubric)
+        return sum(scores.values()) / max(len(scores), 1)
+
+    def _bayesian_aggregate(
+        self, scores: dict[str, float], weights: dict[str, float]
+    ) -> float:
+        log_odds_sum = 0.0
+        weight_sum = 0.0
+        for dim, weight in weights.items():
+            score = scores.get(dim, 5.0)
+            p = max(0.01, min(0.99, score / 10.0))
+            log_odds = math.log(p / (1 - p))
+            log_odds_sum += log_odds * weight
+            weight_sum += weight
+        if weight_sum == 0:
+            return 5.0
+        avg_log_odds = log_odds_sum / weight_sum
+        p_final = 1.0 / (1.0 + math.exp(-avg_log_odds))
+        return p_final * 10.0
+
+    def _compute_confidence(self, agent_outputs: dict, strategy: Strategy) -> float:
+        expected = set(strategy.wave1_agents + strategy.wave2_agents)
+        actual = set(agent_outputs.keys())
+        coverage = len(expected & actual) / max(len(expected), 1)
+
+        if strategy.confidence_aggregation == "min_confidence":
+            confidences = []
+            for aid in expected & actual:
+                output = agent_outputs.get(aid, {})
+                if isinstance(output, dict):
+                    confidences.append(output.get("confidence", 0.5))
+            return min(confidences) if confidences else coverage
+        elif strategy.confidence_aggregation == "weighted_average":
+            confidences = []
+            for aid in expected & actual:
+                output = agent_outputs.get(aid, {})
+                if isinstance(output, dict):
+                    confidences.append(output.get("confidence", 0.5))
+            return sum(confidences) / max(len(confidences), 1) if confidences else coverage
+        return coverage
+
+    def _classify(self, score: float) -> str:
+        if score >= VERDICT_THRESHOLDS["MOUNTAIN_CANDIDATE"]:
+            return "MOUNTAIN_CANDIDATE"
+        elif score >= VERDICT_THRESHOLDS["SIDE_HUSTLE"]:
+            return "SIDE_HUSTLE"
+        return "KILL"
+
+    def _distance_to_outcome(self, verdict_class: str, actual_outcome: str) -> float:
+        order = ["KILL", "SIDE_HUSTLE", "MOUNTAIN_CANDIDATE"]
+        outcome_map = {
+            "confirmed_kill": 0, "confirmed_side_hustle": 1, "confirmed_mountain": 2,
+            "KILL": 0, "SIDE_HUSTLE": 1, "MOUNTAIN_CANDIDATE": 2,
+        }
+        v_idx = order.index(verdict_class) if verdict_class in order else 1
+        o_idx = outcome_map.get(actual_outcome, 1)
+        return abs(v_idx - o_idx) / 2.0

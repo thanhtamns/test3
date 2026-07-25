@@ -1,0 +1,212 @@
+---
+phase: 6
+title: "Deal Drill Layer — Mechanism to Actionable Output"
+status: pending
+priority: P0
+effort: "5h"
+dependencies: [4, 5]
+---
+
+# Phase 6: Deal Drill Layer
+
+## Overview
+
+Add a NEW pipeline phase after synthesis that takes the top-1 mechanism-verified hypothesis and drills it down to SPECIFIC actionable output: exact WHO pays, HOW MUCH, WHERE to find them, WHAT makes you different, and WHEN to kill.
+
+Current output stops at "business model" level. Deal Drill goes one level deeper to "specific deal" level.
+
+## Problem (User Quote)
+
+> "output phải chỉ rõ thực sự hành động, làm trực tiếp gì, quyết định trực tiếp gì (ví dụ quyết định kinh doanh mặt hàng X, bán cho công ty Y, người Z, cách thức bán, phương pháp đường vòng và khác biệt chắc chắn thành công)"
+
+## Requirements
+
+- Functional: For top-1 hypothesis after refinement, execute 5 targeted research drills
+- Functional: Each drill produces SPECIFIC named entities, not categories
+- Functional: Output includes concrete entry script/message templates
+- Functional: Output includes EDGE analysis (what founder has that competitors don't)
+- Functional: Output includes KILL criteria with specific measurable thresholds
+- Non-functional: Max 15 targeted web searches (budget-controlled)
+- Non-functional: Runs ONLY on top-1 hypothesis (not top-3 — cost control)
+- Non-functional: Total drill time ≤ 5 minutes
+
+## Architecture
+
+### 5 Drill Dimensions
+
+```
+Top-1 Mechanism-Verified Hypothesis
+        ↓
+DRILL 1: WHO PAYS? (Customer Drill)
+  - Search: "[industry] companies list", "[regulation] affected businesses"
+  - Search: LinkedIn Sales Navigator query construction
+  - Output: 5-10 specific company names + size + why they need this
+  - Output: 3-5 specific contact roles (title, not name — privacy)
+
+DRILL 2: HOW MUCH? (Pricing Drill)
+  - Search: "[competitor] pricing page", "[category] pricing comparison"
+  - Search: "[industry] compliance cost", "[industry] manual process cost"
+  - Output: Competitor price points (verified URLs)
+  - Output: Customer's cost-of-doing-nothing (pain $ quantified)
+  - Output: Recommended price + margin analysis
+
+DRILL 3: ENTRY POINT? (Channel Drill)
+  - Search: "[industry] LinkedIn groups", "[industry] communities"
+  - Search: "[industry] conferences 2026", "[industry] trade associations"
+  - Output: 3-5 specific communities/groups with member counts
+  - Output: Recommended first-contact channel + why
+  - Output: Cold outreach script template (adapted from founder profile)
+
+DRILL 4: EDGE? (Differentiation Drill)
+  - Input: founder_profile.skills + competitor_analysis
+  - Analysis: Skill × Market-Gap intersection matrix
+  - Output: 2-3 specific advantages founder has over competitors
+  - Output: "Đường vòng" (indirect approach) — how to bypass direct competition
+  - Examples of đường vòng:
+    a. Serve adjacent market that competitors ignore → expand
+    b. Bundle with existing service competitors can't replicate
+    c. Geographic/language advantage (VN founder for SEA market)
+    d. Distribution hack (partner with existing trusted channel)
+
+DRILL 5: KILL CRITERIA (Validation Drill)
+  - Output: 3 specific measurable kill conditions
+  - Each: metric + threshold + timeframe + measurement method
+  - Example: "< 5 replies from 50 cold emails in 14 days → KILL"
+  - Example: "< 20 landing page signups from 500 visitors in 7 days → KILL"
+  - Example: "0 paid customers after $100 ad spend → KILL"
+```
+
+### Output Template (Level A — Mechanism-Specific)
+
+```markdown
+## DEAL DRILL: {hypothesis_title}
+
+### MECHANISM
+{A} → {B} → {C}
+Why this works: {1-sentence causal chain}
+
+### WHO PAYS
+| Company/Segment | Size | Why They Need This | Urgency |
+|----------------|------|-------------------|---------|
+| {specific name} | {employees/revenue} | {specific pain} | {HIGH/MED} |
+
+Target roles: {specific titles, e.g. "Compliance Officer", "Operations Manager"}
+
+### PRICING
+| Reference | Price | Source |
+|-----------|-------|--------|
+| Competitor A | $X/mo | {verified URL} |
+| Cost of doing nothing | $Y/mo | {calculation} |
+| **Recommended** | **$Z/mo** | **{rationale}** |
+
+Margin: {X}% at {Y} customers
+
+### ENTRY POINT
+**Primary:** {specific community/channel} ({member count})
+**Script:** "{first-contact message, <100 words}"
+**Đường vòng:** {indirect approach description}
+
+### EDGE (Why You, Not Them)
+1. {specific advantage from founder profile}
+2. {specific gap in competitor offering}
+3. {specific đường vòng that competitors can't copy}
+
+### KILL CRITERIA
+| # | Metric | Threshold | Timeframe | How to Measure |
+|---|--------|-----------|-----------|----------------|
+| 1 | {metric} | < {X} | {Y} days | {method} |
+| 2 | {metric} | < {X} | {Y} days | {method} |
+| 3 | {metric} | < {X} | {Y} days | {method} |
+
+### 7-DAY ACTION PLAN
+Day 1: {exact action}
+Day 2-3: {exact action}
+Day 4-5: {exact action}
+Day 6-7: {exact action + first kill check}
+```
+
+### Agent Design
+
+Create `deal-drill-protocol.md` — spawned as a single agent (model=opus) that executes all 5 drills sequentially within one context window. Reasons:
+1. Drills are interdependent (pricing depends on customer drill results)
+2. Single agent maintains coherent context across drills
+3. Avoids coordination overhead of 5 separate agents
+4. Budget controlled: 15 web searches max across all drills
+
+### Integration with Stage0
+
+```
+Phase 4 (Synthesis — mechanism-first format)
+        ↓
+Phase 4.5: DEAL DRILL (NEW)
+  IF top-1 hypothesis has confidence >= 0.7:
+    Spawn deal-drill agent
+    Input: top-1 hypothesis + mechanism + founder_profile + knowledge_graph
+    Output: plans/{session_id}/deal-drill.md
+  ELSE:
+    Skip drill, note: "Confidence too low for deal-specific output"
+        ↓
+Phase 5: Final output includes deal-drill section
+```
+
+### Integration with /hunt
+
+Hunt's anomaly cards currently output: product, spread_pct, mechanism, founder_fit.
+After Deal Drill: hunt ALSO produces deal-drill for top-1 anomaly card.
+
+```
+Hunt Step 6 (Cross-Reference — anomaly cards)
+        ↓
+Hunt Step 6.5: DEAL DRILL (NEW — reuses same protocol)
+  Top-1 anomaly card → deal-drill-protocol
+  Output appended to hunt output
+```
+
+## Related Code Files
+
+- Create: `.claude/agents/core/intelligence/deal-drill-protocol.md` — agent protocol for 5-drill execution
+- Modify: `.claude/skills/business/startup/SKILL.md` — add Phase 4.5 (deal drill)
+- Modify: `.claude/lib/intelligence/brains/hunt_runner.py` — add deal drill step after cross-reference
+- Read: `.claude/agents/core/intelligence/mechanism-output-protocol.md` — ensure deal drill output is compatible
+- Read: `data/founder-profile.json` — founder skills used in EDGE drill
+
+## Implementation Steps
+
+1. Create `deal-drill-protocol.md`:
+   - Header: agent name=deal-drill-executor, model=opus, timeout=300s
+   - Input: hypothesis (mechanism, falsification, evidence profile), founder_profile, knowledge_graph (serialized)
+   - 5 sequential drill sections with search budget per drill (3/3/3/0/0 = 9 searches + 6 buffer)
+   - Output template (as defined above)
+   - EDGE drill includes "đường vòng" analysis (indirect approach)
+   - KILL drill produces 3 measurable conditions
+2. Read current SKILL.md Phase 4 section
+3. Add Phase 4.5 after synthesis:
+   - Confidence gate: only drill if top-1 confidence >= 0.7
+   - Spawn deal-drill-executor agent
+   - Null-check: if drill fails, set deal_drill = null, output includes note
+4. Add Deal Drill output section to output-template.md
+5. Read hunt_runner.py
+6. Add deal_drill step after anomaly cross-reference in hunt pipeline
+7. Manual test: run /stage0 on a topic, verify deal-drill section appears
+
+## Success Criteria
+
+- [ ] deal-drill-protocol.md created with 5 drill dimensions
+- [ ] SKILL.md Phase 4.5 inserted with confidence gate
+- [ ] Hunt pipeline includes deal drill for top-1 anomaly
+- [ ] Output includes specific company names (not just "companies in industry X")
+- [ ] Output includes specific community/group with member count
+- [ ] Output includes competitor prices with verified URLs
+- [ ] Output includes đường vòng (indirect approach) strategy
+- [ ] Output includes 3 measurable kill criteria with thresholds
+- [ ] Max 15 web searches per deal drill execution
+- [ ] Null-check fallback if drill fails
+
+## Risk Assessment
+
+- **Risk:** Web search returns generic results, not specific companies
+  - Mitigation: Use precise queries ("[industry] + [regulation] + companies affected"), LinkedIn group search, industry association member lists. Drill protocol specifies query templates.
+- **Risk:** đường vòng recommendations are generic ("find a niche")
+  - Mitigation: Protocol requires crossing founder_profile.skills with competitor_gaps. If no founder-specific edge found, state "No đường vòng identified — direct competition" honestly.
+- **Risk:** Kill criteria too lenient (don't kill fast enough) or too strict (kill everything)
+  - Mitigation: Kill thresholds calibrated from ground-truth data (V16). If < 30 outcomes recorded, use conservative defaults from case study library.

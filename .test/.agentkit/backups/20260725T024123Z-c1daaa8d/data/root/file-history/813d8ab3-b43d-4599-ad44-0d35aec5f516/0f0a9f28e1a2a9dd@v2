@@ -1,0 +1,192 @@
+"""Tests for AEVO-X Replay Engine — deterministic batch replay from case archive."""
+
+import json
+import time
+
+import pytest
+
+from ..case_archiver import CaseArchiver
+from ..replay_engine import ReplayEngine, ReplayVerdict
+
+from ...mechanism.strategy_evolution.schema import Strategy
+
+
+@pytest.fixture
+def archiver(tmp_path):
+    return CaseArchiver(db_path=tmp_path / "test-archive.db")
+
+
+@pytest.fixture
+def engine(archiver):
+    return ReplayEngine(archiver=archiver)
+
+
+def _make_strategy(
+    name="test_strategy",
+    wave1=None,
+    wave2=None,
+    rubric=None,
+    scoring_formula="weighted_sum",
+    confidence_aggregation="weighted_average",
+):
+    wave1 = wave1 or ["niche-archaeologist", "market-reality-checker", "failure-archaeologist", "risk-mapper"]
+    wave2 = wave2 or ["competitive-intelligence", "pricing-psychology"]
+    rubric = rubric or {"revenue_potential": 0.3, "moat_strength": 0.3, "execution_feasibility": 0.2, "timing": 0.2}
+    return Strategy.create(
+        name=name,
+        wave1_agents=wave1,
+        wave2_agents=wave2,
+        gate_sequence=["mountain_test", "verdict"],
+        mountain_rubric=rubric,
+        scoring_formula=scoring_formula,
+        confidence_aggregation=confidence_aggregation,
+    )
+
+
+def _make_case(case_id="case_test", verdict_class="MOUNTAIN_CANDIDATE", agent_outputs=None):
+    if agent_outputs is None:
+        agent_outputs = {
+            "niche-archaeologist": {
+                "confidence": 0.8,
+                "dimension_scores": {"revenue_potential": 8.0, "moat_strength": 6.0, "execution_feasibility": 7.0, "timing": 9.0},
+            },
+            "market-reality-checker": {
+                "confidence": 0.7,
+                "dimension_scores": {"revenue_potential": 7.0, "moat_strength": 5.0, "execution_feasibility": 8.0, "timing": 7.0},
+            },
+            "failure-archaeologist": {
+                "confidence": 0.6,
+                "dimension_scores": {"revenue_potential": 6.0, "moat_strength": 7.0, "execution_feasibility": 6.0, "timing": 6.0},
+            },
+            "risk-mapper": {
+                "confidence": 0.75,
+                "dimension_scores": {"revenue_potential": 7.5, "moat_strength": 6.5, "execution_feasibility": 7.5, "timing": 8.0},
+            },
+            "competitive-intelligence": {
+                "confidence": 0.65,
+                "dimension_scores": {"revenue_potential": 5.0, "moat_strength": 4.0, "execution_feasibility": 8.0, "timing": 7.0},
+            },
+            "pricing-psychology": {
+                "confidence": 0.7,
+                "dimension_scores": {"revenue_potential": 8.5, "moat_strength": 5.5, "execution_feasibility": 7.0, "timing": 6.5},
+            },
+        }
+    return {
+        "case_id": case_id,
+        "topic": "AI writing SaaS",
+        "verdict_class": verdict_class,
+        "verdict_summary": "Promising but competitive",
+        "strategy_used": "default_v25",
+        "research_cache": json.dumps({"raw": "data"}),
+        "agent_outputs": json.dumps(agent_outputs),
+        "trace_signals": json.dumps({"step3": {"agents_fired": 6}}),
+        "timestamp": "2026-05-16T10:00:00Z",
+    }
+
+
+class TestReplayBasic:
+    def test_replay_single_case_returns_verdict(self, archiver, engine):
+        archiver.archive_case(_make_case())
+        strategy = _make_strategy()
+        result = engine.replay_case("case_test", strategy)
+        assert isinstance(result, ReplayVerdict)
+        assert result.verdict_class in ("MOUNTAIN_CANDIDATE", "SIDE_HUSTLE", "KILL")
+        assert 0.0 <= result.confidence <= 1.0
+        assert result.mountain_score > 0
+
+    def test_replay_deterministic(self, archiver, engine):
+        archiver.archive_case(_make_case())
+        strategy = _make_strategy()
+        r1 = engine.replay_case("case_test", strategy)
+        r2 = engine.replay_case("case_test", strategy)
+        r3 = engine.replay_case("case_test", strategy)
+        assert r1.mountain_score == r2.mountain_score == r3.mountain_score
+        assert r1.verdict_class == r2.verdict_class == r3.verdict_class
+        assert r1.confidence == r2.confidence == r3.confidence
+
+    def test_replay_different_strategy_different_verdict(self, archiver, engine):
+        archiver.archive_case(_make_case())
+        s1 = _make_strategy(name="moat_heavy", rubric={"moat_strength": 0.8, "revenue_potential": 0.1, "execution_feasibility": 0.05, "timing": 0.05})
+        s2 = _make_strategy(name="revenue_heavy", rubric={"revenue_potential": 0.8, "moat_strength": 0.1, "execution_feasibility": 0.05, "timing": 0.05})
+        r1 = engine.replay_case("case_test", s1)
+        r2 = engine.replay_case("case_test", s2)
+        assert r1.mountain_score != r2.mountain_score
+
+
+class TestScoringFormulas:
+    def test_replay_respects_agent_subset(self, archiver, engine):
+        archiver.archive_case(_make_case())
+        s_full = _make_strategy(wave1=["niche-archaeologist", "market-reality-checker", "failure-archaeologist", "risk-mapper"])
+        s_partial = _make_strategy(wave1=["niche-archaeologist", "failure-archaeologist", "risk-mapper", "unknown-agent"])
+        r_full = engine.replay_case("case_test", s_full)
+        r_partial = engine.replay_case("case_test", s_partial)
+        assert r_full.mountain_score != r_partial.mountain_score
+
+    def test_replay_scoring_formula_weighted_sum(self, archiver, engine):
+        archiver.archive_case(_make_case())
+        s = _make_strategy(scoring_formula="weighted_sum")
+        result = engine.replay_case("case_test", s)
+        assert result.mountain_score > 0
+
+    def test_replay_scoring_formula_bayesian_posterior(self, archiver, engine):
+        archiver.archive_case(_make_case())
+        s = _make_strategy(scoring_formula="bayesian_posterior")
+        result = engine.replay_case("case_test", s)
+        assert result.mountain_score > 0
+
+    def test_replay_scoring_formula_min_gate(self, archiver, engine):
+        archiver.archive_case(_make_case())
+        s = _make_strategy(scoring_formula="min_gate")
+        result = engine.replay_case("case_test", s)
+        assert result.mountain_score > 0
+        assert result.mountain_score <= 10.0
+
+
+class TestBatchReplay:
+    def test_batch_replay_runs_all_combinations(self, archiver, engine):
+        for i in range(5):
+            archiver.archive_case(_make_case(case_id=f"case_{i}"))
+        strategies = [_make_strategy(name=f"s{j}") for j in range(3)]
+        results = engine.batch_replay([f"case_{i}" for i in range(5)], strategies)
+        assert len(results) == 15
+
+    def test_replay_handles_missing_agent_in_cache(self, archiver, engine):
+        minimal_outputs = {
+            "niche-archaeologist": {"confidence": 0.8, "dimension_scores": {"revenue_potential": 7.0, "moat_strength": 6.0, "execution_feasibility": 7.0, "timing": 8.0}},
+            "risk-mapper": {"confidence": 0.6, "dimension_scores": {"revenue_potential": 5.0, "moat_strength": 5.0, "execution_feasibility": 6.0, "timing": 5.0}},
+            "failure-archaeologist": {"confidence": 0.5, "dimension_scores": {"revenue_potential": 4.0, "moat_strength": 4.0, "execution_feasibility": 5.0, "timing": 4.0}},
+            "market-reality-checker": {"confidence": 0.5, "dimension_scores": {"revenue_potential": 5.0, "moat_strength": 5.0, "execution_feasibility": 5.0, "timing": 5.0}},
+        }
+        archiver.archive_case(_make_case(agent_outputs=minimal_outputs))
+        s = _make_strategy(wave1=["niche-archaeologist", "NONEXISTENT-agent", "risk-mapper", "failure-archaeologist"])
+        result = engine.replay_case("case_test", s)
+        assert result.mountain_score > 0
+        assert result.confidence < 1.0
+
+
+class TestFitnessDelta:
+    def test_fitness_delta_positive_when_closer_to_outcome(self, archiver, engine):
+        archiver.archive_case(_make_case(verdict_class="MOUNTAIN_CANDIDATE"))
+        archiver.update_outcome("case_test", outcome="confirmed_mountain", revenue=15000.0, founder_acted=True)
+        s = _make_strategy()
+        result = engine.replay_case("case_test", s)
+        delta = engine.compute_fitness_delta(result, "KILL", "confirmed_mountain")
+        assert delta > 0
+
+    def test_fitness_delta_zero_when_no_outcome(self, archiver, engine):
+        archiver.archive_case(_make_case())
+        s = _make_strategy()
+        result = engine.replay_case("case_test", s)
+        delta = engine.compute_fitness_delta(result, "MOUNTAIN_CANDIDATE", None)
+        assert delta == 0.0
+
+
+class TestPerformance:
+    def test_replay_performance_under_2_seconds(self, archiver, engine):
+        archiver.archive_case(_make_case())
+        s = _make_strategy()
+        start = time.perf_counter()
+        for _ in range(100):
+            engine.replay_case("case_test", s)
+        elapsed = time.perf_counter() - start
+        assert elapsed / 100 < 2.0

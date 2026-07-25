@@ -1,0 +1,149 @@
+---
+phase: 4
+title: "Integration Testing and Validation"
+status: completed
+priority: P2
+effort: "2h"
+dependencies: [1, 2, 3]
+completed: "2026-05-10T08:18:00.000Z"
+---
+
+# Phase 4: Integration Testing and Validation
+
+## Overview
+
+Validate all 3 upgrades work together by replaying 2 historical KILL cases through the upgraded pipeline and comparing output quality.
+
+## Requirements
+
+- Functional: Replay existing KILL cases with side-door scanner, operator voice, anti-orthodox gate
+- Functional: Compare old vs new output side-by-side
+- Non-functional: No regressions on non-KILL verdicts (MOUNTAIN, SIDE_HUSTLE paths unaffected)
+
+## Test Cases
+
+### Test 1: VC Fund Infiltration (KILL → should produce side-door paths)
+
+**Source case:** `nui-hunter/kb/cases/stage0-260507-fund-infiltration.json`
+- Previous verdict: KILL (network_barrier, capital_barrier, timeline_barrier, no_precedent)
+- Previous alternatives: "cold outreach 10 VCs" (orthodox)
+
+**Expected new behavior:**
+1. Step 6.8.5 FIRES (kill_mechanisms match: network_barrier, capital_barrier, no_precedent)
+2. Power-cartographer maps VC decision makers (Uyên Vy/Do Ventures, Don Lam/VinaCapital, etc.)
+3. Gate-broker designs chain: CTO of portfolio company → investor
+4. Tay-trang-positioner reframes 15yr tech as "free AI pipeline audit for portfolio companies"
+5. Proximity-engineer finds specific events, meetups, associations
+6. Anti-orthodox gate catches "attend startup events" → rewrites with specific chain
+7. Operator voice renders as mentor conversation, not tables
+
+**Validation:** New output has ≥1 specific chain (A→B→TARGET) with scripts. Old output had none.
+
+### Test 2: VC Replication / Giang Trần Minh Thành (KILL → should produce paths)
+
+**Source case:** `nui-hunter/kb/cases/stage0-260507-vc-replication.json`
+- Previous verdict: KILL (time_lock, entry_window_closed, network_gap, track_record_gap)
+- Previous alternative: "free_work_infiltration" (orthodox — "cold outreach 10 VCs, offer free research")
+
+**Expected new behavior:**
+1. Step 6.8.5 FIRES (entry_window_closed, network_gap, track_record_gap all match)
+2. Side-door paths generated around portfolio company CTOs, not direct VC approach
+3. Anti-orthodox gate catches "offer free research to VCs" → rewrites with indirect chain
+4. Operator voice: "Forget applying to funds. Here's what you do instead..."
+
+**Validation:** Side-door path is meaningfully different from "cold outreach 10 VCs".
+
+### Test 3: Non-relationship KILL (should NOT fire side-door)
+
+Pick any case with KILL reason = `median_income_too_low` or `market_too_saturated`.
+
+**Expected behavior:**
+1. Step 6.8.5 checks kill_mechanisms — no relationship barriers found
+2. Side-door scanner SKIPS
+3. Pipeline proceeds normally
+4. No regression
+
+## Implementation Steps
+
+### 1. Create test harness script
+
+```bash
+# test-side-door-pipeline.py
+# Takes case JSON, simulates pipeline steps 6.8 → 6.8.5 → 7 → 7.1
+# Outputs: side-door trigger result, agent prompts, mock synthesis, orthodox gate results
+
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/side-door-trigger.py \
+  --verdict-file <case_json> \
+  --profile-file <profile_json> \
+  --dry-run
+```
+
+`--dry-run` generates agent prompts without spawning agents. Validates trigger logic.
+
+### 2. Manual replay for Test 1 and Test 2
+
+Run actual `/stage0` on the VC topics with `--voice operator`:
+```
+/stage0 "free value infiltration to become indispensable to million dollar funds" --voice operator
+```
+
+Compare output with historical verdict in `verdicts/verdict-260507-phamt-fund-infiltration.md`.
+
+### 3. Regression check for Test 3
+
+Run `/stage0` on a non-relationship KILL topic. Verify side-door scanner doesn't fire.
+
+### 4. Checklist validation
+
+| Check | Expected | Pass/Fail |
+|---|---|---|
+| side-door-trigger.py fires on network_barrier | fires=true | PASS |
+| side-door-trigger.py skips on median_income_too_low | fires=false | PASS |
+| 4 power-network agents receive prompts with specific targets | prompts contain role names | PASS |
+| Anti-orthodox gate catches "attend events" | flagged ORTHODOX | PASS |
+| Anti-orthodox gate passes "DM CTO of Sendo: '...'" | PASS | PASS |
+| Operator voice output has zero bullet lists | true | PASS |
+| Operator voice output ≤2000 words | true | PASS |
+| Analyst mode unaffected (default behavior) | true | PASS |
+| Non-KILL verdicts unaffected | true | PASS |
+| stage0-post-audit.cjs accepts new steps | no hook errors | PASS |
+
+### 5. Update stage0-quality-score.py
+
+Add scoring for new steps:
+```python
+# New quality dimensions
+"side_door_fired": bool,       # Did 6.8.5 fire when it should have?
+"side_door_paths_count": int,  # How many paths generated?
+"orthodox_removed_count": int, # How many generic recs removed?
+"voice_mode": str,             # analyst or operator
+```
+
+### 6. Persist learnings
+
+After validation, update learned-rules.md with new rule:
+```
+- [SIDE-DOOR-MANDATORY] When stage0 KILL cites relationship barriers 
+  (network_barrier, capital_barrier, track_record_gap, entry_window_closed, 
+  no_precedent, credential_gap), Step 6.8.5 side-door scanner MUST fire 
+  before final verdict. Orthodox alternatives alone are insufficient — 
+  they represent the advice every AI gives. (source: side-door-thinking-engine, 
+  date: 2026-05-10)
+```
+
+## Success Criteria
+
+- [x] Test 1: Fund infiltration produces ≥1 specific chain with scripts
+- [x] Test 2: VC replication produces side-door path different from "cold outreach"
+- [x] Test 3: Non-relationship KILL does NOT trigger side-door
+- [x] Operator voice output clean (no bullets, no tables, ≤2000 words)
+- [x] Anti-orthodox gate catches generic advice
+- [x] No regressions on MOUNTAIN/SIDE_HUSTLE paths
+- [x] Quality score script updated
+- [x] Learned rules updated
+
+## Risk Assessment
+
+- **Risk**: Historical cases may not have enough context for side-door agents. **Mitigation**: Agents do their own WebSearch for target intelligence. Profile provides founder context.
+- **Risk**: Test scope too narrow (only 2-3 cases). **Mitigation**: These are representative of the exact failure mode. More cases can be tested after initial validation.

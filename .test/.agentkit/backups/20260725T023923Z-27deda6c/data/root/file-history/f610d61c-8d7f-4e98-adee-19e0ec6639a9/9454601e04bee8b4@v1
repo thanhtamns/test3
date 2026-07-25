@@ -1,0 +1,275 @@
+"""Phase 3 — unified cognitive retrieval API + CLI.
+
+Public surface (from phase-03 spec §API):
+
+    retrieve(query, domain=None, mode="auto", top_k=10, include_archived=False)
+      -> {
+          "rules":     [...],
+          "models":    [...],
+          "archetypes":[...],
+          "episodes":  [...],
+          "procedures":[...],
+          "confidence_weighted": True,
+          "mode_used":    "system1" | "system2",
+          "latency_ms":   int,
+          "router":       {...},
+      }
+
+Flow:
+  0. Warm reflex cache if stale.
+  1. Router picks mode (auto unless caller forces).
+  2. System 1 -> LRU replay OR keyword match against reflex pool.
+     If too few hits, fall through to System 2.
+  3. System 2 -> spreading_activation (cognee CHUNKS + hebbian expand).
+  4. Confidence reranker orders the merged list.
+  5. Result is bucketed into rules/models/archetypes/episodes/procedures,
+     cached into the LRU, returned.
+"""
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import sys
+import time
+from pathlib import Path
+from typing import Literal
+
+_HERE = Path(__file__).resolve().parent
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
+
+import confidence_reranker as reranker  # noqa: E402
+import dual_process_router as router  # noqa: E402
+import reflex_cache  # noqa: E402
+from system1_cache import default_cache, normalize_query  # noqa: E402
+
+s2 = None  # lazy-loaded on first System 2 call
+
+
+def _load_s2():
+    global s2
+    if s2 is None:
+        import spreading_activation as _s2
+        s2 = _s2
+    return s2
+
+Mode = Literal["system1", "system2", "auto"]
+
+S1_MIN_HITS_FOR_EARLY_RETURN = 3
+
+
+def _build_response(
+    nodes: list[dict],
+    mode_used: str,
+    latency_ms: int,
+    router_trace: dict,
+    query: str,
+    top_k: int,
+) -> dict:
+    buckets = reranker.categorize(nodes)
+    return {
+        **buckets,
+        "confidence_weighted": True,
+        "mode_used": mode_used,
+        "latency_ms": latency_ms,
+        "router": router_trace,
+        "query": query,
+        "top_k": top_k,
+        "total": sum(len(v) for v in buckets.values()),
+    }
+
+
+async def retrieve_async(
+    query: str,
+    domain: str | None = None,
+    mode: Mode = "auto",
+    top_k: int = 10,
+    include_archived: bool = False,
+) -> dict:
+    t_start = time.perf_counter()
+    cache = default_cache()
+
+    # Keep the reflex pool fresh without forcing callers to manage cron.
+    reflex_cache.refresh_if_stale()
+
+    # LRU replay: if we've served this exact query recently, return a copy
+    # with latency re-measured so callers see real wall clock.
+    cached = cache.get_cached(query, top_k, domain)
+    if cached is not None:
+        cached = dict(cached)
+        cached["mode_used"] = "system1"
+        cached["latency_ms"] = int((time.perf_counter() - t_start) * 1000)
+        cached["router"] = {"forced": mode, "mode": "system1", "reason": "lru_hit"}
+        return cached
+
+    chosen, trace = router.choose_mode(
+        query=query,
+        domain=domain,
+        cache_hit_fn=lambda: cache.cache_hit(query, top_k, domain),
+        force=mode if mode != "auto" else None,
+    )
+
+    # ---- System 1 attempt ----
+    s1_hits: list[dict] = []
+    if chosen == "system1":
+        s1_hits = cache.keyword_match(query, domain=domain, top_k=top_k * 2)
+        if len(s1_hits) >= S1_MIN_HITS_FOR_EARLY_RETURN:
+            seed_ids = {h["node_id"] for h in s1_hits}
+            ranked = reranker.rerank(
+                s1_hits, top_k=top_k, seed_ids=seed_ids, latency_penalty=1.0
+            )
+            latency_ms = int((time.perf_counter() - t_start) * 1000)
+            response = _build_response(
+                ranked, "system1", latency_ms, trace, query, top_k
+            )
+            cache.cache_result(query, top_k, domain, response)
+            return response
+        # Fall through to S2 — S1 pool can't answer.
+        trace["fallthrough"] = True
+
+    # ---- System 2 deep path ----
+    try:
+        _s2 = _load_s2()
+        s2_hits = await _s2.spreading_activate(
+            query=query,
+            datasets=[domain] if domain else None,
+            seed_k=max(10, top_k),
+            max_hops=_s2.MAX_HOPS,
+            include_archived=include_archived,
+        )
+    except (ImportError, ModuleNotFoundError):
+        s2_hits = []
+        trace["s2_error"] = "cognee not installed — System 2 unavailable"
+
+    merged = s2_hits + s1_hits  # S1 keyword hits add domain context
+    seed_ids = {m["node_id"] for m in merged if m.get("source") == "system2_seed"}
+    # Deeper hops cost a bit — light penalty so 0-hop seeds win ties.
+    max_hop = max((m.get("hops", 0) for m in merged), default=0)
+    latency_penalty = 1.0 + (0.1 * max_hop)
+
+    ranked = reranker.rerank(
+        merged, top_k=top_k, seed_ids=seed_ids, latency_penalty=latency_penalty
+    )
+
+    latency_ms = int((time.perf_counter() - t_start) * 1000)
+    response = _build_response(ranked, "system2", latency_ms, trace, query, top_k)
+    cache.cache_result(query, top_k, domain, response)
+    return response
+
+
+def retrieve(
+    query: str,
+    domain: str | None = None,
+    mode: Mode = "auto",
+    top_k: int = 10,
+    include_archived: bool = False,
+) -> dict:
+    """Sync entry point for CLI and non-async callers."""
+    return asyncio.run(
+        retrieve_async(
+            query=query,
+            domain=domain,
+            mode=mode,
+            top_k=top_k,
+            include_archived=include_archived,
+        )
+    )
+
+
+def session_warmup() -> dict:
+    """Explicit warmup hook for stage0 / session start."""
+    return reflex_cache.warm()
+
+
+# ---------- CLI ----------
+
+def _format_text(response: dict, max_items: int = 5) -> str:
+    lines = [
+        f"mode: {response['mode_used']}  latency: {response['latency_ms']}ms  "
+        f"total: {response.get('total', 0)}",
+        f"router: score={response['router'].get('score')} "
+        f"reasons={response['router'].get('reasons', [])}",
+    ]
+    for bucket in ("rules", "models", "archetypes", "episodes", "procedures"):
+        items = response.get(bucket, [])
+        if not items:
+            continue
+        lines.append(f"\n[{bucket}]  ({len(items)})")
+        for item in items[:max_items]:
+            snippet = (item.get("text") or "")[:100].replace("\n", " ")
+            lines.append(
+                f"  score={item.get('score', 0):.4f}  "
+                f"act={item.get('activation', 0):.3f}  "
+                f"conf={item.get('confidence', 0):.3f}  "
+                f"heb={item.get('hebbian_boost', 0):.3f}  "
+                f":: {snippet}"
+            )
+    return "\n".join(lines)
+
+
+def _fallback_response(query: str, reason: str, detail: str = "") -> dict:
+    """Return graceful fallback JSON when retrieval fails (infrastructure issue)."""
+    return {
+        "rules": [],
+        "models": [],
+        "archetypes": [],
+        "episodes": [],
+        "procedures": [],
+        "confidence_weighted": False,
+        "mode_used": "fallback",
+        "latency_ms": 0,
+        "router": {"mode": "fallback", "reason": reason},
+        "query": query,
+        "top_k": 0,
+        "total": 0,
+        "error": reason,
+        "error_detail": detail,
+    }
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="Cognitive retrieval (Phase 3)")
+    ap.add_argument("--query", "-q", required=True, help="natural language query")
+    ap.add_argument("--domain", "-d", default=None, help="restrict to dataset/domain")
+    ap.add_argument(
+        "--mode", choices=["auto", "system1", "system2"], default="auto"
+    )
+    ap.add_argument("--top-k", type=int, default=10)
+    ap.add_argument("--include-archived", action="store_true")
+    ap.add_argument("--json", action="store_true", help="emit raw JSON")
+    ap.add_argument("--warm", action="store_true", help="warm reflex cache first")
+    args = ap.parse_args()
+
+    try:
+        if args.warm:
+            stats = session_warmup()
+            print(f"[warm] {stats}", file=sys.stderr)
+
+        result = retrieve(
+            query=args.query,
+            domain=args.domain,
+            mode=args.mode,
+            top_k=args.top_k,
+            include_archived=args.include_archived,
+        )
+    except Exception as e:
+        err_str = str(e)
+        # Classify error for stage0.md fallback handling
+        if "NO_SUCHFILE" in err_str or "model.onnx" in err_str:
+            reason = "model_not_found"
+        elif "timeout" in err_str.lower():
+            reason = "timeout"
+        else:
+            reason = "retrieval_error"
+        result = _fallback_response(args.query, reason, err_str[:200])
+        print(f"[cognitive_retrieve] {reason}: {err_str[:100]}", file=sys.stderr)
+
+    if args.json:
+        print(json.dumps(result, indent=2, default=str))
+    else:
+        print(_format_text(result))
+
+
+if __name__ == "__main__":
+    main()

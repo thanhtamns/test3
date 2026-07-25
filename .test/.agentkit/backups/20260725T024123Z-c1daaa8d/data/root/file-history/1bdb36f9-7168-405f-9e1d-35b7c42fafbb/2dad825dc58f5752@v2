@@ -1,0 +1,208 @@
+---
+phase: 5
+title: "Autonomy Governor"
+status: complete
+priority: P2
+effort: "2-3d"
+dependencies: [phase-03]
+---
+
+# Phase 5: Autonomy Governor
+
+## Overview
+
+Graduated autonomy system that auto-promotes/demotes domains between HUMAN_DECIDES → SEMI_AUTO → FULL_AUTO based on rolling accuracy. Prevents premature full autonomy on domains with insufficient data.
+
+## Requirements
+
+- Functional: Per-domain accuracy tracking. Auto-graduation when threshold met. Auto-demotion on accuracy drop. Dashboard showing domain autonomy levels.
+- Non-functional: Graduation decision < 10ms. Minimum 30 verdicts before promotion. Never auto-promote without sufficient sample size.
+
+## Architecture
+
+```
+Verdict Request
+  │
+  ▼
+AutonomyGovernor.get_mode(domain)
+  │
+  ├── FULL_AUTO (accuracy > 85%, verdicts > 30)
+  │   → Execute verdict without confirmation
+  │
+  ├── SEMI_AUTO (accuracy 70-85%, verdicts > 30)
+  │   → Show verdict + "Confirm? [Y/n]"
+  │   → Record human correction for learning
+  │
+  └── HUMAN_DECIDES (accuracy < 70% OR verdicts < 30)
+      → Show verdict as recommendation
+      → Human makes final call
+      → Record human decision for learning
+```
+
+## Related Code Files
+
+**Create:**
+- `.claude/lib/intelligence/governance/autonomy-governor.py`
+- `.claude/lib/intelligence/governance/accuracy-tracker.py`
+- `.claude/lib/intelligence/governance/graduation-rules.py`
+- `.claude/lib/intelligence/governance/__init__.py`
+- `.claude/data/governance/domain-accuracy.json` — persisted accuracy state
+
+**Modify:**
+- `.claude/skills/business/deep-intelligence/stage0_integration.py` — wrap verdict output with governance
+- `.claude/lib/intelligence/calibration/calibrator.py` — feed accuracy to governor
+
+## Implementation Steps
+
+### Step 1: Accuracy Tracker (~0.5d)
+
+```python
+class AccuracyTracker:
+    def __init__(self, state_path: str):
+        self.state = self._load(state_path)  # domain-accuracy.json
+
+    def record(self, domain: str, predicted: str, actual: str):
+        correct = predicted == actual
+        if domain not in self.state:
+            self.state[domain] = {"verdicts": [], "total": 0, "correct": 0}
+
+        self.state[domain]["verdicts"].append({
+            "timestamp": datetime.now().isoformat(),
+            "predicted": predicted,
+            "actual": actual,
+            "correct": correct,
+        })
+        self.state[domain]["total"] += 1
+        if correct:
+            self.state[domain]["correct"] += 1
+        self._save()
+
+    def accuracy(self, domain: str, window: int = 30) -> AccuracyResult:
+        """Rolling accuracy over last N verdicts."""
+        data = self.state.get(domain, {})
+        verdicts = data.get("verdicts", [])[-window:]
+        if not verdicts:
+            return AccuracyResult(accuracy=0.0, sample_size=0, sufficient=False)
+
+        correct = sum(1 for v in verdicts if v["correct"])
+        return AccuracyResult(
+            accuracy=correct / len(verdicts),
+            sample_size=len(verdicts),
+            sufficient=len(verdicts) >= 30,
+        )
+```
+
+### Step 2: Graduation Rules (~0.5d)
+
+```python
+class GraduationRules:
+    THRESHOLDS = {
+        "FULL_AUTO": {"min_accuracy": 0.85, "min_verdicts": 30},
+        "SEMI_AUTO": {"min_accuracy": 0.70, "min_verdicts": 30},
+        "HUMAN_DECIDES": {"min_accuracy": 0.0, "min_verdicts": 0},
+    }
+
+    DEMOTION_TRIGGER = {
+        "accuracy_drop": 0.10,  # 10% drop in any 10-verdict window → demote
+        "window_size": 10,
+    }
+
+    def evaluate(self, accuracy_result: AccuracyResult) -> AutonomyLevel:
+        if not accuracy_result.sufficient:
+            return "HUMAN_DECIDES"
+        if accuracy_result.accuracy >= self.THRESHOLDS["FULL_AUTO"]["min_accuracy"]:
+            return "FULL_AUTO"
+        if accuracy_result.accuracy >= self.THRESHOLDS["SEMI_AUTO"]["min_accuracy"]:
+            return "SEMI_AUTO"
+        return "HUMAN_DECIDES"
+
+    def check_demotion(self, domain: str, tracker: AccuracyTracker) -> bool:
+        """Check if domain should be demoted due to recent accuracy drop."""
+        recent = tracker.accuracy(domain, window=10)
+        overall = tracker.accuracy(domain, window=30)
+        if overall.accuracy - recent.accuracy > self.DEMOTION_TRIGGER["accuracy_drop"]:
+            return True
+        return False
+```
+
+### Step 3: Autonomy Governor (~1d)
+
+```python
+class AutonomyGovernor:
+    def __init__(self, tracker: AccuracyTracker, rules: GraduationRules):
+        self.tracker = tracker
+        self.rules = rules
+        self.overrides = {}  # manual overrides per domain
+
+    def get_mode(self, domain: str) -> AutonomyLevel:
+        if domain in self.overrides:
+            return self.overrides[domain]
+
+        accuracy = self.tracker.accuracy(domain)
+        level = self.rules.evaluate(accuracy)
+
+        # Check demotion
+        if level in ("FULL_AUTO", "SEMI_AUTO") and self.rules.check_demotion(domain, self.tracker):
+            level = self._demote(level)
+
+        return level
+
+    def wrap_verdict(self, verdict: Verdict, domain: str) -> GovernedVerdict:
+        mode = self.get_mode(domain)
+        accuracy = self.tracker.accuracy(domain)
+
+        return GovernedVerdict(
+            verdict=verdict,
+            autonomy_level=mode,
+            domain_accuracy=accuracy.accuracy,
+            domain_sample_size=accuracy.sample_size,
+            requires_confirmation=(mode != "FULL_AUTO"),
+            message=self._format_message(verdict, mode, accuracy),
+        )
+
+    def report(self) -> dict:
+        """Dashboard: all domains with their autonomy level."""
+        return {
+            domain: {
+                "level": self.get_mode(domain),
+                "accuracy": self.tracker.accuracy(domain).accuracy,
+                "verdicts": self.tracker.accuracy(domain).sample_size,
+            }
+            for domain in self.tracker.state
+        }
+```
+
+### Step 4: Wire into stage0 (~0.5d)
+
+```python
+# In stage0 verdict output:
+governor = AutonomyGovernor(tracker, rules)
+governed = governor.wrap_verdict(verdict, domain)
+
+if governed.requires_confirmation:
+    print(f"[{governed.autonomy_level}] Verdict: {verdict.type}")
+    print(f"Domain accuracy: {governed.domain_accuracy:.0%} ({governed.domain_sample_size} verdicts)")
+    print(f"Confidence: {verdict.confidence:.0%}")
+    # In semi-auto/human mode, stage0 outputs recommendation, not decision
+else:
+    # FULL_AUTO: verdict is final
+    print(f"[AUTO] Verdict: {verdict.type} (domain accuracy: {governed.domain_accuracy:.0%})")
+```
+
+## Success Criteria
+
+- [ ] Per-domain accuracy tracked in `domain-accuracy.json`
+- [ ] New domains start at HUMAN_DECIDES
+- [ ] Promotion to SEMI_AUTO at 70%+ accuracy with 30+ verdicts
+- [ ] Promotion to FULL_AUTO at 85%+ accuracy with 30+ verdicts
+- [ ] Auto-demotion on 10% accuracy drop in 10-verdict window
+- [ ] Manual override capability (`governor.overrides[domain] = level`)
+- [ ] Dashboard: `python governance/autonomy-governor.py --report`
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|---|---|
+| Gaming: system predicts easy cases, skips hard ones | Track per-difficulty accuracy, not just aggregate |
+| 30-verdict threshold too slow for new domains | Acceptable — safety > speed for autonomous decisions |
+| Demotion oscillation | Hysteresis: require 5 consecutive good verdicts after demotion to re-promote |

@@ -1,0 +1,333 @@
+"""Tests for Phase 05: PersonaDebate prompt generation."""
+
+import json
+import subprocess
+import tempfile
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from .. import persona_debate as _pd_module
+from ..persona_debate import PersonaDebate, PersonaConfig, PERSONA_SELECTION
+
+MOCK_TR_OUTPUT = {
+    "overall_score": 0.65,
+    "dimension_scores": {
+        "base_rates": {"score": 0.5, "zone_counts": {"K": 2, "T": 1, "?": 0}},
+        "unit_economics": {"score": 0.7, "zone_counts": {"K": 3, "T": 1, "?": 0}},
+    },
+    "facts": [
+        {"fact": "VN deal market is $500M", "confidence": 0.8, "zone_tag": "K"},
+    ],
+    "strategic_insight": {"verdict": "GO", "key_insight": "First mover advantage"},
+}
+
+QUERY = "Should I enter the VN import deal market?"
+
+_MODULE = "..persona_debate"
+
+
+def _make_debate(query_type: str = "custom") -> PersonaDebate:
+    return PersonaDebate(QUERY, query_type, MOCK_TR_OUTPUT)
+
+
+def _fake_persona_md(name: str) -> str:
+    lines = [f"# {name.title()} Persona"] + [f"Line {i}" for i in range(100)]
+    return "\n".join(lines)
+
+
+def _make_mock_personas_dir(names: list[str]) -> MagicMock:
+    """Build a mock PERSONAS_DIR whose glob() returns fake Path mocks per name."""
+    fake_paths: dict[str, MagicMock] = {}
+    for name in names:
+        p = MagicMock(spec=Path)
+        p.parent = MagicMock()
+        p.parent.name = "investors"
+        p.read_text.return_value = _fake_persona_md(name)
+        fake_paths[name] = p
+
+    mock_dir = MagicMock()
+
+    def fake_glob(pattern):
+        for name, p in fake_paths.items():
+            if name in pattern:
+                return [p]
+        return []
+
+    mock_dir.glob.side_effect = fake_glob
+    return mock_dir
+
+
+# --- select_personas ---
+
+def test_select_personas_returns_3_for_known_type():
+    debate = _make_debate("deal_analysis")
+    names = PERSONA_SELECTION["deal_analysis"]
+    mock_dir = _make_mock_personas_dir(names)
+    with patch.object(_pd_module, "PERSONAS_DIR", mock_dir):
+        personas = debate.select_personas(n=3)
+    assert len(personas) == 3
+    assert all(isinstance(p, PersonaConfig) for p in personas)
+
+
+def test_select_personas_falls_back_to_custom():
+    debate = _make_debate("unknown_type_xyz")
+    custom_names = PERSONA_SELECTION["custom"]
+    mock_dir = _make_mock_personas_dir(custom_names)
+    with patch.object(_pd_module, "PERSONAS_DIR", mock_dir):
+        personas = debate.select_personas()
+    assert len(personas) == len(custom_names)
+    returned_names = {p.name for p in personas}
+    assert returned_names == set(custom_names)
+
+
+def test_select_personas_skips_missing_files():
+    debate = _make_debate("custom")
+    mock_dir = MagicMock()
+    mock_dir.glob.return_value = []
+    with patch.object(_pd_module, "PERSONAS_DIR", mock_dir):
+        personas = debate.select_personas()
+    assert personas == []
+
+
+def test_select_personas_respects_n_limit():
+    debate = _make_debate("deal_analysis")
+    names = PERSONA_SELECTION["deal_analysis"]
+    mock_dir = _make_mock_personas_dir(names)
+    with patch.object(_pd_module, "PERSONAS_DIR", mock_dir):
+        personas = debate.select_personas(n=2)
+    assert len(personas) <= 2
+
+
+# --- generate_persona_prompts ---
+
+def test_generate_persona_prompts_structure():
+    debate = _make_debate("custom")
+    names = PERSONA_SELECTION["custom"]
+    mock_dir = _make_mock_personas_dir(names)
+    with patch.object(_pd_module, "PERSONAS_DIR", mock_dir):
+        prompts = debate.generate_persona_prompts()
+    assert len(prompts) == len(names)
+    for name, prompt in prompts:
+        assert isinstance(name, str)
+        assert isinstance(prompt, str)
+        assert len(prompt) > 0
+
+
+def test_generate_persona_prompts_contain_query():
+    debate = _make_debate("custom")
+    names = PERSONA_SELECTION["custom"]
+    mock_dir = _make_mock_personas_dir(names)
+    with patch.object(_pd_module, "PERSONAS_DIR", mock_dir):
+        prompts = debate.generate_persona_prompts()
+    for _, prompt in prompts:
+        assert QUERY in prompt
+
+
+def test_generate_persona_prompts_contain_scores():
+    debate = _make_debate("custom")
+    names = PERSONA_SELECTION["custom"]
+    mock_dir = _make_mock_personas_dir(names)
+    with patch.object(_pd_module, "PERSONAS_DIR", mock_dir):
+        prompts = debate.generate_persona_prompts()
+    for _, prompt in prompts:
+        assert "base_rates" in prompt
+        assert "unit_economics" in prompt
+
+
+def test_generate_persona_prompts_contain_overall_score():
+    debate = _make_debate("custom")
+    names = PERSONA_SELECTION["custom"]
+    mock_dir = _make_mock_personas_dir(names)
+    with patch.object(_pd_module, "PERSONAS_DIR", mock_dir):
+        prompts = debate.generate_persona_prompts()
+    for _, prompt in prompts:
+        assert "0.65" in prompt
+
+
+def test_generate_persona_prompts_contain_instructions():
+    debate = _make_debate("custom")
+    names = PERSONA_SELECTION["custom"]
+    mock_dir = _make_mock_personas_dir(names)
+    with patch.object(_pd_module, "PERSONAS_DIR", mock_dir):
+        prompts = debate.generate_persona_prompts()
+    for _, prompt in prompts:
+        assert "300 words" in prompt
+        assert "GO/CAUTION/KILL" in prompt
+
+
+def test_generate_persona_prompts_contain_identity():
+    debate = _make_debate("custom")
+    names = PERSONA_SELECTION["custom"]
+    mock_dir = _make_mock_personas_dir(names)
+    with patch.object(_pd_module, "PERSONAS_DIR", mock_dir):
+        prompts = debate.generate_persona_prompts()
+    for _, prompt in prompts:
+        assert "Your Identity" in prompt
+
+
+def test_generate_persona_prompts_empty_when_no_files():
+    debate = _make_debate("custom")
+    mock_dir = MagicMock()
+    mock_dir.glob.return_value = []
+    with patch.object(_pd_module, "PERSONAS_DIR", mock_dir):
+        prompts = debate.generate_persona_prompts()
+    assert prompts == []
+
+
+# --- generate_merge_prompt ---
+
+def test_merge_prompt_contains_all_persona_names():
+    debate = _make_debate()
+    outputs = {
+        "charlie-munger": "Munger says: KILL. Moat is non-existent.",
+        "nassim-taleb": "Taleb says: CAUTION. Fat tails present.",
+        "naval-ravikant": "Naval says: GO. Leverage is scalable.",
+    }
+    prompt = debate.generate_merge_prompt(outputs)
+    for name in outputs:
+        assert name in prompt
+
+
+def test_merge_prompt_merge_rules():
+    debate = _make_debate()
+    outputs = {"persona-a": "output a", "persona-b": "output b"}
+    prompt = debate.generate_merge_prompt(outputs)
+    assert "AGREE" in prompt
+    assert "DISAGREE" in prompt
+    assert "blind spot" in prompt.lower() or "Blind Spots" in prompt
+
+
+def test_merge_prompt_max_word_instruction():
+    debate = _make_debate()
+    outputs = {"persona-a": "text"}
+    prompt = debate.generate_merge_prompt(outputs)
+    assert "200 words" in prompt
+
+
+def test_merge_prompt_contains_persona_outputs():
+    debate = _make_debate()
+    outputs = {"expert-x": "Expert X analysis here"}
+    prompt = debate.generate_merge_prompt(outputs)
+    assert "Expert X analysis here" in prompt
+
+
+def test_merge_prompt_n_count():
+    debate = _make_debate()
+    outputs = {"a": "out1", "b": "out2"}
+    prompt = debate.generate_merge_prompt(outputs)
+    assert "2" in prompt
+
+
+def test_merge_prompt_empty_outputs():
+    debate = _make_debate()
+    prompt = debate.generate_merge_prompt({})
+    assert "200 words" in prompt
+    assert "AGREE" in prompt
+
+
+# --- PERSONA_SELECTION coverage ---
+
+def test_persona_selection_all_types_covered():
+    """Every key in PERSONA_SELECTION maps to a non-empty list of persona names."""
+    for query_type, names in PERSONA_SELECTION.items():
+        assert len(names) > 0, f"{query_type} has empty persona list"
+        assert all(isinstance(n, str) and len(n) > 0 for n in names), (
+            f"{query_type} has invalid persona name"
+        )
+
+
+def test_persona_selection_custom_key_exists():
+    assert "custom" in PERSONA_SELECTION
+
+
+def test_persona_selection_all_known_types():
+    expected = {"power_infiltration", "wealth_strategy", "market_entry",
+                "deal_analysis", "career_path", "custom"}
+    assert expected.issubset(set(PERSONA_SELECTION.keys()))
+
+
+# --- _format_scores ---
+
+def test_format_scores_dict_of_dicts():
+    debate = _make_debate()
+    scores = {"dim_a": {"score": 0.8}, "dim_b": {"score": 0.3}}
+    result = debate._format_scores(scores)
+    assert "dim_a: 0.80" in result
+    assert "dim_b: 0.30" in result
+
+
+def test_format_scores_flat_floats():
+    debate = _make_debate()
+    scores = {"speed": 0.75, "quality": 0.9}
+    result = debate._format_scores(scores)
+    assert "speed: 0.75" in result
+    assert "quality: 0.90" in result
+
+
+def test_format_scores_empty():
+    debate = _make_debate()
+    result = debate._format_scores({})
+    assert "(no scores)" in result
+
+
+# --- CLI ---
+
+def test_cli_select_stage():
+    repo_root = Path(__file__).resolve().parents[5]
+    venv_python = repo_root / ".claude" / "skills" / ".venv" / "Scripts" / "python.exe"
+    script = Path(__file__).resolve().parents[1] / "persona_debate.py"
+
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".json", delete=False, encoding="utf-8"
+    ) as f:
+        json.dump(MOCK_TR_OUTPUT, f)
+        tr_path = f.name
+
+    result = subprocess.run(
+        [
+            str(venv_python),
+            str(script),
+            "--query", QUERY,
+            "--query-type", "custom",
+            "--thinkrunner", tr_path,
+            "--stage", "select",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=str(repo_root),
+        env={**__import__("os").environ, "PYTHONIOENCODING": "utf-8"},
+    )
+    assert result.returncode == 0, f"CLI failed: {result.stderr}"
+    output = json.loads(result.stdout)
+    assert isinstance(output, list)
+
+
+def test_cli_merge_stage_empty():
+    repo_root = Path(__file__).resolve().parents[5]
+    venv_python = repo_root / ".claude" / "skills" / ".venv" / "Scripts" / "python.exe"
+    script = Path(__file__).resolve().parents[1] / "persona_debate.py"
+
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".json", delete=False, encoding="utf-8"
+    ) as f:
+        json.dump(MOCK_TR_OUTPUT, f)
+        tr_path = f.name
+
+    result = subprocess.run(
+        [
+            str(venv_python),
+            str(script),
+            "--query", QUERY,
+            "--query-type", "custom",
+            "--thinkrunner", tr_path,
+            "--stage", "merge",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=str(repo_root),
+        env={**__import__("os").environ, "PYTHONIOENCODING": "utf-8"},
+    )
+    assert result.returncode == 0, f"CLI failed: {result.stderr}"
+    assert "200 words" in result.stdout

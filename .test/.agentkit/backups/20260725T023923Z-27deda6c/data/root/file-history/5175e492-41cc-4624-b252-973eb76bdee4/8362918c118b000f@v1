@@ -1,0 +1,35 @@
+---
+title: "AEVO-X: 3-Loop Self-Evolution System"
+description: ""
+status: pending
+priority: P2
+branch: "master"
+tags: []
+blockedBy: []
+blocks: []
+created: "2026-05-16T14:38:01.549Z"
+createdBy: "ck:plan"
+source: skill
+---
+
+# AEVO-X: 3-Loop Self-Evolution System
+
+## Overview
+
+<!-- Brief description -->
+
+## Phases
+
+| Phase | Name | Status |
+|-------|------|--------|
+| 1 | [Case Archiver + DB Schema](./phase-01-case-archiver-db-schema.md) | Pending |
+| 2 | [Replay Engine (Deterministic)](./phase-02-replay-engine-deterministic.md) | Pending |
+| 3 | [Execution Fitness Tracker](./phase-03-execution-fitness-tracker.md) | Pending |
+| 4 | [Fidelity Monitor](./phase-04-fidelity-monitor.md) | Pending |
+| 5 | [DGM Proposer + Benchmark](./phase-05-dgm-proposer-benchmark.md) | Pending |
+| 6 | [Orchestrator + Hook Wiring](./phase-06-orchestrator-hook-wiring.md) | Pending |
+| 7 | [Integration Tests + Smoke](./phase-07-integration-tests-smoke.md) | Pending |
+
+## Dependencies
+
+<!-- Cross-plan dependencies -->

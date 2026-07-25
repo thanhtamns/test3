@@ -1,0 +1,93 @@
+"""
+AutonomyGovernor — graduated autonomy per domain.
+HUMAN_DECIDES → SEMI_AUTO → FULL_AUTO based on rolling accuracy.
+"""
+
+from dataclasses import dataclass
+from typing import Optional
+
+from .accuracy_tracker import AccuracyTracker, AccuracyResult
+from .graduation_rules import GraduationRules
+
+
+@dataclass
+class GovernedVerdict:
+    verdict: object
+    autonomy_level: str
+    domain_accuracy: float
+    domain_sample_size: int
+    requires_confirmation: bool
+    message: str
+
+    def to_dict(self) -> dict:
+        verdict_dict = self.verdict.to_dict() if hasattr(self.verdict, "to_dict") else str(self.verdict)
+        return {
+            "verdict": verdict_dict,
+            "autonomy_level": self.autonomy_level,
+            "domain_accuracy": round(self.domain_accuracy, 3),
+            "domain_sample_size": self.domain_sample_size,
+            "requires_confirmation": self.requires_confirmation,
+            "message": self.message,
+        }
+
+
+class AutonomyGovernor:
+    def __init__(
+        self,
+        tracker: Optional[AccuracyTracker] = None,
+        rules: Optional[GraduationRules] = None,
+    ):
+        self.tracker = tracker or AccuracyTracker()
+        self.rules = rules or GraduationRules()
+        self.overrides: dict[str, str] = {}
+
+    def get_mode(self, domain: str) -> str:
+        if domain in self.overrides:
+            return self.overrides[domain]
+
+        accuracy = self.tracker.accuracy(domain)
+        level = self.rules.evaluate(accuracy)
+
+        if level in ("FULL_AUTO", "SEMI_AUTO") and self.rules.check_demotion(domain, self.tracker):
+            level = self.rules.demote(level)
+
+        return level
+
+    def wrap_verdict(self, verdict, domain: str) -> GovernedVerdict:
+        mode = self.get_mode(domain)
+        accuracy = self.tracker.accuracy(domain)
+
+        return GovernedVerdict(
+            verdict=verdict,
+            autonomy_level=mode,
+            domain_accuracy=accuracy.accuracy,
+            domain_sample_size=accuracy.sample_size,
+            requires_confirmation=(mode != "FULL_AUTO"),
+            message=self._format_message(mode, accuracy),
+        )
+
+    def override(self, domain: str, level: str) -> None:
+        self.overrides[domain] = level
+
+    def clear_override(self, domain: str) -> None:
+        self.overrides.pop(domain, None)
+
+    def report(self) -> dict:
+        result = {}
+        for domain in self.tracker.domains():
+            acc = self.tracker.accuracy(domain)
+            result[domain] = {
+                "level": self.get_mode(domain),
+                "accuracy": round(acc.accuracy, 3),
+                "verdicts": acc.sample_size,
+                "sufficient": acc.sufficient,
+                "override": domain in self.overrides,
+            }
+        return result
+
+    def _format_message(self, mode: str, accuracy: AccuracyResult) -> str:
+        if mode == "FULL_AUTO":
+            return f"[AUTO] Domain accuracy {accuracy.accuracy:.0%} ({accuracy.sample_size} verdicts)"
+        if mode == "SEMI_AUTO":
+            return f"[SEMI] Confirm verdict? Accuracy {accuracy.accuracy:.0%} ({accuracy.sample_size} verdicts)"
+        return f"[HUMAN] Recommendation only. Accuracy {accuracy.accuracy:.0%} ({accuracy.sample_size} verdicts)"

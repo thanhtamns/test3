@@ -1,0 +1,168 @@
+#!/usr/bin/env python3
+"""
+Timing Scorer — Platform maturity, competitor density, regulatory window.
+Bonus layer for Empire Pipeline V1 compound filter.
+"""
+
+import argparse
+import json
+import sys
+from typing import Any
+
+
+MATURITY_KEYWORDS = {
+    "early": {"new", "launch", "beta", "alpha", "emerging", "nascent", "pre-product"},
+    "growth": {"growing", "scaling", "adoption", "expanding", "momentum"},
+    "mature": {"established", "dominant", "saturated", "commodity", "legacy"},
+    "declining": {"dying", "sunset", "deprecated", "obsolete", "shrinking"},
+}
+
+COMPETITOR_KEYWORDS = {
+    "blue_ocean": {"no competitors", "first mover", "novel", "unserved"},
+    "few": {"few competitors", "niche", "emerging", "underserved"},
+    "moderate": {"competitive", "several", "growing market"},
+    "saturated": {"saturated", "crowded", "red ocean", "thousands", "commodity"},
+}
+
+
+def score_platform_maturity(description: str) -> tuple[float, str]:
+    desc = description.lower()
+    if any(k in desc for k in MATURITY_KEYWORDS["early"]):
+        return 9.0, "Early stage platform — maximum opportunity window"
+    if any(k in desc for k in MATURITY_KEYWORDS["growth"]):
+        return 7.0, "Growth stage — good timing, competition building"
+    if any(k in desc for k in MATURITY_KEYWORDS["declining"]):
+        return 1.0, "Declining platform — opportunity closing"
+    if any(k in desc for k in MATURITY_KEYWORDS["mature"]):
+        return 3.0, "Mature platform — limited new opportunity"
+    return 5.0, "Platform maturity unclear — neutral score"
+
+
+def score_competitor_density(description: str) -> tuple[float, str]:
+    desc = description.lower()
+    if any(k in desc for k in COMPETITOR_KEYWORDS["blue_ocean"]):
+        return 9.0, "Blue ocean — minimal competition"
+    if any(k in desc for k in COMPETITOR_KEYWORDS["few"]):
+        return 7.0, "Few competitors — good entry window"
+    if any(k in desc for k in COMPETITOR_KEYWORDS["saturated"]):
+        return 1.0, "Saturated market — hard to differentiate"
+    if any(k in desc for k in COMPETITOR_KEYWORDS["moderate"]):
+        return 5.0, "Moderate competition — differentiation needed"
+    return 5.0, "Competitor density unclear — neutral score"
+
+
+def score_regulatory_window(description: str) -> tuple[float, str]:
+    desc = description.lower()
+    open_signals = {"deregulated", "new regulation creates", "compliance gap", "regulatory shift", "policy change"}
+    closing_signals = {"banned", "restricted", "crackdown", "compliance required", "regulated"}
+    if any(s in desc for s in open_signals):
+        return 8.0, "Regulatory shift creates opportunity window"
+    if any(s in desc for s in closing_signals):
+        return 2.0, "Regulatory pressure — window closing"
+    return 6.0, "No significant regulatory factor"
+
+
+def run_timing_scorer(opportunity: dict) -> dict:
+    context = " ".join([
+        opportunity.get("name", ""),
+        opportunity.get("type", ""),
+        opportunity.get("market_context", ""),
+        opportunity.get("platform", ""),
+        opportunity.get("competition", ""),
+        opportunity.get("regulatory", ""),
+    ])
+
+    maturity_score, maturity_reason = score_platform_maturity(context)
+    competitor_score, competitor_reason = score_competitor_density(context)
+    regulatory_score, regulatory_reason = score_regulatory_window(context)
+
+    total = round((maturity_score + competitor_score + regulatory_score) / 3, 1)
+
+    if total >= 7:
+        recommendation = "STRONG TIMING — act now before window closes"
+    elif total >= 5:
+        recommendation = "NEUTRAL TIMING — viable but no urgency"
+    else:
+        recommendation = "WEAK TIMING — consider waiting or pivoting"
+
+    return {
+        "opportunity_name": opportunity.get("name", "unknown"),
+        "timing_score": total,
+        "max_score": 10.0,
+        "breakdown": {
+            "platform_maturity": {"score": maturity_score, "reason": maturity_reason},
+            "competitor_density": {"score": competitor_score, "reason": competitor_reason},
+            "regulatory_window": {"score": regulatory_score, "reason": regulatory_reason},
+        },
+        "recommendation": recommendation,
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Empire Pipeline V1 — Timing Scorer")
+    parser.add_argument("--json", type=str, help="Opportunity as JSON string")
+    parser.add_argument("--file", type=str, help="Path to opportunity JSON file")
+    parser.add_argument("--test", action="store_true", help="Run built-in test cases")
+    args = parser.parse_args()
+
+    if args.test:
+        run_tests()
+        return
+
+    if args.json:
+        opp = json.loads(args.json)
+    elif args.file:
+        with open(args.file) as f:
+            opp = json.load(f)
+    else:
+        parser.print_help()
+        sys.exit(1)
+
+    result = run_timing_scorer(opp)
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+
+
+def run_tests():
+    test_cases = [
+        {
+            "name": "MCP Server Builder",
+            "type": "saas",
+            "market_context": "MCP is new emerging protocol, beta adoption",
+            "platform": "early launch phase",
+            "competition": "few competitors, niche market",
+            "regulatory": "no regulation",
+            "expected_range": (6.0, 10.0),
+        },
+        {
+            "name": "Generic Web Dev Freelancing",
+            "type": "service",
+            "market_context": "established industry",
+            "platform": "mature saturated market",
+            "competition": "saturated crowded thousands of developers",
+            "regulatory": "no regulation",
+            "expected_range": (1.0, 5.0),
+        },
+    ]
+
+    print("=== Timing Scorer Test Suite ===\n")
+    passed = 0
+    for tc in test_cases:
+        expected_range = tc.pop("expected_range")
+        result = run_timing_scorer(tc)
+        in_range = expected_range[0] <= result["timing_score"] <= expected_range[1]
+        status = "PASS" if in_range else "FAIL"
+        if in_range:
+            passed += 1
+        print(f"[{status}] {tc['name']}: timing={result['timing_score']}/10 "
+              f"(expected {expected_range[0]}-{expected_range[1]})")
+        print(f"  Recommendation: {result['recommendation']}")
+        for dim, data in result["breakdown"].items():
+            print(f"  {dim}: {data['score']}/10 — {data['reason']}")
+        print()
+
+    print(f"Results: {passed}/{len(test_cases)} passed")
+    sys.exit(0 if passed == len(test_cases) else 1)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,126 @@
+---
+phase: 3
+title: Layer 3 Empire Trajectory
+status: completed
+priority: P1
+effort: 4d
+dependencies:
+  - 1
+---
+
+# Phase 3: Layer 3 Empire Trajectory
+
+## Overview
+Build asset registry, compound dashboard, and staircase enforcer. Answers "where am I on the path to $50K/mo?" and blocks moves that don't advance the staircase.
+
+## Requirements
+- Functional: SQLite-backed asset registry, CLI for CRUD, weekly compound report, staircase state machine
+- Non-functional: Single SQLite file. CLI-first. Reports as markdown.
+
+## Architecture
+
+```
+asset-registry-cli.py ──→ assets.db (SQLite)
+staircase-enforcer.py ──→ staircase-state.json
+compound-dashboard.py ──→ data/empire/reports/compound-YYYY-MM-DD.md
+```
+
+### SQLite Schema
+
+```sql
+CREATE TABLE assets (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  category TEXT CHECK(category IN ('code','audience','data','relationship','revenue')),
+  description TEXT,
+  estimated_value_usd REAL DEFAULT 0,
+  recurring_monthly_usd REAL DEFAULT 0,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  metadata JSON
+);
+
+CREATE TABLE staircase_log (
+  id INTEGER PRIMARY KEY,
+  stair INTEGER CHECK(stair BETWEEN 0 AND 5),
+  entered_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  monthly_revenue_usd REAL,
+  notes TEXT
+);
+
+CREATE TABLE compound_snapshots (
+  id INTEGER PRIMARY KEY,
+  snapshot_date TEXT DEFAULT CURRENT_TIMESTAMP,
+  total_assets INTEGER,
+  total_value_usd REAL,
+  total_mrr_usd REAL,
+  compound_rate REAL,
+  gap_to_target_usd REAL
+);
+```
+
+### Staircase Definition
+
+| Stair | MRR Range | Strategy | Allowed Opportunity Types |
+|-------|-----------|----------|--------------------------|
+| 0 | $0 | Validate | DOWNGRADE + PASS |
+| 1 | $1-3K | Cash bridge | DOWNGRADE + PASS |
+| 2 | $3-10K | Product revenue | PASS only |
+| 3 | $10-30K | Scale | PASS only |
+| 4 | $30-50K | Diversify | PASS only |
+| 5 | $50-100K | Empire | PASS only |
+
+## Related Code Files
+
+**Create (in master_investments):**
+- `data/empire/` — directory
+- `data/empire/assets.db` — SQLite database
+- `data/empire/staircase-state.json` — current stair + history
+- `data/empire/reports/` — compound reports directory
+- `.claude/skills/business/empire-trajectory/SKILL.md`
+- `.claude/skills/business/empire-trajectory/scripts/asset-registry-cli.py`
+- `.claude/skills/business/empire-trajectory/scripts/staircase-enforcer.py`
+- `.claude/skills/business/empire-trajectory/scripts/compound-dashboard.py`
+
+## Implementation Steps
+
+1. Create `data/empire/` directory structure
+
+2. Create `asset-registry-cli.py`:
+   - Commands: `add`, `update`, `list`, `delete`, `summary`
+   - `add --name "Upwork Profile" --category revenue --value 0 --mrr 0`
+   - `list --category revenue`
+   - `summary` — total value, total MRR, asset count by category
+   - Auto-create DB + tables if not exists
+
+3. Create `staircase-enforcer.py`:
+   - Read staircase-state.json for current stair
+   - Auto-detect stair from total MRR in asset registry
+   - Input: opportunity compound score (from Phase 1)
+   - Stair 0-1: allow DOWNGRADE (bridge cash needed)
+   - Stair 2+: PASS only, BLOCK DOWNGRADE
+   - Output: `{allowed: bool, reason: str, current_stair: int}`
+   - `--force` flag for manual override (logged)
+
+4. Create `compound-dashboard.py`:
+   - Read all assets from SQLite
+   - Calculate: total value, total MRR, week-over-week growth
+   - Gap: `$50,000 - current_mrr` + months to target at current rate
+   - Recommend: which asset category needs investment
+   - Output: markdown report in `data/empire/reports/`
+
+5. Create `staircase-state.json` initial state (Stair 0)
+
+6. Create `SKILL.md`: commands `/empire add`, `/empire list`, `/empire dashboard`, `/empire stair`
+
+## Success Criteria
+- [ ] SQLite DB created with 3 tables
+- [ ] asset-registry-cli.py: add, list, summary work
+- [ ] staircase-enforcer blocks DOWNGRADE at Stair 2+
+- [ ] compound-dashboard generates markdown with gap analysis
+- [ ] staircase-state.json initialized at Stair 0
+- [ ] SKILL.md documents all commands
+
+## Risk Assessment
+- Risk: Asset valuation subjective → Mitigation: conservative estimates, revenue assets use actual MRR
+- Risk: Staircase too rigid → Mitigation: --force override with logged reason

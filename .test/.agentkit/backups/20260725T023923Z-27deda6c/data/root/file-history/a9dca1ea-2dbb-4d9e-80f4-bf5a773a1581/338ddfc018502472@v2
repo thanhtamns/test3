@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "description": "Hard invariants that NO meta-edit can violate. These protect system integrity.",
+  "invariants": [
+    {
+      "id": "quality_gate_agents",
+      "description": "agents_fired_minimum cannot drop below 4",
+      "type": "floor",
+      "protected_knob": "agents_fired_minimum",
+      "min_value": 4
+    },
+    {
+      "id": "confidence_floor",
+      "description": "confidence_gate_minimum cannot drop below 0.50",
+      "type": "floor",
+      "protected_knob": "confidence_gate_minimum",
+      "min_value": 0.50
+    },
+    {
+      "id": "mountain_definition_stable",
+      "description": "mountain_threshold_monthly cannot drift more than 30% from original",
+      "type": "drift_limit",
+      "protected_knob": "mountain_threshold_monthly",
+      "original_value": 10000,
+      "max_total_drift_pct": 30
+    },
+    {
+      "id": "local_kill_floor",
+      "description": "local_kill_confidence cannot drop below 0.70",
+      "type": "floor",
+      "protected_knob": "local_kill_confidence",
+      "min_value": 0.70
+    },
+    {
+      "id": "meta_edit_self_protection",
+      "description": "meta_edit_max_pct_change cannot exceed 0.40",
+      "type": "ceiling",
+      "protected_knob": "meta_edit_max_pct_change",
+      "max_value": 0.40
+    }
+  ]
+}

@@ -1,0 +1,145 @@
+# Empire Pipeline V1 — Brainstorm Report
+
+## Problem Statement
+
+master_investments has 3,000+ files (1,284 .py, 1,133 .md, 728 agents) but:
+- 0 verdicts generated
+- 0 blueprints created
+- 0 ground truth decisions recorded
+- 0 pattern library entries
+- $0 revenue
+
+Stage0 V16 pipeline optimizes for "first dollar" — produces freelance-tier $1-5K/mo opportunities. Cannot find or validate opportunities targeting $50-100K/mo sustainable cash flow over 5 years.
+
+### Root Causes
+1. $1K capital filter → only sees small opportunities
+2. Kill criteria 30-60 days → kills anything needing build time
+3. Evidence-first bias → favors proven (= saturated) models
+4. No compound tracking → treats each opportunity as isolated event
+5. No trajectory → no staircase from $0 → $50K/mo
+
+## Target
+
+$50-100K/mo in 5 years. Solo → small company (3-5 people).
+
+## Architecture: 3-Layer Empire Pipeline
+
+### Layer 1: Signal Collector (70% keep V16, 30% new)
+
+**Keep:**
+- evidence-scraper.py
+- failure-survivor-analyzer.py
+- archetype-router (10 scanners)
+- deep-reasoner (15 techniques)
+- ecosystem-mapper-runner.py
+
+**Add:**
+- `pain-signal-miner.py` — Reddit/X/HN "I wish"/"I hate" pattern scanner for SaaS-solvable problems
+- `platform-shift-detector.py` — API changes, regulation shifts, big tech moves creating vacuum
+- `founder-edge-matcher.py` — cross-ref signals with founder profile (tech+sales+content+ops)
+
+### Layer 2: Opportunity Filter (80% new)
+
+**Remove:**
+- 30-60 day kill criteria (too short for SaaS)
+- $1K capital ceiling
+
+**Add: 5-Year Compound Test**
+
+Every opportunity must answer YES to 3+ of:
+1. Revenue recurring? (one-time = KILL)
+2. Marginal cost decreases with scale? (linear = KILL)
+3. Data/knowledge moat after 12 months? (no moat = DOWNGRADE to bridge)
+4. Network effect? (nice-to-have)
+5. Founder can step away 2 weeks, revenue continues? (no = JOB)
+
+**Add: Timing Score**
+- Platform maturity curve position
+- Competitor density vs market size
+- Regulatory window open/closed
+
+### Layer 3: Empire Trajectory (100% new)
+
+**Asset Registry** (SQLite):
+- Code assets (repos, tools, templates, SaaS products)
+- Audience assets (followers, email list, community members)
+- Data assets (training data, customer insights, market data)
+- Relationship assets (clients, partners, mentors)
+- Revenue assets (MRR, ARR, recurring contracts)
+
+**Compound Dashboard** (weekly):
+- Total asset value
+- Compound rate (growth %)
+- Gap to $50K/mo target
+- Recommended next move
+
+**Staircase Enforcer:**
+- Stair 0: $0/mo → Validate
+- Stair 1: $1-3K/mo → Cash bridge (freelance OK)
+- Stair 2: $3-10K/mo → Product revenue (SaaS/templates)
+- Stair 3: $10-30K/mo → Scale (hire, automate)
+- Stair 4: $30-50K/mo → Diversify
+- Stair 5: $50-100K/mo → Empire
+
+Each stair: entry criteria + exit criteria + max time before forced escalation.
+
+## Key Decisions
+
+| Decision | Choice | Rationale |
+|---|---|---|
+| Keep V16 core | Yes, wrapped in Layer 2 | Evidence + reasoning still good. Missing compound filter |
+| Language | Python | 1,284 existing .py files. Consistency |
+| Data store | SQLite replaces JSON | JSON doesn't scale for asset registry + tracking |
+| Automation | Semi-auto | Auto-hunt + manual decision |
+| Timeline | 2 weeks design + build | MUST run parallel with client acquisition |
+
+## Anti-Confirmation on This Design
+
+- Risk of procrastination: if 2 weeks pass with 0 revenue, this is infrastructure theater again
+- Risk of over-engineering: 3 layers may be too complex. Start with Layer 2 filter only, add Layer 3 when Stair 1 reached
+- Base rate: <1% solo founders reach $50K/mo. Profile is top 5% (all 4 skills + full-time) but still hard
+
+## Kill Criteria for This Redesign
+
+- If after 2 weeks, pipeline hasn't processed 5 real opportunities → KILL redesign, go manual
+- If after 4 weeks, no revenue from any source → KILL all infrastructure work, pure execution mode
+
+## Parallel Execution (MANDATORY)
+
+While building Empire Pipeline V1:
+- Day 1: Create Upwork profile, bid 10 jobs (from hunt output)
+- Day 7: First template on Gumroad
+- Day 14: Pipeline V1 MVP operational
+
+## Success Metrics
+
+- Week 1: Layer 2 compound filter operational
+- Week 2: Layer 3 asset registry + staircase MVP
+- Month 1: 5+ opportunities processed through new pipeline
+- Month 3: Stair 1 reached ($1-3K/mo)
+- Month 6: Stair 2 ($3-10K/mo with product revenue)
+- Year 1: Stair 3 ($10-30K/mo)
+
+## Files to Modify/Create
+
+**Modify (master_investments):**
+- `.claude/skills/business/transaction-layer/SKILL.md` — add Layer 2 compound test
+- Agent personas: add compound-filter, timing-scorer, staircase-enforcer
+
+**Create (master_investments):**
+- `data/empire/asset-registry.db` — SQLite for asset tracking
+- `data/empire/staircase-state.json` — current stair + metrics
+- `.claude/skills/business/empire-trajectory/SKILL.md` — Layer 3 skill
+- `scripts/pain-signal-miner.py` — Layer 1 addition
+- `scripts/platform-shift-detector.py` — Layer 1 addition
+- `scripts/founder-edge-matcher.py` — Layer 1 addition
+- `scripts/compound-filter.py` — Layer 2 core
+- `scripts/timing-scorer.py` — Layer 2 addition
+- `scripts/asset-registry-cli.py` — Layer 3 core
+- `scripts/staircase-enforcer.py` — Layer 3 core
+- `scripts/compound-dashboard.py` — Layer 3 reporting
+
+## Next Steps
+
+1. `/ck:plan` to create detailed implementation phases
+2. Parallel: start client acquisition (Upwork + cold outreach)

@@ -1,0 +1,141 @@
+#!/usr/bin/env python3
+"""
+Seed compound cache from Brier scores — extract learnable claims from verdict history.
+Converts 45+ verified cases into compound learning claims so future analyses
+don't start from zero.
+"""
+
+import json
+import sys
+from datetime import datetime
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / ".claude" / "lib"))
+
+BRIER_PATH = Path(__file__).parent / "brier-scores.jsonl"
+VECTORS_DB = ROOT / ".claude" / "data" / "knowledge-distillation" / "decision-vectors.db"
+
+VERDICT_CLAIMS = {
+    "KILL": {
+        "dimension": "failure_patterns",
+        "zone_tag": "K",
+        "confidence": 0.85,
+    },
+    "PROVISIONAL_MOUNTAIN": {
+        "dimension": "compounding_mechanisms",
+        "zone_tag": "K",
+        "confidence": 0.70,
+    },
+    "EXPLORATION_ONGOING": {
+        "dimension": "base_rates",
+        "zone_tag": "T",
+        "confidence": 0.55,
+    },
+    "CONDITIONAL": {
+        "dimension": "base_rates",
+        "zone_tag": "T",
+        "confidence": 0.50,
+    },
+    "CONDITIONAL_GO": {
+        "dimension": "compounding_mechanisms",
+        "zone_tag": "T",
+        "confidence": 0.65,
+    },
+}
+
+
+def extract_domain(case_id: str) -> str:
+    parts = case_id.replace("stage0-", "").replace("phamt-", "")
+    parts = parts.split("-", 1)
+    return parts[1] if len(parts) > 1 else parts[0]
+
+
+def main():
+    from intelligence.decomposition.post_analysis_store import store_claims
+
+    entries = []
+    with open(BRIER_PATH, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entries.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+
+    claims_by_verdict = {}
+    for entry in entries:
+        verdict = entry.get("verdict", "")
+        if verdict not in VERDICT_CLAIMS:
+            continue
+
+        case_id = entry.get("case_id", "")
+        domain = extract_domain(case_id)
+        p_mountain = entry.get("p_mountain", 0)
+        observed = entry.get("observed")
+        brier = entry.get("brier")
+
+        cfg = VERDICT_CLAIMS[verdict]
+
+        if observed == 1:
+            fact = f"Case '{domain}': predicted p={p_mountain:.2f}, CONFIRMED (brier={brier:.4f}). Model was correct."
+            confidence = min(0.90, cfg["confidence"] + 0.15)
+        elif observed == 0:
+            fact = f"Case '{domain}': predicted p={p_mountain:.2f}, FAILED (brier={brier:.4f}). Model overestimated."
+            confidence = cfg["confidence"]
+        else:
+            continue
+
+        claim = {
+            "fact": fact,
+            "dimension": cfg["dimension"],
+            "zone_tag": cfg["zone_tag"],
+            "confidence": confidence,
+            "source_url": f"brier-scores/{case_id}",
+        }
+
+        topic = domain.split("-")[0] if "-" in domain else domain
+        if topic not in claims_by_verdict:
+            claims_by_verdict[topic] = []
+        claims_by_verdict[topic].append(claim)
+
+    # Aggregate calibration stats as meta-claims
+    kill_entries = [e for e in entries if e.get("verdict") == "KILL" and e.get("observed") is not None]
+    mountain_entries = [e for e in entries if e.get("verdict") == "PROVISIONAL_MOUNTAIN" and e.get("observed") is not None]
+
+    if kill_entries:
+        kill_correct = sum(1 for e in kill_entries if e["observed"] == 0)
+        kill_rate = kill_correct / len(kill_entries) * 100
+        claims_by_verdict.setdefault("calibration", []).append({
+            "fact": f"KILL verdicts correct {kill_rate:.0f}% of time ({kill_correct}/{len(kill_entries)} cases). Model kills are reliable.",
+            "dimension": "base_rates",
+            "zone_tag": "K",
+            "confidence": 0.85,
+            "source_url": "brier-scores/aggregated",
+        })
+
+    if mountain_entries:
+        mountain_correct = sum(1 for e in mountain_entries if e["observed"] == 1)
+        mountain_rate = mountain_correct / len(mountain_entries) * 100
+        claims_by_verdict.setdefault("calibration", []).append({
+            "fact": f"PROVISIONAL_MOUNTAIN verdicts correct {mountain_rate:.0f}% ({mountain_correct}/{len(mountain_entries)}). Mountain detection reliable.",
+            "dimension": "base_rates",
+            "zone_tag": "K",
+            "confidence": 0.80,
+            "source_url": "brier-scores/aggregated",
+        })
+
+    total_stored = 0
+    for topic, claims in claims_by_verdict.items():
+        stored = store_claims(claims, topic, VECTORS_DB)
+        total_stored += stored
+        print(f"  [{topic}] {stored} claims stored")
+
+    print(f"\nTotal: {total_stored} claims seeded into compound cache")
+    print(f"DB: {VECTORS_DB}")
+
+
+if __name__ == "__main__":
+    main()

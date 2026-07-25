@@ -1,0 +1,131 @@
+{
+  "$schema": "cashflow-positioning-phase-gates-v1",
+  "version": "1.0.0",
+  "created": "2026-05-09",
+  "strategy": "Build the mind first, then the position, then the flow",
+  "constraints": {
+    "full_time_job": true,
+    "capital_usd": [500, 1000],
+    "weekly_hours_available": [2, 5],
+    "starting_network_size": 0,
+    "starting_credentials": 0
+  },
+  "phases": {
+    "phase_1_pattern_recognition": {
+      "name": "Pattern Recognition Engine",
+      "duration_months": [1, 3],
+      "status": "pending",
+      "started_at": null,
+      "completed_at": null,
+      "weekly_hours": [2, 4],
+      "cost_usd": [0, 50],
+      "kill_criteria": {
+        "max_months_no_data_point": 6,
+        "description": "6 tháng mà không có 1 data point nào về dòng tiền cụ thể → reassess"
+      },
+      "hard_gates": {
+        "deals_observed": { "target": 50, "current": 0 },
+        "failures_observed": { "target": 20, "current": 0 },
+        "weekly_synthesis_count": { "target": 12, "current": 0 },
+        "can_predict_outcome": false,
+        "market_map_written": false
+      },
+      "chosen_cashflow_stream": null,
+      "reading_progress": {
+        "tier_1": { "king_of_oil": false, "middleman_economy": false, "48_laws": false },
+        "tier_2": { "barbarians_gate": false, "liars_poker": false, "big_short": false },
+        "tier_3": { "dealstreetasia": false, "cafef_ma": false, "virac": false }
+      }
+    },
+    "phase_2_info_asymmetry": {
+      "name": "Information Asymmetry Builder",
+      "duration_months": [2, 6],
+      "status": "pending",
+      "started_at": null,
+      "completed_at": null,
+      "weekly_hours": [2, 3],
+      "cost_usd": [50, 200],
+      "hard_gates": {
+        "intel_product_v1_complete": false,
+        "coffee_meetings_done": { "target": 5, "current": 0 },
+        "network_data_points": { "target": 30, "current": 0 },
+        "intel_group_active_members": { "target": 5, "current": 0 },
+        "someone_asked_you_for_connection": false
+      },
+      "google_alerts_set": [],
+      "digital_intel_sources": {
+        "masothue": false,
+        "thongbaodn": false,
+        "linkedin_navigator": false,
+        "customs_gov": false,
+        "facebook_groups": []
+      }
+    },
+    "phase_3_micro_deals": {
+      "name": "Proving Ground — Micro-Deals",
+      "duration_months": [4, 9],
+      "status": "pending",
+      "started_at": null,
+      "completed_at": null,
+      "weekly_hours": [3, 5],
+      "cost_usd": [100, 300],
+      "hard_gates": {
+        "deals_closed": { "target": 3, "current": 0 },
+        "deals_with_commission": { "target": 1, "current": 0 },
+        "case_studies_written": { "target": 3, "current": 0 },
+        "referrals_received": { "target": 2, "current": 0 }
+      }
+    },
+    "phase_4_relationship_engineering": {
+      "name": "Relationship Engineering",
+      "duration_months": [6, 18],
+      "status": "pending",
+      "started_at": null,
+      "completed_at": null,
+      "weekly_hours": [3, 5],
+      "cost_usd": [200, 500],
+      "hard_gates": {
+        "dream5_list_complete": false,
+        "targets_responded_positively": { "target": 3, "current": 0 },
+        "targets_calling_you_for_info": { "target": 2, "current": 0 },
+        "deals_between_targets": { "target": 1, "current": 0 },
+        "incoming_referrals": { "target": 3, "current": 0 }
+      }
+    },
+    "phase_5_position_consolidation": {
+      "name": "Position Consolidation — Bottleneck Status",
+      "duration_months": [12, 30],
+      "status": "blocked",
+      "blocked_by": ["phase_1", "phase_2", "phase_3", "phase_4"],
+      "started_at": null,
+      "completed_at": null,
+      "weekly_hours": [5, 10],
+      "prerequisites": {
+        "deals_observed_50": false,
+        "intel_product_exchanged_5": false,
+        "micro_deals_closed_3": false,
+        "dream5_targets_engaging_2": false,
+        "incoming_deal_flow": false
+      },
+      "quitting_framework": {
+        "monthly_commission_gte_70pct_salary_3months": false,
+        "active_deal_pipeline_gte_3": false,
+        "inbound_inquiries_gte_2_per_month": false,
+        "fulltime_job_blocking_deals": false
+      },
+      "specialization_statement": null,
+      "hard_gates": {
+        "known_by_5_plus_outside_network": false,
+        "commission_gte_50pct_salary": false,
+        "active_deals_gte_3": false,
+        "inbound_gte_2_per_month": false,
+        "no_single_client_gt_40pct": false
+      }
+    }
+  },
+  "global_kill_criteria": {
+    "6_months_no_data": "reassess strategy",
+    "12_months_cant_name_5_people": "pivot",
+    "18_months_no_deal_facilitated": "pivot strategy"
+  }
+}

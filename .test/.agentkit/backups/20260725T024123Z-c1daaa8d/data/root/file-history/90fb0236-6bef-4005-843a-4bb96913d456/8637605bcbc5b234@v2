@@ -1,0 +1,187 @@
+---
+phase: 1
+title: "Side-Door Scanner Integration"
+status: completed
+priority: P1
+effort: "4h"
+dependencies: []
+completed: "2026-05-10T08:18:00.000Z"
+---
+
+# Phase 1: Side-Door Scanner Integration
+
+## Overview
+
+Add Step 6.8.5 to stage0 pipeline: when verdict = KILL and kill_mechanisms include `network_barrier`, `capital_barrier`, `track_record_gap`, or `entry_window_closed`, auto-trigger power-network agents to find side-door paths BEFORE outputting final verdict.
+
+Current flow: Step 6.4 constraint-inversion → Step 6.8 orthodox alternatives → Step 7 verdict
+New flow: Step 6.4 → Step 6.8 → **Step 6.8.5 side-door scan** → Step 7 verdict (with side-door paths included)
+
+## Requirements
+
+- Functional: Spawn 4-6 power-network agents in parallel when KILL triggers match relationship-type barriers
+- Functional: Each agent outputs specific chain (A→B→C→TARGET), not generic advice
+- Functional: Side-door paths persisted in case JSON under `side_door_paths` key
+- Non-functional: Must not add >60s to pipeline (parallel execution)
+- Non-functional: Must not fire for math/regulatory KILLs (only relationship-type barriers)
+
+## Architecture
+
+```
+Step 6.8 (orthodox alternatives)
+    ↓
+Step 6.8.5 — Side-Door Scanner (NEW)
+    ├── TRIGGER CHECK: kill_mechanisms intersect {network_barrier, capital_barrier, 
+    │   track_record_gap, entry_window_closed, no_precedent}?
+    │   NO → skip to Step 7
+    │   YES ↓
+    ├── TARGET EXTRACTION: From topic + kill context, identify 3-5 specific 
+    │   decision-maker roles (not orgs, PEOPLE or archetypes)
+    │   
+    ├── SPAWN 4 AGENTS IN PARALLEL (Task tool, single message):
+    │   ├── power-cartographer: Map power structure around each target
+    │   │   Input: target roles, industry, geography
+    │   │   Output: {targets[], lieutenants[], approach_vectors[], side_doors[]}
+    │   │
+    │   ├── gate-broker: Design introduction chains for top 2 targets
+    │   │   Input: power-cartographer output + founder profile
+    │   │   Output: {chains[{A→B→C→TARGET, scripts_per_link[], timing}]}
+    │   │
+    │   ├── tay-trang-positioner: Reframe founder's assets for each chain link
+    │   │   Input: founder profile + target needs
+    │   │   Output: {value_props_per_link[], perception_reframes[], useful_before_asked[]}
+    │   │
+    │   └── proximity-engineer: Find physical/digital proximity opportunities
+    │       Input: targets + geography + events
+    │       Output: {events[], manufactured_coincidences[], clubs[], timing_windows[]}
+    │
+    ├── SYNTHESIZE: Merge 4 outputs into 1-3 actionable side-door paths
+    │   Each path has: chain, scripts, timing, kill criteria, probability estimate
+    │
+    └── INJECT into verdict as "## Side-Door Paths (Power Network Analysis)"
+```
+
+## Related Code Files
+
+- Modify: `D:/code/invesments/master_investments/.claude/commands/stage0.md` — Add Step 6.8.5 spec
+- Modify: `D:/code/invesments/master_investments/.claude/commands/stage0-checklist.md` — Add checklist item
+- Create: `D:/code/invesments/master_investments/.claude/skills/business/transaction-layer/nui-hunter/scripts/side-door-trigger.py` — Trigger logic: check kill_mechanisms, extract targets, generate agent prompts
+- Modify: `D:/code/invesments/master_investments/.claude/skills/business/transaction-layer/nui-hunter/kb/schema-case.json` — Add `side_door_paths` field
+
+## Implementation Steps
+
+### 1. Create side-door-trigger.py
+
+Python script that:
+- Reads kill verdict JSON from stdin or `--verdict-file`
+- Checks `kill_mechanisms` against trigger list
+- If triggered: extracts target roles from topic + kill context
+- Outputs JSON with agent prompts for 4 power-network agents
+- If not triggered: outputs `{"fires": false, "reason": "kill_type_not_relationship_barrier"}`
+
+```python
+# Key logic
+SIDE_DOOR_TRIGGERS = {
+    "network_barrier", "capital_barrier", "track_record_gap",
+    "entry_window_closed", "no_precedent", "credential_gap"
+}
+
+def should_fire(kill_mechanisms: list[str]) -> bool:
+    return bool(set(kill_mechanisms) & SIDE_DOOR_TRIGGERS)
+```
+
+### 2. Add Step 6.8.5 to stage0.md
+
+Insert after Step 6.8, before Step 6.9. Content:
+
+```markdown
+### Step 6.8.5 — Side-Door Path Scanner (Power Network Analysis)
+
+**Trigger:** verdict IN {KILL, HARD_KILL} AND kill_mechanisms intersects 
+{network_barrier, capital_barrier, track_record_gap, entry_window_closed, 
+no_precedent, credential_gap}
+
+**Skip if:** Kill reasons are purely mathematical (median_income_too_low), 
+regulatory (jurisdiction_block), or structural (market_too_saturated). These 
+cannot be bypassed via relationships.
+
+**Execution:**
+1. Run trigger check:
+   .claude/skills/.venv/Scripts/python.exe \
+     .claude/skills/business/transaction-layer/nui-hunter/scripts/side-door-trigger.py \
+     --verdict-file /tmp/stage0-verdict-<case_id>.json \
+     --profile-file <profile_path> \
+     > /tmp/stage0-side-door-prompts-<case_id>.json
+
+2. If fires == true: Spawn 4 agents via Task tool (SINGLE message, parallel):
+   - power-cartographer with prompt from output
+   - gate-broker with prompt from output  
+   - tay-trang-positioner with prompt from output
+   - proximity-engineer with prompt from output
+
+3. Collect outputs. Synthesize into 1-3 side-door paths. Each path MUST have:
+   - Specific chain: Person A → Person B → TARGET (with archetype per link)
+   - Script per encounter (what to say, what NOT to say)
+   - Value exchange per link (what you give before you ask)
+   - Timeline (weeks, not "months")
+   - Kill criterion (if X doesn't happen by week Y, abandon this path)
+   - Probability estimate (honest — most paths are 10-30%)
+
+4. Inject into verdict under "## Side-Door Paths" section.
+
+**Quality gate:** Each path must name specific ROLE types (not "investors" but 
+"CTO of portfolio company X" or "Association president of Y"). Generic paths 
+("network at events") are REJECTED by anti-orthodox gate (Step 7.1).
+```
+
+### 3. Add side_door_paths to case schema
+
+Add to `schema-case.json`:
+```json
+"side_door_paths": {
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "path_name": {"type": "string"},
+      "chain": {"type": "array", "items": {"type": "string"}},
+      "scripts": {"type": "array"},
+      "value_exchanges": {"type": "array"},
+      "timeline_weeks": {"type": "integer"},
+      "kill_criterion": {"type": "string"},
+      "probability": {"type": "number"}
+    }
+  }
+}
+```
+
+### 4. Update stage0-checklist.md
+
+Add line after Step 6.8:
+```
+6.8.5  Side-door scan: if KILL + relationship barrier → side-door-trigger.py → 4 power-network agents parallel → synthesize paths
+```
+
+### 5. Update verdict template
+
+In Step 7 FOUNDER_SPECIFIC verdict template, add after "## Risk factors":
+```markdown
+## Side-Door Paths (when fired)
+<paths from Step 6.8.5, operator voice format — see Phase 2>
+```
+
+## Success Criteria
+
+- [x] side-door-trigger.py created, takes verdict JSON, outputs agent prompts
+- [x] Step 6.8.5 added to stage0.md with full spec
+- [x] Checklist updated
+- [x] Case schema updated with side_door_paths field
+- [x] Verdict template includes Side-Door Paths section
+- [x] Tested: KILL with network_barrier → side-door agents fire
+- [x] Tested: KILL with median_income_too_low → side-door agents DON'T fire
+
+## Risk Assessment
+
+- **Risk**: Power-network agents produce generic output ("go to events"). **Mitigation**: Anti-orthodox gate (Phase 3) rejects generic paths. Also, agent prompts must include specific target extraction from topic.
+- **Risk**: Adds latency. **Mitigation**: 4 agents run in parallel; total add ~30-45s.
+- **Risk**: Side-door paths may be manipulative. **Mitigation**: deal-ethics-navigator already exists — can gate RED-flagged tactics. For v1, focus on value-first approaches only.

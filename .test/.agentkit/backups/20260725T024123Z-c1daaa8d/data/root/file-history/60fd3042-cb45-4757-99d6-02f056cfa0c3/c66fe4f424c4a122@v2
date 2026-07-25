@@ -1,0 +1,408 @@
+#!/usr/bin/env python3
+"""
+measure-evolution-speed.py — Measure actual system evolution speed.
+
+Metrics tracked:
+1. Knowledge accumulation rate (rules/models/archetypes per week)
+2. Prediction accuracy improvement (Brier score trend)
+3. Training corpus utilization (citations in verdicts)
+4. Learning loop closure rate (outcomes logged vs predictions made)
+
+Usage:
+    python measure-evolution-speed.py
+    python measure-evolution-speed.py --detailed
+"""
+
+import argparse
+import io
+import json
+import sys
+from datetime import datetime, timedelta
+from pathlib import Path
+
+# Fix Windows encoding
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
+TRAINING_DIR = Path(__file__).parent.parent
+PROJECT_ROOT = TRAINING_DIR.parent.parent
+DATA_DIR = PROJECT_ROOT / "data"
+CALIBRATION_DIR = DATA_DIR / "calibration"
+VERDICTS_DIR = PROJECT_ROOT / ".claude/skills/business/transaction-layer/nui-hunter/verdicts"
+
+
+def load_json(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def count_citations_in_verdicts() -> dict:
+    """Count how many verdicts cite SCH/MM/ARCH rules."""
+    if not VERDICTS_DIR.exists():
+        return {"total": 0, "with_citations": 0, "citation_rate": 0.0}
+
+    verdicts = list(VERDICTS_DIR.glob("verdict-*.md"))
+    with_citations = 0
+
+    for v in verdicts:
+        content = v.read_text(encoding="utf-8", errors="ignore")
+        # Check for citations
+        if "SCH-" in content or "MM-" in content or "ARCH-" in content:
+            with_citations += 1
+
+    total = len(verdicts)
+    rate = (with_citations / total * 100) if total > 0 else 0.0
+
+    return {
+        "total": total,
+        "with_citations": with_citations,
+        "citation_rate": round(rate, 1)
+    }
+
+
+def measure_brier_trend() -> dict:
+    """Calculate Brier score trend over time."""
+    brier_file = CALIBRATION_DIR / "brier-scores.jsonl"
+    if not brier_file.exists():
+        return {"entries": 0, "avg_brier": None, "trend": "no_data"}
+
+    scores = []
+    for line in brier_file.read_text(encoding="utf-8").strip().split("\n"):
+        if line.strip():
+            entry = json.loads(line)
+            val = entry.get("brier", entry.get("brier_score"))
+            if val is not None:
+                scores.append(val)
+
+    if not scores:
+        return {"entries": 0, "avg_brier": None, "trend": "no_data"}
+
+    avg = sum(scores) / len(scores)
+
+    # Compare first half vs second half for trend
+    if len(scores) >= 4:
+        first_half = sum(scores[:len(scores)//2]) / (len(scores)//2)
+        second_half = sum(scores[len(scores)//2:]) / (len(scores) - len(scores)//2)
+        if second_half < first_half - 0.05:
+            trend = "improving"
+        elif second_half > first_half + 0.05:
+            trend = "degrading"
+        else:
+            trend = "stable"
+    else:
+        trend = "insufficient_data"
+
+    return {
+        "entries": len(scores),
+        "avg_brier": round(avg, 4),
+        "trend": trend
+    }
+
+
+def measure_knowledge_growth() -> dict:
+    """Measure knowledge accumulation rate."""
+    index = load_json(TRAINING_DIR / "INDEX.json")
+    stats = index.get("stats", {})
+
+    # Get current counts
+    rules = stats.get("total_rules", 0)
+    models = stats.get("total_mental_models", 0)
+    archetypes = stats.get("total_archetypes", 0)
+    reflexes = stats.get("total_reflex_patterns", 0)
+
+    # Check last inference timestamp
+    last_capture = stats.get("last_inference_captured")
+    if last_capture:
+        last_dt = datetime.fromisoformat(last_capture.replace("Z", "+00:00"))
+        days_since = (datetime.now(last_dt.tzinfo) - last_dt).days if last_dt.tzinfo else 0
+    else:
+        days_since = None
+
+    # Corpus loads
+    corpus_loads = stats.get("total_corpus_loads", 0)
+
+    domain_heuristics = stats.get("total_domain_heuristics", 0)
+
+    rf_count = 0
+    reflex_json = TRAINING_DIR / "reflex-training-corpus.json"
+    if reflex_json.exists():
+        d = json.loads(reflex_json.read_text(encoding="utf-8"))
+        rf_count = len(d.get("red_flags", []))
+
+    return {
+        "rules": rules,
+        "models": models,
+        "archetypes": archetypes,
+        "reflexes": reflexes,
+        "red_flags": rf_count,
+        "domain_heuristics": domain_heuristics,
+        "total_knowledge": rules + models + archetypes + reflexes + rf_count + domain_heuristics,
+        "last_capture_days_ago": days_since,
+        "corpus_loads": corpus_loads
+    }
+
+
+def measure_loop_closure() -> dict:
+    """Measure learning loop closure rate."""
+    # Count predictions
+    pred_dir = DATA_DIR / "predictions"
+    pred_count = 0
+    if pred_dir.exists():
+        for f in pred_dir.glob("*.jsonl"):
+            pred_count += sum(1 for _ in open(f, encoding="utf-8"))
+
+    # Count outcomes from brier-scores.jsonl (actual verified outcomes)
+    brier_file = CALIBRATION_DIR / "brier-scores.jsonl"
+    outcome_count = 0
+    if brier_file.exists():
+        for line in brier_file.read_text(encoding="utf-8").strip().split("\n"):
+            if line.strip():
+                entry = json.loads(line)
+                if entry.get("verified_at") or entry.get("observed") is not None:
+                    outcome_count += 1
+
+    # Use max of predictions or outcomes for denominator (some outcomes may not have predictions logged)
+    denominator = max(pred_count, outcome_count, 1)
+    closure_rate = (outcome_count / denominator * 100) if denominator > 0 else 0.0
+
+    return {
+        "predictions": pred_count,
+        "outcomes": outcome_count,
+        "closure_rate": round(closure_rate, 1)
+    }
+
+
+def calculate_evolution_score(metrics: dict) -> dict:
+    """Calculate overall evolution speed score (0-100)."""
+    scores = []
+
+    # Citation rate (0-40 points)
+    citation_rate = metrics["citations"]["citation_rate"]
+    citation_score = min(40, citation_rate * 0.4)
+    scores.append(("citation_rate", citation_score, 40))
+
+    # Brier trend (0-20 points)
+    brier = metrics["brier"]
+    if brier["trend"] == "improving":
+        brier_score = 20
+    elif brier["trend"] == "stable":
+        brier_score = 10
+    else:
+        brier_score = 0
+    scores.append(("brier_trend", brier_score, 20))
+
+    # Knowledge growth (0-20 points)
+    knowledge = metrics["knowledge"]
+    if knowledge["last_capture_days_ago"] is None:
+        knowledge_score = 0
+    elif knowledge["last_capture_days_ago"] <= 1:
+        knowledge_score = 20
+    elif knowledge["last_capture_days_ago"] <= 7:
+        knowledge_score = 15
+    elif knowledge["last_capture_days_ago"] <= 30:
+        knowledge_score = 5
+    else:
+        knowledge_score = 0
+    scores.append(("knowledge_recency", knowledge_score, 20))
+
+    # Loop closure (0-20 points)
+    closure = metrics["loop"]
+    closure_score = min(20, closure["closure_rate"] * 0.2)
+    scores.append(("loop_closure", closure_score, 20))
+
+    total = sum(s[1] for s in scores)
+    max_total = sum(s[2] for s in scores)
+
+    # Grade
+    if total >= 80:
+        grade = "A (FAST evolution)"
+    elif total >= 60:
+        grade = "B (GOOD evolution)"
+    elif total >= 40:
+        grade = "C (SLOW evolution)"
+    elif total >= 20:
+        grade = "D (STALLED evolution)"
+    else:
+        grade = "F (NO evolution)"
+
+    return {
+        "score": round(total, 1),
+        "max_score": max_total,
+        "grade": grade,
+        "breakdown": scores
+    }
+
+
+def measure_training_utilization() -> dict:
+    """Check which training artifacts exist vs which are cited in verdicts."""
+    index = load_json(TRAINING_DIR / "INDEX.json")
+    stats = index.get("stats", {})
+
+    mm_total = stats.get("total_mental_models", 0)
+    rf_total = 0
+    reflex_json = TRAINING_DIR / "reflex-training-corpus.json"
+    if reflex_json.exists():
+        d = json.loads(reflex_json.read_text(encoding="utf-8"))
+        rf_total = len(d.get("red_flags", []))
+
+    dh_total = stats.get("total_domain_heuristics", 0)
+    arch_total = stats.get("total_archetypes", 0)
+
+    cited_mm = set()
+    cited_rf = set()
+    cited_arch = set()
+    if VERDICTS_DIR.exists():
+        import re
+        for v in VERDICTS_DIR.glob("verdict-*.md"):
+            content = v.read_text(encoding="utf-8", errors="ignore")
+            cited_mm.update(re.findall(r"MM-\d+", content))
+            cited_rf.update(re.findall(r"RF-\d+", content))
+            cited_arch.update(re.findall(r"ARCH-\d+", content))
+
+    return {
+        "mental_models": {"total": mm_total, "cited": len(cited_mm), "cited_ids": sorted(cited_mm)},
+        "red_flags": {"total": rf_total, "cited": len(cited_rf), "cited_ids": sorted(cited_rf)},
+        "domain_heuristics": {"total": dh_total},
+        "archetypes": {"total": arch_total, "cited": len(cited_arch), "cited_ids": sorted(cited_arch)},
+        "never_cited_warning": mm_total > 0 and len(cited_mm) == 0
+    }
+
+
+def append_evolution_log(result: dict):
+    """Append timestamped measurement to evolution-log.jsonl for trend tracking."""
+    log_file = CALIBRATION_DIR / "evolution-log.jsonl"
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    entry = {
+        "ts": result["timestamp"],
+        "score": result["score"],
+        "grade": result["grade"],
+        "mm": result["metrics"]["knowledge"]["models"],
+        "rf": result["metrics"]["knowledge"].get("red_flags", 0),
+        "arch": result["metrics"]["knowledge"]["archetypes"],
+        "dh": result["metrics"]["knowledge"].get("domain_heuristics", 0),
+        "citation_rate": result["metrics"]["citations"]["citation_rate"],
+        "brier_avg": result["metrics"]["brier"]["avg_brier"],
+        "loop_closure": result["metrics"]["loop"]["closure_rate"]
+    }
+    with open(log_file, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, default=str) + "\n")
+
+
+def show_evolution_trend():
+    """Show score trend from evolution-log.jsonl."""
+    log_file = CALIBRATION_DIR / "evolution-log.jsonl"
+    if not log_file.exists():
+        return
+    entries = []
+    for line in log_file.read_text(encoding="utf-8").strip().split("\n"):
+        if line.strip():
+            entries.append(json.loads(line))
+    if len(entries) < 2:
+        return
+
+    print("\nEVOLUTION TREND:")
+    for e in entries[-10:]:
+        ts = e["ts"][:10] if len(e.get("ts", "")) >= 10 else e.get("ts", "?")
+        score = e.get("score", 0)
+        bar = "█" * int(score / 10) + "░" * (10 - int(score / 10))
+        print(f"  {ts} [{bar}] {score}/100 ({e.get('grade', '?')})")
+
+    first = entries[0].get("score", 0)
+    last = entries[-1].get("score", 0)
+    delta = last - first
+    direction = "↑" if delta > 0 else "↓" if delta < 0 else "→"
+    print(f"  Trend: {direction} {abs(delta):.1f} points over {len(entries)} measurements")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Measure system evolution speed")
+    parser.add_argument("--detailed", action="store_true", help="Show detailed breakdown")
+    parser.add_argument("--no-log", action="store_true", help="Don't append to evolution log")
+    args = parser.parse_args()
+
+    print("=" * 60)
+    print("EVOLUTION SPEED MEASUREMENT")
+    print("=" * 60)
+
+    # Gather metrics
+    metrics = {
+        "citations": count_citations_in_verdicts(),
+        "brier": measure_brier_trend(),
+        "knowledge": measure_knowledge_growth(),
+        "loop": measure_loop_closure()
+    }
+
+    # Calculate score
+    evolution = calculate_evolution_score(metrics)
+
+    print(f"\n[SCORE] {evolution['score']}/{evolution['max_score']} -- {evolution['grade']}")
+    print()
+
+    print("METRICS:")
+    print(f"  • Verdict citations: {metrics['citations']['with_citations']}/{metrics['citations']['total']} ({metrics['citations']['citation_rate']}%)")
+    print(f"  • Brier trend: {metrics['brier']['trend']} (avg: {metrics['brier']['avg_brier']})")
+    print(f"  • Knowledge items: {metrics['knowledge']['total_knowledge']} (last capture: {metrics['knowledge']['last_capture_days_ago']} days ago)")
+    print(f"  • Loop closure: {metrics['loop']['outcomes']}/{metrics['loop']['predictions']} ({metrics['loop']['closure_rate']}%)")
+
+    # Training utilization
+    utilization = measure_training_utilization()
+    metrics["utilization"] = utilization
+
+    if args.detailed:
+        print("\nBREAKDOWN:")
+        for name, score, max_score in evolution["breakdown"]:
+            bar = "█" * int(score / max_score * 10) + "░" * (10 - int(score / max_score * 10))
+            print(f"  {name:20s} [{bar}] {score:.1f}/{max_score}")
+
+        print("\nTRAINING CORPUS:")
+        k = metrics["knowledge"]
+        print(f"  • Mental models: {k['models']} | Red flags: {k.get('red_flags', 0)} | Domain heuristics: {k.get('domain_heuristics', 0)} | Archetypes: {k['archetypes']}")
+        u = utilization
+        print(f"  • MM cited in verdicts: {u['mental_models']['cited']}/{u['mental_models']['total']}")
+        print(f"  • RF cited in verdicts: {u['red_flags']['cited']}/{u['red_flags']['total']}")
+        print(f"  • ARCH cited in verdicts: {u['archetypes']['cited']}/{u['archetypes']['total']}")
+        if u["never_cited_warning"]:
+            print("  ⚠ WARNING: Training data exists but NEVER cited in any verdict")
+
+        print("\nBLOCKERS:")
+        blockers = []
+        if metrics["citations"]["citation_rate"] < 50:
+            blockers.append("- Low citation rate: analyses don't cite training corpus (SCH/MM/ARCH)")
+        if metrics["brier"]["trend"] == "no_data":
+            blockers.append("- No Brier data: predictions not being verified")
+        if metrics["knowledge"]["last_capture_days_ago"] is None or metrics["knowledge"]["last_capture_days_ago"] > 7:
+            blockers.append("- Stale knowledge: no new inferences captured recently")
+        if metrics["loop"]["closure_rate"] < 20:
+            blockers.append("- Open loops: predictions made but outcomes not logged")
+        if u["never_cited_warning"]:
+            blockers.append("- Training data unused: MM/RF/ARCH never cited in verdicts")
+
+        if blockers:
+            for b in blockers:
+                print(b)
+        else:
+            print("- None detected")
+
+        show_evolution_trend()
+
+    # Output JSON for programmatic use
+    result = {
+        "timestamp": datetime.now().isoformat(),
+        "score": evolution["score"],
+        "grade": evolution["grade"],
+        "metrics": metrics,
+        "breakdown": evolution["breakdown"]
+    }
+
+    # Append to evolution log for trend tracking
+    if not args.no_log:
+        append_evolution_log(result)
+        print("\n(Appended to evolution-log.jsonl)")
+
+    print()
+    print(json.dumps(result, indent=2, default=str))
+
+
+if __name__ == "__main__":
+    main()

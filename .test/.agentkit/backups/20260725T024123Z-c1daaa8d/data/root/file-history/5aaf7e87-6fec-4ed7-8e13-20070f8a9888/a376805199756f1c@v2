@@ -1,0 +1,168 @@
+"""Unit tests for tournament models, pair generation, diversity, and activation gate."""
+
+from ..models import (
+    OpportunityHypothesis, DebateResult, TournamentResult,
+    generate_round_robin_pairs, classify_cluster, enforce_diversity,
+    should_activate_tournament, MAX_HYPOTHESES,
+)
+
+
+def _make_hypothesis(id: str, cluster: str = "", elo: float = 1500.0, thesis: str = "") -> OpportunityHypothesis:
+    return OpportunityHypothesis(
+        id=id, title=f"H-{id}", thesis=thesis or f"Thesis for {id}",
+        business_model_type="SaaS", customer_segment="B2B",
+        evidence_refs=["Section 1 #1"], estimated_revenue_range="$1K-5K/mo",
+        source_phase="pattern_matcher", elo_rating=elo, cluster=cluster,
+    )
+
+
+def test_hypothesis_creation():
+    h = _make_hypothesis("H01")
+    assert h.id == "H01"
+    assert h.elo_rating == 1500.0
+    assert h.matches_played == 0
+    assert h.wins == 0
+    assert h.debate_highlights == []
+
+
+def test_hypothesis_to_dict_roundtrip():
+    h = _make_hypothesis("H01")
+    h.debate_highlights = ["Won on evidence strength"]
+    d = h.to_dict()
+    h2 = OpportunityHypothesis.from_dict(d)
+    assert h2.id == h.id
+    assert h2.title == h.title
+    assert h2.elo_rating == h.elo_rating
+    assert h2.debate_highlights == h.debate_highlights
+
+
+def test_debate_result_creation():
+    dr = DebateResult(
+        pair_id="H01_vs_H02", hypothesis_a_id="H01", hypothesis_b_id="H02",
+        scores_a={"evidence_strength": 8}, scores_b={"evidence_strength": 6},
+        total_a=35, total_b=30, winner="A", key_argument="Stronger evidence",
+    )
+    assert dr.winner == "A"
+    assert dr.is_retry is False
+
+
+def test_debate_result_roundtrip():
+    dr = DebateResult(
+        pair_id="p1", hypothesis_a_id="A", hypothesis_b_id="B",
+        scores_a={}, scores_b={}, total_a=25, total_b=25,
+        winner="DRAW", key_argument="Too close", is_retry=True,
+    )
+    d = dr.to_dict()
+    dr2 = DebateResult.from_dict(d)
+    assert dr2.is_retry is True
+    assert dr2.winner == "DRAW"
+
+
+def test_tournament_result_creation():
+    hyps = [_make_hypothesis("H01"), _make_hypothesis("H02")]
+    debates = [DebateResult(
+        pair_id="p1", hypothesis_a_id="H01", hypothesis_b_id="H02",
+        scores_a={}, scores_b={}, total_a=30, total_b=28,
+        winner="A", key_argument="Better fit",
+    )]
+    tr = TournamentResult(
+        hypotheses=hyps, debates=debates,
+        diversity_report={"clusters": 2}, debate_count=1, retry_count=0,
+    )
+    d = tr.to_dict()
+    tr2 = TournamentResult.from_dict(d)
+    assert len(tr2.hypotheses) == 2
+    assert tr2.debate_count == 1
+
+
+def test_round_robin_pairs_3():
+    hyps = [_make_hypothesis(f"H{i}") for i in range(3)]
+    pairs = generate_round_robin_pairs(hyps)
+    assert len(pairs) == 3  # 3 choose 2
+
+
+def test_round_robin_pairs_5():
+    hyps = [_make_hypothesis(f"H{i}") for i in range(5)]
+    pairs = generate_round_robin_pairs(hyps)
+    assert len(pairs) == 10  # 5 choose 2
+
+
+def test_round_robin_pairs_8():
+    hyps = [_make_hypothesis(f"H{i}") for i in range(8)]
+    pairs = generate_round_robin_pairs(hyps)
+    assert len(pairs) == 28  # 8 choose 2
+
+
+def test_round_robin_pairs_10():
+    hyps = [_make_hypothesis(f"H{i}") for i in range(10)]
+    pairs = generate_round_robin_pairs(hyps)
+    assert len(pairs) == 45  # 10 choose 2
+
+
+def test_harvest_cap_at_10():
+    assert MAX_HYPOTHESES == 10
+
+
+def test_classify_cluster_saas():
+    assert classify_cluster("Build a subscription software platform") == "SaaS"
+
+
+def test_classify_cluster_commerce():
+    assert classify_cluster("Sell physical product via ecommerce and FBA") == "Commerce"
+
+
+def test_classify_cluster_unknown():
+    assert classify_cluster("Something completely unrelated xyz") == "Unknown"
+
+
+def test_classify_cluster_service():
+    assert classify_cluster("Start a consulting agency for freelance work") == "Service"
+
+
+def test_diversity_already_diverse():
+    hyps = [
+        _make_hypothesis("A", cluster="SaaS", elo=1600),
+        _make_hypothesis("B", cluster="Commerce", elo=1580),
+        _make_hypothesis("C", cluster="Service", elo=1560),
+        _make_hypothesis("D", cluster="Content", elo=1540),
+        _make_hypothesis("E", cluster="Arbitrage", elo=1520),
+        _make_hypothesis("F", cluster="Infrastructure", elo=1500),
+    ]
+    result = enforce_diversity(hyps)
+    assert [h.id for h in result[:5]] == ["A", "B", "C", "D", "E"]
+
+
+def test_diversity_promotes_underrepresented():
+    hyps = [
+        _make_hypothesis("A", cluster="SaaS", elo=1600),
+        _make_hypothesis("B", cluster="SaaS", elo=1580),
+        _make_hypothesis("C", cluster="SaaS", elo=1560),
+        _make_hypothesis("D", cluster="SaaS", elo=1540),
+        _make_hypothesis("E", cluster="SaaS", elo=1520),
+        _make_hypothesis("F", cluster="Commerce", elo=1500),
+        _make_hypothesis("G", cluster="Service", elo=1480),
+    ]
+    result = enforce_diversity(hyps)
+    top5_clusters = {h.cluster for h in result[:5]}
+    assert len(top5_clusters) >= 3
+
+
+def test_activation_gate_passes():
+    text = "This analysis found opportunity in SaaS platform with subscription revenue model and market pricing"
+    assert should_activate_tournament(text, pattern_count=4) is True
+
+
+def test_activation_gate_fails_keywords():
+    text = "Nothing relevant here at all"
+    assert should_activate_tournament(text, pattern_count=5) is False
+
+
+def test_activation_gate_fails_pattern_count():
+    text = "opportunity business model revenue pricing market"
+    assert should_activate_tournament(text, pattern_count=2) is False
+
+
+def test_activation_gate_dual_condition():
+    text = "opportunity business model revenue"
+    assert should_activate_tournament(text, pattern_count=3) is True
+    assert should_activate_tournament(text, pattern_count=2) is False

@@ -1,0 +1,70 @@
+---
+phase: 2
+title: Seed and Dashboard
+status: completed
+priority: P1
+effort: 15min
+dependencies:
+  - 1
+---
+
+# Phase 2: Seed and Dashboard
+
+## Overview
+
+Seed ClickHouse with 14 days of demo data (570 events), start dashboard, verify all 7 pages display data correctly.
+
+## Requirements
+
+- Functional: Seed data visible in all dashboard pages. Charts render. CSV export works.
+- Non-functional: Dashboard loads in <3s on localhost.
+
+## Related Code Files
+
+- Run: `cloud/cmd/seed/main.go` (existing seeder, already sends X-Tenant-ID header)
+- Modify: `dashboard/.env.local` (set TENANT_ID to match seeder)
+
+## Implementation Steps
+
+1. Run seeder: `cd cloud && go run ./cmd/seed`
+   - Sends 570 events (14 days × 3 projects × 10 commands + dedup events)
+   - Uses `X-Tenant-ID: demo-tenant` header
+   - Expected output: `Response: 202 {"accepted":570}`
+2. Verify data in ClickHouse:
+   ```bash
+   docker exec cloud-clickhouse-1 clickhouse-client --query "SELECT count() FROM codeflow.events"
+   # Expected: 570
+   ```
+3. Verify API returns data:
+   ```bash
+   curl -s -H "X-Tenant-ID: demo-tenant" http://localhost:8080/v1/overview | python -m json.tool
+   ```
+4. Set up dashboard env:
+   ```bash
+   cd dashboard
+   cp .env.local.example .env.local
+   # Edit: NEXT_PUBLIC_TENANT_ID="demo-tenant"
+   # Edit: NEXT_PUBLIC_API_URL="http://localhost:8080"
+   ```
+5. Start dashboard: `npm run dev`
+6. Verify all pages at http://localhost:3000:
+   - [ ] **Overview** — token savings, top commands chart
+   - [ ] **Projects** — 3 projects listed with savings
+   - [ ] **ROI** — calculator with monthly breakdown
+   - [ ] **Waste** — waste report (empty is OK for seed data)
+   - [ ] **Security** — alerts page (empty is OK)
+   - [ ] **Billing** — plan status shows "free/active"
+   - [ ] **Export CSV** button — downloads CSV file (not opens URL)
+
+## Success Criteria
+
+- [ ] 570 events in ClickHouse
+- [ ] Overview shows ~52% savings rate
+- [ ] All 7 dashboard pages load without errors
+- [ ] CSV export downloads via fetch+blob (auth headers sent)
+- [ ] WebSocket live metrics connection established (check browser devtools)
+
+## Risk Assessment
+
+- **Seeder auth:** Seeder uses `X-Tenant-ID: demo-tenant` which works when `CODEFLOW_AUTH_DISABLED=true`. If env var not set on ingest, seed will get 401.
+- **Dashboard CORS:** Dashboard on :3000 hitting API on :8080. CORS middleware configured with `CORS_ORIGIN=http://localhost:3000` in docker-compose.

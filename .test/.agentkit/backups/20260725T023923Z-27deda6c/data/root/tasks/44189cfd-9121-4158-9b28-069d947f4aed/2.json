@@ -1,0 +1,19 @@
+{
+  "id": "2",
+  "subject": "Phase 3: Stage0 Wiring — 5 integration points + position-analyzer agent",
+  "description": "Wire modules into stage0: (1) stage0_integration.py Step -8 with graceful fallback, (2) STRUCTURE as 6th decision question in spec, (3) position-analyzer.md Wave 1 agent, (4) Structure Score in Mountain Test as quality multiplier, (5) structure_score in verdict synthesis. All optional/advisory, not blocking.",
+  "activeForm": "Wiring structural analysis into stage0",
+  "status": "pending",
+  "blocks": [
+    "3"
+  ],
+  "blockedBy": [
+    "4"
+  ],
+  "metadata": {
+    "phase": 3,
+    "effort": "2d",
+    "planDir": "plans/260517-1934-money-architecture-layer-upgrade",
+    "phaseFile": "phase-03-stage0-wiring.md"
+  }
+}

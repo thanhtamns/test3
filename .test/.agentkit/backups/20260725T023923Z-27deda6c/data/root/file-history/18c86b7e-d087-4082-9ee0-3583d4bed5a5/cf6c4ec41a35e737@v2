@@ -1,0 +1,237 @@
+use anyhow::Result;
+use codeflow_core::dedup::DedupCache;
+use codeflow_core::events::EventBuffer;
+use codeflow_core::filter::{FilterPipeline, FilterResult};
+use codeflow_core::proto;
+use codeflow_core::tracking::{SavingsLayer, TrackingDb, TrackingEvent};
+use std::io::Write;
+use std::process::Command;
+use std::time::Instant;
+
+use crate::paths;
+
+pub fn execute(command_args: &[String]) -> Result<()> {
+    if command_args.is_empty() {
+        anyhow::bail!("No command specified");
+    }
+
+    let program = &command_args[0];
+    let args = &command_args[1..];
+
+    let start = Instant::now();
+    let cmd_output = run_command(program, args)?;
+    let raw_output = &cmd_output.combined;
+    let session_id = session_id();
+    let project_dir = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+
+    let result = match compress(raw_output, program, args, &session_id, &project_dir) {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("compression failed, passing through: {}", e);
+            print_output(raw_output);
+            propagate_exit(cmd_output.exit_code);
+            return Ok(());
+        }
+    };
+
+    let latency_ms = start.elapsed().as_secs_f64() * 1000.0;
+    tracing::debug!(
+        command = program,
+        input_len = result.filter.input_len,
+        output_len = result.filter.output_len,
+        dedup_hit = result.dedup_hit,
+        latency_ms = latency_ms,
+        "wrap complete"
+    );
+
+    if result.dedup_hit {
+        if let Some(summary) = &result.dedup_summary {
+            print_output(summary);
+        } else {
+            print_output(&result.filter.output);
+        }
+    } else {
+        print_output(&result.filter.output);
+    }
+
+    propagate_exit(cmd_output.exit_code);
+    Ok(())
+}
+
+struct WrapResult {
+    filter: FilterResult,
+    dedup_hit: bool,
+    dedup_summary: Option<String>,
+}
+
+fn compress(
+    raw_output: &str,
+    program: &str,
+    args: &[String],
+    session_id: &str,
+    project_dir: &str,
+) -> Result<WrapResult> {
+    let data_dir = paths::data_dir();
+    std::fs::create_dir_all(&data_dir)?;
+    let db_path = paths::db_path();
+
+    let filters_dir = paths::filters_dir();
+    let pipeline = FilterPipeline::load_from_dir(&filters_dir).unwrap_or_else(|_| FilterPipeline::new());
+
+    let filter_result = pipeline.apply(program, &args.iter().map(|s| s.to_string()).collect::<Vec<_>>(), raw_output);
+
+    let dedup_cache = DedupCache::open(&db_path, session_id)?;
+    let content_to_check = &filter_result.output;
+    let fake_mtime = file_content_mtime(content_to_check);
+    let dedup_result = dedup_cache.lookup(
+        &format!("cmd:{}:{}", program, args.join(" ")),
+        fake_mtime,
+        content_to_check,
+    )?;
+
+    let tokens_saved_compress = if filter_result.filter_applied {
+        estimate_tokens(filter_result.input_len) - estimate_tokens(filter_result.output_len)
+    } else {
+        0
+    };
+
+    let tracking = TrackingDb::open(&db_path)?;
+
+    if filter_result.filter_applied && tokens_saved_compress > 0 {
+        tracking.record(&TrackingEvent {
+            command: program.to_string(),
+            input_tokens: estimate_tokens(filter_result.input_len) as u64,
+            output_tokens: estimate_tokens(filter_result.output_len) as u64,
+            tokens_saved: tokens_saved_compress as u64,
+            layer: SavingsLayer::Compression,
+            project: project_dir.to_string(),
+            session_id: session_id.to_string(),
+        })?;
+    }
+
+    if dedup_result.cache_hit {
+        tracking.record(&TrackingEvent {
+            command: program.to_string(),
+            input_tokens: estimate_tokens(filter_result.output_len) as u64,
+            output_tokens: 0,
+            tokens_saved: dedup_result.tokens_saved,
+            layer: SavingsLayer::Dedup,
+            project: project_dir.to_string(),
+            session_id: session_id.to_string(),
+        })?;
+    }
+
+    if let Ok(event_buf) = EventBuffer::open(&db_path) {
+        let event = proto::Event {
+            id: uuid::Uuid::new_v4().to_string(),
+            timestamp_ms: chrono::Utc::now().timestamp_millis(),
+            session_id: session_id.to_string(),
+            project_dir: project_dir.to_string(),
+            command: format!("{} {}", program, args.join(" ")),
+            event_type: if dedup_result.cache_hit {
+                proto::EventType::Dedup as i32
+            } else {
+                proto::EventType::Compression as i32
+            },
+            compression: Some(proto::CompressionEvent {
+                input_bytes: filter_result.input_len as u64,
+                output_bytes: filter_result.output_len as u64,
+                input_tokens: estimate_tokens(filter_result.input_len) as u64,
+                output_tokens: estimate_tokens(filter_result.output_len) as u64,
+                tokens_saved: tokens_saved_compress as u64,
+                filter_name: program.to_string(),
+                compression_level: "default".to_string(),
+                latency_ms: 0.0,
+            }),
+            dedup: if dedup_result.cache_hit {
+                Some(proto::DedupEvent {
+                    content_hash: dedup_result.content_hash.clone(),
+                    cache_hit: true,
+                    tokens_saved: dedup_result.tokens_saved,
+                    file_path: String::new(),
+                    latency_ms: 0.0,
+                })
+            } else {
+                None
+            },
+        };
+        let _ = event_buf.append(&event);
+    }
+
+    Ok(WrapResult {
+        filter: filter_result,
+        dedup_hit: dedup_result.cache_hit,
+        dedup_summary: dedup_result.summary,
+    })
+}
+
+struct CommandOutput {
+    combined: String,
+    exit_code: Option<i32>,
+}
+
+fn run_command(program: &str, args: &[String]) -> Result<CommandOutput> {
+    let output = Command::new(program)
+        .args(args)
+        .output()
+        .map_err(|e| anyhow::anyhow!("failed to execute {}: {}", program, e))?;
+
+    let mut combined = String::new();
+    if !output.stdout.is_empty() {
+        combined.push_str(&String::from_utf8_lossy(&output.stdout));
+    }
+    if !output.stderr.is_empty() {
+        if !combined.is_empty() {
+            combined.push('\n');
+        }
+        combined.push_str(&String::from_utf8_lossy(&output.stderr));
+    }
+    Ok(CommandOutput {
+        combined,
+        exit_code: output.status.code(),
+    })
+}
+
+fn print_output(text: &str) {
+    let stdout = std::io::stdout();
+    let mut handle = stdout.lock();
+    let _ = handle.write_all(text.as_bytes());
+    if !text.ends_with('\n') {
+        let _ = handle.write_all(b"\n");
+    }
+    let _ = handle.flush();
+}
+
+fn propagate_exit(exit_code: Option<i32>) {
+    if let Some(code) = exit_code {
+        if code != 0 {
+            std::process::exit(code);
+        }
+    }
+}
+
+fn estimate_tokens(byte_len: usize) -> usize {
+    (byte_len + 3) / 4
+}
+
+fn file_content_mtime(content: &str) -> u64 {
+    let hash = blake3::hash(content.as_bytes());
+    let bytes = hash.as_bytes();
+    u64::from_le_bytes(bytes[..8].try_into().unwrap_or([0; 8]))
+}
+
+fn session_id() -> String {
+    std::env::var("CLAUDE_SESSION_ID")
+        .or_else(|_| std::env::var("CODEFLOW_SESSION_ID"))
+        .unwrap_or_else(|_| {
+            // Use parent PID for stable session within one Claude Code run
+            #[cfg(unix)]
+            let ppid = unsafe { libc::getppid() } as u32;
+            #[cfg(not(unix))]
+            let ppid = std::process::id();
+            format!("local-{}", ppid)
+        })
+}

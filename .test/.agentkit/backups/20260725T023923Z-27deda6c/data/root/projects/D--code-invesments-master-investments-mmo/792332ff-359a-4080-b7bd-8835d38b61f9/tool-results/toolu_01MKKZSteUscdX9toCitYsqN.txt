@@ -1,0 +1,252 @@
+docs\system-architecture.md-270-**Status**: Foundation layer complete. T2-T4 operational; T1↔T2 integration wiring 90% complete. Next: T3 reasoning expansion (15+ causal pattern library) + T4 graduation testing (100+ ground-truth verdicts).
+D:\code\invesments\master_investments_mmo\docs\system-architecture.md-271-
+D:\code\invesments\master_investments_mmo\docs\system-architecture.md-272-### 12. Micro-Decomposition Engine — **[LOCAL-ONLY REASONING]**
+docs\system-architecture.md:273:**Location**: `D:/code/invesments/master_investments/.claude/lib/intelligence/decomposition/`
+D:\code\invesments\master_investments_mmo\docs\system-architecture.md-274-
+D:\code\invesments\master_investments_mmo\docs\system-architecture.md-275-LLM-light architecture breaking complex questions into 15-40 micro-factual queries (≤20% LLM), with local Python/SQLite reasoning (≥80%). Replaces single-shot reasoning with decomposed, verifiable analysis chains.
+D:\code\invesments\master_investments_mmo\docs\system-architecture.md-276-
+--
+D:\code\invesments\master_investments_mmo\docs\system-architecture.md-291-    ↓ (verify, aggregate)
+D:\code\invesments\master_investments_mmo\docs\system-architecture.md-292-6. fact_assembler.py — Deduplicate, verify, store in SQLite
+D:\code\invesments\master_investments_mmo\docs\system-architecture.md-293-    ↓ (local reasoning)
+docs\system-architecture.md:294:7. synthesis_engine.py — Score paths, gap analysis, decision-tree
+D:\code\invesments\master_investments_mmo\docs\system-architecture.md-295-    ↓
+D:\code\invesments\master_investments_mmo\docs\system-architecture.md-296-8. output_formatter.py — Structure final verdict + confidence
+D:\code\invesments\master_investments_mmo\docs\system-architecture.md-297-```
+--
+docs\system-architecture.md-300-- `decomposer.py` — Main orchestrator: classify → dimensions → micro-queries; weight_overrides parameter threads evolved weights through dimension scoring
+D:\code\invesments\master_investments_mmo\docs\system-architecture.md-301-- `micro_query_runner.py` — Fires queries via injectable research_fn; 1-2 LLM facts per question; technique analysis now operational (kill_signals format fixed)
+D:\code\invesments\master_investments_mmo\docs\system-architecture.md-302-- `fact_assembler.py` — Verify, deduplicate, SQLite store (compound_cache.db); fixed to store 36/38 facts (was 1/34 due to aggressive dedup + dimension mismatch)
+docs\system-architecture.md:303:- `synthesis_engine.py` — LOCAL ONLY: scoring, gap analysis, path generation; dimension registry unified (8 hunger dims + 10 new decomposition dims)
+D:\code\invesments\master_investments_mmo\docs\system-architecture.md-304-- `template_evolver.py` — Learns dimension weights via execution history (≤10% per cycle); compound learning loop now fully operational end-to-end
+D:\code\invesments\master_investments_mmo\docs\system-architecture.md-305-- `compound_cache.py` — Reuses accumulated facts from prior queries; VC/finance query templates added to DimensionRegistry
+D:\code\invesments\master_investments_mmo\docs\system-architecture.md-306-- `think_runner.py` — Standalone `/think` command orchestrator; weight_overrides parameter threaded to Decomposer (fixed critical data-flow bug)
+--
+docs\system-architecture.md-309-**Core Principles**:
+docs\system-architecture.md-310-- ✓ **Micro-Fact Driven**: 15-40 queries instead of 1 giant prompt (36/38 facts assembled after dedup fix)
+docs\system-architecture.md-311-- ✓ **LLM Minimal**: Only fact retrieval (≤20% total reasoning cost); technique analysis now operational
+docs\system-architecture.md:312:- ✓ **Local Reasoning**: Python scoring, INUS analysis, synthesis (≥80% cost); unified 18-dimension taxonomy across hunger+decomposition
+docs\system-architecture.md-313-- ✓ **Verifiable**: Each fact source-tagged, contradiction-surfaced; authority domain scoring enables [K] verified facts
+docs\system-architecture.md-314-- ✓ **Compound Learning**: Reuses facts across decisions via SQLite; evolved weights now threaded end-to-end (integration bug fixed)
+docs\system-architecture.md-315-- ✓ **Template Evolution**: Dimension weights adapt per vertical (≤10% drift per cycle); VC/finance templates added
+docs\system-architecture.md-316-- ✓ **Non-Blocking**: Stage0 integration via optional pre-pass; T02 reflexion type comparison bug fixed
+D:\code\invesments\master_investments_mmo\docs\system-architecture.md-317-
+docs\system-architecture.md-318-**Integration with LFI Tiers**:
+docs\system-architecture.md:319:- **T1 → Micro-Decomp**: LLM fact retrieval bootstraps decomposition engine
+docs\system-architecture.md-320-- **T2 → Synthesis**: Knowledge distillation feeds contradiction detection
+docs\system-architecture.md-321-- **T3 → Path Gen**: Local reasoning generates decision paths (no second LLM call)
+docs\system-architecture.md-322-- **T4 → Execution**: Autonomy governor routes verdicts based on confidence
+D:\code\invesments\master_investments_mmo\docs\system-architecture.md-323-
+docs\system-architecture.md:324:**Test Coverage**: 173 unit tests (decomposition logic, synthesis scoring, template evolution, fact caching); all 198/198 tests passing after bug fixes (weight integration, operator precedence, namespace clarification)
+D:\code\invesments\master_investments_mmo\docs\system-architecture.md-325-
+docs\system-architecture.md-326-**Performance**:
+docs\system-architecture.md-327-- Decomposition: 2-4s (classify + dimension lookup)
+--
+docs\system-architecture.md-337-**Last Updated**: 2026-05-10 (Bug fixes applied)
+docs\system-architecture.md-338-**Phase**: Phase 17 (LFI Architecture) + Phase 18 (Micro-Decomposition Engine COMPLETE)  
+docs\system-architecture.md-339-**Test Coverage**: 207 unit tests (V20) + 48 tests (Layer 2) + 198 tests (Decomposition: 173 core + 25 compound learning) + LFI health suite  
+docs\system-architecture.md:340:**Ground Truth**: sale2 7/7 match (V20) + side-door validation (Layer 2) + decomposition verified on 12+ case studies
+D:\code\invesments\master_investments_mmo\docs\system-architecture.md-341-
+docs\system-architecture.md-342-**Bug Fixes Applied (2026-05-10)**:
+docs\system-architecture.md-343-- ✅ ThinkRunner technique analysis: kill_signals format mismatch resolved; weight_overrides parameter now threaded to Decomposer
+docs\system-architecture.md-344-- ✅ Fact assembler: 36/38 facts stored (was 1/34 due to aggressive deduplication + dimension mismatch); dimension registry unified
+docs\system-architecture.md-345-- ✅ Confidence scoring: Authority domain scoring enables [K] verified facts (was structurally capped at [T])
+docs\system-architecture.md:346:- ✅ Dimension taxonomy: 8-dim hunger system + 10-dim decomposition system unified into coherent 18-dim schema
+docs\system-architecture.md-347-- ✅ Template registry: VC/finance query templates added to DimensionRegistry
+docs\system-architecture.md-348-- ✅ T02 reflexion: Type comparison bug fixed for accurate reasoning chain evaluation
+D:\code\invesments\master_investments_mmo\docs\system-architecture.md-349-- ✅ All 198/198 tests passing; compound learning loop fully operational end-to-end
+--
+D:\code\invesments\master_investments_mmo\docs\project-roadmap.md-824-- ✅ `decomposer.py` — Main orchestrator (classify → dimensions → micro-queries)
+D:\code\invesments\master_investments_mmo\docs\project-roadmap.md-825-- ✅ `micro_query_runner.py` — Fires queries via injectable research_fn
+D:\code\invesments\master_investments_mmo\docs\project-roadmap.md-826-- ✅ `fact_assembler.py` — Verify, deduplicate, SQLite store
+docs\project-roadmap.md:827:- ✅ `synthesis_engine.py` — LOCAL reasoning: scoring, gap analysis, paths
+D:\code\invesments\master_investments_mmo\docs\project-roadmap.md-828-- ✅ `template_evolver.py` — Dimension weights adaptation (≤10% per cycle)
+D:\code\invesments\master_investments_mmo\docs\project-roadmap.md-829-- ✅ `compound_cache.py` — Reuses facts from decision-vectors.db
+D:\code\invesments\master_investments_mmo\docs\project-roadmap.md-830-- ✅ `think_runner.py` — Standalone `/think` command
+--
+D:\code\invesments\master_investments_mmo\docs\project-roadmap.md-842-- ✅ Plus 3 integration modules + `__init__.py`
+D:\code\invesments\master_investments_mmo\docs\project-roadmap.md-843-
+D:\code\invesments\master_investments_mmo\docs\project-roadmap.md-844-**Testing & Verification**
+docs\project-roadmap.md:845:- ✅ 173 unit tests passing (decomposition, synthesis, evolution, caching)
+D:\code\invesments\master_investments_mmo\docs\project-roadmap.md-846-- ✅ Verified on 12+ case studies (founder pitches, market analysis, product validation)
+docs\project-roadmap.md-847-- ✅ Template evolution: weights calibrated across 3 verticals
+docs\project-roadmap.md-848-- ✅ Compound cache: 85% hit rate on common research domains
+--
+docs\project-roadmap.md-871-- Synthesis: 3-8s (LOCAL)
+docs\project-roadmap.md-872-- Total E2E: 20-40s per question (vs 2-3 min for full reasoning)
+D:\code\invesments\master_investments_mmo\docs\project-roadmap.md-873-
+docs\project-roadmap.md:874:**Impact**: Shifts reasoning from LLM-centric to decomposition-centric. Each fact independently researchable. Dimension weights evolve per vertical. Compound learning eliminates redundant research.
+D:\code\invesments\master_investments_mmo\docs\project-roadmap.md-875-
+D:\code\invesments\master_investments_mmo\docs\project-roadmap.md-876----
+D:\code\invesments\master_investments_mmo\docs\project-roadmap.md-877-
+--
+D:\code\invesments\master_investments_mmo\docs\project-roadmap.md-930-│
+docs\project-roadmap.md-931-May 10, 2026: Phase 17 — Local-First Intelligence (LFI) Architecture ✅ COMPLETE (4-tier autonomy system, T1-T4 operational, knowledge distillation layer, local reasoning engine, autonomy governor, 50+ verdicts calibrated, 94% autonomous decision accuracy at T≥0.85)
+D:\code\invesments\master_investments_mmo\docs\project-roadmap.md-932-│
+docs\project-roadmap.md:933:May 10, 2026: Phase 18 — Micro-Decomposition Engine ✅ COMPLETE + BUG FIXES APPLIED (8-module decomposition pipeline, 15-40 micro-factual queries, ≤20% LLM cost, ≥80% local reasoning, compound fact caching, template evolution, non-blocking Stage0 integration, 198 unit tests passing after 6 critical bugs fixed: ThinkRunner technique analysis, fact assembler data loss, confidence scoring cap, dimension taxonomy unification, T02 reflexion type comparison, evolved weights integration)
+D:\code\invesments\master_investments_mmo\docs\project-roadmap.md-934-│
+docs\project-roadmap.md-935-└─→ Future: Phase 19 Revenue Optimization
+D:\code\invesments\master_investments_mmo\docs\project-roadmap.md-936-    ├─ Enhanced analytics
+--
+D:\code\invesments\master_investments_mmo\docs\project-roadmap.md-1002-✅ **thien/index.html Full Upgrade (10 items)** - Metaphysics systems depth (Tu Vi 12 palaces, Bat Tu school lineage, Ky Mon 9-palace), confidence-weighted multi-system voting (0.30/0.25/0.15/0.10 formula), Bayes sequential stopping rules, 105 [V]/[E]/[U] source tags, PCC/Brier/pre-mortem/failure-correlation scientific rigor, file growth 8,427→11,178 lines (+32.7%)
+D:\code\invesments\master_investments_mmo\docs\project-roadmap.md-1003-✅ **Power Network Intelligence (Phase 11)** - 8 new agents for relationship leverage (cartographer, patron-strategist, ego-specialist, proximity-engineer, chameleon-communicator, social-intelligence, value-fabricator, orchestrator), 6 upgraded agents with power network modes, relationship command rewrite with 6 subcommands, campaign-manager.py with dual JSON/SQLite storage, power-network data schema
+D:\code\invesments\master_investments_mmo\docs\project-roadmap.md-1004-✅ **Coffee Export Execution Plan (Phase 12)** - 2 HTML digital deliverables (buyer landing page + operations dashboard with 7 tabs/111 checklist items), 10 research files (master synthesis, Bazi intelligence, 60-day strategy, sourcing guide, failure archaeology, negotiation playbook, knowledge bootcamp, strategic masters tactics), Phase 1 in-progress, validated Bazi timing constraints, broker model architecture (sell before buy), $1000 budget allocation with $300 untouchable buffer
+docs\project-roadmap.md:1005:[Omitted long matching line]
+D:\code\invesments\master_investments_mmo\docs\project-roadmap.md-1006-[Omitted long context line]
+D:\code\invesments\master_investments_mmo\docs\project-roadmap.md-1007-
+docs\project-roadmap.md-1008-✅ **Bugfix & Knowledge Session (Mar 8, 2026)** - Quality assurance milestone completing persona knowledge & agent infrastructure hardening:
+--
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-6-
+docs\project-changelog.md-7-**Feature**: Critical bug fixes in ThinkRunner technique analysis, fact assembly, confidence scoring, and dimension taxonomy
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-8-
+docs\project-changelog.md:9:**Scope**: 6 blocking bugs fixed in micro-decomposition pipeline; all 198/198 tests passing
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-10-
+docs\project-changelog.md-11-**Changes Made**:
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-12-
+docs\project-changelog.md-13-### Bug 1: ThinkRunner Technique Analysis (CRITICAL)
+docs\project-changelog.md-14-- **Issue**: kill_signals format mismatch caused technique analysis crashes
+docs\project-changelog.md:15:- **Root Cause**: Signal format divergence between hunger system and decomposition system
+docs\project-changelog.md-16-- **Fix**: Normalized kill_signals schema; added validation layer in micro_query_runner.py
+docs\project-changelog.md-17-- **Impact**: ThinkRunner technique analysis now fully operational
+docs\project-changelog.md-18-- **Testing**: 25 compound learning tests added; all passing
+--
+docs\project-changelog.md-21-- **Issue**: 1/34 facts stored (36/38 after fix); aggressive deduplication + dimension mismatch lost valid facts
+docs\project-changelog.md-22-- **Root Cause**: Fact deduplication logic used wrong dimension keys for matching; removed valid contradictory facts
+docs\project-changelog.md-23-- **Fix**: 
+docs\project-changelog.md:24:  - Unified dimension registry (8 hunger dims + 10 decomposition dims → 18-dim schema)
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-25-  - Fixed deduplication to use consistent dimension keys across both systems
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-26-  - Added validation that contradictory facts are preserved, not deduplicated
+docs\project-changelog.md-27-- **Impact**: Fact assembly now stores 36/38 facts as designed
+--
+docs\project-changelog.md-35-- **Testing**: 12+ cases validated where authority domain scoring correctly elevates [T]→[K]
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-36-
+docs\project-changelog.md-37-### Bug 4: Dimension Taxonomy Unification (MEDIUM)
+docs\project-changelog.md:38:- **Issue**: 8 dimensions in hunger system vs 10 in decomposition system; inconsistent naming/scoping
+docs\project-changelog.md:39:- **Root Cause**: Phase 13 (hunger) and Phase 18 (decomposition) developed dimension schemas independently
+docs\project-changelog.md-40-- **Fix**: 
+docs\project-changelog.md-41-  - Unified into 18-dim taxonomy: founder, market, execution, timing, capital, product, team, channels, retention + 9 new: vc_thesis, financial_model, technical_moat, unit_economics, customer_lifetime_value, user_acquisition_cost, revenue_model, competitive_intensity, regulatory_environment
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-42-  - VC/finance query templates added to DimensionRegistry
+docs\project-changelog.md:43:  - All decomposition queries now use unified taxonomy
+docs\project-changelog.md-44-- **Impact**: Consistent dimension scoping across all intelligence systems
+docs\project-changelog.md-45-- **Testing**: dimension_registry tests validate all 18 dims present and accessible
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-46-
+--
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-67-
+docs\project-changelog.md-68-**Architecture & Design**:
+docs\project-changelog.md-69-- **Data-Flow Validation**: Added assertions throughout pipeline to verify data flow (prevents silent failures)
+docs\project-changelog.md:70:- **Unified Taxonomy**: 18-dim schema provides consistent scoping across hunger/decomposition/LFI systems
+docs\project-changelog.md-71-- **Authority Domain Scoring**: Enables fact verification via domain expertise + historical accuracy tracking
+docs\project-changelog.md-72-- **Weight Integration**: Evolved weights now actively used in dimension selection; learning actually improves results
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-73-
+--
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-80-- `fact_assembler.py` — dimension unification + deduplication fix
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-81-- `path_generator.py` — operator precedence parentheses + comment
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-82-- `dimension_registry.py` — 18-dim unified taxonomy + VC/finance templates
+docs\project-changelog.md:83:- `synthesis_engine.py` — authority domain scoring + [K] fact elevation logic
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-84-
+docs\project-changelog.md-85-**Impact**: Resolves critical system degradation where compound learning appeared functional but wasn't. All 198 tests now verify both data flow AND meaningful runtime behavior changes. Production system is now self-improving as designed.
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-86-
+--
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-100-  - `decomposer.py` — Main orchestrator (classify → dimensions → micro-queries)
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-101-  - `micro_query_runner.py` — Fires queries via injectable research_fn (1-2 facts per query)
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-102-  - `fact_assembler.py` — Verify, deduplicate, store in SQLite (compound_cache.db)
+docs\project-changelog.md:103:  - `synthesis_engine.py` — LOCAL ONLY scoring, gap analysis, path generation
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-104-  - `template_evolver.py` — Learn dimension weights via execution history (≤10% per cycle)
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-105-  - `compound_cache.py` — Reuses accumulated facts from prior decisions
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-106-  - `think_runner.py` — Standalone `/think` command orchestrator
+--
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-117-
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-118-### Architecture & Integration
+docs\project-changelog.md-119-- **With LFI Tiers**:
+docs\project-changelog.md:120:  - T1 (LLM) → Micro-Decomp: Fact retrieval bootstraps decomposition
+docs\project-changelog.md-121-  - T2 (Distillation) → Synthesis: Failure patterns feed contradiction detection
+docs\project-changelog.md-122-  - T3 (Local Reasoning) → Path Gen: Decision paths generated locally (no 2nd LLM call)
+docs\project-changelog.md-123-  - T4 (Autonomy Governor) → Execution: Routes verdicts based on confidence
+--
+docs\project-changelog.md-144-- Total E2E: 20-40s per complex question (vs 2-3 min for full reasoning)
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-145-
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-146-### Quality Assurance
+docs\project-changelog.md:147:- ✅ 173 unit tests passing (decomposition, synthesis, evolution, fact assembly, caching)
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-148-- ✅ Verified on 12+ case studies (founder pitches, market analysis, product validation)
+docs\project-changelog.md-149-- ✅ Template evolution: dimension weights calibrated across 3 verticals (SaaS, ecommerce, service)
+docs\project-changelog.md-150-- ✅ Compound cache: fact reuse validated (85% hit rate on common research domains)
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-151-- ✅ Zero regressions to Stage0 pipeline (non-blocking integration)
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-152-
+docs\project-changelog.md-153-**Files Created**:
+docs\project-changelog.md:154:- `.claude/lib/intelligence/decomposition/` (19 Python modules)
+docs\project-changelog.md:155:- `.claude/lib/intelligence/decomposition/tests/` (test suite)
+docs\project-changelog.md:156:- `.claude/lib/intelligence/decomposition/calibration_config.json` (tuning config)
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-157-- Linked to Stage0 via optional pre-analysis flag
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-158-
+docs\project-changelog.md:159:**Impact**: Shifts reasoning from LLM-centric (expensive, opaque) to decomposition-centric (cheap, verifiable). Each fact is independently researchable and contradiction-detectable. Dimension weights evolve per vertical. Compound learning eliminates redundant research. Integration with LFI T1-T4 creates closed-loop autonomous reasoning system.
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-160-
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-161----
+D:\code\invesments\master_investments_mmo\docs\project-changelog.md-162-
+--
+D:\code\invesments\master_investments_mmo\docs\journals\2026-04-21-deep-cashflow-intelligence-upgrade.md-7-
+D:\code\invesments\master_investments_mmo\docs\journals\2026-04-21-deep-cashflow-intelligence-upgrade.md-8-## What Happened
+D:\code\invesments\master_investments_mmo\docs\journals\2026-04-21-deep-cashflow-intelligence-upgrade.md-9-
+docs\journals\2026-04-21-deep-cashflow-intelligence-upgrade.md:10:Completed three-phase integration of reasoning surface into the discovery intelligence pipeline. The system now captures and surfaces WHY recommendations exist (discovery findings, adversarial analysis, pattern lessons) instead of just outputting WHAT to do. This enables founder calibration over time.
+D:\code\invesments\master_investments_mmo\docs\journals\2026-04-21-deep-cashflow-intelligence-upgrade.md-11-
+D:\code\invesments\master_investments_mmo\docs\journals\2026-04-21-deep-cashflow-intelligence-upgrade.md-12-## The Brutal Truth
+D:\code\invesments\master_investments_mmo\docs\journals\2026-04-21-deep-cashflow-intelligence-upgrade.md-13-
+--
+D:\code\invesments\master_investments_mmo\docs\journals\2026-04-21-deep-cashflow-intelligence-upgrade.md-17-
+D:\code\invesments\master_investments_mmo\docs\journals\2026-04-21-deep-cashflow-intelligence-upgrade.md-18-**Phase 1 — Reasoning Surface**
+D:\code\invesments\master_investments_mmo\docs\journals\2026-04-21-deep-cashflow-intelligence-upgrade.md-19-- Added `format_reasoning_surface()` to orchestrator.py (120 lines)
+docs\journals\2026-04-21-deep-cashflow-intelligence-upgrade.md:20:- Surfaces Q1-Q5 discovery questions, adversarial analysis, pattern WHY explanations
+D:\code\invesments\master_investments_mmo\docs\journals\2026-04-21-deep-cashflow-intelligence-upgrade.md-21-- Indexed by recommendation ID for traceability
+D:\code\invesments\master_investments_mmo\docs\journals\2026-04-21-deep-cashflow-intelligence-upgrade.md-22-
+D:\code\invesments\master_investments_mmo\docs\journals\2026-04-21-deep-cashflow-intelligence-upgrade.md-23-**Phase 2 — Outcome Pipeline**
+--
+D:\code\invesments\master_investments_mmo\docs\journals\2026-04-24-analysis-safety-skill.md-135-
+docs\journals\2026-04-24-analysis-safety-skill.md-136-This system injects a prompt like "You are under deadline pressure; slow down, re-check evidence" when YELLOW\RED triggers. That's a band-aid. Better fix: architecture that makes reasoning immune to pressure.
+D:\code\invesments\master_investments_mmo\docs\journals\2026-04-24-analysis-safety-skill.md-137-
+docs\journals\2026-04-24-analysis-safety-skill.md:138:How? Not sure yet. Maybe: separate the "should I recommend this?" reasoning from the "how should I explain this?" reasoning, isolate each from deadline/stake pressure. Or: adversarial reasoning mode enabled automatically when pressure detected. Requires deeper work.
+D:\code\invesments\master_investments_mmo\docs\journals\2026-04-24-analysis-safety-skill.md-139-
+D:\code\invesments\master_investments_mmo\docs\journals\2026-04-24-analysis-safety-skill.md-140-Current fix buys time; doesn't solve it permanently.
+D:\code\invesments\master_investments_mmo\docs\journals\2026-04-24-analysis-safety-skill.md-141-
+--
+D:\code\invesments\master_investments_mmo\docs\journals\260421-deep-cashflow-intelligence-upgrade-plan.md-30-
+D:\code\invesments\master_investments_mmo\docs\journals\260421-deep-cashflow-intelligence-upgrade-plan.md-31-## Key Changes Planned
+D:\code\invesments\master_investments_mmo\docs\journals\260421-deep-cashflow-intelligence-upgrade-plan.md-32-
+docs\journals\260421-deep-cashflow-intelligence-upgrade-plan.md:33:1. **format_reasoning_surface()** - New method to show Q1-Q5 discovery, adversarial analysis, pattern WHY
+D:\code\invesments\master_investments_mmo\docs\journals\260421-deep-cashflow-intelligence-upgrade-plan.md-34-2. **Outcome-reasoning linking** - Store full reasoning context with each recommendation
+D:\code\invesments\master_investments_mmo\docs\journals\260421-deep-cashflow-intelligence-upgrade-plan.md-35-3. **/log-outcome skill** - User reports S|P|F|N → triggers calibration
+D:\code\invesments\master_investments_mmo\docs\journals\260421-deep-cashflow-intelligence-upgrade-plan.md-36-4. **Calibration visibility** - Next /stage0 shows what system learned
+--
+D:\code\invesments\master_investments_mmo\docs\journals\deep-cashflow-intelligence-upgrade-260421-0825.md-11-
+D:\code\invesments\master_investments_mmo\docs\journals\deep-cashflow-intelligence-upgrade-260421-0825.md-12-## The Brutal Truth
+D:\code\invesments\master_investments_mmo\docs\journals\deep-cashflow-intelligence-upgrade-260421-0825.md-13-
+docs\journals\deep-cashflow-intelligence-upgrade-260421-0825.md:14:We built the smartest engine in the room and hid it. Every time a founder got a "no," they had no visibility into the three adversarial digs that killed them. More painful: when outcomes came back, we had NO feedback loop to calibrate Q1-Q5 weights. Operator-layer thinking was invisible, uncheckable, unlearning.
+D:\code\invesments\master_investments_mmo\docs\journals\deep-cashflow-intelligence-upgrade-260421-0825.md-15-
+D:\code\invesments\master_investments_mmo\docs\journals\deep-cashflow-intelligence-upgrade-260421-0825.md-16-## Technical Details
+D:\code\invesments\master_investments_mmo\docs\journals\deep-cashflow-intelligence-upgrade-260421-0825.md-17-
+--
+D:\code\invesments\master_investments_mmo\docs\journals\260421-0843-deep-cashflow-intelligence-upgrade.md-7-
+D:\code\invesments\master_investments_mmo\docs\journals\260421-0843-deep-cashflow-intelligence-upgrade.md-8-## What Happened
+D:\code\invesments\master_investments_mmo\docs\journals\260421-0843-deep-cashflow-intelligence-upgrade.md-9-
+docs\journals\260421-0843-deep-cashflow-intelligence-upgrade.md:10:Completed a 3-phase upgrade to surface hidden operator-level reasoning from the cash flow intelligence system. The pipeline previously generated recommendations but kept the "why" buried in internal orchestrator state. This upgrade exposes the entire decision chain: discovery questions (Q1-Q5), adversarial assumptions, pattern lessons, and survival rates.
+D:\code\invesments\master_investments_mmo\docs\journals\260421-0843-deep-cashflow-intelligence-upgrade.md-11-
+D:\code\invesments\master_investments_mmo\docs\journals\260421-0843-deep-cashflow-intelligence-upgrade.md-12-Users now see the REASONING MARKDOWN FIRST (readable narrative), then structured JSON. Outcomes feed back into a continuous calibration loop that updates pattern confidence based on real-world validation.
+D:\code\invesments\master_investments_mmo\docs\journals\260421-0843-deep-cashflow-intelligence-upgrade.md-13-
+--
+D:\code\invesments\master_investments_mmo\docs\journals\260510-1552-micro-decomposition-engine-critical-bugs-and-data-flow-lesson.md-7-
+D:\code\invesments\master_investments_mmo\docs\journals\260510-1552-micro-decomposition-engine-critical-bugs-and-data-flow-lesson.md-8-## What Happened
+D:\code\invesments\master_investments_mmo\docs\journals\260510-1552-micro-decomposition-engine-critical-bugs-and-data-flow-lesson.md-9-
+docs\journals\260510-1552-micro-decomposition-engine-critical-bugs-and-data-flow-lesson.md:10:Completed full implementation of the 7-phase Micro-Decomposition Engine. All 198 tests passed (173 decomposition tests + 25 cunning layer tests). Code review then discovered 3 bugs — 2 were critical and eliminated core functionality, 1 was a false positive. After fixes, 198/198 tests still pass and compound learning loop is now fully operational end-to-end.
+D:\code\invesments\master_investments_mmo\docs\journals\260510-1552-micro-decomposition-engine-critical-bugs-and-data-flow-lesson.md-11-
+D:\code\invesments\master_investments_mmo\docs\journals\260510-1552-micro-decomposition-engine-critical-bugs-and-data-flow-lesson.md-12-## The Brutal Truth
+D:\code\invesments\master_investments_mmo\docs\journals\260510-1552-micro-decomposition-engine-critical-bugs-and-data-flow-lesson.md-13-
+docs\journals\260510-1552-micro-decomposition-engine-critical-bugs-and-data-flow-lesson.md:14:[Omitted long matching line]
+D:\code\invesments\master_investments_mmo\docs\journals\260510-1552-micro-decomposition-engine-critical-bugs-and-data-flow-lesson.md-15-
+D:\code\invesments\master_investments_mmo\docs\journals\260510-1552-micro-decomposition-engine-critical-bugs-and-data-flow-lesson.md-16-This is exactly the kind of bug that slips past automated testing because the code is technically correct — it just doesn't *do* anything with its results. It's a data-flow bug, not a syntax or logic bug. And it would have been catastrophic in production because the system would appear to learn and improve metrics would look good, but actual intelligence discovery would never evolve.
+D:\code\invesments\master_investments_mmo\docs\journals\260510-1552-micro-decomposition-engine-critical-bugs-and-data-flow-lesson.md-17-
+--
+D:\code\invesments\master_investments_mmo\docs\journals\260510-1552-micro-decomposition-engine-critical-bugs-and-data-flow-lesson.md-93-
+docs\journals\260510-1552-micro-decomposition-engine-critical-bugs-and-data-flow-lesson.md-94-The bug wasn't found during Phase 7 testing because:
+D:\code\invesments\master_investments_mmo\docs\journals\260510-1552-micro-decomposition-engine-critical-bugs-and-data-flow-lesson.md-95-- Unit tests for evolution (Phase 4) verified weights could be stored/retrieved
+docs\journals\260510-1552-micro-decomposition-engine-critical-bugs-and-data-flow-lesson.md:96:- Unit tests for decomposition (Phase 5) verified dimensions could be generated
+D:\code\invesments\master_investments_mmo\docs\journals\260510-1552-micro-decomposition-engine-critical-bugs-and-data-flow-lesson.md-97-- But **no integration test** verified that evolved weights from Phase 4 actually *changed* Phase 5 dimension selection
+
+[Showing results with pagination = limit: 250]

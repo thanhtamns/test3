@@ -1,0 +1,104 @@
+---
+phase: 2
+title: "Micro-Query Runner + Fact Assembler"
+status: pending
+priority: P1
+effort: "2d"
+dependencies: [1]
+---
+
+# Phase 2: Micro-Query Runner + Fact Assembler
+
+## Overview
+
+Execute micro-queries against LLM with strict structured response enforcement. Collect, verify, deduplicate, and store facts in decision-vectors.db. LLM is used ONLY as a search engine — returns single facts, not reasoning.
+
+## Requirements
+
+- Functional: Fire micro-queries to LLM, enforce single-fact JSON response
+- Functional: Verify each fact (confidence, contradiction, staleness, magnitude)
+- Functional: Deduplicate against existing KB before storage
+- Functional: Store verified facts in decision-vectors.db with full provenance
+- Non-functional: Injectable research_fn (same pattern as hunger_loop_orchestrator)
+- Non-functional: Rate limiting — max 5 concurrent queries, 1s delay between batches
+
+## Architecture
+
+```
+MicroQuery[]
+  → MicroQueryRunner.run_batch(queries, research_fn)
+    → Per query: format prompt → research_fn(prompt) → parse response
+    → FactAssembler.assemble(raw_responses)
+      → ClaimParser.parse_agent_output() — reuse from hunger engine
+      → ClaimVerifier.verify() — reuse from hunger engine  
+      → DistillationBridge.distill() — store in decision-vectors.db
+    → Output: AssemblyResult(facts_added, facts_updated, contradictions, gaps_remaining)
+```
+
+### LLM Prompt Template (micro-fact retrieval)
+
+```
+Answer this factual question with a SINGLE data point.
+Format: {"fact": "...", "value": "...", "confidence": 0.0-1.0, "source": "...", "date": "YYYY-MM-DD"}
+
+Question: {micro_query.text}
+Expected answer type: {micro_query.expected_type}
+
+Rules:
+- ONE fact only. No reasoning, no explanation, no context.
+- If you don't know, return {"fact": null, "confidence": 0.0}
+- Include source URL or publication name if available.
+```
+
+## Related Code Files
+
+- Create: `.claude/lib/intelligence/decomposition/micro_query_runner.py`
+- Create: `.claude/lib/intelligence/decomposition/fact_assembler.py`
+- Create: `.claude/lib/intelligence/decomposition/tests/test_micro_query_runner.py`
+- Reuse: `.claude/lib/intelligence/hunger/claim_parser.py` — parse LLM responses
+- Reuse: `.claude/lib/intelligence/hunger/claim_verifier.py` — verify facts
+- Reuse: `.claude/lib/intelligence/evolution/distillation_bridge.py` — store vectors
+
+## Implementation Steps
+
+1. Create `micro_query_runner.py`:
+   - `MicroQueryRunner(research_fn: Callable, batch_size: int = 5)`
+   - `run_batch(queries: list[MicroQuery]) → list[MicroQueryResult]`
+   - Format each query into micro-fact prompt template
+   - Parse JSON response, fallback to ClaimParser prose extraction
+   - Track: queries_fired, responses_received, parse_failures
+   - `MicroQueryResult` dataclass: query, raw_response, parsed_fact, parse_success
+
+2. Create `fact_assembler.py`:
+   - `FactAssembler(vectors_db: Path)`
+   - `assemble(results: list[MicroQueryResult], domain: str) → AssemblyResult`
+   - For each parsed fact:
+     a. Run ClaimVerifier.verify() — check dup, contradiction, magnitude
+     b. If new + verified → DistillationBridge.distill() to store
+     c. If contradiction → log + flag for human review
+     d. If duplicate → skip, increment counter
+   - `AssemblyResult` dataclass: facts_added, facts_updated, contradictions, duplicates, gaps_remaining, total_processed
+
+3. Create `tests/test_micro_query_runner.py`:
+   - Mock research_fn returning structured JSON
+   - Mock research_fn returning prose (fallback test)
+   - Test batch processing with partial failures
+   - Test rate limiting behavior
+   - Test fact assembly with dup detection
+   - Test contradiction handling
+   - Test storage in decision-vectors.db
+   - Target: 20+ tests
+
+## Success Criteria
+
+- [ ] Micro-query runner fires queries with structured response enforcement
+- [ ] ≥80% of LLM responses parse as JSON without fallback
+- [ ] Fact assembler verifies + stores in decision-vectors.db
+- [ ] Contradictions detected and logged
+- [ ] Duplicates filtered (≥85% fuzzy match threshold)
+- [ ] All tests pass (20+)
+
+## Risk Assessment
+
+- LLM returns reasoning instead of single fact → mitigation: strict prompt template + JSON enforcement + retry once
+- Parse failure rate too high → mitigation: ClaimParser prose fallback with -0.1 confidence penalty

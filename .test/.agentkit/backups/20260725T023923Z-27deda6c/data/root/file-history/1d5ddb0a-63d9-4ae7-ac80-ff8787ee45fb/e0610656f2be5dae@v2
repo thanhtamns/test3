@@ -1,0 +1,163 @@
+---
+phase: 6
+title: "Option B Data Products"
+status: pending
+priority: P3
+effort: "ongoing (Month 3+)"
+dependencies: [5]
+---
+
+# Phase 6: Option B Data Products
+
+## Overview
+
+When 200+ analyses with outcome data exist, the DATA becomes more valuable than the tool. This phase designs and launches data products — the transition from infrastructure×code to data_intelligence×data (100% success rate, n=5 in training set).
+
+## Requirements
+
+- Functional: Package aggregate intelligence into sellable data products
+- Non-functional: Privacy-preserving (no individual product data exposed), updated weekly
+
+## Activation Criteria
+
+**DO NOT start this phase until:**
+- [ ] 200+ analyses performed
+- [ ] 50+ outcome data points with conversion numbers
+- [ ] 3+ months of historical data
+- [ ] MRR from tool >$300 (tool is viable independent of data products)
+
+## Data Products Roadmap
+
+### Product 1: Distribution Channel Effectiveness Report ($49-99 one-time)
+
+**Content:**
+- Top 20 channels ranked by actual conversion rate (from outcome data)
+- Broken down by product category (SaaS, API, extension, template, etc.)
+- Best posting times with statistical significance
+- "Rising" channels: new communities with high engagement, low competition
+- "Dying" channels: communities where commercial posts get banned/ignored
+
+**Format:** PDF report, updated monthly
+**Target:** Indie hackers who want data before committing time to distribution
+**Distribution:** Same channels we already post in (meta-recursive)
+
+### Product 2: Real-Time Distribution Opportunities ($29/mo subscription)
+
+**Content:**
+- Weekly email: new communities/channels detected
+- Alert when a channel's commercial tolerance changes
+- Trending topics where products can ride waves
+- Competitor distribution monitoring (where similar products are posting)
+
+**Format:** Weekly email digest + dashboard
+**Target:** Active builders launching regularly
+**Moat:** Real-time data requires continuous collection; competitors can't replicate history
+
+### Product 3: Competitive Distribution Intelligence ($99/mo subscription)
+
+**Content:**
+- Input: competitor URL
+- Output: where competitor is distributing, how often, what messaging they use
+- Gap analysis: channels competitor is NOT in (your opportunity)
+- Trend: is competitor's distribution effort increasing or decreasing?
+
+**Format:** On-demand analysis + monthly report
+**Target:** Funded startups with $50K+ budget who care about competitive intelligence
+**Moat:** Cross-product data only exists in our system
+
+## Architecture Evolution
+
+```
+Phase 2-3 (Tool):
+  User → Analyze URL → Get channels → Pay for scripts
+  Data flow: ONE direction (tool → user)
+
+Phase 6 (Intelligence Platform):
+  User → Analyze URL → Get channels → Report outcome
+  ↓                                    ↓
+  Aggregate DB ←←←←←←←←←←←←←←←←←←←←←←←
+  ↓
+  Data Products → Different buyers
+  ↓
+  Competitive Intel → Enterprise buyers ($99/mo)
+```
+
+## Revenue Projection (conservative)
+
+| Month | Tool MRR | Data MRR | Total | Compound Evidence |
+|-------|----------|----------|-------|-------------------|
+| 3 | $300 | $0 | $300 | Tool viable |
+| 4 | $500 | $200 | $700 | Report 1 launched |
+| 6 | $800 | $500 | $1,300 | Subscription launched |
+| 9 | $1,200 | $1,500 | $2,700 | Data > Tool revenue |
+| 12 | $1,500 | $3,500 | $5,000 | Data = primary business |
+
+**Key inflection:** Month 9 — data revenue exceeds tool revenue. Tool becomes the DATA COLLECTION mechanism, not the primary product. This is the Berkshire model: insurance (tool) collects float (data), investments (data products) generate real returns.
+
+## Implementation Steps
+
+### Step 1: Data Pipeline (Month 3)
+
+1. Build aggregate analytics pipeline:
+   - Daily job: process new analyses + outcomes
+   - Calculate: conversion rates by channel × category
+   - Detect: trending channels, dying channels
+   - Output: structured JSON for reports
+
+2. Privacy layer:
+   - Never expose individual product URLs in aggregate data
+   - Minimum n=5 before including a channel in reports
+   - Hash user IDs in analytics
+
+### Step 2: Report 1 MVP (Month 4)
+
+3. Generate first "Distribution Effectiveness Report":
+   - Use Python/Pandas for analysis
+   - Generate PDF with charts
+   - Sell on Gumroad ($49, test pricing)
+   - Announce to existing user base first
+
+### Step 3: Subscription Product (Month 5-6)
+
+4. Build weekly digest system:
+   - Cron job: every Monday, compile new findings
+   - Resend: send digest to subscribers
+   - Dashboard: Turso → simple read-only view
+
+### Step 4: Competitive Intel (Month 7+)
+
+5. Build competitor tracking:
+   - User submits competitor URL
+   - System monitors where competitor content appears
+   - Weekly diff: new channels, messaging changes
+   - Requires web scraping at scale → consider proxy service
+
+## Success Criteria
+
+- [ ] Activation criteria met (200+ analyses, 50+ outcomes)
+- [ ] Report 1 launched and 5+ copies sold
+- [ ] Subscription product launched with 10+ subscribers
+- [ ] Data MRR > Tool MRR (inflection point reached)
+- [ ] Privacy layer implemented (no individual data exposure)
+
+## Risk Assessment
+
+| Risk | Probability | Mitigation |
+|------|-------------|------------|
+| Not enough outcome data by Month 3 | 35% | Delay Phase 6; focus on Phase 5 outcome collection |
+| Data products don't sell | 25% | Test with free preview to existing users first |
+| Privacy concerns | 15% | Aggregate only, minimum n=5, hash all IDs |
+| AI tools make this data obsolete | 20% | AI can't replicate HISTORICAL OUTCOME data — that's our moat |
+
+## Long-Term Vision (Month 12+)
+
+If data compound works:
+```
+Tool ($1.5K MRR) + Data ($3.5K MRR) = $5K/mo
+  → Reinvest into more data collection
+  → Add more ecosystems (not just indie hackers)
+  → Build API for programmatic access ($199/mo enterprise)
+  → Eventually: "Bloomberg for indie distribution"
+```
+
+This is the data_intelligence×data pattern at work. The training set shows 100% success rate (n=5) for this position. The constraint is DATA ACCUMULATION TIME — which is why we start with the tool (Option A) to accelerate data collection.

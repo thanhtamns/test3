@@ -1,0 +1,34 @@
+---
+title: "CODEFLOW AI Cost Intelligence Engine"
+description: ""
+status: pending
+priority: P1
+branch: "master"
+tags: []
+blockedBy: []
+blocks: []
+created: "2026-06-03T15:13:28.780Z"
+createdBy: "ck:plan"
+source: skill
+---
+
+# CODEFLOW AI Cost Intelligence Engine
+
+## Overview
+
+<!-- Brief description -->
+
+## Phases
+
+| Phase | Name | Status |
+|-------|------|--------|
+| 1 | [Rust CLI MVP (L1 Compress + L2 Dedup + Local Metrics)](./phase-01-rust-cli-mvp-l1-compress-l2-dedup-local-metrics.md) | Pending |
+| 2 | [Cloud MVP (Go Ingest + ClickHouse + React Dashboard)](./phase-02-cloud-mvp-go-ingest-clickhouse-react-dashboard.md) | Pending |
+| 3 | [Model Routing + Waste Detection + Live Metrics](./phase-03-model-routing-waste-detection-live-metrics.md) | Pending |
+| 4 | [IDE Plugins (VS Code + Cursor)](./phase-04-ide-plugins-vs-code-cursor.md) | Pending |
+| 5 | [Security Scanner + Policy Engine + SSO](./phase-05-security-scanner-policy-engine-sso.md) | Pending |
+| 6 | [Enterprise (SOC2 + CFO Export + Data Residency)](./phase-06-enterprise-soc2-cfo-export-data-residency.md) | Pending |
+
+## Dependencies
+
+<!-- Cross-plan dependencies -->

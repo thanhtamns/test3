@@ -1,0 +1,118 @@
+"""
+HypothesisGenerator — creates testable hypotheses from graph gaps.
+Rule-based first, optional LLM call for creative hypotheses.
+"""
+
+from typing import Callable, Optional
+
+from .money_flow_graph import MoneyFlowGraph, Hypothesis
+
+
+GAP_TO_HYPOTHESIS = {
+    "low_confidence_node": 'Verify that "{entity}" exists and is active in this market',
+    "missing_volume": 'Find monthly revenue/volume for "{entity}"',
+    "payer_no_outflow": '"{entity}" pays someone — find who they pay and how much',
+    "provider_no_inflow": '"{entity}" receives payment — find who pays them',
+    "low_confidence_edge": "Verify the relationship: {edge}",
+    "missing_amount": "Find the transaction amount for: {edge}",
+}
+
+GAP_TO_QUERY = {
+    "low_confidence_node": '"{entity}" company revenue employees',
+    "missing_volume": '"{entity}" revenue annual monthly pricing',
+    "payer_no_outflow": '"{entity}" vendors suppliers spending budget',
+    "provider_no_inflow": '"{entity}" customers clients who uses',
+    "low_confidence_edge": '{edge} partnership contract relationship',
+    "missing_amount": '{edge} pricing cost fee charges',
+}
+
+GAP_PRIORITY = {
+    "payer_no_outflow": 0.9,
+    "provider_no_inflow": 0.85,
+    "missing_amount": 0.8,
+    "missing_volume": 0.7,
+    "low_confidence_edge": 0.6,
+    "low_confidence_node": 0.5,
+}
+
+STRUCTURAL_HYPOTHESES = [
+    {
+        "condition": lambda g: any(n.entity_type == "PAYER" for n in g.nodes.values()) and not any(n.entity_type == "BROKER" for n in g.nodes.values()),
+        "statement": "No broker exists between payers and providers — broker position may be available",
+        "query_template": '"{topic}" broker intermediary agent referral',
+        "priority": 0.95,
+    },
+    {
+        "condition": lambda g: len([e for e in g.edges.values() if e.flow_type == "PAYS"]) >= 2,
+        "statement": "Multiple payment flows exist — aggregator position may be available",
+        "query_template": '"{topic}" aggregator platform marketplace comparison',
+        "priority": 0.85,
+    },
+    {
+        "condition": lambda g: any(e.amount_per_tx and e.amount_per_tx > 5000 for e in g.edges.values()),
+        "statement": "High-value transactions suggest information asymmetry — intelligence position may exist",
+        "query_template": '"{topic}" how to choose best evaluate compare',
+        "priority": 0.9,
+    },
+]
+
+
+class HypothesisGenerator:
+    def __init__(self, llm_fn: Optional[Callable[[str], str]] = None):
+        self._llm_fn = llm_fn
+
+    def generate(self, graph: MoneyFlowGraph, topic: str, cycle: int = 0, max_hypotheses: int = 5) -> list[Hypothesis]:
+        hypotheses = []
+
+        gap_hypotheses = self._from_gaps(graph, cycle)
+        hypotheses.extend(gap_hypotheses)
+
+        structural = self._from_structure(graph, topic, cycle)
+        hypotheses.extend(structural)
+
+        hypotheses.sort(key=lambda h: h.priority, reverse=True)
+        return hypotheses[:max_hypotheses]
+
+    def _from_gaps(self, graph: MoneyFlowGraph, cycle: int) -> list[Hypothesis]:
+        gaps = graph.find_gaps()
+        hypotheses = []
+        for gap in gaps:
+            gap_type = gap["type"]
+            if gap_type not in GAP_TO_HYPOTHESIS:
+                continue
+
+            statement = GAP_TO_HYPOTHESIS[gap_type].format(**gap)
+            query = GAP_TO_QUERY[gap_type].format(**gap)
+            priority = GAP_PRIORITY.get(gap_type, 0.5)
+
+            # Boost priority for edges we almost know
+            if gap_type == "low_confidence_edge":
+                edge = graph.edges.get(gap.get("edge", ""))
+                if edge and edge.confidence > 0.3:
+                    priority += 0.15
+
+            h = graph.add_hypothesis(
+                statement=statement,
+                test_query=query,
+                priority=min(priority, 1.0),
+                affects_edges=[gap.get("edge", "")],
+                cycle=cycle,
+            )
+            hypotheses.append(h)
+        return hypotheses
+
+    def _from_structure(self, graph: MoneyFlowGraph, topic: str, cycle: int) -> list[Hypothesis]:
+        hypotheses = []
+        for template in STRUCTURAL_HYPOTHESES:
+            try:
+                if template["condition"](graph):
+                    h = graph.add_hypothesis(
+                        statement=template["statement"],
+                        test_query=template["query_template"].format(topic=topic),
+                        priority=template["priority"],
+                        cycle=cycle,
+                    )
+                    hypotheses.append(h)
+            except Exception:
+                continue
+        return hypotheses

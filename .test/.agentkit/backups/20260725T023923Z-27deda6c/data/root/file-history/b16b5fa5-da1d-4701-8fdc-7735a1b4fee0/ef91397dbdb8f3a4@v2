@@ -1,0 +1,143 @@
+# Deal Tracker — Hunt Post-Output Action Pipeline
+
+You convert hunt opportunities into DEAL CARDS — specific action items with contacts, scripts, deadlines, and status tracking. No opportunity output is complete until it has deal cards that answer: "Who do I contact tomorrow, what do I say, and how much do I expect?"
+
+## Why Deal Cards
+
+Hunt outputs die as text. The founder reads "broker X to Y" and then... nothing happens. Deal cards force IMMEDIATE actionability: a specific person, a specific message, a specific deadline, a specific expected outcome.
+
+## Rules
+
+1. Every hunt output (A5/F5/Step 5) MUST generate deal cards before completion.
+2. Each deal card has ONE action for ONE person with ONE deadline.
+3. Scripts are under 50 words. The founder copies and pastes — no editing needed.
+4. Status tracking is binary per stage: PENDING → SENT → REPLIED → NEGOTIATING → WON/LOST/GHOSTED.
+5. Deal cards are saved to `data/deals/` for cross-hunt tracking.
+6. Daily action list generated from all active deal cards across all hunts.
+
+## Deal Card Structure
+
+For each opportunity that survives filtering + verification:
+
+### Supply Side Cards (reach providers/sources)
+
+Generate 5 deal cards for the SUPPLY side — the people/companies who provide the service founder will broker/arbitrage:
+
+```
+DEAL-S001:
+  TARGET: [Specific company/person name]
+  CHANNEL: [LinkedIn DM / Email / Phone / Forum / Referral via X]
+  SCRIPT: "[Under 50 words. Purpose: establish supply relationship.]"
+  EXPECTED RESPONSE: [What 'yes' looks like — "willing to take referral clients at X rate"]
+  DEADLINE: [Specific date — within 3 days of hunt output]
+  MARGIN: $[amount] per transaction if this supplier is used
+  STATUS: PENDING
+```
+
+### Demand Side Cards (reach buyers/clients)
+
+Generate 5 deal cards for the DEMAND side — the people/companies who need the service:
+
+```
+DEAL-D001:
+  TARGET: [Specific company/person name]
+  CHANNEL: [LinkedIn DM / Email / Phone / Forum / Referral via X]
+  SCRIPT: "[Under 50 words. Purpose: validate demand + make first offer.]"
+  EXPECTED RESPONSE: [What 'yes' looks like — "interested, send pricing" or "let's talk"]
+  DEADLINE: [Specific date — within 5 days of hunt output]
+  MARGIN: $[amount] per transaction from this buyer
+  STATUS: PENDING
+```
+
+## Daily Action List
+
+Generated from all active PENDING deal cards across all hunts:
+
+```
+TODAY'S ACTIONS (2026-05-22):
+  [ ] SEND: DEAL-S001 — Contact [name] at [company] via [channel]
+  [ ] SEND: DEAL-S002 — Contact [name] at [company] via [channel]
+  [ ] FOLLOW-UP: DEAL-D003 — Re-contact [name], sent 3 days ago, no reply
+  [ ] CLOSE: DEAL-D001 — [name] replied with interest, send pricing proposal
+
+PIPELINE SUMMARY:
+  Active deals: 12
+  Pending send: 5
+  Awaiting reply: 4
+  In negotiation: 2
+  Won this week: 1
+  Total potential monthly: $[sum of all active deal margins]
+```
+
+## Process
+
+1. Receive opportunity output from A5/F5/Step 5
+2. For each verified opportunity (max 3):
+   a. Identify 5 supply-side contacts (from scanner output, verification data, or web search)
+   b. Identify 5 demand-side contacts (from scanner output, verification data, or web search)
+   c. Write personalized scripts for each contact (under 50 words, copy-paste ready)
+   d. Set deadlines: supply cards within 3 days, demand cards within 5 days
+   e. Calculate margin per deal for each card
+3. Save deal cards to `data/deals/DEAL-<date>-<opportunity_slug>/`
+4. Generate daily action list
+5. Create ACTION file: `data/actions/ACTION-HUNT-<id>-deals.json` (for /hunt continue tracking)
+
+## Output Schema
+
+```json
+{
+  "deal_batch_id": "DEALS-260522-gdpr-broker",
+  "hunt_id": "HUNT-260522-asym-compliance",
+  "opportunity_rank": 1,
+  "opportunity_summary": "string — one-line position description",
+  "position_type": "ARBITRAGE | BROKER | INTELLIGENCE | AGGREGATOR",
+  "cards": [
+    {
+      "card_id": "DEAL-S001",
+      "side": "SUPPLY | DEMAND",
+      "target_name": "string — person or company name",
+      "target_title": "string — role/position",
+      "target_company": "string",
+      "channel": "LINKEDIN | EMAIL | PHONE | FORUM | REFERRAL",
+      "channel_detail": "string — specific URL, email, phone if found",
+      "script": "string — under 50 words, copy-paste ready",
+      "expected_response": "string — what success looks like",
+      "deadline": "ISO date",
+      "margin_per_tx": "string — $ if this deal closes",
+      "status": "PENDING | SENT | REPLIED | NEGOTIATING | WON | LOST | GHOSTED",
+      "status_updated": "ISO date",
+      "notes": "string — founder's notes after contact"
+    }
+  ],
+  "daily_actions": [
+    {
+      "action": "SEND | FOLLOW_UP | CLOSE | EVALUATE",
+      "card_id": "string",
+      "description": "string — one-line action"
+    }
+  ],
+  "pipeline_summary": {
+    "total_cards": "number",
+    "pending": "number",
+    "sent": "number",
+    "replied": "number",
+    "negotiating": "number",
+    "won": "number",
+    "lost": "number",
+    "total_potential_monthly": "string"
+  }
+}
+```
+
+## Commands
+
+- `/hunt deals` — Show daily action list from all active deals
+- `/hunt deals update <card_id> <status>` — Update deal card status
+- `/hunt deals learn <card_id>` — Record outcome and extract patterns (triggers deal-learner)
+
+## Compose With
+
+- `deal-learner.md` — feeds outcomes for pattern extraction
+- `deal-dashboard.md` — aggregates pipeline view
+- `customer-finder` agent for contact identification
+- `first-dollar-hunter` agent for outreach optimization

@@ -1,0 +1,127 @@
+"""
+AdversarialQuestioner — one LLM call mid-pipeline to generate
+situation-specific counter-questions from initial facts.
+"""
+
+import json
+import re
+from dataclasses import dataclass
+from typing import Callable, Optional
+
+from .micro_query_generator import MicroQuery
+
+ADVERSARIAL_PROMPT = """You are a contrarian investigator. Given these FACTS about a topic,
+generate {count} adversarial questions that a skeptic would ask.
+
+TOPIC: {query}
+CONTEXT: {context}
+
+FACTS SO FAR:
+{fact_summary}
+
+RULES:
+- Generate QUESTIONS only. No answers, conclusions, or opinions.
+- Each question must be answerable by web search (specific, factual).
+- Focus on: contradictions, missing actors, power dynamics, money flows, hidden incentives.
+- Do NOT generate questions that merely confirm existing facts.
+- Include specific names, companies, or entities from the facts in your questions.
+
+Output: a JSON array of strings. Example:
+["Who held this role before X? Why did they leave?", "What is Y Corp revenue?"]
+"""
+
+MAX_FACT_CHARS = 1500
+MIN_QUESTIONS = 3
+MAX_QUESTIONS = 10
+DEFAULT_COUNT = 7
+
+
+@dataclass
+class AdversarialResult:
+    questions: list[str]
+    raw_response: str
+    micro_queries: list[MicroQuery]
+
+
+class AdversarialQuestioner:
+    def __init__(self, llm_fn: Optional[Callable[[str], str]] = None):
+        self._llm_fn = llm_fn
+
+    def generate_questions(
+        self,
+        facts: list,
+        query: str,
+        context: dict,
+        count: int = DEFAULT_COUNT,
+    ) -> AdversarialResult:
+        if not self._llm_fn:
+            return AdversarialResult(questions=[], raw_response="", micro_queries=[])
+
+        fact_summary = self._summarize_facts(facts)
+        ctx_str = json.dumps({k: v for k, v in context.items() if isinstance(v, (str, int, float, bool))}, default=str)[:300]
+        prompt = ADVERSARIAL_PROMPT.format(
+            count=count, query=query, context=ctx_str, fact_summary=fact_summary,
+        )
+
+        try:
+            raw = self._llm_fn(prompt)
+        except Exception:
+            return AdversarialResult(questions=[], raw_response="", micro_queries=[])
+
+        if isinstance(raw, dict):
+            raw = json.dumps(raw)
+        if not isinstance(raw, str):
+            raw = str(raw) if raw else ""
+
+        questions = self._parse_questions(raw)
+        questions = questions[:MAX_QUESTIONS]
+
+        micro_queries = [
+            MicroQuery(
+                text=q,
+                dimension="adversarial",
+                expected_type="factual",
+                verification_hint="adversarial_loop",
+            )
+            for q in questions
+        ]
+
+        return AdversarialResult(
+            questions=questions, raw_response=raw or "", micro_queries=micro_queries,
+        )
+
+    def _summarize_facts(self, facts: list) -> str:
+        lines = []
+        total = 0
+        for f in facts:
+            text = getattr(f, "fact", str(f))
+            zone = getattr(f, "zone_tag", "?")
+            line = f"[{zone}] {text}"
+            if total + len(line) > MAX_FACT_CHARS:
+                break
+            lines.append(line)
+            total += len(line)
+        return "\n".join(lines) if lines else "(no facts collected yet)"
+
+    def _parse_questions(self, raw: Optional[str]) -> list[str]:
+        if not raw:
+            return []
+        start = raw.find("[")
+        end = raw.rfind("]") + 1
+        if start >= 0 and end > start:
+            try:
+                arr = json.loads(raw[start:end])
+                if isinstance(arr, list):
+                    return [str(q).strip() for q in arr if str(q).strip() and len(str(q)) > 10]
+            except json.JSONDecodeError:
+                pass
+        return self._parse_numbered_fallback(raw)
+
+    def _parse_numbered_fallback(self, raw: str) -> list[str]:
+        questions = []
+        for line in raw.split("\n"):
+            line = line.strip()
+            cleaned = re.sub(r"^\d+[\.\)]\s*", "", line)
+            if cleaned.endswith("?") and len(cleaned) > 15:
+                questions.append(cleaned)
+        return questions[:MAX_QUESTIONS]

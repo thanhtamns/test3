@@ -1,0 +1,127 @@
+package api
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"log/slog"
+	"net/http"
+	"os"
+	"strings"
+	"sync"
+
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/MicahParks/keyfunc/v3"
+)
+
+type ctxKey string
+
+const tenantCtxKey ctxKey = "tenant_id"
+
+var (
+	jwksOnce sync.Once
+	jwksFunc jwt.Keyfunc
+)
+
+func initJWKS() {
+	jwksURL := os.Getenv("WORKOS_JWKS_URL")
+	if jwksURL == "" {
+		return
+	}
+
+	k, err := keyfunc.NewDefault([]string{jwksURL})
+	if err != nil {
+		slog.Error("failed to initialize JWKS", "error", err, "url", jwksURL)
+		return
+	}
+	jwksFunc = k.Keyfunc
+	slog.Info("JWKS initialized", "url", jwksURL)
+}
+
+func withTenantAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		jwksOnce.Do(initJWKS)
+
+		tenantID := ""
+
+		if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
+			token := strings.TrimPrefix(auth, "Bearer ")
+
+			if jwksFunc != nil {
+				if tid := verifyAndExtractTenant(token); tid != "" {
+					tenantID = tid
+				}
+			} else {
+				if tid := extractTenantFromJWT(token); tid != "" {
+					tenantID = tid
+				}
+			}
+		}
+
+		if tenantID == "" {
+			if tid := r.Header.Get("X-Tenant-ID"); tid != "" {
+				tenantID = tid
+			}
+		}
+
+		if tenantID == "" {
+			tenantID = "default"
+		}
+
+		ctx := context.WithValue(r.Context(), tenantCtxKey, tenantID)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func verifyAndExtractTenant(tokenString string) string {
+	token, err := jwt.Parse(tokenString, jwksFunc)
+	if err != nil {
+		slog.Debug("jwt verification failed", "error", err)
+		return ""
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return ""
+	}
+
+	if tid, ok := claims["org_id"].(string); ok && tid != "" {
+		return tid
+	}
+	if tid, ok := claims["tenant_id"].(string); ok && tid != "" {
+		return tid
+	}
+	return ""
+}
+
+func tenantFromCtx(r *http.Request) string {
+	if tid, ok := r.Context().Value(tenantCtxKey).(string); ok && tid != "" {
+		return tid
+	}
+	return "default"
+}
+
+func extractTenantFromJWT(token string) string {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return ""
+	}
+
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return ""
+	}
+
+	var claims struct {
+		TenantID string `json:"tenant_id"`
+		OrgID    string `json:"org_id"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return ""
+	}
+
+	if claims.TenantID != "" {
+		return claims.TenantID
+	}
+	return claims.OrgID
+}

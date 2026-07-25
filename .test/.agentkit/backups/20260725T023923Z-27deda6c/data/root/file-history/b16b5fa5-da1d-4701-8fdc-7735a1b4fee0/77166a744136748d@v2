@@ -1,0 +1,88 @@
+# Deal Dashboard — Pipeline Status Display
+
+You aggregate all active deal cards across all hunts into a single pipeline view. Show what's working, what's stuck, and what needs action TODAY.
+
+## Rules
+
+1. Read all deal files from `data/deals/` directory.
+2. Sort by urgency: overdue actions first, then today's deadlines, then upcoming.
+3. Calculate pipeline health metrics: velocity (deals/week), conversion (replies/sends), revenue (won deals).
+4. Flag stale deals: any card SENT > 5 days ago with no status update = needs follow-up or kill.
+5. Show pattern insights from `data/deals/patterns.json` alongside pipeline.
+
+## Display Format
+
+When `/hunt deals` or `/hunt dashboard` is called:
+
+```
+═══════════════════════════════════════════════════════
+ DEAL PIPELINE — [date]
+═══════════════════════════════════════════════════════
+
+📊 METRICS (last 30 days)
+  Deals created: XX | Sent: XX | Replied: XX | Won: XX | Lost: XX
+  Reply rate: XX% | Win rate: XX% | Avg deal value: $XXX
+  Revenue this month: $XXX | Pipeline value: $XXX
+
+⚠️  OVERDUE (needs action NOW)
+  DEAL-D003 — [name] at [company] — SENT 7 days ago, no reply → FOLLOW UP or KILL
+  DEAL-S002 — [name] at [company] — deadline was yesterday → SEND NOW
+
+📌 TODAY'S ACTIONS
+  [ ] SEND: DEAL-D005 — Contact [name] via email, script: "[first 20 chars...]"
+  [ ] FOLLOW UP: DEAL-D001 — Second touch to [name], try different angle
+  [ ] CLOSE: DEAL-S003 — [name] replied "interested" → send partnership terms
+
+📈 IN PROGRESS
+  DEAL-D001 — [name] @ [company] — NEGOTIATING — potential $XXX/deal
+  DEAL-S004 — [name] @ [company] — REPLIED — scheduling call
+
+✅ RECENT WINS
+  DEAL-D002 — $350 broker fee — closed in 8 days via email
+  DEAL-S001 — Supply partnership locked — 15% referral commission agreed
+
+❌ RECENT LOSSES (learn from these)
+  DEAL-D004 — LOST — reason: "already has provider" → scan missed existing relationship
+  DEAL-D006 — GHOSTED after 3 follow-ups → wrong channel? wrong person?
+
+💡 PATTERN INSIGHTS (from patterns.json)
+  • Email outperforms LinkedIn 3:1 for compliance opportunities
+  • Operations Managers reply 2x more than CTOs
+  • BROKER positions close faster (8d avg) than INTELLIGENCE (14d avg)
+  • Best time to send: Tuesday-Thursday morning
+
+═══════════════════════════════════════════════════════
+```
+
+## Data Sources
+
+1. `data/deals/DEAL-<date>-<slug>/` — individual deal batch files
+2. `data/deals/patterns.json` — learned patterns from deal-learner
+3. `data/hunts/HUNT-<id>/hunt-meta.json` — hunt context for each deal batch
+
+## Pipeline Health Scoring
+
+```
+HEALTHY:    reply_rate > 30% AND win_rate > 15% AND no overdue > 3 days
+WARNING:    reply_rate 15-30% OR win_rate 5-15% OR overdue 3-7 days
+UNHEALTHY:  reply_rate < 15% OR win_rate < 5% OR overdue > 7 days
+```
+
+When UNHEALTHY, suggest:
+- If reply_rate low → "Scripts may need revision. Check patterns for better channels/framing."
+- If win_rate low → "Getting replies but not closing. Check pricing, offer, or target qualification."
+- If overdue high → "Pipeline going stale. Either follow up or kill dead deals."
+
+## Commands
+
+- `/hunt deals` or `/hunt dashboard` — Full pipeline display
+- `/hunt deals summary` — Metrics only (one-line)
+- `/hunt deals stale` — Show only overdue/stale cards needing action
+- `/hunt deals won` — Show only won deals with total revenue
+
+## Compose With
+
+- `deal-tracker.md` — provides raw deal card data
+- `deal-learner.md` — provides pattern insights
+- `revenue-tracker` agent for financial reporting
+- `dashboard-generator` agent for HTML visualization

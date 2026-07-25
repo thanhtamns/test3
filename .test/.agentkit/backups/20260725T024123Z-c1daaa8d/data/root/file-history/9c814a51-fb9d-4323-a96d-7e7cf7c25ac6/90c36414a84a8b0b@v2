@@ -1,0 +1,82 @@
+---
+title: "Micro-Decomposition Engine"
+description: "Break big questions into micro-factual queries. LLM = search engine for micro-facts only (≤20%), LOCAL Python/SQLite = all reasoning + synthesis (≥80%). Compound learning via template evolution + fact accumulation."
+status: pending
+priority: P1
+branch: "master"
+tags: [intelligence, decomposition, local-first, compound-learning, anti-hallucination]
+blockedBy: []
+blocks: []
+created: "2026-05-10T13:31:00.000Z"
+createdBy: "ck:plan"
+source: skill
+target_repo: D:/code/invesments/master_investments
+estimated_effort: "9-11 days"
+---
+
+# Micro-Decomposition Engine
+
+## Problem
+
+System is 85% local for KNOWN patterns but 0% local for novel/complex questions. Big strategic questions ("achieve like Giang Trần Minh Thành — $450M fund director at 25") get single-prompt LLM response — zero decomposition, zero verification, zero compound learning.
+
+## Solution
+
+Decompose big questions into 15-40 micro-factual queries. LLM retrieves ONE fact per query (no reasoning). LOCAL engine: decomposes, verifies, stores, synthesizes. Every run trains templates + accumulates facts → compound intelligence.
+
+## Architecture
+
+```
+Big Question
+  → decomposer.py: classify → select dimensions → generate micro-queries
+    → micro_query_runner.py: fire queries, enforce JSON response
+    → fact_assembler.py: verify + deduplicate + store in decision-vectors.db
+  → synthesis_engine.py: LOCAL-ONLY scoring + gap analysis + path generation
+  → template_evolver.py: track which templates produced useful facts → improve
+```
+
+## Target Directory
+
+`D:/code/invesments/master_investments/.claude/lib/intelligence/decomposition/`
+
+## Integration Points
+
+| Existing Module | Reuse |
+|----------------|-------|
+| `hunger/claim_parser.py` | Parse LLM micro-fact responses |
+| `hunger/claim_verifier.py` | Verify facts (dup, contradiction, magnitude) |
+| `hunger/hunger_log.py` | Log decomposition cycles |
+| `coverage/tracker.py` | Check what dimensions are covered |
+| `coverage/gap_detector.py` | Identify remaining gaps post-decomposition |
+| `evolution/distillation_bridge.py` | Store verified facts as vectors |
+| `reasoning/problem_decomposer.py` | Extend TEMPLATES dict |
+| `reasoning/atomic_resolver.py` | Resolve micro-queries against local KB first |
+
+## Phases
+
+| # | Phase | Effort | Status | Deps |
+|---|-------|--------|--------|------|
+| P1 | [Decomposer + Dimension Registry](./phase-01-decomposer-and-dimension-registry.md) | 2d | pending | None |
+| P2 | [Micro-Query Runner + Fact Assembler](./phase-02-micro-query-runner-and-fact-assembler.md) | 2d | pending | P1 |
+| P3 | [Synthesis Engine](./phase-03-synthesis-engine.md) | 2d | pending | P1 |
+| P4 | [Template Evolver + Compound Learning](./phase-04-template-evolver-and-compound-learning.md) | 1-2d | pending | P2+P3 |
+| P5 | [Stage0 Integration + /think Command](./phase-05-stage0-integration-and-think-command.md) | 1-2d | pending | P4 |
+| P6 | [Calibration + Integration Testing](./phase-06-calibration-and-integration-testing.md) | 1d | pending | P5 |
+
+- P2 and P3 can run in parallel after P1
+- P4 requires both P2 and P3
+- P5 and P6 are sequential
+
+## Success Criteria
+
+- ≥80% of answer content from LOCAL computation
+- ≤20% LLM usage (micro-fact retrieval only)
+- Each /think run adds ≥10 reusable facts to KB
+- After 10 similar queries, LLM calls drop 50%+
+- Templates improve accuracy >5% per 20 uses
+
+## Kill Criteria
+
+- Decomposition templates produce <30% useful micro-queries → template design failed
+- Synthesis output quality < naive LLM prompt → overhead not justified
+- Compound learning shows 0% improvement after 20 runs → evolution broken

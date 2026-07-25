@@ -1,0 +1,102 @@
+---
+phase: 1
+title: Layer 2 Compound Filter
+status: completed
+priority: P1
+effort: 3d
+dependencies: []
+---
+
+# Phase 1: Layer 2 Compound Filter
+
+## Overview
+Build the 5-Year Compound Test that gates every opportunity BEFORE deep analysis. This is the highest-impact change — it prevents the pipeline from recommending freelance-tier opportunities that have no compound growth path.
+
+## Requirements
+- Functional: Score every opportunity on 5 compound dimensions. KILL/DOWNGRADE/PASS verdict.
+- Non-functional: <2s execution per opportunity. Pure Python, no external deps.
+
+## Architecture
+
+```
+Opportunity Input (from V16 archetype scanners)
+    ↓
+compound-filter.py (5 questions)
+    ↓
+Score: 0-5 (must score ≥3 to PASS)
+    ↓
+PASS → continue to V16 deep-reasoner
+DOWNGRADE → tag as "bridge only" (Stair 1 max)
+KILL → log reason, skip
+```
+
+### 5-Year Compound Test Questions
+
+| # | Question | Score 1 | Score 0 |
+|---|----------|---------|---------|
+| 1 | Revenue recurring? | MRR/ARR/subscription | One-time project fee |
+| 2 | Marginal cost decreases with scale? | Software/content/data | Linear labor cost |
+| 3 | Moat after 12 months? | Data, brand, switching cost | Commodity, no lock-in |
+| 4 | Network effect possible? | Users attract users | No network dynamic |
+| 5 | Founder can step away 2 weeks? | Revenue continues | Revenue stops |
+
+### Timing Score (bonus layer)
+
+```python
+timing_score = {
+    "platform_maturity": 0-10,  # early=10, mature=3, declining=0
+    "competitor_density": 0-10,  # few=10, many=3, saturated=0
+    "regulatory_window": 0-10,  # open=10, closing=5, closed=0
+}
+total_timing = sum(values) / 3  # normalize to 0-10
+```
+
+## Related Code Files
+
+**Create (in master_investments):**
+- `.claude/skills/business/transaction-layer/scripts/compound-filter.py` — Core 5-question filter
+- `.claude/skills/business/transaction-layer/scripts/timing-scorer.py` — Platform timing analysis
+- `.claude/skills/business/transaction-layer/data/compound-config.json` — Thresholds config
+
+**Modify:**
+- `.claude/skills/business/transaction-layer/SKILL.md` — Add Step -5.5 (compound filter) between ecosystem mapping and evidence discovery
+
+## Implementation Steps
+
+1. Create `compound-filter.py`:
+   - Input: opportunity dict with `name`, `type`, `revenue_model`, `cost_structure`, `moat_claims`, `network_dynamic`, `founder_dependency`
+   - 5 scoring functions, each returns 0 or 1
+   - Output: `{score: int, verdict: PASS|DOWNGRADE|KILL, reasons: list[str]}`
+   - Threshold: ≥3 = PASS, 2 = DOWNGRADE (bridge only), ≤1 = KILL
+
+2. Create `timing-scorer.py`:
+   - Input: opportunity dict + optional web search results
+   - 3 scoring functions (platform maturity, competitor density, regulatory window)
+   - Each returns 0-10
+   - Output: `{timing_score: float, breakdown: dict, recommendation: str}`
+
+3. Create `compound-config.json`:
+   - Pass threshold (default 3)
+   - Downgrade threshold (default 2)
+   - Timing weight (default 0.3 — 30% influence on final score)
+   - Per-stair overrides (Stair 0-1: allow DOWNGRADE through, Stair 2+: PASS only)
+
+4. Update SKILL.md:
+   - Add Step -5.5: Compound Filter between Step -6 (Ecosystem) and Step -5A (Observation)
+   - Document: DOWNGRADE opportunities still visible but tagged `bridge_only: true`
+
+5. Write tests:
+   - Test freelance opportunity → KILL (score 0-1: not recurring, linear cost, no moat, no network, founder-dependent)
+   - Test SaaS opportunity → PASS (score 4-5: recurring, marginal cost decreases, data moat, possible network, can step away)
+   - Test template business → DOWNGRADE (score 2: semi-recurring, some scale, no moat, no network, semi-passive)
+
+## Success Criteria
+- [ ] compound-filter.py processes sample opportunities correctly (3 test cases)
+- [ ] timing-scorer.py returns normalized 0-10 score
+- [ ] SKILL.md updated with Step -5.5
+- [ ] Pipeline run with compound filter shows KILL on freelance, PASS on SaaS
+- [ ] Config allows per-stair threshold adjustment
+
+## Risk Assessment
+- Risk: Filter too aggressive kills everything → Mitigation: DOWNGRADE path keeps bridge opportunities visible
+- Risk: Scoring too simplistic → Mitigation: Start simple, add complexity from ground truth feedback

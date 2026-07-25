@@ -1,0 +1,84 @@
+---
+title: "CODEFLOW — AI Code Supply Chain OS"
+description: "Extend RTK from token compression CLI into 4-pillar AI code supply chain OS: provenance, cost attribution, quality gates, compliance export"
+status: pending
+priority: P1
+branch: "master"
+tags: [rust, saas, ai-governance, compliance]
+blockedBy: []
+blocks: []
+created: "2026-06-06T06:16:04.361Z"
+createdBy: "ck:plan"
+source: skill
+---
+
+# CODEFLOW — AI Code Supply Chain OS
+
+## Overview
+
+Transform RTK (`D:/code/invesments/tools_decisions/rtk-analysis/`) from a token compression CLI into an **AI Code Supply Chain Operating System** answering 4 questions: WHO wrote it, WHAT did it cost, IS it safe, CAN you prove it.
+
+**Codebase reality check:** RTK is 105 .rs files, ~69K LOC. Key assets to extend:
+- `tracking.rs` (1689 LOC) — SQLite tracking, RTK compression savings (NOT LLM API tokens)
+- `ccusage.rs` + `cc_economics.rs` — Claude Code spending data parsing (actual API billing — authoritative cost source)
+- `hooks/hook_cmd.rs` (1126 LOC) — **PreToolUse-ONLY** hooks for Claude/Cursor/Copilot/Gemini. Each invocation = separate OS process. No PostToolUse exists. Payload: `tool_name` + `tool_input.command` only — no model_id.
+- `discover/rules.rs` (935 LOC) — static command-rewrite table (`RtkRule` maps CLI → RTK proxies). NOT an extensible rule engine.
+- `build.rs` (66 LOC) — **already exists** (Windows stack size + TOML filter concatenation). Must extend, not create.
+- `filters/` — 59+ TOML-based output filters
+
+**What does NOT exist yet:** protobuf schema, provenance records, signed attestation, PostToolUse hooks (must be built from scratch), budget policy engine, dependency validation, compliance exports.
+
+**Descoped:** Cloud backend (Go + ClickHouse + NATS + Next.js) moved to separate future plan — too large for this plan's scope. Phase 6 replaced with lightweight CLI export + optional SQLite-based dashboard.
+
+**Target:** 10-week MVP across 7 phases. Phases 1-5 = CLI (Rust). Phase 6 = CLI export + lightweight dashboard. Phase 7 = Launch.
+
+## Brainstorm Source
+
+`brainstorm-final-260606.md` — 3-session brainstorm, verified sources, competitive analysis of 12 competitors, 4-pillar architecture.
+
+## Phases
+
+| Phase | Name | Status | Effort | Dependencies |
+|-------|------|--------|--------|--------------|
+| 1 | [Foundation — Proto Schema + Provenance Core](./phase-01-foundation-proto-schema-provenance-core.md) | Pending | 2w | None |
+| 2 | [Cost Attribution Engine](./phase-02-cost-attribution-engine.md) | Pending | 2w | Phase 1 |
+| 3 | [Budget Governance + Policy Engine](./phase-03-budget-governance-policy-engine.md) | Pending | 1.5w | Phase 2 |
+| 4 | [Quality Gate — Dependency + Hallucination Detection](./phase-04-quality-gate-dependency-hallucination-detection.md) | Pending | 2w | Phase 1 |
+| 5 | [Compliance Export Engine](./phase-05-compliance-export-engine.md) | Pending | 2w | Phases 1-4 |
+| 6 | [CLI Export + Lightweight Dashboard](./phase-06-cloud-backend-dashboard.md) | Pending | 1.5w | Phase 5 |
+| 7 | [OSS Polish + Launch Prep](./phase-07-oss-polish-launch-prep.md) | Pending | 1w | Phase 6 |
+
+**Parallelism:** Phases 2-3 (cost) and Phase 4 (quality) can run in parallel after Phase 1.
+
+## Key Architecture Decisions
+
+1. **Protobuf for events** — structured, versionable, language-neutral
+2. **Ed25519 for attestation** — fast, small signatures, no certificate infra needed
+3. **Single SQLite DB (extend tracking.db)** — no split-brain risk; single WAL, single retention, single backup
+4. **Agent Trace v0.1.0 compat** — implement spec for Cursor/Devin/Cloudflare/Vercel interop
+5. **blake3 for content hashing** — fastest cryptographic hash, already in Rust ecosystem
+6. **PostToolUse must be built** — only PreToolUse exists; provenance capture via git-diff analysis on PreToolUse + file-system watcher fallback
+7. **ccusage is authoritative cost source** — tracking.rs compression tokens ≠ API tokens; new CostRecord is attribution metadata, ccusage is billing truth
+8. **Warn/Block only** — no model Downgrade verdict (hook protocol doesn't support model_id in response)
+9. **Cross-platform key storage** — use `dirs::data_dir()` (dirs crate already in deps), not Linux-only `~/.local/share/`
+10. **Verify name availability early** — check `codeflow` on crates.io, npm, Homebrew, domain before Phase 1
+
+## Risk Mitigations
+
+| Risk | Mitigation |
+|------|------------|
+| Hook API changes (Claude Code, Cursor) | Multi-agent support already in RTK; abstract hook interface |
+| Protobuf adds build complexity | Use `prost` crate; extend existing build.rs (DO NOT create new) |
+| Ed25519 key management | Auto-generate per-machine via `dirs::data_dir()` (cross-platform) |
+| SQLite concurrency under heavy sessions | WAL mode; single connection (no pooling — tracking.rs uses single conn) |
+| PostToolUse doesn't exist | Git-diff provenance capture on PreToolUse of NEXT tool call; file watcher fallback |
+| model_id not in hook JSON | Enrich from ccusage session data retroactively; fallback "unknown" |
+| Budget enforcement bypassable | Document as local-first limitation; real enforcement requires API key proxy (future cloud) |
+
+## Dependencies
+
+- `prost` + `prost-build` — protobuf for Rust
+- `ed25519-dalek` — Ed25519 signatures
+- `blake3` — content hashing
+- `ureq` — HTTP client (already in Cargo.toml)
+- `serde_json` — JSON (already in Cargo.toml)

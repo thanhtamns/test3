@@ -1,0 +1,289 @@
+#!/usr/bin/env python3
+"""
+Entry strategy selector for stage0 local orchestration.
+
+Selects ranked entry strategies based on tier + founder_strength + network_quality.
+Returns prioritized list with first actions and kill signals.
+
+Input:  --tier <TIER_X> --founder-strength <class> --network-quality <level>
+        [--ecosystem <keywords>]
+Output: JSON {strategies: [{name, priority, capital_required, time_to_first_dollar,
+                            first_action, kill_signal}]}
+
+5 Entry Strategies:
+- SERVICE_RENTAL:       Rent time/skill to ecosystem players
+- INFORMATION_ARBITRAGE: Package information others pay to learn
+- BROKERAGE:            Connect buyers and sellers, take referral fee
+- APPRENTICE:           Get hired by existing player, learn on their dime
+- MICRO_PRODUCT:        Build smallest possible paid product
+
+Plan ref: plans/260419-0828-stage0-capital-path-upgrade/phase-01-core-scripts.md
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+
+# ---------------------------------------------------------------------------
+# Entry strategy definitions
+# ---------------------------------------------------------------------------
+
+ENTRY_STRATEGIES = {
+    "SERVICE_RENTAL": {
+        "description": "Rent your time/skill to ecosystem players",
+        "capital_required": (0, 500),
+        "time_to_first_dollar": (7, 30),
+        "examples": [
+            "Freelance compliance document prep",
+            "Technical consulting for non-tech founders",
+            "Content creation for established players",
+        ],
+        "first_action": "Identify 10 people who need this skill NOW",
+        "kill_signal": "0 conversations after 20 outreach attempts",
+        "tier_affinity": ["TIER_0", "TIER_1"],
+        "strength_affinity": ["Skills Master", "Operations Master"],
+        "network_requirement": None,
+    },
+    "INFORMATION_ARBITRAGE": {
+        "description": "Package information others pay to learn",
+        "capital_required": (0, 1000),
+        "time_to_first_dollar": (14, 60),
+        "examples": [
+            "Industry update newsletter",
+            "Curated intel digest",
+            "How-to guides for specific problems",
+        ],
+        "first_action": "Find 3 questions people keep asking",
+        "kill_signal": "0 email signups after 100 visitors",
+        "tier_affinity": ["TIER_0", "TIER_1"],
+        "strength_affinity": ["Skills Master", "Market Master"],
+        "network_requirement": None,
+    },
+    "BROKERAGE": {
+        "description": "Connect buyers and sellers, take referral fee",
+        "capital_required": (0, 0),
+        "time_to_first_dollar": (30, 90),
+        "examples": [
+            "Connect suppliers with consultants",
+            "Refer customers between services",
+            "Introduce talent to companies",
+        ],
+        "first_action": "Map who needs what in the ecosystem",
+        "kill_signal": "0 successful introductions after 10 attempts",
+        "tier_affinity": ["TIER_0", "TIER_1"],
+        "strength_affinity": ["Relationship Master"],
+        "network_requirement": "HOT",  # Requires at least HOT network
+    },
+    "APPRENTICE": {
+        "description": "Get hired by existing player, learn on their dime",
+        "capital_required": (0, 0),
+        "time_to_first_dollar": (7, 30),
+        "examples": [
+            "Assist existing consultant",
+            "Work for agency in target market",
+            "Intern at ecosystem company",
+        ],
+        "first_action": "Find 5 people already doing this successfully",
+        "kill_signal": "0 responses after applying to 20 positions",
+        "tier_affinity": ["TIER_0"],
+        "strength_affinity": ["Skills Master", "Operations Master"],
+        "network_requirement": None,
+    },
+    "MICRO_PRODUCT": {
+        "description": "Build smallest possible paid product",
+        "capital_required": (500, 2000),
+        "time_to_first_dollar": (30, 90),
+        "examples": [
+            "Template pack solving specific pain",
+            "Browser extension automating 1 task",
+            "Notion/Airtable workflow template",
+        ],
+        "first_action": "Build in 1 weekend, sell in week 2",
+        "kill_signal": "0 sales after $200 ad spend",
+        "tier_affinity": ["TIER_1", "TIER_2"],
+        "strength_affinity": ["Skills Master"],
+        "network_requirement": None,
+    },
+}
+
+# Routing rules: tier_network → ordered strategy list
+ROUTING_RULES = {
+    "TIER_0_COLD": ["APPRENTICE", "INFORMATION_ARBITRAGE"],
+    "TIER_0_WARM": ["SERVICE_RENTAL", "INFORMATION_ARBITRAGE"],
+    "TIER_0_HOT": ["BROKERAGE", "SERVICE_RENTAL"],
+    "TIER_0_INSIDER": ["BROKERAGE", "SERVICE_RENTAL"],
+    "TIER_1_Skills Master": ["SERVICE_RENTAL", "MICRO_PRODUCT"],
+    "TIER_1_Relationship Master": ["BROKERAGE", "SERVICE_RENTAL"],
+    "TIER_1_Market Master": ["INFORMATION_ARBITRAGE", "MICRO_PRODUCT"],
+    "TIER_1_Operations Master": ["SERVICE_RENTAL", "MICRO_PRODUCT"],
+}
+
+
+def _score_strategy(
+    strategy_name: str,
+    tier: str,
+    founder_strength: str,
+    network_quality: str,
+) -> float:
+    """Score a strategy for given context (0.0 - 1.0)."""
+    config = ENTRY_STRATEGIES[strategy_name]
+    score = 0.0
+
+    # Tier affinity (max 0.4)
+    if tier in config["tier_affinity"]:
+        score += 0.4
+
+    # Strength affinity (max 0.3)
+    if founder_strength in config["strength_affinity"]:
+        score += 0.3
+
+    # Network requirement check (max 0.3)
+    network_levels = ["COLD", "WARM", "HOT", "INSIDER"]
+    required = config["network_requirement"]
+
+    if required is None:
+        # No network requirement → full points
+        score += 0.3
+    else:
+        required_idx = network_levels.index(required)
+        actual_idx = network_levels.index(network_quality) if network_quality in network_levels else 0
+        if actual_idx >= required_idx:
+            score += 0.3
+        else:
+            # Penalty for unmet network requirement
+            score -= 0.2
+
+    return max(0.0, min(1.0, score))
+
+
+def select_strategies(
+    tier: str,
+    founder_strength: str,
+    network_quality: str,
+    ecosystem: str | None = None,
+    founder_identity: bool = False,
+) -> dict:
+    """Select ranked entry strategies for given context.
+
+    Args:
+        tier: Capital tier (TIER_0, TIER_1, TIER_2, TIER_3)
+        founder_strength: Founder strength class
+        network_quality: Network quality level (COLD, WARM, HOT, INSIDER)
+        ecosystem: Optional ecosystem keywords for context
+        founder_identity: If True, EXCLUDE strategies that involve employment (APPRENTICE)
+
+    Returns:
+        dict with ranked strategies list.
+    """
+    # FOUNDER IDENTITY GATE: founder_identity=true BLOCKS employment-based strategies
+    # User quote: "tôi là một founder nên sẽ không bao giờ đi làm nhân viên cho bất kỳ công ty nào khác"
+    excluded_strategies = set()
+    if founder_identity:
+        excluded_strategies.add("APPRENTICE")  # "Get hired by existing player" = employment
+
+    # Check for routing rule match (tier_network or tier_strength)
+    rule_key_network = f"{tier}_{network_quality}"
+    rule_key_strength = f"{tier}_{founder_strength}"
+
+    base_order = None
+    if rule_key_network in ROUTING_RULES:
+        base_order = ROUTING_RULES[rule_key_network]
+    elif rule_key_strength in ROUTING_RULES:
+        base_order = ROUTING_RULES[rule_key_strength]
+
+    # Score all strategies (excluding blocked ones)
+    scored = []
+    for name, config in ENTRY_STRATEGIES.items():
+        # FOUNDER IDENTITY ENFORCEMENT
+        if name in excluded_strategies:
+            continue
+        score = _score_strategy(name, tier, founder_strength, network_quality)
+
+        # Boost score if in routing rules base order
+        if base_order and name in base_order:
+            position_boost = 0.2 * (len(base_order) - base_order.index(name)) / len(base_order)
+            score += position_boost
+
+        scored.append({
+            "name": name,
+            "score": round(score, 3),
+            "description": config["description"],
+            "capital_required": list(config["capital_required"]),
+            "time_to_first_dollar": list(config["time_to_first_dollar"]),
+            "examples": config["examples"],
+            "first_action": config["first_action"],
+            "kill_signal": config["kill_signal"],
+        })
+
+    # Sort by score descending
+    scored.sort(key=lambda x: x["score"], reverse=True)
+
+    # Add priority rank
+    for i, s in enumerate(scored):
+        s["priority"] = i + 1
+
+    # Filter to top 3 viable strategies (score > 0.3)
+    viable = [s for s in scored if s["score"] > 0.3][:3]
+
+    if not viable:
+        viable = scored[:2]  # Fallback to top 2
+
+    return {
+        "tier": tier,
+        "founder_strength": founder_strength,
+        "network_quality": network_quality,
+        "ecosystem": ecosystem,
+        "founder_identity": founder_identity,
+        "excluded_strategies": list(excluded_strategies) if excluded_strategies else None,
+        "strategies": viable,
+    }
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(
+        description="Select entry strategies for stage0 routing"
+    )
+    ap.add_argument(
+        "--tier",
+        required=True,
+        choices=["TIER_0", "TIER_1", "TIER_2", "TIER_3"],
+        help="Capital tier",
+    )
+    ap.add_argument(
+        "--founder-strength",
+        required=True,
+        choices=["Skills Master", "Relationship Master", "Market Master", "Operations Master", "unknown"],
+        help="Founder strength class",
+    )
+    ap.add_argument(
+        "--network-quality",
+        required=True,
+        choices=["COLD", "WARM", "HOT", "INSIDER"],
+        help="Network quality level",
+    )
+    ap.add_argument(
+        "--ecosystem",
+        default=None,
+        help="Ecosystem keywords (optional context)",
+    )
+    ap.add_argument(
+        "--founder-identity",
+        action="store_true",
+        help="If set, exclude employment-based strategies (APPRENTICE). User is a founder, not looking for jobs.",
+    )
+    args = ap.parse_args()
+
+    result = select_strategies(
+        tier=args.tier,
+        founder_strength=args.founder_strength,
+        network_quality=args.network_quality,
+        ecosystem=args.ecosystem,
+        founder_identity=args.founder_identity,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+if __name__ == "__main__":
+    main()

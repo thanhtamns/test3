@@ -1,0 +1,186 @@
+use anyhow::Result;
+use std::io::{BufRead, BufReader, Write};
+use std::net::TcpListener;
+use std::path::PathBuf;
+
+use crate::paths;
+
+const DEFAULT_AUTH_URL: &str = "https://auth.codeflow.dev";
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+pub struct AuthToken {
+    pub access_token: String,
+    pub refresh_token: Option<String>,
+    pub tenant_id: String,
+    pub email: String,
+    pub expires_at: i64,
+}
+
+pub fn login(api_url: Option<&str>) -> Result<()> {
+    let env_url = std::env::var("CODEFLOW_AUTH_URL").ok();
+    let auth_url = api_url
+        .or(env_url.as_deref())
+        .unwrap_or(DEFAULT_AUTH_URL);
+
+    let listener = TcpListener::bind("127.0.0.1:0")?;
+    let port = listener.local_addr()?.port();
+    let redirect_uri = format!("http://localhost:{}/callback", port);
+
+    let authorize_url = format!(
+        "{}/authorize?redirect_uri={}&response_type=code&client_id=codeflow-cli",
+        auth_url,
+        urlencoding::encode(&redirect_uri)
+    );
+
+    println!("Opening browser for authentication...");
+    println!("If browser doesn't open, visit: {}", authorize_url);
+    let _ = open::that(&authorize_url);
+
+    println!("Waiting for authentication callback on port {}...", port);
+
+    let (stream, _) = listener.accept()?;
+    let mut reader = BufReader::new(&stream);
+    let mut request_line = String::new();
+    reader.read_line(&mut request_line)?;
+
+    let code = extract_code(&request_line);
+
+    let response_body = if code.is_some() {
+        "<html><body><h1>Authentication successful!</h1><p>You can close this tab and return to the terminal.</p></body></html>"
+    } else {
+        "<html><body><h1>Authentication failed.</h1><p>Please try again.</p></body></html>"
+    };
+
+    let response = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        response_body.len(),
+        response_body
+    );
+
+    let mut writer = stream.try_clone()?;
+    writer.write_all(response.as_bytes())?;
+    writer.flush()?;
+
+    let code = code.ok_or_else(|| anyhow::anyhow!("no authorization code received"))?;
+
+    println!("Authorization code received. Exchanging for token...");
+
+    let token = exchange_code(auth_url, &code, &redirect_uri)?;
+    save_token(&token)?;
+
+    println!("Logged in as {} (tenant: {})", token.email, token.tenant_id);
+    Ok(())
+}
+
+pub fn status() -> Result<()> {
+    match load_token() {
+        Ok(token) => {
+            let expired = token.expires_at < chrono::Utc::now().timestamp();
+            println!("Logged in as: {}", token.email);
+            println!("Tenant:       {}", token.tenant_id);
+            println!("Expires:      {}", chrono::DateTime::from_timestamp(token.expires_at, 0)
+                .map(|d| d.format("%Y-%m-%d %H:%M UTC").to_string())
+                .unwrap_or_else(|| "unknown".to_string()));
+            if expired {
+                println!("Status:       EXPIRED (run `codeflow login` to refresh)");
+            } else {
+                println!("Status:       active");
+            }
+        }
+        Err(_) => {
+            println!("Not logged in. Run `codeflow login` to authenticate.");
+        }
+    }
+    Ok(())
+}
+
+pub fn logout() -> Result<()> {
+    let path = token_path();
+    if path.exists() {
+        std::fs::remove_file(&path)?;
+        println!("Logged out.");
+    } else {
+        println!("Not logged in.");
+    }
+    Ok(())
+}
+
+pub fn load_token() -> Result<AuthToken> {
+    let path = token_path();
+    let data = std::fs::read_to_string(&path)?;
+    let token: AuthToken = serde_json::from_str(&data)?;
+    Ok(token)
+}
+
+fn save_token(token: &AuthToken) -> Result<()> {
+    let path = token_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let data = serde_json::to_string_pretty(token)?;
+    std::fs::write(&path, data)?;
+    Ok(())
+}
+
+fn token_path() -> PathBuf {
+    paths::config_dir().join("auth.json")
+}
+
+fn extract_code(request_line: &str) -> Option<String> {
+    let path = request_line.split_whitespace().nth(1)?;
+    let query_start = path.find('?')?;
+    let query = &path[query_start + 1..];
+    for param in query.split('&') {
+        if let Some(value) = param.strip_prefix("code=") {
+            return Some(urlencoding::decode(value).ok()?.to_string());
+        }
+    }
+    None
+}
+
+fn exchange_code(auth_url: &str, code: &str, redirect_uri: &str) -> Result<AuthToken> {
+    let url = format!("{}/token", auth_url);
+    let body = serde_json::json!({
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": redirect_uri,
+        "client_id": "codeflow-cli",
+    });
+
+    let mut response = ureq::post(&url)
+        .header("Content-Type", "application/json")
+        .send(body.to_string().as_bytes())
+        .map_err(|e| anyhow::anyhow!("token exchange failed: {}", e))?;
+
+    let body_str = response.body_mut().read_to_string()
+        .map_err(|e| anyhow::anyhow!("read token response: {}", e))?;
+    let resp: serde_json::Value = serde_json::from_str(&body_str)
+        .map_err(|e| anyhow::anyhow!("invalid token JSON: {}", e))?;
+
+    let access_token = resp["access_token"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("missing access_token"))?
+        .to_string();
+
+    let tenant_id = resp["org_id"]
+        .as_str()
+        .or_else(|| resp["tenant_id"].as_str())
+        .unwrap_or("default")
+        .to_string();
+
+    let email = resp["email"]
+        .as_str()
+        .unwrap_or("unknown")
+        .to_string();
+
+    let expires_in = resp["expires_in"].as_i64().unwrap_or(86400);
+    let expires_at = chrono::Utc::now().timestamp() + expires_in;
+
+    Ok(AuthToken {
+        access_token,
+        refresh_token: resp["refresh_token"].as_str().map(|s| s.to_string()),
+        tenant_id,
+        email,
+        expires_at,
+    })
+}

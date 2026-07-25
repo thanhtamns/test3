@@ -1,0 +1,173 @@
+---
+phase: 1
+title: "Architecture and Protocol Design"
+status: complete
+priority: P1
+effort: "3h"
+dependencies: []
+---
+
+# Phase 1: Architecture and Protocol Design
+
+## Overview
+
+Design the tournament as a **prompt protocol** (like existing evidence-vault-protocol.md and reasoning-chain-protocol.md) plus a lightweight Python Elo scorer. Define data model, debate prompt template, Elo math, and integration seams.
+
+## Requirements
+
+- Functional: Tournament protocol markdown defining debate format, scoring criteria, and orchestration flow
+- Functional: `OpportunityHypothesis` dataclass (standalone, NOT extending existing `Hypothesis` from `money_flow_graph.py:79`)
+- Functional: Elo update formula with K-factor tuning in Python
+- Non-functional: Protocol follows same structure as existing `evidence-vault-protocol.md` and `reasoning-chain-protocol.md`
+- Non-functional: Python Elo engine is pure math — no LLM calls, no I/O, no dependencies
+
+## Architecture
+
+### Execution Model
+
+The tournament runs as an LLM agent (like evidence-vault-aggregator or reasoning-chain-executor):
+1. SKILL.md says "Spawn tournament-executor agent with tournament-protocol.md"
+2. The tournament agent reads evidence vault + pattern matcher output
+3. Agent runs debate pairs as individual LLM reasoning steps within its context
+4. Agent calls Python Elo engine for score calculations (via inline script or tool)
+5. Agent outputs `tournament-result.md` to the session plan directory
+
+This matches how `reasoning-chain-executor` works — an LLM agent following a protocol, not a Python orchestrator.
+
+### File Structure
+
+```
+.claude/agents/core/intelligence/
+  tournament-protocol.md          # Protocol for tournament-executor agent
+
+.claude/lib/intelligence/tournament/
+  __init__.py
+  models.py                       # OpportunityHypothesis, DebateResult, TournamentResult (standalone)
+  elo_engine.py                   # Pure math: Elo update, K-factor, expected score
+  tests/
+    __init__.py
+    test_elo_engine.py
+    test_models.py
+```
+
+### OpportunityHypothesis (Standalone — NOT extending Hypothesis)
+
+The existing `Hypothesis` in `money_flow_graph.py:79` is a graph-gap verification object with fields like `affects_edges`, `test_query`, `cycle_created`. It represents "verify entity X exists in market" — semantically unrelated to business opportunity ranking.
+
+```python
+@dataclass
+class OpportunityHypothesis:
+    id: str
+    title: str                          # Short name: "AI-graded premium coffee lots"
+    thesis: str                         # 1-sentence: "Sell SCA-scored lots at 30% premium via Algrano"
+    business_model_type: str            # SaaS | Service | Commerce | Content | Arbitrage | Infrastructure
+    customer_segment: str               # B2B | B2C | B2B2C
+    evidence_refs: list[str]            # References to evidence vault sections
+    estimated_revenue_range: str        # "$1K-5K/mo" format
+    source_phase: str                   # "pattern_matcher" | "evidence_vault" | "lens_analysis"
+    elo_rating: float = 1500.0
+    matches_played: int = 0
+    wins: int = 0
+    cluster: str = ""                   # Assigned by proximity checker
+    debate_highlights: list[str] = field(default_factory=list)
+```
+
+### Debate Format (Prompt Template)
+
+```
+You are judging a structured debate between two business opportunities.
+
+HYPOTHESIS A: {a.title}
+Thesis: {a.thesis}
+Evidence: {a.evidence_refs joined}
+
+HYPOTHESIS B: {b.title}
+Thesis: {b.thesis}
+Evidence: {b.evidence_refs joined}
+
+FOUNDER CONTEXT: {founder constraints from Phase 0 intent_meta}
+
+EVIDENCE CONTEXT: {relevant evidence vault excerpts}
+
+Score each hypothesis on these 5 criteria (0-10 each):
+1. evidence_strength — How well-sourced? Verified [K] claims vs [T]/[?]
+2. founder_fit — Matches founder's capital, skills, location, timeline?
+3. compound_potential — Creates assets that appreciate over time?
+4. execution_risk — How likely is the execution path to succeed? (inverse: higher = less risk)
+5. timing — Time-sensitive catalyst within 180 days?
+
+Output JSON:
+{
+  "scores_a": {"evidence_strength": N, "founder_fit": N, ...},
+  "scores_b": {"evidence_strength": N, "founder_fit": N, ...},
+  "total_a": N,
+  "total_b": N,
+  "winner": "A" | "B" | "DRAW",
+  "key_argument": "One sentence explaining the decisive factor"
+}
+
+DRAW = totals within 3 points of each other.
+```
+
+### Elo Update (Python)
+
+```python
+def elo_update(ra: float, rb: float, winner: str, k: float = 32) -> tuple[float, float]:
+    ea = 1 / (1 + 10 ** ((rb - ra) / 400))
+    eb = 1 - ea
+    if winner == "A":
+        return ra + k * (1 - ea), rb + k * (0 - eb)
+    elif winner == "B":
+        return ra + k * (0 - ea), rb + k * (1 - eb)
+    else:  # DRAW
+        return ra + k * (0.5 - ea), rb + k * (0.5 - eb)
+```
+
+K-factor: fixed 32 (no decay needed — no cross-run persistence in MVP).
+
+### Activation Gate (Zero LLM Cost)
+
+Before calling the tournament agent, a cheap keyword pre-filter runs:
+- Dual condition (both must pass):
+  1. Count distinct opportunity-like keywords in Phase 2.5C output >= 3
+  2. Pattern matcher found >= 3 distinct patterns
+- Both true → spawn tournament agent
+- Either false → skip tournament, pipeline unchanged
+
+This avoids the LLM extraction cost on simple queries that produce < 3 hypotheses.
+
+## Related Code Files
+
+- Read: `.claude/agents/core/intelligence/evidence-vault-protocol.md` — protocol pattern to follow
+- Read: `.claude/agents/core/intelligence/reasoning-chain-protocol.md` — protocol pattern to follow
+- Read: `.claude/lib/intelligence/controller/money_flow_graph.py:79-103` — existing Hypothesis (DO NOT extend)
+- Create: `.claude/agents/core/intelligence/tournament-protocol.md`
+- Create: `.claude/lib/intelligence/tournament/__init__.py`
+- Create: `.claude/lib/intelligence/tournament/models.py`
+- Create: `.claude/lib/intelligence/tournament/elo_engine.py`
+
+## Implementation Steps
+
+1. Read `evidence-vault-protocol.md` and `reasoning-chain-protocol.md` to understand the agent protocol pattern
+2. Read `money_flow_graph.py:79-103` to confirm `Hypothesis` is semantically unrelated (verify, don't extend)
+3. Create `tournament/models.py` with `OpportunityHypothesis`, `DebateResult`, `TournamentResult` as standalone dataclasses
+4. Create `tournament/elo_engine.py` with pure math functions: `expected_score()`, `elo_update()`, `compute_rankings()`
+5. Draft `tournament-protocol.md` defining the full protocol for the tournament-executor agent:
+   - Input: evidence vault path + pattern matcher top_5 + founder context
+   - Steps: harvest → cluster → debate (round-robin) → rank → diversity check
+   - Output: `tournament-result.md` with ranked hypotheses + debate highlights
+6. Define the debate prompt template as a section within the protocol
+7. Define the activation gate keyword list
+
+## Success Criteria
+
+- [ ] `OpportunityHypothesis` is standalone with zero imports from `money_flow_graph`
+- [ ] Elo math tested with known chess scenarios (unit tests)
+- [ ] Tournament protocol follows same structure as evidence-vault-protocol.md
+- [ ] Debate prompt template produces valid JSON when tested manually
+- [ ] Activation gate keyword list covers 6+ business model types
+
+## Risk Assessment
+
+- **Risk:** Agent protocol may be too long for a single LLM context window when running 45 debates
+  - Mitigation: Protocol instructs agent to process debates in batches of 10, summarize scores between batches

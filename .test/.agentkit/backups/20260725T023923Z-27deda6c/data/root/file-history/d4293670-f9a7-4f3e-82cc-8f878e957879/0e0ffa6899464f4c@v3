@@ -1,0 +1,215 @@
+//! Model pricing table — cost per million tokens (MTok).
+//!
+//! Bundled pricing comes from `data/model-pricing.toml` (compiled in via
+//! `include_str!`). Users can override by placing their own TOML at
+//! `~/.config/codeflow/model-pricing.toml`.
+
+use anyhow::Result;
+use serde::Deserialize;
+use std::collections::HashMap;
+
+const BUNDLED_PRICING: &str = include_str!("../../data/model-pricing.toml");
+const USER_PRICING_PATH: &str = "codeflow/model-pricing.toml";
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModelPricing {
+    pub input_per_mtok: f64,
+    pub output_per_mtok: f64,
+    #[serde(default)]
+    pub cache_read_per_mtok: f64,
+    #[serde(default)]
+    pub cache_write_per_mtok: f64,
+}
+
+#[derive(Debug, Deserialize)]
+struct PricingFile {
+    models: HashMap<String, ModelPricing>,
+}
+
+pub struct PricingTable {
+    models: HashMap<String, ModelPricing>,
+}
+
+impl PricingTable {
+    /// Load pricing: user override wins, falls back to bundled.
+    pub fn load() -> Self {
+        // Try user override first
+        if let Some(p) = user_pricing_path() {
+            if let Ok(text) = std::fs::read_to_string(&p) {
+                if let Ok(table) = Self::parse(&text) {
+                    return table;
+                }
+            }
+        }
+        // Bundled is always parseable — unwrap is safe here.
+        Self::parse(BUNDLED_PRICING).unwrap_or_else(|_| Self {
+            models: HashMap::new(),
+        })
+    }
+
+    fn parse(toml_text: &str) -> Result<Self> {
+        let file: PricingFile = toml::from_str(toml_text)?;
+        Ok(Self {
+            models: file.models,
+        })
+    }
+
+    /// Look up pricing for a model ID using fuzzy prefix matching.
+    ///
+    /// "claude-opus-4-20250514" matches the "claude-opus-4" entry because
+    /// the model_id starts with the catalog key (or vice-versa).
+    pub fn get(&self, model_id: &str) -> Option<&ModelPricing> {
+        // Exact match first
+        if let Some(p) = self.models.get(model_id) {
+            return Some(p);
+        }
+
+        // Fuzzy: catalog key is a prefix of the queried model_id
+        // e.g. key="claude-opus-4" matches "claude-opus-4-20250514"
+        for (key, pricing) in &self.models {
+            if model_id.starts_with(key.as_str()) || key.starts_with(model_id) {
+                return Some(pricing);
+            }
+        }
+
+        None
+    }
+
+    /// Compute median pricing across all known models (fallback for unknowns).
+    fn median_pricing(&self) -> ModelPricing {
+        let mut inputs: Vec<f64> = self.models.values().map(|m| m.input_per_mtok).collect();
+        let mut outputs: Vec<f64> = self.models.values().map(|m| m.output_per_mtok).collect();
+        inputs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        outputs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let mid = inputs.len() / 2;
+        ModelPricing {
+            input_per_mtok: inputs.get(mid).copied().unwrap_or(3.0),
+            output_per_mtok: outputs.get(mid).copied().unwrap_or(15.0),
+            cache_read_per_mtok: 0.3,
+            cache_write_per_mtok: 3.75,
+        }
+    }
+}
+
+/// Cached pricing table — loaded once per process.
+fn cached_table() -> &'static PricingTable {
+    use std::sync::OnceLock;
+    static TABLE: OnceLock<PricingTable> = OnceLock::new();
+    TABLE.get_or_init(PricingTable::load)
+}
+
+/// Calculate cost in USD for a given model and token counts.
+///
+/// Falls back to median pricing when `model_id` is unknown, and logs a
+/// warning to stderr so callers can see the degraded result.
+pub fn cost_for_tokens(
+    model_id: &str,
+    input: u64,
+    output: u64,
+    cache_read: u64,
+    cache_write: u64,
+) -> f64 {
+    let table = cached_table();
+    let pricing = table.get(model_id).cloned().unwrap_or_else(|| {
+        eprintln!(
+            "[codeflow cost] unknown model '{}', using median pricing",
+            model_id
+        );
+        table.median_pricing()
+    });
+
+    tokens_to_usd(&pricing, input, output, cache_read, cache_write)
+}
+
+fn tokens_to_usd(
+    p: &ModelPricing,
+    input: u64,
+    output: u64,
+    cache_read: u64,
+    cache_write: u64,
+) -> f64 {
+    let mtok = 1_000_000.0_f64;
+    (input as f64 / mtok) * p.input_per_mtok
+        + (output as f64 / mtok) * p.output_per_mtok
+        + (cache_read as f64 / mtok) * p.cache_read_per_mtok
+        + (cache_write as f64 / mtok) * p.cache_write_per_mtok
+}
+
+fn user_pricing_path() -> Option<std::path::PathBuf> {
+    dirs::config_dir().map(|d| d.join(USER_PRICING_PATH))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn table() -> PricingTable {
+        PricingTable::parse(BUNDLED_PRICING).unwrap()
+    }
+
+    #[test]
+    fn known_model_exact_lookup() {
+        let t = table();
+        let p = t.get("claude-sonnet-4").unwrap();
+        assert!((p.input_per_mtok - 3.0).abs() < 1e-9);
+        assert!((p.output_per_mtok - 15.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn fuzzy_match_versioned_suffix() {
+        let t = table();
+        // "claude-opus-4-20250514" should match "claude-opus-4" catalog entry
+        let p = t.get("claude-opus-4-20250514").unwrap();
+        assert!((p.input_per_mtok - 15.0).abs() < 1e-9);
+        assert!((p.output_per_mtok - 75.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn unknown_model_returns_none_from_get() {
+        let t = table();
+        assert!(t.get("totally-unknown-model-xyz").is_none());
+    }
+
+    #[test]
+    fn unknown_model_cost_for_tokens_uses_fallback() {
+        // Should not panic, should return a non-negative number
+        let cost = cost_for_tokens("nonexistent-model", 1_000_000, 500_000, 0, 0);
+        assert!(cost > 0.0);
+    }
+
+    #[test]
+    fn cost_calculation_known_model() {
+        let t = table();
+        // claude-sonnet-4: $3/$15 per MTok, 1M input + 1M output = $18.00
+        let p = t.get("claude-sonnet-4").unwrap();
+        let cost = tokens_to_usd(p, 1_000_000, 1_000_000, 0, 0);
+        assert!((cost - 18.0).abs() < 1e-6, "expected $18.0, got {}", cost);
+    }
+
+    #[test]
+    fn cost_calculation_with_cache_tokens() {
+        let t = table();
+        // claude-sonnet-4: cache_read=$0.3/MTok, 1M cache_read = $0.30
+        let p = t.get("claude-sonnet-4").unwrap();
+        let cost = tokens_to_usd(p, 0, 0, 1_000_000, 0);
+        assert!((cost - 0.3).abs() < 1e-6, "expected $0.30, got {}", cost);
+    }
+
+    #[test]
+    fn bundled_toml_parses_all_models() {
+        let t = table();
+        assert!(t.get("claude-opus-4").is_some());
+        assert!(t.get("claude-sonnet-4").is_some());
+        assert!(t.get("claude-haiku-3-5").is_some());
+        assert!(t.get("gpt-4o").is_some());
+        assert!(t.get("gemini-2-5-pro").is_some());
+    }
+
+    #[test]
+    fn median_pricing_is_reasonable() {
+        let t = table();
+        let m = t.median_pricing();
+        assert!(m.input_per_mtok > 0.0);
+        assert!(m.output_per_mtok > 0.0);
+    }
+}

@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""bias-calibrator.py — Detect over/under-prediction bias by verdict class.
+
+For each verdict_class with ≥5 resolved outcomes:
+  - avg_predicted = mean(confidence) across cases
+  - avg_actual    = fraction where observed=1
+  - delta         = avg_predicted - avg_actual
+  - status        = OVER_PREDICTING | UNDER_PREDICTING | CALIBRATED (threshold ±0.20)
+
+Writes to data/calibration/bias-log.jsonl (append).
+"""
+from __future__ import annotations
+
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+REPO_ROOT = HERE.parents[5]
+
+BRIER_SCORES_FILE = REPO_ROOT / "data" / "calibration" / "brier-scores.jsonl"
+CASES_DIR = HERE.parent / "kb" / "cases"
+BIAS_LOG_FILE = REPO_ROOT / "data" / "calibration" / "bias-log.jsonl"
+
+MIN_CASES_FOR_BIAS = 5  # minimum resolved cases to compute bias for a class
+
+
+def load_jsonl(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    entries = []
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entries.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    return entries
+
+
+def load_cases_by_id() -> dict[str, dict]:
+    cases = {}
+    if not CASES_DIR.exists():
+        return cases
+    for p in CASES_DIR.glob("*.json"):
+        try:
+            with p.open("r", encoding="utf-8") as f:
+                c = json.load(f)
+            cid = c.get("case_id")
+            if cid:
+                cases[cid] = c
+        except (json.JSONDecodeError, OSError):
+            continue
+    return cases
+
+
+def find_outcome(case_id: str, brier_entries: list[dict]) -> dict | None:
+    for e in brier_entries:
+        if e.get("case_id") == case_id and e.get("observed") is not None:
+            return e
+    return None
+
+
+def calibrate_bias(outcomes: list[dict], predictions: list[dict]) -> dict:
+    """Detect over/under-prediction by verdict class.
+
+    outcomes: resolved brier-scores entries [{case_id, observed, p_mountain, verdict, ...}]
+    predictions: case JSON files [{case_id, verdict_class, confidence, ...}]
+    """
+    by_class: dict[str, list[dict]] = {}
+
+    for pred in predictions:
+        cls = pred.get("verdict_class") or pred.get("verdict") or "UNKNOWN"
+        confidence = pred.get("confidence")
+        if confidence is None:
+            confidence = pred.get("p_mountain")
+        if confidence is None:
+            continue
+
+        outcome = find_outcome(pred.get("case_id", ""), outcomes)
+        if outcome is None:
+            continue
+
+        by_class.setdefault(cls, []).append({
+            "predicted_success": float(confidence),
+            "actual_success": int(outcome["observed"]),
+        })
+
+    bias_report: dict[str, dict] = {}
+    for cls, cases in by_class.items():
+        if len(cases) < MIN_CASES_FOR_BIAS:
+            bias_report[cls] = {
+                "n_cases": len(cases),
+                "status": "insufficient_data",
+                "min_required": MIN_CASES_FOR_BIAS,
+            }
+            continue
+
+        avg_predicted = sum(c["predicted_success"] for c in cases) / len(cases)
+        avg_actual = sum(c["actual_success"] for c in cases) / len(cases)
+        delta = avg_predicted - avg_actual
+
+        status = (
+            "OVER_PREDICTING" if delta > 0.2 else
+            "UNDER_PREDICTING" if delta < -0.2 else
+            "CALIBRATED"
+        )
+
+        bias_report[cls] = {
+            "n_cases": len(cases),
+            "avg_predicted": round(avg_predicted, 3),
+            "avg_actual": round(avg_actual, 3),
+            "delta": round(delta, 3),
+            "status": status,
+        }
+
+    return bias_report
+
+
+def run(dry_run: bool = False, verbose: bool = True) -> dict:
+    brier_entries = load_jsonl(BRIER_SCORES_FILE)
+    resolved = [e for e in brier_entries if e.get("observed") is not None]
+    cases_by_id = load_cases_by_id()
+
+    # Build predictions list from case files for resolved entries only
+    predictions = []
+    for e in resolved:
+        cid = e.get("case_id", "")
+        case = cases_by_id.get(cid, {})
+        # Merge brier entry fields + case fields (case takes precedence for metadata)
+        merged = {**e, **{k: v for k, v in case.items() if k not in e}}
+        predictions.append(merged)
+
+    bias_report = calibrate_bias(resolved, predictions)
+
+    record = {
+        "run_at": datetime.now(timezone.utc).isoformat(),
+        "resolved_count": len(resolved),
+        "bias_report": bias_report,
+        "status": "ok" if resolved else "insufficient_data",
+    }
+
+    if not dry_run:
+        BIAS_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with BIAS_LOG_FILE.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    if verbose:
+        print(f"[bias-calibrator] resolved={len(resolved)}, classes={len(bias_report)}")
+        for cls, data in bias_report.items():
+            if data.get("status") == "insufficient_data":
+                print(f"  {cls}: insufficient_data (n={data['n_cases']})")
+            else:
+                print(f"  {cls}: delta={data['delta']:+.3f} → {data['status']}")
+
+    return record
+
+
+if __name__ == "__main__":
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument("--dry-run", action="store_true")
+    args = p.parse_args()
+    run(dry_run=args.dry_run)

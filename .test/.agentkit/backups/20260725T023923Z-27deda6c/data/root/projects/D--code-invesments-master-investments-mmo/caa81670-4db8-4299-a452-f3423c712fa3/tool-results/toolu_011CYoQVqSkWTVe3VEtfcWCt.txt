@@ -1,0 +1,252 @@
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\compound_cache.py:2:CompoundCache — reuses accumulated facts to skip redundant queries.
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\adversarial_questioner.py:3:situation-specific counter-questions from initial facts.
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\adversarial_questioner.py:26:- Do NOT generate questions that merely confirm existing facts.
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\adversarial_questioner.py:27:- Include specific names, companies, or entities from the facts in your questions.
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\adversarial_questioner.py:52:        facts: list,
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\adversarial_questioner.py:60:        fact_summary = self._summarize_facts(facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\adversarial_questioner.py:93:    def _summarize_facts(self, facts: list) -> str:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\adversarial_questioner.py:96:        for f in facts:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\adversarial_questioner.py:104:        return "\n".join(lines) if lines else "(no facts collected yet)"
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\causal_rules.py:23:def _fact_text_lower(facts: list) -> list[str]:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\causal_rules.py:24:    return [getattr(f, "fact", str(f)).lower() for f in facts]
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\causal_rules.py:27:def _zone_counts(facts: list) -> dict[str, int]:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\causal_rules.py:29:    for f in facts:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\causal_rules.py:36:    def evaluate(self, dim_scores: dict, facts: list) -> CausalResult:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\causal_rules.py:38:        texts = _fact_text_lower(facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\causal_rules.py:39:        zones = _zone_counts(facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\causal_rules.py:43:        self._override_rules(dim_scores, facts, zones, r)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\causal_rules.py:129:    def _override_rules(self, ds: dict, facts: list, zones: dict[str, int], r: CausalResult):
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\causal_rules.py:131:            dim_facts = [f for f in facts if getattr(f, "dimension", "") == dim_name]
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\causal_rules.py:132:            if dim_facts and all(getattr(f, "zone_tag", "?") == "?" for f in dim_facts):
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\causal_rules.py:135:                r.overrides[dim_name] = "all facts are [?] — score zeroed"
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\causal_rules.py:137:        contradiction_count = sum(1 for f in facts if getattr(f, "zone_tag", "") == "?")
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\causal_rules.py:140:            r.insights.append(f"Overall capped at 0.5: {contradiction_count} uncertain/contradicted facts")
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\causal_rules.py:144:            r.insights.append("Overall capped at 0.3: zero [K] verified facts — insufficient evidence")
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\causal_rules.py:147:            r.insights.append("Strong evidence base: ≥5 verified facts with minimal uncertainty")
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\adversarial_orchestrator.py:35:        self._facts = self.thinkrunner_output.get("facts", [])
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\adversarial_orchestrator.py:36:        if not self._facts:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\adversarial_orchestrator.py:37:            self._facts = self._reconstruct_facts()
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\adversarial_orchestrator.py:42:    def _reconstruct_facts(self) -> list[dict]:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\adversarial_orchestrator.py:43:        """Extract fact-like entries from ThinkRunner output when raw facts aren't serialized."""
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\adversarial_orchestrator.py:44:        facts = []
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\adversarial_orchestrator.py:51:                facts.append({"fact": f"{dim}: score={score:.2f}, {count} facts, avg_conf={conf:.2f}",
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\adversarial_orchestrator.py:55:                facts.append({"fact": f"GAP: {gap.get('dimension', '?')} (score={gap.get('score', 0):.2f}) — {gap.get('suggested_action', '')}",
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\adversarial_orchestrator.py:58:            facts.append({"fact": rec, "zone_tag": "T", "confidence": 0.5})
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\adversarial_orchestrator.py:64:                    facts.append({"fact": f"{key}: {val[:200]}", "zone_tag": "T", "confidence": 0.5})
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\adversarial_orchestrator.py:67:                    facts.append({"fact": f"Side door: {sd[:150]}", "zone_tag": "T", "confidence": 0.45})
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\adversarial_orchestrator.py:68:        return facts
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\adversarial_orchestrator.py:80:        facts_block = self._format_facts(self._facts, max_n=20)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\adversarial_orchestrator.py:96:            f"### Key facts\n{facts_block}"
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\adversarial_orchestrator.py:140:    def _format_facts(self, facts: list, max_n: int = 20) -> str:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\adversarial_orchestrator.py:141:        sorted_facts = sorted(facts, key=lambda f: f.get("confidence", 0.0), reverse=True)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\adversarial_orchestrator.py:142:        top = sorted_facts[:max_n]
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\adversarial_orchestrator.py:144:            return "(no facts available)"
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\dimension_scorer.py:38:    def score(self, dimension: str, facts: list[ParsedClaim]) -> DimensionScore:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\dimension_scorer.py:39:        if not facts:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\dimension_scorer.py:45:        fact_count = len(facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\dimension_scorer.py:47:        avg_confidence = sum(f.confidence for f in facts) / fact_count
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\dimension_scorer.py:48:        contradictions = sum(1 for f in facts if f.zone_tag == "?")
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\dimension_scorer.py:50:        freshness_bonus = self._calc_freshness(facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\dimension_scorer.py:77:        return {dim: self.score(dim, facts) for dim, facts in facts_by_dimension.items()}
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\dimension_scorer.py:79:    def _calc_freshness(self, facts: list[ParsedClaim]) -> float:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\dimension_scorer.py:83:        for f in facts:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\sbe_bridge.py:24:    def fire(self, synthesis_result: SynthesisResult, query: str, facts: list) -> dict:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\sbe_bridge.py:25:        features = self._map_to_sbe_features(synthesis_result, facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\sbe_bridge.py:47:    def _map_to_sbe_features(self, result: SynthesisResult, facts: list) -> dict:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\sbe_bridge.py:52:            features[f"dim_{dim_name}_facts"] = dim_score.fact_count
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\sbe_bridge.py:56:        features["total_facts"] = result.facts_used
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\sbe_bridge.py:57:        features["k_facts"] = result.facts_by_zone.get("K", 0)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\sbe_bridge.py:58:        features["t_facts"] = result.facts_by_zone.get("T", 0)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\sbe_bridge.py:61:        top_facts = sorted(facts, key=lambda f: getattr(f, "confidence", 0), reverse=True)[:10]
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\sbe_bridge.py:62:        for i, fact in enumerate(top_facts):
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\ladder_bridge.py:86:        """Invoke ladder-runner.py subprocess. Returns parsed facts or empty list."""
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\ladder_bridge.py:120:        facts: list[ParsedClaim] = []
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\ladder_bridge.py:129:                        facts.append(claim)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\ladder_bridge.py:130:                return facts
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\ladder_bridge.py:143:                    facts.append(claim)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\ladder_bridge.py:147:        return facts
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\stage0_bridge.py:2:Stage0Bridge — non-blocking adapter to inject decomposition facts into Stage0 cases.
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\stage0_bridge.py:33:        """Enrich case with pre-decomposition facts. Non-blocking: returns original on failure."""
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\stage0_bridge.py:64:        facts = []
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\stage0_bridge.py:68:                facts.append({
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\stage0_bridge.py:96:        case["pre_decomposition_facts"] = facts
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\stage0_bridge.py:100:            "facts_pre_loaded": len(facts),
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\stage0_bridge.py:108:        """Run technique engine on pre-decomposed facts. Non-blocking."""
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\stage0_bridge.py:115:        raw_facts = case.get("pre_decomposition_facts", [])
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\stage0_bridge.py:116:        if not raw_facts:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\stage0_bridge.py:124:        facts = [
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\stage0_bridge.py:133:            for f in raw_facts if f.get("fact")
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\stage0_bridge.py:143:            facts=facts,
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\stage0_bridge.py:155:        for f in raw_facts:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\stage0_live_bridge.py:4:Called by stage0 Step 2.9 to produce pre-verified micro-facts.
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\stage0_live_bridge.py:44:        "facts": case.get("pre_decomposition_facts", []),
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\output_formatter.py:67:                    f"({strong_ds.fact_count} facts, {strong_ds.avg_confidence:.0%} avg confidence). "
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\output_formatter.py:69:                    f"only {weak_ds.fact_count} facts at {weak_ds.avg_confidence:.0%} confidence, "
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\output_formatter.py:149:                f"{ds.fact_count} facts at {ds.avg_confidence:.0%} confidence)."
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\output_formatter.py:234:            f"{result.facts_used} facts [{zone_str}] | {result.llm_calls_made} reasoning calls*"
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\iterative_deepener.py:52:        self, dimension_scores: dict, facts: list[ParsedClaim]
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\iterative_deepener.py:54:        """Run iterative deepening passes. Returns only NEW facts."""
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\iterative_deepener.py:55:        new_facts: list[ParsedClaim] = []
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\iterative_deepener.py:62:            targets = self.detect_surprises(facts + new_facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\iterative_deepener.py:63:            variance_dims = self.detect_high_variance(dimension_scores, facts + new_facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\iterative_deepener.py:95:            new_facts.extend(round_new)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\iterative_deepener.py:99:        return new_facts
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\iterative_deepener.py:104:        self, facts: list[ParsedClaim]
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\iterative_deepener.py:110:        # Group facts by dimension
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\iterative_deepener.py:112:        for f in facts:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\iterative_deepener.py:115:        for dim, dim_facts in by_dim.items():
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\iterative_deepener.py:121:                f for f in dim_facts
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\iterative_deepener.py:125:                f for f in dim_facts
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\iterative_deepener.py:136:                low_conf = [f for f in dim_facts if f.confidence < 0.4]
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\iterative_deepener.py:144:        self, dimension_scores: dict, facts: list[ParsedClaim]
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\iterative_deepener.py:151:        for f in facts:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\iterative_deepener.py:154:        # Dims with both K and ? zone facts
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\iterative_deepener.py:155:        for dim, dim_facts in by_dim.items():
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\iterative_deepener.py:156:            zones = {f.zone_tag for f in dim_facts}
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\synthesis_engine.py:19:class SynthesisResult:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\synthesis_engine.py:71:    def synthesize(self, tree: DecompositionTree, facts: list[ParsedClaim]) -> SynthesisResult:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\synthesis_engine.py:72:        facts_by_dim = self._group_by_dimension(facts, tree)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\synthesis_engine.py:79:        causal = CausalRuleEngine().evaluate(dim_scores, facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\synthesis_engine.py:105:        for f in facts:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\synthesis_engine.py:118:            facts_used=len(facts),
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\synthesis_engine.py:132:        self, facts: list[ParsedClaim], tree: DecompositionTree,
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\synthesis_engine.py:138:        for fact in facts:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\strategic_reasoner.py:2:StrategicReasoner — LLM reasoning layer AFTER SynthesisEngine scores facts.
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\strategic_reasoner.py:4:Max 5 LLM calls per brainstorm, every claim references input facts.
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\strategic_reasoner.py:104:        facts: list,
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\strategic_reasoner.py:112:        if not facts:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\strategic_reasoner.py:113:            return _empty_insight("no_facts")
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\strategic_reasoner.py:117:        fact_context = self._format_facts(facts, dim_scores)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\strategic_reasoner.py:118:        fact_refs = [getattr(f, "fact", str(f))[:80] for f in facts[:20]]
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\strategic_reasoner.py:273:    def _format_facts(self, facts: list, dim_scores: dict) -> str:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\strategic_reasoner.py:275:        for f in facts:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\strategic_reasoner.py:282:        for dim, dim_facts in by_dim.items():
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\strategic_reasoner.py:286:            for ff in dim_facts[:5]:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\strategic_reasoner.py:299:You're given verified facts across multiple dimensions about: "{query}"
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\strategic_reasoner.py:307:2. CONTRADICTIONS: Which facts contradict each other? For each contradiction, state which is MORE LIKELY TRUE and WHY — don't hedge. What does the contradiction REVEAL about the system?
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\strategic_reasoner.py:439:            "Then count how many are CURRENTLY PRESENT based on the facts above. "
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\synthesis_validator.py:39:    def validate(self, synthesis_text: str, available_facts: list[dict]) -> ValidationResult:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\synthesis_validator.py:40:        available_ids = {f["fact_id"] for f in available_facts if "fact_id" in f}
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\template_evolver.py:58:                old_used, old_facts, old_conf, old_parse = existing
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\template_evolver.py:60:                new_facts = old_facts + facts_produced
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\template_evolver.py:67:                    (new_used, new_facts, round(new_conf, 4), round(new_parse, 4),
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\template_evolver.py:83:                "SELECT dimension, SUM(facts_produced) as total_facts, "
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\template_evolver.py:92:        for dim, total_facts, total_used, avg_weight in rows:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\template_evolver.py:93:            yields[dim] = (total_facts / max(total_used, 1), avg_weight)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\template_evolver.py:200:                    k_facts INTEGER DEFAULT 0,
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\template_evolver.py:201:                    t_facts INTEGER DEFAULT 0,
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\template_evolver.py:202:                    q_facts INTEGER DEFAULT 0,
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\template_evolver.py:215:                    "UPDATE dimension_quality SET k_facts=k_facts+?, t_facts=t_facts+?, "
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\template_evolver.py:216:                    "q_facts=q_facts+?, sessions=sessions+1, last_updated=? "
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:3:Full pipeline: decompose → run queries → assemble facts → synthesize.
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:70:        cached_facts = []
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:73:            cached_facts.extend(cached)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:85:        log(f"Assembled: {assembly.facts_added} new facts, {assembly.duplicates} duplicates")
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:87:        all_facts = list(cached_facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:92:                all_facts.append(ParsedClaim(
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:109:            facts=all_facts, query=query, context=tree.context,
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:116:                    all_facts.append(ParsedClaim(
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:128:            log(f"Adversarial loop: +{adv_fact_count} facts from {len(adv_result.questions)} questions")
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:133:            for f in all_facts:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:135:            new_facts = self.deepener.deepen(dim_scores_raw, all_facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:136:            if new_facts:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:137:                all_facts.extend(new_facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:139:                research_tiers.append(f"deepening:{len(new_facts)}_facts")
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:140:                log(f"Iterative deepening: +{len(new_facts)} facts")
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:148:                    ladder_facts = self.ladder.run_ladder(query, route)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:149:                    if ladder_facts:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:150:                        all_facts.extend(ladder_facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:152:                        log(f"Ladder escalation ({route}): +{len(ladder_facts)} facts")
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:155:        for f in all_facts:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:168:        result = engine.synthesize(tree, all_facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:169:        log(f"Synthesized: score={result.overall_score:.2f}, {result.facts_used} facts used")
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:174:            sbe_output = bridge.fire(result, query, all_facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:206:                facts=all_facts,
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:219:                new_facts = fallback.route(orch_result.needs_data_dimensions, tree.context)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:220:                if new_facts:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:222:                        facts=tech_input.facts + new_facts,
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:258:                chain_result = self._technique_to_chain_result(orch_result, all_facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:283:                facts=all_facts,
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:331:            facts_reused=len(cached_facts),
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\think_runner.py:436:    def _technique_to_chain_result(self, orch_result, all_facts):
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_micro_query_runner.py:141:    def test_assemble_stores_facts(self, tmp_path):
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_micro_query_runner.py:164:    def test_assemble_filters_short_facts(self, tmp_path):
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_iterative_deepener.py:36:        facts = [
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_iterative_deepener.py:40:        surprises = deepener.detect_surprises(facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_iterative_deepener.py:50:        facts = [
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_iterative_deepener.py:53:        surprises = deepener.detect_surprises(facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_iterative_deepener.py:60:    def test_no_surprises_on_clean_facts(self):
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_iterative_deepener.py:62:        facts = [
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_iterative_deepener.py:67:        surprises = deepener.detect_surprises(facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_iterative_deepener.py:73:        facts = [
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_iterative_deepener.py:76:        surprises = deepener.detect_surprises(facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_iterative_deepener.py:87:        facts = [
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_iterative_deepener.py:91:        high_var = deepener.detect_high_variance({}, facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_iterative_deepener.py:103:        # No mixed zone facts either
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_iterative_deepener.py:144:        # Provide facts that will trigger contradictions
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_iterative_deepener.py:145:        facts = [
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_iterative_deepener.py:149:        new_facts = deepener.deepen({}, facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_iterative_deepener.py:150:        assert isinstance(new_facts, list)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_iterative_deepener.py:151:        for f in new_facts:
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_iterative_deepener.py:157:        # Clean facts — no contradictions, no low confidence on high-weight dims
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_iterative_deepener.py:158:        facts = [
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_iterative_deepener.py:161:        new_facts = deepener.deepen({}, facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_iterative_deepener.py:163:        assert isinstance(new_facts, list)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_iterative_deepener.py:173:        facts = [
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_iterative_deepener.py:179:        deepener.deepen({}, facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_iterative_deepener.py:187:        facts = [
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_iterative_deepener.py:190:        new_facts = deepener.deepen({}, facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_iterative_deepener.py:191:        assert new_facts == []
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_integration.py:120:        assert "pre_decomposition_facts" in result
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_adversarial_orchestrator.py:19:    "facts": [
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_adversarial_orchestrator.py:36:def test_analyst_prompt_contains_facts():
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_adversarial_orchestrator.py:119:    facts = [
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_adversarial_orchestrator.py:123:    tr = {**MOCK_TR_OUTPUT, "facts": facts}
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_adversarial_orchestrator.py:132:    facts = [
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_adversarial_orchestrator.py:137:    tr = {**MOCK_TR_OUTPUT, "facts": facts}
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_adversarial_orchestrator.py:139:    formatted = orch._format_facts(facts, max_n=20)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_adversarial_orchestrator.py:142:    assert idx_high < idx_low, "High confidence facts should appear first"
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_persona_debate.py:20:    "facts": [
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_sbe_bridge.py:47:        facts = [_make_fact("Fact A", 0.9), _make_fact("Fact B", 0.5)]
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_sbe_bridge.py:48:        features = bridge._map_to_sbe_features(result, facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_sbe_bridge.py:51:        assert features["dim_failure_patterns_facts"] == 3
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_sbe_bridge.py:54:        assert features["total_facts"] == 5
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_sbe_bridge.py:55:        assert features["k_facts"] == 3
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_sbe_bridge.py:56:        assert features["t_facts"] == 1
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_sbe_bridge.py:62:        facts = [_make_fact(f"Fact {i}", 0.1 * i) for i in range(15)]
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_sbe_bridge.py:63:        features = bridge._map_to_sbe_features(result, facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:35:    def test_score_empty_facts(self):
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:41:    def test_score_high_confidence_facts(self):
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:42:        facts = [_make_fact(f"Fact {i}", confidence=0.9, zone="K") for i in range(5)]
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:43:        score = self.scorer.score("base_rates", facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:48:    def test_score_low_confidence_facts(self):
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:49:        facts = [_make_fact(f"Fact {i}", confidence=0.3, zone="?") for i in range(2)]
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:50:        score = self.scorer.score("base_rates", facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:55:        facts = [
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:59:        score = self.scorer.score("base_rates", facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:69:        facts = [
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:74:        score = self.scorer.score("base_rates", facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:78:        facts = [_make_fact("Recent", confidence=0.8, date="2026-04-01")]
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:79:        score = self.scorer.score("base_rates", facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:83:        facts = [_make_fact("Old", confidence=0.8, date="2020-01-01")]
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:84:        score_old = self.scorer.score("base_rates", facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:99:        facts = [_make_fact(f"F{i}", confidence=1.0, zone="K") for i in range(20)]
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:100:        score = self.scorer.score("base_rates", facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:210:        facts = [_make_fact(f"Fact {i}", confidence=0.7) for i in range(3)]
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:211:        result = engine.synthesize(tree, facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:240:    def test_synthesize_with_facts(self):
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:242:        facts = [_make_fact(f"Fact {i}", confidence=0.8) for i in range(5)]
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:243:        result = self.engine.synthesize(tree, facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:248:    def test_synthesize_zero_facts(self):
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:261:        facts = [
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:267:        result = self.engine.synthesize(tree, facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:274:        facts = [_make_fact(f"F{i}", confidence=0.9, zone="K") for i in range(5)]
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:275:        result = self.engine.synthesize(tree, facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:291:        facts = [_make_fact(f"F{i}", confidence=1.0, zone="K") for i in range(20)]
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_synthesis_engine.py:292:        result = self.engine.synthesize(tree, facts)
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_evolution_bootstrap.py:80:                "SELECT k_facts, t_facts, q_facts, sessions FROM dimension_quality "
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_evolution_bootstrap.py:91:                "SELECT k_facts, t_facts, q_facts, sessions FROM dimension_quality "
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_evolution_bootstrap.py:102:                "SELECT query_type, k_facts FROM dimension_quality WHERE dimension='timing'"
+D:\code\invesments\master_investments\.claude\lib\intelligence\decomposition\tests\test_output_quality_gate.py:28:**market_size** [K] is well-covered (80%, 12 facts at 75% confidence).
+
+[Showing results with pagination = limit: 250]

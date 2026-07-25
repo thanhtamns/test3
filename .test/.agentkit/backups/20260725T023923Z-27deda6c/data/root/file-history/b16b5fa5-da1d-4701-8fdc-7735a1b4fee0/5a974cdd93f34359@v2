@@ -1,0 +1,80 @@
+# Hunt Asymmetry-First Architecture — Implementation Plan
+
+**Status:** complete
+**Target:** `D:\code\invesments\master_investments\.claude\commands\`
+**Created:** 2026-05-22
+
+## Problem
+
+Current /hunt finds GENERIC opportunities via Google search → outputs saturated markets.
+LLM trained on public data = any opportunity found by LLM, millions find too.
+Need: cross-reference UNCOMMON data combinations + regulatory windows + founder-specific network.
+
+## Architecture Change
+
+Add third mode `--asym` to /hunt. Does NOT replace pain/flow — adds a new intelligence layer.
+
+```
+/hunt              → PAIN mode (unchanged)
+/hunt --flow       → FLOW mode (unchanged)  
+/hunt --asym       → ASYMMETRY mode (NEW)
+/hunt --asym --flow → ASYMMETRY → auto-feeds best hit into FLOW mode
+```
+
+## Phase 1: New Scanner Agents (5 files)
+
+Create `hunt-lib/scanners/` directory with 5 asymmetry scanners:
+
+| File | Scanner | What it finds |
+|------|---------|---------------|
+| `regulatory-scanner.md` | REGULATORY | New laws/deadlines creating compliance windows |
+| `cross-price-scanner.md` | CROSS-PRICE | Price gaps across platforms/geographies |
+| `cross-language-scanner.md` | CROSS-LANGUAGE | Services in language A not available in B |
+| `timing-scanner.md` | TIMING | Events creating temporary demand windows |
+| `founder-network-scanner.md` | FOUNDER-NETWORK | Founder's own relationships as asymmetry source |
+
+## Phase 2: New Filter Agent (1 file)
+
+Create `hunt-lib/asymmetry-filter.md` — replaces TAM×conversion with:
+
+1. Competition Density: count ACTUAL competitors (not "low competition" hand-wave)
+2. Protection Window: months before copyable
+3. AI Resistance: 24-month replacement test
+4. Founder Access: zero-capital access path
+5. Margin After Competition: net margin ÷ competitor count
+
+## Phase 3: Rewrite hunt.md + hunt-checklist.md
+
+Add ASYMMETRY MODE (Steps A1-A5):
+- A1: SCAN — Run 5 scanners in parallel, collect asymmetry signals
+- A2: FILTER — Apply 5 filters, rank by asymmetry strength
+- A3: SPECIFICS — For top 3, generate EXACT opportunity specs (sell X to Y at Z)
+- A4: VERIFY — Cross-check with real data (forum, registry, pricing)
+- A5: ACTION — Outreach scripts + 14-day action plan
+
+## Phase 4: Integration + Testing
+
+- Bridge A5 → Flow mode (auto-feed best asymmetry into F1)
+- Bridge A5 → Pain mode (auto-feed into Step 1 prey)
+- Test with 3 real examples
+
+## File Change Summary
+
+### NEW files (in master_investments):
+1. `.claude/commands/hunt-lib/scanners/regulatory-scanner.md`
+2. `.claude/commands/hunt-lib/scanners/cross-price-scanner.md`
+3. `.claude/commands/hunt-lib/scanners/cross-language-scanner.md`
+4. `.claude/commands/hunt-lib/scanners/timing-scanner.md`
+5. `.claude/commands/hunt-lib/scanners/founder-network-scanner.md`
+6. `.claude/commands/hunt-lib/asymmetry-filter.md`
+
+### MODIFIED files (in master_investments):
+7. `.claude/commands/hunt.md` — add --asym mode + Steps A1-A5
+8. `.claude/commands/hunt-checklist.md` — add ASYMMETRY MODE checklist
+
+## Progress
+
+- [x] Phase 1: Scanner agents (5 files created in hunt-lib/scanners/)
+- [x] Phase 2: Filter agent (asymmetry-filter.md created)
+- [x] Phase 3: hunt.md (v2→v3, 655→879 lines) + checklist (v2→v3, 131→193 lines)
+- [x] Phase 4: Integration (--asym --flow and --asym --pain chain modes wired in hunt.md)

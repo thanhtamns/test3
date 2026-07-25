@@ -1,0 +1,263 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::session::SessionLog;
+
+const DEFAULT_WINDOW_SECS: u64 = 300;
+
+pub struct ReadDedup<'a> {
+    session_log: &'a SessionLog,
+    window_secs: u64,
+}
+
+pub enum ReadDedupResult {
+    Hit {
+        context_message: String,
+        tokens_saved: u64,
+    },
+    Miss,
+}
+
+impl<'a> ReadDedup<'a> {
+    pub fn new(session_log: &'a SessionLog, window_secs: Option<u64>) -> Self {
+        Self {
+            session_log,
+            window_secs: window_secs.unwrap_or(DEFAULT_WINDOW_SECS),
+        }
+    }
+
+    pub fn check_read(&self, file_path: &str) -> ReadDedupResult {
+        let entry = match self.session_log.last_read(file_path) {
+            Ok(Some(e)) => e,
+            _ => return ReadDedupResult::Miss,
+        };
+
+        let now_ms = now_ms();
+        let age_secs = (now_ms - entry.timestamp_ms).max(0) / 1000;
+        if self.window_secs == 0 || age_secs > self.window_secs as i64 {
+            return ReadDedupResult::Miss;
+        }
+
+        let stored_mtime = match entry.mtime_ns {
+            Some(m) => m,
+            None => return ReadDedupResult::Miss,
+        };
+
+        let current_mtime = match get_file_mtime_ns(file_path) {
+            Some(m) => m,
+            None => return ReadDedupResult::Miss,
+        };
+
+        if stored_mtime != current_mtime {
+            return ReadDedupResult::Miss;
+        }
+
+        let tokens = entry.token_count.unwrap_or(0) as u64;
+        let context_message = format!(
+            "File {} (~{} tokens) was read {}s ago this session. \
+             Content unchanged (mtime verified). \
+             Proceeding will re-send the full file content.",
+            file_path, tokens, age_secs
+        );
+
+        ReadDedupResult::Hit {
+            context_message,
+            tokens_saved: tokens,
+        }
+    }
+
+    pub fn check_grep(&self, tool_input_json: &str) -> ReadDedupResult {
+        self.check_identical_tool(tool_input_json, "Grep")
+    }
+
+    pub fn check_glob(&self, tool_input_json: &str) -> ReadDedupResult {
+        self.check_identical_tool(tool_input_json, "Glob")
+    }
+
+    fn check_identical_tool(&self, tool_input_json: &str, tool_kind: &str) -> ReadDedupResult {
+        let hash = blake3::hash(tool_input_json.as_bytes())
+            .to_hex()
+            .to_string();
+
+        let entry = match self
+            .session_log
+            .recent_identical(&hash, Some(self.window_secs))
+        {
+            Ok(Some(e)) => e,
+            _ => return ReadDedupResult::Miss,
+        };
+
+        let now_ms = now_ms();
+        let age_secs = (now_ms - entry.timestamp_ms).max(0) / 1000;
+        let tokens = entry.token_count.unwrap_or(0) as u64;
+
+        let context_message = format!(
+            "{} was run {}s ago this session with identical parameters. \
+             Previous result was ~{} tokens. Results may differ if files were modified since.",
+            tool_kind, age_secs, tokens
+        );
+
+        ReadDedupResult::Hit {
+            context_message,
+            tokens_saved: tokens,
+        }
+    }
+}
+
+fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
+}
+
+fn get_file_mtime_ns(path: &str) -> Option<i64> {
+    let meta = std::fs::metadata(path).ok()?;
+    let modified = meta.modified().ok()?;
+    let duration = modified.duration_since(UNIX_EPOCH).ok()?;
+    Some(duration.as_nanos() as i64)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::session::SessionLog;
+    use std::io::Write;
+    use tempfile::TempDir;
+
+    fn setup() -> (SessionLog, TempDir) {
+        let dir = TempDir::new().unwrap();
+        let db_path = dir.path().join("test.db");
+        let log = SessionLog::open(&db_path, "test-session").unwrap();
+        (log, dir)
+    }
+
+    fn create_temp_file(dir: &TempDir, name: &str, content: &str) -> String {
+        let path = dir.path().join(name);
+        let mut f = std::fs::File::create(&path).unwrap();
+        f.write_all(content.as_bytes()).unwrap();
+        f.sync_all().unwrap();
+        path.to_string_lossy().to_string()
+    }
+
+    #[test]
+    fn test_check_read_miss_on_first_read() {
+        let (log, dir) = setup();
+        let path = create_temp_file(&dir, "test.rs", "fn main() {}");
+        let dedup = ReadDedup::new(&log, None);
+        assert!(matches!(dedup.check_read(&path), ReadDedupResult::Miss));
+    }
+
+    #[test]
+    fn test_check_read_hit_on_second_read() {
+        let (log, dir) = setup();
+        let path = create_temp_file(&dir, "test.rs", "fn main() {}");
+
+        let mtime_ns = get_file_mtime_ns(&path).unwrap();
+        let row_id = log
+            .record_pre("Read", &format!(r#"{{"file_path":"{}"}}"#, path), Some(&path))
+            .unwrap();
+        log.record_post(row_id, "hash1", 100, Some(mtime_ns))
+            .unwrap();
+
+        let dedup = ReadDedup::new(&log, None);
+        match dedup.check_read(&path) {
+            ReadDedupResult::Hit {
+                context_message,
+                tokens_saved,
+            } => {
+                assert!(context_message.contains("unchanged"));
+                assert_eq!(tokens_saved, 100);
+            }
+            ReadDedupResult::Miss => panic!("expected Hit"),
+        }
+    }
+
+    #[test]
+    fn test_check_read_miss_after_mtime_change() {
+        let (log, dir) = setup();
+        let path = create_temp_file(&dir, "test.rs", "version 1");
+
+        let old_mtime = get_file_mtime_ns(&path).unwrap();
+        let row_id = log
+            .record_pre("Read", &format!(r#"{{"file_path":"{}"}}"#, path), Some(&path))
+            .unwrap();
+        log.record_post(row_id, "hash1", 100, Some(old_mtime))
+            .unwrap();
+
+        // Modify file to change mtime
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        std::fs::write(dir.path().join("test.rs"), "version 2").unwrap();
+
+        let dedup = ReadDedup::new(&log, None);
+        assert!(matches!(dedup.check_read(&path), ReadDedupResult::Miss));
+    }
+
+    #[test]
+    fn test_check_read_miss_after_window_expires() {
+        let (log, dir) = setup();
+        let path = create_temp_file(&dir, "test.rs", "fn main() {}");
+        let mtime_ns = get_file_mtime_ns(&path).unwrap();
+
+        let row_id = log
+            .record_pre("Read", &format!(r#"{{"file_path":"{}"}}"#, path), Some(&path))
+            .unwrap();
+        log.record_post(row_id, "hash1", 100, Some(mtime_ns))
+            .unwrap();
+
+        // Window of 0 seconds = always expired
+        let dedup = ReadDedup::new(&log, Some(0));
+        assert!(matches!(dedup.check_read(&path), ReadDedupResult::Miss));
+    }
+
+    #[test]
+    fn test_check_grep_hit_identical() {
+        let (log, _dir) = setup();
+        let input_json = r#"{"pattern":"TODO","path":"/src"}"#;
+
+        let row_id = log.record_pre("Grep", input_json, Some("/src")).unwrap();
+        log.record_post(row_id, "resulthash", 50, None).unwrap();
+
+        let dedup = ReadDedup::new(&log, None);
+        match dedup.check_grep(input_json) {
+            ReadDedupResult::Hit {
+                tokens_saved,
+                context_message,
+            } => {
+                assert_eq!(tokens_saved, 50);
+                assert!(context_message.contains("Grep"));
+            }
+            ReadDedupResult::Miss => panic!("expected Hit"),
+        }
+    }
+
+    #[test]
+    fn test_check_glob_hit_identical() {
+        let (log, _dir) = setup();
+        let input_json = r#"{"pattern":"**/*.rs","path":"/src"}"#;
+
+        let row_id = log.record_pre("Glob", input_json, Some("/src")).unwrap();
+        log.record_post(row_id, "resulthash", 30, None).unwrap();
+
+        let dedup = ReadDedup::new(&log, None);
+        match dedup.check_glob(input_json) {
+            ReadDedupResult::Hit {
+                tokens_saved,
+                context_message,
+            } => {
+                assert_eq!(tokens_saved, 30);
+                assert!(context_message.contains("Glob"));
+            }
+            ReadDedupResult::Miss => panic!("expected Hit"),
+        }
+    }
+
+    #[test]
+    fn test_check_read_miss_nonexistent_file() {
+        let (log, _dir) = setup();
+        let dedup = ReadDedup::new(&log, None);
+        assert!(matches!(
+            dedup.check_read("/nonexistent/path/file.rs"),
+            ReadDedupResult::Miss
+        ));
+    }
+}

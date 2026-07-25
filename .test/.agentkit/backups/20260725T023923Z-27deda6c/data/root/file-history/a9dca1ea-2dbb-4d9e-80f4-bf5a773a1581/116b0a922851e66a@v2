@@ -1,0 +1,188 @@
+"""Tests for KnobRegistry — mechanism knob read/write/validate."""
+
+import json
+import tempfile
+from pathlib import Path
+
+import pytest
+
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
+from intelligence.mechanism.knob_registry import (
+    KnobRegistry,
+    KnobValidationError,
+)
+
+
+@pytest.fixture
+def tmp_knobs(tmp_path):
+    """Create a temporary knobs file for testing."""
+    knobs_data = {
+        "version": 1,
+        "knobs": {
+            "test_threshold": {
+                "value": 0.70,
+                "type": "float",
+                "range": [0.50, 0.95],
+                "unit": "probability",
+                "step_ref": "test",
+                "category": "threshold",
+                "description": "Test threshold knob",
+            },
+            "test_count": {
+                "value": 8,
+                "type": "int",
+                "range": [4, 16],
+                "unit": "count",
+                "step_ref": "test",
+                "category": "scoring",
+                "description": "Test count knob",
+            },
+        },
+    }
+    knobs_path = tmp_path / "mechanism-knobs.json"
+    history_path = tmp_path / "mechanism-knobs-history.jsonl"
+    knobs_path.write_text(json.dumps(knobs_data), encoding="utf-8")
+    return knobs_path, history_path
+
+
+def test_load_valid_json(tmp_knobs):
+    knobs_path, history_path = tmp_knobs
+    registry = KnobRegistry(knobs_path=knobs_path, history_path=history_path)
+    assert registry.version() == 1
+    assert len(registry.list_knobs()) == 2
+
+
+def test_get_returns_value(tmp_knobs):
+    knobs_path, history_path = tmp_knobs
+    registry = KnobRegistry(knobs_path=knobs_path, history_path=history_path)
+    assert registry.get("test_threshold") == 0.70
+    assert registry.get("test_count") == 8
+
+
+def test_get_returns_fallback_when_missing(tmp_knobs):
+    knobs_path, history_path = tmp_knobs
+    registry = KnobRegistry(knobs_path=knobs_path, history_path=history_path)
+    assert registry.get("nonexistent", fallback=42) == 42
+
+
+def test_get_raises_on_unknown_no_fallback(tmp_knobs):
+    knobs_path, history_path = tmp_knobs
+    registry = KnobRegistry(knobs_path=knobs_path, history_path=history_path)
+    with pytest.raises(KeyError):
+        registry.get("nonexistent")
+
+
+def test_set_writes_to_history(tmp_knobs):
+    knobs_path, history_path = tmp_knobs
+    registry = KnobRegistry(knobs_path=knobs_path, history_path=history_path)
+
+    record = registry.set("test_threshold", 0.75, reason="test edit", source="test")
+
+    assert record["old_value"] == 0.70
+    assert record["new_value"] == 0.75
+    assert record["source"] == "test"
+
+    # Verify history file
+    assert history_path.exists()
+    lines = history_path.read_text(encoding="utf-8").strip().split("\n")
+    assert len(lines) == 1
+    entry = json.loads(lines[0])
+    assert entry["knob_id"] == "test_threshold"
+    assert entry["old_value"] == 0.70
+    assert entry["new_value"] == 0.75
+
+
+def test_set_persists_to_json(tmp_knobs):
+    knobs_path, history_path = tmp_knobs
+    registry = KnobRegistry(knobs_path=knobs_path, history_path=history_path)
+    registry.set("test_count", 10, reason="bump", source="test")
+
+    # Reload from disk
+    registry2 = KnobRegistry(knobs_path=knobs_path, history_path=history_path)
+    assert registry2.get("test_count") == 10
+
+
+def test_validate_rejects_out_of_range(tmp_knobs):
+    knobs_path, history_path = tmp_knobs
+    registry = KnobRegistry(knobs_path=knobs_path, history_path=history_path)
+
+    assert registry.validate("test_threshold", 0.60) is True
+    assert registry.validate("test_threshold", 0.49) is False  # below min
+    assert registry.validate("test_threshold", 0.96) is False  # above max
+    assert registry.validate("test_count", 4) is True
+    assert registry.validate("test_count", 3) is False  # below min
+    assert registry.validate("test_count", 17) is False  # above max
+
+
+def test_set_rejects_invalid_value(tmp_knobs):
+    knobs_path, history_path = tmp_knobs
+    registry = KnobRegistry(knobs_path=knobs_path, history_path=history_path)
+
+    with pytest.raises(KnobValidationError):
+        registry.set("test_threshold", 0.99, reason="too high", source="test")
+
+
+def test_snapshot_returns_all_values(tmp_knobs):
+    knobs_path, history_path = tmp_knobs
+    registry = KnobRegistry(knobs_path=knobs_path, history_path=history_path)
+    snap = registry.snapshot()
+    assert snap == {"test_threshold": 0.70, "test_count": 8}
+
+
+def test_snapshot_markdown(tmp_knobs):
+    knobs_path, history_path = tmp_knobs
+    registry = KnobRegistry(knobs_path=knobs_path, history_path=history_path)
+    md = registry.snapshot_markdown()
+    assert "MECHANISM_KNOBS" in md
+    assert "test_threshold: 0.7" in md
+
+
+def test_history_returns_recent(tmp_knobs):
+    knobs_path, history_path = tmp_knobs
+    registry = KnobRegistry(knobs_path=knobs_path, history_path=history_path)
+
+    registry.set("test_threshold", 0.72, reason="edit1", source="test")
+    registry.set("test_threshold", 0.74, reason="edit2", source="test")
+    registry.set("test_count", 9, reason="edit3", source="test")
+
+    all_history = registry.history(n=10)
+    assert len(all_history) == 3
+
+    thresh_history = registry.history(knob_id="test_threshold", n=10)
+    assert len(thresh_history) == 2
+
+
+def test_list_knobs_by_category(tmp_knobs):
+    knobs_path, history_path = tmp_knobs
+    registry = KnobRegistry(knobs_path=knobs_path, history_path=history_path)
+
+    assert registry.list_knobs(category="threshold") == ["test_threshold"]
+    assert registry.list_knobs(category="scoring") == ["test_count"]
+    assert registry.list_knobs(category="nonexistent") == []
+
+
+def test_load_missing_file_returns_empty():
+    registry = KnobRegistry(
+        knobs_path=Path("/tmp/nonexistent-knobs.json"),
+        history_path=Path("/tmp/nonexistent-history.jsonl"),
+    )
+    assert registry.list_knobs() == []
+    assert registry.snapshot() == {}
+
+
+def test_get_meta(tmp_knobs):
+    knobs_path, history_path = tmp_knobs
+    registry = KnobRegistry(knobs_path=knobs_path, history_path=history_path)
+    meta = registry.get_meta("test_threshold")
+    assert meta["type"] == "float"
+    assert meta["range"] == [0.50, 0.95]
+    assert meta["category"] == "threshold"
+
+
+def test_get_range(tmp_knobs):
+    knobs_path, history_path = tmp_knobs
+    registry = KnobRegistry(knobs_path=knobs_path, history_path=history_path)
+    assert registry.get_range("test_threshold") == (0.50, 0.95)
+    assert registry.get_range("test_count") == (4, 16)

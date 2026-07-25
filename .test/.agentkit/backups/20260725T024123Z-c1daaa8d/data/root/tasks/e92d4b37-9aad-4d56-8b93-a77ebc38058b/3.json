@@ -1,0 +1,19 @@
+{
+  "id": "3",
+  "subject": "Phase 1: Session Context Model",
+  "description": "Create session_tool_log SQLite table, SessionLog struct with record_pre/record_post/last_read/recent_identical methods, file_path extraction, Pre/Post correlation via temp file. Foundation for all other phases.",
+  "activeForm": "Implementing Session Context Model",
+  "status": "pending",
+  "blocks": [
+    "4",
+    "5"
+  ],
+  "blockedBy": [],
+  "metadata": {
+    "phase": 1,
+    "priority": "P1",
+    "effort": "3d",
+    "planDir": "plans/260604-codeflow-differentiation-mvp",
+    "phaseFile": "phase-01-session-context-model.md"
+  }
+}

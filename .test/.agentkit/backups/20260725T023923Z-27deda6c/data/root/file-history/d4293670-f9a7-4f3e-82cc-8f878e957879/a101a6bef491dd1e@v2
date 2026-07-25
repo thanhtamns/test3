@@ -1,0 +1,59 @@
+use anyhow::Result;
+use std::path::Path;
+
+pub fn hash_content(content: &[u8]) -> String {
+    let hash = blake3::hash(content);
+    hash.to_hex().to_string()
+}
+
+pub fn hash_file(path: &Path) -> Result<String> {
+    let content = std::fs::read(path)?;
+    Ok(hash_content(&content))
+}
+
+pub fn hash_diff(old: &str, new: &str) -> String {
+    let combined = format!("{}\n{}", old, new);
+    hash_content(combined.as_bytes())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hash_content_deterministic() {
+        let h1 = hash_content(b"hello world");
+        let h2 = hash_content(b"hello world");
+        assert_eq!(h1, h2);
+        assert_eq!(h1.len(), 64);
+    }
+
+    #[test]
+    fn hash_content_different_inputs() {
+        let h1 = hash_content(b"hello");
+        let h2 = hash_content(b"world");
+        assert_ne!(h1, h2);
+    }
+
+    #[test]
+    fn hash_file_works() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("test.txt");
+        std::fs::write(&file, b"test content").unwrap();
+        let h = hash_file(&file).unwrap();
+        assert_eq!(h, hash_content(b"test content"));
+    }
+
+    #[test]
+    fn hash_file_not_found() {
+        let result = hash_file(Path::new("/nonexistent/file.txt"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn hash_diff_combines_inputs() {
+        let h = hash_diff("old code", "new code");
+        assert_eq!(h.len(), 64);
+        assert_ne!(h, hash_content(b"old code"));
+    }
+}

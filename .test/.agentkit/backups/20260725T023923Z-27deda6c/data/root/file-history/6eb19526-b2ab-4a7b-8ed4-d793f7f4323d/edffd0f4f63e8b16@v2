@@ -1,0 +1,84 @@
+---
+name: observe
+description: Log a deal observation into the Deal Journal (Phase 1 Pattern Recognition). Usage: /observe "Company A acquired B for 50B VND"
+---
+
+# /observe - Deal Observation Logger
+
+Log deals you READ ABOUT or HEAR ABOUT into your Deal Journal. This builds pattern recognition.
+
+## Usage
+
+```
+/observe "Masan acquired Wincommerce for 8.9T VND - retail consolidation play"
+/observe add
+/observe list
+/observe stats
+```
+
+## Process
+
+### Step 1: Parse or Interview
+
+If user provides deal description → extract fields.
+If user says `/observe add` → ask with AskUserQuestion:
+
+1. **Parties** — Who's buying? Who's selling? Any introducer/broker visible?
+2. **Size** — Estimated deal value (VND or USD)?
+3. **Sector** — Which industry?
+4. **Source** — Where did you read/hear this? (URL or person)
+5. **Structure** — Cash? Equity swap? Earnout? Mixed?
+6. **Middleman** — Any middleman visible? Name? Estimated fee?
+7. **Outcome** — Succeeded / Failed / Pending / Unknown?
+8. **Your prediction** — If outcome unknown, what do YOU think will happen and why?
+9. **Pattern match** — Does this remind you of any previous deal you logged?
+
+### Step 2: Save via Script
+
+Run the positioning-crud.py script:
+
+```bash
+cd "D:\code\invesments\master_investments" && python execution/scripts/positioning-crud.py add-deal '{JSON}'
+```
+
+Where JSON contains all extracted fields matching the template in `execution/templates/deal-observation.json`.
+
+### Step 3: Sync Phase Gates
+
+```bash
+cd "D:\code\invesments\master_investments" && python execution/scripts/positioning-crud.py sync-gates
+```
+
+### Step 4: Output
+
+```markdown
+## ✅ Deal Observed
+
+**ID:** {id}
+**Parties:** {buyer} ← {seller}
+**Size:** {size_vnd} VND
+**Sector:** {sector}
+**Middleman:** {visible? name : "None visible"}
+**Your Prediction:** {prediction}
+
+### 📊 Deal Journal Stats
+- Total deals observed: {total}
+- Phase 1 target: 50 deals
+- Progress: {total}/50 ({pct}%)
+
+---
+*Log more with `/observe` | Check progress with `/phase-check`*
+```
+
+### Subcommands
+
+**`/observe list`** — Show last 10 deals from journal
+**`/observe stats`** — Show deal counts by sector, outcome, pattern type
+**`/observe search <keyword>`** — Search deals by keyword
+
+## Validation
+
+- MUST have parties (at least buyer OR seller)
+- MUST have size estimate (even rough)
+- MUST have source (where you found this)
+- Prediction field is OPTIONAL but STRONGLY encouraged — it trains pattern recognition

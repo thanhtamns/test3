@@ -1,0 +1,69 @@
+package api
+
+import (
+	"encoding/json"
+	"net/http"
+	"strconv"
+	"strings"
+)
+
+func (h *handler) handleListProjects(w http.ResponseWriter, r *http.Request) {
+	tenantID := tenantFromCtx(r)
+
+	projects, err := h.ch.GetProjects(r.Context(), tenantID)
+	if err != nil {
+		h.logger.Error("projects query failed", "error", err)
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(projects)
+}
+
+func (h *handler) handleProjectStats(w http.ResponseWriter, r *http.Request) {
+	tenantID := tenantFromCtx(r)
+
+	projectDir := r.PathValue("id")
+	if projectDir == "" {
+		http.Error(w, "missing project id", http.StatusBadRequest)
+		return
+	}
+	projectDir = decodeProjectDir(projectDir)
+
+	stats, err := h.ch.GetProjectStats(r.Context(), tenantID, projectDir)
+	if err != nil {
+		h.logger.Error("project stats query failed", "error", err, "project", projectDir)
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(stats)
+}
+
+func (h *handler) handleSavingsTrend(w http.ResponseWriter, r *http.Request) {
+	tenantID := tenantFromCtx(r)
+
+	days := 30
+	if d := r.URL.Query().Get("days"); d != "" {
+		if parsed, err := strconv.Atoi(d); err == nil && parsed > 0 && parsed <= 90 {
+			days = parsed
+		}
+	}
+
+	trend, err := h.ch.GetSavingsTrend(r.Context(), tenantID, days)
+	if err != nil {
+		h.logger.Error("savings trend query failed", "error", err)
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(trend)
+}
+
+func decodeProjectDir(encoded string) string {
+	decoded := strings.ReplaceAll(encoded, "|", "/")
+	return strings.ReplaceAll(decoded, "\\", "/")
+}

@@ -1,0 +1,67 @@
+use std::path::PathBuf;
+
+pub fn data_dir() -> PathBuf {
+    if cfg!(windows) {
+        dirs_next().join("codeflow")
+    } else {
+        home_dir()
+            .map(|h| h.join(".local/share/codeflow"))
+            .unwrap_or_else(|| PathBuf::from("/tmp/codeflow"))
+    }
+}
+
+pub fn config_dir() -> PathBuf {
+    if cfg!(windows) {
+        dirs_next().join("codeflow")
+    } else {
+        home_dir()
+            .map(|h| h.join(".config/codeflow"))
+            .unwrap_or_else(|| PathBuf::from("/tmp/codeflow"))
+    }
+}
+
+pub fn db_path() -> PathBuf {
+    data_dir().join("codeflow.db")
+}
+
+pub fn filters_dir() -> PathBuf {
+    let exe = std::env::current_exe().unwrap_or_default();
+    let exe_dir = exe.parent().unwrap_or(std::path::Path::new("."));
+
+    let candidates = [
+        exe_dir.join("filters"),
+        exe_dir.join("../filters"),
+        exe_dir.join("../../filters"),
+        PathBuf::from("cli/filters"),
+        PathBuf::from("filters"),
+    ];
+
+    for c in &candidates {
+        if c.exists() {
+            return c.clone();
+        }
+    }
+    exe_dir.join("filters")
+}
+
+pub fn claude_hooks_dir() -> PathBuf {
+    home_dir()
+        .map(|h| h.join(".claude"))
+        .unwrap_or_else(|| PathBuf::from(".claude"))
+}
+
+fn home_dir() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+}
+
+fn dirs_next() -> PathBuf {
+    std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            home_dir()
+                .map(|h| h.join("AppData/Local"))
+                .unwrap_or_else(|| PathBuf::from("/tmp"))
+        })
+}

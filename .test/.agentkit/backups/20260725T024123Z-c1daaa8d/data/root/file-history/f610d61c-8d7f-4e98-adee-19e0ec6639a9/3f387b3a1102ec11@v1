@@ -1,0 +1,69 @@
+"""Error-magnitude learning — no emotion, no dopamine.
+
+Surprise = |predicted - actual|. Bigger errors drive bigger updates to the
+Bayesian confidence of the node that made the prediction. Capped to avoid
+runaway updates from a single outlier.
+"""
+from __future__ import annotations
+
+from . import bayesian_confidence as bayesian
+
+# Beyond this absolute error the outcome counts as "wrong" for Bayesian
+# success/failure classification.
+ERROR_THRESHOLD = 0.2
+
+# Magnitude multiplier — error is amplified to drive stronger updates when
+# the model was very wrong — but capped so a single outlier cannot dominate.
+MAGNITUDE_GAIN = 2.0
+MAGNITUDE_CAP = 3.0
+
+# Minimum magnitude when outcome was correct — so "correct but barely" still
+# counts as weak evidence of success.
+MIN_MAGNITUDE = 0.25
+
+
+def learn_from_outcome(
+    node_id: str,
+    predicted: float,
+    actual: float,
+    threshold: float = ERROR_THRESHOLD,
+) -> dict:
+    """Update node's Bayesian confidence given a (predicted, actual) pair.
+
+    Returns the post-update stats for logging.
+    """
+    if not (0.0 <= predicted <= 1.0 and 0.0 <= actual <= 1.0):
+        raise ValueError("predicted and actual must be in [0, 1]")
+    error = abs(predicted - actual)
+    magnitude = max(MIN_MAGNITUDE, min(error * MAGNITUDE_GAIN, MAGNITUDE_CAP))
+    outcome = error < threshold
+    alpha, beta = bayesian.update(node_id, outcome=outcome, magnitude=magnitude)
+    return {
+        "node_id": node_id,
+        "predicted": predicted,
+        "actual": actual,
+        "error": error,
+        "outcome": outcome,
+        "magnitude": magnitude,
+        "alpha": alpha,
+        "beta": beta,
+        "confidence": alpha / (alpha + beta),
+    }
+
+
+def learn_binary(node_id: str, success: bool, magnitude: float = 1.0) -> dict:
+    """Shortcut for binary success/failure signals (no prediction float).
+
+    Applies the same MIN/CAP envelope as `learn_from_outcome` so both entry
+    points yield equivalent evidence weights.
+    """
+    clamped = max(MIN_MAGNITUDE, min(magnitude, MAGNITUDE_CAP))
+    alpha, beta = bayesian.update(node_id, outcome=success, magnitude=clamped)
+    return {
+        "node_id": node_id,
+        "outcome": success,
+        "magnitude": clamped,
+        "alpha": alpha,
+        "beta": beta,
+        "confidence": alpha / (alpha + beta),
+    }

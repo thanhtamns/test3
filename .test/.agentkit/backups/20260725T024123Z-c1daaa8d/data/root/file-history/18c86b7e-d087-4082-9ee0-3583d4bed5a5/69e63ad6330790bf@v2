@@ -1,0 +1,19 @@
+strip_ansi = true
+
+[command]
+name = "git"
+args_contain = ["log"]
+
+[[strip_lines]]
+pattern = '^\s*$'
+
+[truncate_lines]
+max_length = 120
+suffix = "…"
+
+[head_tail]
+head = 50
+tail = 10
+separator = "\n... ({omitted} lines omitted) ...\n"
+
+max_lines = 200

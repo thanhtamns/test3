@@ -1,0 +1,183 @@
+"""Tests for CaseArchiver — replay archive for /stage0 cases."""
+
+import gzip
+import json
+import sqlite3
+import tempfile
+from pathlib import Path
+
+import pytest
+
+from ..case_archiver import CaseArchiver
+
+
+@pytest.fixture
+def archiver(tmp_path):
+    db_path = tmp_path / "test-replay-archive.db"
+    return CaseArchiver(db_path=db_path)
+
+
+@pytest.fixture
+def sample_case():
+    return {
+        "case_id": "case_20260516_dropshipping",
+        "topic": "dropshipping automation",
+        "verdict_class": "KILL",
+        "verdict_summary": "Saturated market, no moat",
+        "strategy_used": "default_v25",
+        "research_cache": json.dumps({"websearch_results": [{"q": "dropshipping 2026", "results": ["r1"] * 200}]}),
+        "agent_outputs": json.dumps({"wave1": {"niche-archaeologist": "long output " * 500}}),
+        "trace_signals": json.dumps({"step3": {"agents_fired": 12}}),
+        "founder_profile": json.dumps({"capital": 500, "skills": ["python"]}),
+        "timestamp": "2026-05-16T14:00:00Z",
+    }
+
+
+class TestCaseArchiverInit:
+    def test_init_creates_db_and_tables(self, tmp_path):
+        db_path = tmp_path / "new-archive.db"
+        assert not db_path.exists()
+        archiver = CaseArchiver(db_path=db_path)
+        assert db_path.exists()
+        conn = sqlite3.connect(str(db_path))
+        tables = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+        table_names = {t[0] for t in tables}
+        assert "case_archive" in table_names
+        assert "replay_results" in table_names
+        conn.close()
+
+
+class TestArchiveCase:
+    def test_archive_case_stores_all_fields(self, archiver, sample_case):
+        case_id = archiver.archive_case(sample_case)
+        assert case_id == "case_20260516_dropshipping"
+        retrieved = archiver.get_case(case_id)
+        assert retrieved["topic"] == "dropshipping automation"
+        assert retrieved["verdict_class"] == "KILL"
+        assert retrieved["verdict_summary"] == "Saturated market, no moat"
+        assert retrieved["strategy_used"] == "default_v25"
+        assert "websearch_results" in json.loads(retrieved["research_cache"])
+        assert "wave1" in json.loads(retrieved["agent_outputs"])
+
+    def test_archive_case_compresses_blobs(self, archiver, sample_case):
+        archiver.archive_case(sample_case)
+        conn = sqlite3.connect(str(archiver.db_path))
+        row = conn.execute(
+            "SELECT research_cache, agent_outputs FROM case_archive WHERE case_id=?",
+            (sample_case["case_id"],),
+        ).fetchone()
+        conn.close()
+        raw_research = sample_case["research_cache"].encode("utf-8")
+        stored_research = row[0]
+        assert isinstance(stored_research, bytes)
+        decompressed = gzip.decompress(stored_research)
+        assert decompressed == raw_research
+        assert len(stored_research) < len(raw_research)
+
+    def test_archive_case_idempotent(self, archiver, sample_case):
+        archiver.archive_case(sample_case)
+        sample_case["verdict_summary"] = "Updated summary"
+        archiver.archive_case(sample_case)
+        retrieved = archiver.get_case(sample_case["case_id"])
+        assert retrieved["verdict_summary"] == "Updated summary"
+        conn = sqlite3.connect(str(archiver.db_path))
+        count = conn.execute("SELECT COUNT(*) FROM case_archive").fetchone()[0]
+        conn.close()
+        assert count == 1
+
+    def test_archive_with_missing_optional_fields(self, archiver):
+        minimal_case = {
+            "case_id": "case_minimal",
+            "topic": "test topic",
+            "verdict_class": "MOUNTAIN_CANDIDATE",
+            "timestamp": "2026-05-16T15:00:00Z",
+        }
+        case_id = archiver.archive_case(minimal_case)
+        retrieved = archiver.get_case(case_id)
+        assert retrieved["topic"] == "test topic"
+        assert retrieved["research_cache"] is None
+        assert retrieved["agent_outputs"] is None
+
+
+class TestQueryCases:
+    def _seed_cases(self, archiver):
+        cases = [
+            {"case_id": f"case_{i}", "topic": t, "verdict_class": v, "timestamp": f"2026-05-{i+1:02d}T00:00:00Z"}
+            for i, (t, v) in enumerate([
+                ("dropshipping automation", "KILL"),
+                ("AI writing tools", "MOUNTAIN_CANDIDATE"),
+                ("crypto trading bots", "KILL"),
+                ("SaaS for dentists", "MOUNTAIN_CANDIDATE"),
+                ("print on demand", "SIDE_HUSTLE"),
+                ("affiliate SEO", "KILL"),
+                ("B2B lead gen", "MOUNTAIN_CANDIDATE"),
+                ("youtube automation", "SIDE_HUSTLE"),
+            ])
+        ]
+        for c in cases:
+            archiver.archive_case(c)
+        return cases
+
+    def test_query_by_topic_returns_matching(self, archiver):
+        self._seed_cases(archiver)
+        results = archiver.query_cases(topic="automation")
+        topics = [r["topic"] for r in results]
+        assert "dropshipping automation" in topics
+        assert "youtube automation" in topics
+        assert "SaaS for dentists" not in topics
+
+    def test_query_by_verdict_class(self, archiver):
+        self._seed_cases(archiver)
+        results = archiver.query_cases(verdict_class="KILL")
+        assert len(results) == 3
+        assert all(r["verdict_class"] == "KILL" for r in results)
+
+        results = archiver.query_cases(verdict_class="MOUNTAIN_CANDIDATE")
+        assert len(results) == 3
+
+    def test_query_diverse_sampling(self, archiver):
+        self._seed_cases(archiver)
+        results = archiver.sample(n=6, diverse=True)
+        assert len(results) == 6
+        classes = [r["verdict_class"] for r in results]
+        assert len(set(classes)) >= 2
+
+
+class TestUpdateOutcome:
+    def test_update_outcome_fills_ground_truth(self, archiver, sample_case):
+        archiver.archive_case(sample_case)
+        archiver.update_outcome(
+            case_id=sample_case["case_id"],
+            outcome="confirmed_kill",
+            revenue=0.0,
+            founder_acted=False,
+        )
+        retrieved = archiver.get_case(sample_case["case_id"])
+        assert retrieved["actual_outcome"] == "confirmed_kill"
+        assert retrieved["actual_revenue"] == 0.0
+        assert retrieved["founder_acted"] == 0
+
+
+class TestCompressionRatio:
+    def test_compression_ratio_reasonable(self, archiver):
+        large_research = json.dumps({"data": "x" * 2_000_000})
+        case = {
+            "case_id": "case_large",
+            "topic": "large test",
+            "verdict_class": "KILL",
+            "research_cache": large_research,
+            "agent_outputs": json.dumps({"out": "y" * 500_000}),
+            "timestamp": "2026-05-16T16:00:00Z",
+        }
+        archiver.archive_case(case)
+        conn = sqlite3.connect(str(archiver.db_path))
+        row = conn.execute(
+            "SELECT research_cache FROM case_archive WHERE case_id='case_large'"
+        ).fetchone()
+        conn.close()
+        compressed_size = len(row[0])
+        raw_size = len(large_research.encode("utf-8"))
+        ratio = compressed_size / raw_size
+        assert ratio < 0.25  # highly repetitive data compresses well

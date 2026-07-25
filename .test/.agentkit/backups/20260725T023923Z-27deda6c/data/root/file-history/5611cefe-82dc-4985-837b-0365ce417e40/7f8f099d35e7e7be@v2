@@ -1,0 +1,205 @@
+#!/usr/bin/env python3
+"""
+SBE Orchestrator — coordinates Principle Engine -> MTDE -> Pass 2 -> Verdict.
+Dependency-injected: search_fn/extract_fn provided by caller (stage0).
+"""
+
+import json
+import sys
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Callable, Optional
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "engine"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "mtde"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from principle_engine import PrincipleEngine
+from decomposer import MTDEDecomposer
+from retriever import MTDERetriever
+from aggregator import MTDEAggregator
+from llm_constraint_generator import LLMConstraintGenerator
+
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+PRINCIPLES_PATH = DATA_DIR / "principles.json"
+CONTRARIAN_PATH = DATA_DIR / "contrarian-rules.json"
+TEMPLATES_PATH = DATA_DIR / "dimension-templates.json"
+
+VALID_VERDICTS = ["KILL", "MOUNTAIN_CANDIDATE", "SIDE_HUSTLE", "NEEDS_DEEPER_ANALYSIS"]
+
+
+@dataclass
+class SBETrace:
+    steps: list = field(default_factory=list)
+    start_time: float = field(default_factory=time.perf_counter)
+
+    def add(self, step_name: str, data):
+        elapsed = (time.perf_counter() - self.start_time) * 1000
+        serializable = data
+        if hasattr(data, "to_dict"):
+            serializable = data.to_dict()
+        elif not isinstance(data, (dict, list, str, int, float, bool, type(None))):
+            serializable = str(data)
+        self.steps.append({
+            "step": step_name,
+            "elapsed_ms": round(elapsed, 2),
+            "data": serializable,
+        })
+
+    def to_dict(self):
+        total = (time.perf_counter() - self.start_time) * 1000
+        return {"steps": self.steps, "total_time_ms": round(total, 2)}
+
+
+@dataclass
+class SBEResult:
+    verdict: str
+    confidence: float
+    evidence: Optional[object] = None
+    constrained_prompt: Optional[str] = None
+    trace: Optional[SBETrace] = None
+    short_circuited: bool = False
+    enriched_features: dict = field(default_factory=dict)
+
+    def to_dict(self):
+        return {
+            "verdict": self.verdict,
+            "confidence": round(self.confidence, 3),
+            "short_circuited": self.short_circuited,
+            "enriched_features": self.enriched_features,
+            "constrained_prompt_length": len(self.constrained_prompt) if self.constrained_prompt else 0,
+            "evidence_summary": self.evidence.to_dict() if self.evidence and hasattr(self.evidence, "to_dict") else None,
+            "trace": self.trace.to_dict() if self.trace else None,
+        }
+
+
+class SBEOrchestrator:
+    def __init__(
+        self,
+        principles_path: Optional[Path] = None,
+        contrarian_path: Optional[Path] = None,
+        templates_path: Optional[Path] = None,
+        kill_signals_path: Optional[Path] = None,
+    ):
+        self.principle_engine = PrincipleEngine(
+            principles_path or PRINCIPLES_PATH,
+            contrarian_path or CONTRARIAN_PATH,
+        )
+        self.decomposer = MTDEDecomposer(templates_path or TEMPLATES_PATH)
+        self.aggregator = MTDEAggregator(kill_signals_path)
+        self.constraint_gen = LLMConstraintGenerator()
+
+    def run(
+        self,
+        topic: str,
+        features: dict,
+        search_fn: Optional[Callable] = None,
+        extract_fn: Optional[Callable] = None,
+        budget: int = 200,
+        principles_only: bool = False,
+    ) -> SBEResult:
+        trace = SBETrace()
+
+        # Step A: Pass 1
+        pass1 = self.principle_engine.evaluate_pass1(features)
+        trace.add("pass1", pass1)
+
+        # Step B: Short-circuit on high-confidence KILL
+        if pass1.verdict == "KILL" and pass1.confidence >= 0.85:
+            return SBEResult(
+                verdict=pass1.verdict,
+                confidence=pass1.confidence,
+                trace=trace,
+                short_circuited=True,
+            )
+
+        # Principles-only mode (skip MTDE)
+        if principles_only:
+            prompt = self.constraint_gen.generate_from_pass1(pass1)
+            return SBEResult(
+                verdict=pass1.verdict,
+                confidence=pass1.confidence,
+                constrained_prompt=prompt,
+                trace=trace,
+                short_circuited=False,
+            )
+
+        # Step C: Decompose
+        questions = self.decomposer.decompose(
+            topic, features,
+            principle_questions=pass1.micro_questions,
+            budget=budget,
+        )
+        trace.add("decompose", {"question_count": len(questions)})
+
+        # Step D: Retrieve
+        facts = []
+        if search_fn:
+            try:
+                retriever = MTDERetriever(search_fn=search_fn, extract_fn=extract_fn)
+                facts = retriever.retrieve(questions)
+            except Exception as e:
+                trace.add("retrieve_error", {"error": str(e)})
+        trace.add("retrieve", {"fact_count": len(facts)})
+
+        # Step E: Aggregate
+        evidence = self.aggregator.aggregate(facts)
+        trace.add("aggregate", {
+            "patterns": len(evidence.cross_patterns),
+            "kills": len(evidence.kill_signals),
+            "coverage_pct": evidence.coverage_pct,
+        })
+
+        # Step F: Pass 2
+        merged_features = {**features, **evidence.enriched_features}
+        pass2 = self.principle_engine.evaluate_pass2(features, merged_features)
+        trace.add("pass2", pass2)
+
+        # Step G: Generate constrained prompt
+        constrained_prompt = self.constraint_gen.generate(pass2, evidence)
+
+        return SBEResult(
+            verdict=pass2.verdict,
+            confidence=pass2.confidence,
+            evidence=evidence,
+            constrained_prompt=constrained_prompt,
+            trace=trace,
+            short_circuited=False,
+            enriched_features=evidence.enriched_features,
+        )
+
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="SBE Orchestrator")
+    parser.add_argument("--topic", type=str, required=True)
+    parser.add_argument("--features", type=str, default="{}")
+    parser.add_argument("--budget", type=int, default=200)
+    parser.add_argument("--dry-run", action="store_true", help="No WebSearch/LLM calls")
+    parser.add_argument("--principles-only", action="store_true", help="Skip MTDE")
+    args = parser.parse_args()
+
+    features = json.loads(args.features)
+    orch = SBEOrchestrator()
+
+    search_fn = None
+    extract_fn = None
+    if not args.dry_run and not args.principles_only:
+        pass  # In live mode, stage0 injects these
+
+    result = orch.run(
+        topic=args.topic,
+        features=features,
+        search_fn=search_fn,
+        extract_fn=extract_fn,
+        budget=args.budget,
+        principles_only=args.principles_only,
+    )
+
+    print(json.dumps(result.to_dict(), indent=2))
+
+
+if __name__ == "__main__":
+    main()

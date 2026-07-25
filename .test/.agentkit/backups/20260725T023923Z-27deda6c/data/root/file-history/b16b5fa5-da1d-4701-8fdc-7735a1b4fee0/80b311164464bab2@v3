@@ -1,0 +1,64 @@
+---
+status: complete
+created: 2026-05-22
+title: "/hunt Command — Customer-First Revenue Engine"
+type: feature
+target_repo: master_investments
+---
+
+# /hunt Command — Customer-First Revenue Engine
+
+## Problem Statement
+
+Stage0 (V25.5) is a model-ranking engine: scans internet for known business models, filters through 14 quality gates + 19 mental models, outputs ranked list. After 19 months of evolution (V8→V25.5), it still produces the same output any AI gives in 30 seconds: "build micro-SaaS, niche job board, newsletter." The thinking architecture is fundamentally a CLASSIFIER, not a THINKER.
+
+The missing capability: start from CUSTOMER PAIN (verified by real humans), not from MODEL LIBRARIES (sourced from Google/IndieHackers).
+
+## Solution
+
+New command `/hunt` — 5-step pipeline that inverts stage0's logic:
+
+```
+PREY (who?) → PAIN (what hurts?) → PROOF (verified by humans?) → OFFER (sell what?) → SCRIPT (sell how?)
+```
+
+Key differences from stage0:
+- No Google "business model" searches — only searches for COMPLAINTS from target group
+- Step 3 (PROOF) is BLOCKING — no human validation = no continuation
+- Output = copy-paste sales scripts, not analysis reports
+- Under 50 steps (stage0 = 133)
+- Can run independently OR after stage0
+
+## Phases
+
+### Phase 1: Core Command Files
+**Status:** complete
+**Files:** `commands/hunt.md`, `commands/hunt-checklist.md`
+**Details:** [phase-01-core-command.md](phase-01-core-command.md)
+
+### Phase 2: Agent Prompts (hunt-lib/)
+**Status:** complete
+**Files:** `commands/hunt-lib/prey-profiler.md`, `pain-miner.md`, `proof-tracker.md`, `offer-designer.md`, `script-writer.md`
+**Details:** [phase-02-agent-prompts.md](phase-02-agent-prompts.md)
+
+### Phase 3: Persistence & Data
+**Status:** complete
+**Files:** `data/hunts/` directory, JSON schemas, stop-hook integration
+**Details:** [phase-03-persistence.md](phase-03-persistence.md)
+
+### Phase 4: Integration & Testing
+**Status:** complete
+**Files:** Hook wiring, stage0→hunt bridge, skill registration
+**Details:** [phase-04-integration.md](phase-04-integration.md)
+
+## Dependencies
+- Existing agents: customer-obsession-researcher, niche-archaeologist, first-dollar-hunter, outreach-synthesizer, chris-voss
+- Existing infra: data/ directory, persist scripts, stop hooks
+- NO new Python scripts required in Phase 1-2 (pure markdown command + agent prompts)
+
+## Success Criteria
+- `/hunt` runs end-to-end with real topic
+- Output contains: prey_profile + pain_map + proof framework + offer + scripts
+- Under 50 checklist steps
+- Step 3 PROOF gate blocks continuation without human validation
+- No Google "business model" searches anywhere in pipeline

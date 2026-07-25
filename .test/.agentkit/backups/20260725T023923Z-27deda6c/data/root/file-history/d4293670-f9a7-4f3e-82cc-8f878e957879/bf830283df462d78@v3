@@ -1,0 +1,488 @@
+use anyhow::{Context, Result};
+use rusqlite::{params, Connection};
+use serde::Serialize;
+use std::path::PathBuf;
+
+use super::attestation;
+use super::constants::RTK_DATA_DIR;
+use super::content_hash;
+
+const PROVENANCE_DB: &str = "provenance.db";
+const RETENTION_DAYS: i64 = 90;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProvenanceRecord {
+    pub id: Option<i64>,
+    pub model_id: String,
+    pub model_version: String,
+    pub prompt_hash: String,
+    pub code_hash: String,
+    pub file_path: String,
+    pub start_line: u32,
+    pub end_line: u32,
+    pub contributor_type: ContributorType,
+    pub attestation_sig: String,
+    pub timestamp: String,
+    pub developer_id: String,
+    pub session_id: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ContributorType {
+    Human,
+    Ai,
+    Mixed,
+    Unknown,
+}
+
+impl ContributorType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Human => "human",
+            Self::Ai => "ai",
+            Self::Mixed => "mixed",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "human" => Self::Human,
+            "ai" => Self::Ai,
+            "mixed" => Self::Mixed,
+            _ => Self::Unknown,
+        }
+    }
+}
+
+pub struct ProvenanceStore {
+    conn: Connection,
+}
+
+impl ProvenanceStore {
+    pub fn new() -> Result<Self> {
+        let db_path = get_db_path()?;
+        Self::open(&db_path)
+    }
+
+    pub fn open(db_path: &std::path::Path) -> Result<Self> {
+        if let Some(parent) = db_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        let conn = Connection::open(db_path)?;
+        let _ = conn.execute_batch(
+            "PRAGMA journal_mode=WAL;
+             PRAGMA busy_timeout=5000;",
+        );
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS provenance_records (
+                id INTEGER PRIMARY KEY,
+                model_id TEXT NOT NULL DEFAULT 'unknown',
+                model_version TEXT NOT NULL DEFAULT '',
+                prompt_hash TEXT NOT NULL DEFAULT '',
+                code_hash TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                start_line INTEGER NOT NULL DEFAULT 0,
+                end_line INTEGER NOT NULL DEFAULT 0,
+                contributor_type TEXT NOT NULL DEFAULT 'unknown',
+                attestation_sig TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                developer_id TEXT NOT NULL DEFAULT '',
+                session_id TEXT NOT NULL DEFAULT ''
+            )",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_prov_file ON provenance_records(file_path)",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_prov_session ON provenance_records(session_id)",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_prov_timestamp ON provenance_records(timestamp)",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS provenance_snapshots (
+                id INTEGER PRIMARY KEY,
+                file_path TEXT NOT NULL UNIQUE,
+                content_hash TEXT NOT NULL,
+                timestamp TEXT NOT NULL
+            )",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_snap_file ON provenance_snapshots(file_path)",
+            [],
+        )?;
+
+        Ok(Self { conn })
+    }
+
+    pub fn record_provenance(&self, record: &ProvenanceRecord) -> Result<i64> {
+        self.conn.execute(
+            "INSERT INTO provenance_records
+                (model_id, model_version, prompt_hash, code_hash, file_path,
+                 start_line, end_line, contributor_type, attestation_sig,
+                 timestamp, developer_id, session_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            params![
+                record.model_id,
+                record.model_version,
+                record.prompt_hash,
+                record.code_hash,
+                record.file_path,
+                record.start_line,
+                record.end_line,
+                record.contributor_type.as_str(),
+                record.attestation_sig,
+                record.timestamp,
+                record.developer_id,
+                record.session_id,
+            ],
+        )?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    pub fn query_by_file(&self, path: &str) -> Result<Vec<ProvenanceRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, model_id, model_version, prompt_hash, code_hash, file_path,
+                    start_line, end_line, contributor_type, attestation_sig,
+                    timestamp, developer_id, session_id
+             FROM provenance_records
+             WHERE file_path = ?1
+             ORDER BY timestamp DESC",
+        )?;
+
+        let records = stmt
+            .query_map(params![path], |row| {
+                Ok(ProvenanceRecord {
+                    id: Some(row.get(0)?),
+                    model_id: row.get(1)?,
+                    model_version: row.get(2)?,
+                    prompt_hash: row.get(3)?,
+                    code_hash: row.get(4)?,
+                    file_path: row.get(5)?,
+                    start_line: row.get(6)?,
+                    end_line: row.get(7)?,
+                    contributor_type: ContributorType::from_str(
+                        &row.get::<_, String>(8)?,
+                    ),
+                    attestation_sig: row.get(9)?,
+                    timestamp: row.get(10)?,
+                    developer_id: row.get(11)?,
+                    session_id: row.get(12)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        Ok(records)
+    }
+
+    pub fn query_by_session(&self, session_id: &str) -> Result<Vec<ProvenanceRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, model_id, model_version, prompt_hash, code_hash, file_path,
+                    start_line, end_line, contributor_type, attestation_sig,
+                    timestamp, developer_id, session_id
+             FROM provenance_records
+             WHERE session_id = ?1
+             ORDER BY timestamp ASC",
+        )?;
+
+        let records = stmt
+            .query_map(params![session_id], |row| {
+                Ok(ProvenanceRecord {
+                    id: Some(row.get(0)?),
+                    model_id: row.get(1)?,
+                    model_version: row.get(2)?,
+                    prompt_hash: row.get(3)?,
+                    code_hash: row.get(4)?,
+                    file_path: row.get(5)?,
+                    start_line: row.get(6)?,
+                    end_line: row.get(7)?,
+                    contributor_type: ContributorType::from_str(
+                        &row.get::<_, String>(8)?,
+                    ),
+                    attestation_sig: row.get(9)?,
+                    timestamp: row.get(10)?,
+                    developer_id: row.get(11)?,
+                    session_id: row.get(12)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        Ok(records)
+    }
+
+    pub fn enrich_model_id(&self, session_id: &str, model_id: &str) -> Result<usize> {
+        let updated = self.conn.execute(
+            "UPDATE provenance_records SET model_id = ?1
+             WHERE session_id = ?2 AND model_id = 'unknown'",
+            params![model_id, session_id],
+        )?;
+        Ok(updated)
+    }
+
+    pub fn save_snapshot(&self, file_path: &str, content_hash: &str) -> Result<()> {
+        let timestamp = chrono::Utc::now().to_rfc3339();
+        self.conn.execute(
+            "INSERT OR REPLACE INTO provenance_snapshots (file_path, content_hash, timestamp)
+             VALUES (?1, ?2, ?3)",
+            params![file_path, content_hash, timestamp],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_snapshot(&self, file_path: &str) -> Result<Option<String>> {
+        let result = self.conn.query_row(
+            "SELECT content_hash FROM provenance_snapshots WHERE file_path = ?1",
+            params![file_path],
+            |row| row.get(0),
+        );
+        match result {
+            Ok(hash) => Ok(Some(hash)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    pub fn cleanup_old_records(&self) -> Result<usize> {
+        let cutoff = chrono::Utc::now() - chrono::Duration::days(RETENTION_DAYS);
+        let deleted = self.conn.execute(
+            "DELETE FROM provenance_records WHERE timestamp < ?1",
+            params![cutoff.to_rfc3339()],
+        )?;
+        Ok(deleted)
+    }
+
+    /// Query records with optional lower-bound timestamp, project path, and developer filters.
+    ///
+    /// `since_rfc3339` — inclusive lower bound (e.g. "2025-01-01T00:00:00+00:00"); `None` = all.
+    /// `project_filter` — substring match on `file_path`; `None` = no filter.
+    /// `dev_filter`     — exact match on `developer_id`; `None` = no filter.
+    pub fn query_range(
+        &self,
+        since_rfc3339: Option<&str>,
+        project_filter: Option<&str>,
+        dev_filter: Option<&str>,
+    ) -> Result<Vec<ProvenanceRecord>> {
+        // Build WHERE clauses dynamically to avoid parameter count mismatches.
+        let mut clauses: Vec<String> = Vec::new();
+        if since_rfc3339.is_some() {
+            clauses.push("timestamp >= ?1".to_string());
+        }
+        if project_filter.is_some() {
+            let idx = clauses.len() + 1;
+            clauses.push(format!("file_path LIKE ?{}", idx));
+        }
+        if dev_filter.is_some() {
+            let idx = clauses.len() + 1;
+            clauses.push(format!("developer_id = ?{}", idx));
+        }
+
+        let where_clause = if clauses.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", clauses.join(" AND "))
+        };
+
+        let sql = format!(
+            "SELECT id, model_id, model_version, prompt_hash, code_hash, file_path,
+                    start_line, end_line, contributor_type, attestation_sig,
+                    timestamp, developer_id, session_id
+             FROM provenance_records {} ORDER BY timestamp ASC",
+            where_clause
+        );
+
+        // Collect bound values in order.
+        let mut bound_strings: Vec<String> = Vec::new();
+        if let Some(since) = since_rfc3339 {
+            bound_strings.push(since.to_string());
+        }
+        if let Some(proj) = project_filter {
+            bound_strings.push(format!("%{}%", proj));
+        }
+        if let Some(dev) = dev_filter {
+            bound_strings.push(dev.to_string());
+        }
+
+        let mut stmt = self.conn.prepare(&sql)?;
+        let records = stmt
+            .query_map(
+                rusqlite::params_from_iter(bound_strings.iter()),
+                |row| {
+                    Ok(ProvenanceRecord {
+                        id: Some(row.get(0)?),
+                        model_id: row.get(1)?,
+                        model_version: row.get(2)?,
+                        prompt_hash: row.get(3)?,
+                        code_hash: row.get(4)?,
+                        file_path: row.get(5)?,
+                        start_line: row.get(6)?,
+                        end_line: row.get(7)?,
+                        contributor_type: ContributorType::from_str(&row.get::<_, String>(8)?),
+                        attestation_sig: row.get(9)?,
+                        timestamp: row.get(10)?,
+                        developer_id: row.get(11)?,
+                        session_id: row.get(12)?,
+                    })
+                },
+            )?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        Ok(records)
+    }
+}
+
+pub fn create_signed_record(
+    file_path: &str,
+    code_content: &[u8],
+    start_line: u32,
+    end_line: u32,
+    session_id: &str,
+) -> Result<ProvenanceRecord> {
+    let keypair = attestation::load_or_generate()
+        .context("failed to load attestation keypair")?;
+
+    let code_hash = content_hash::hash_content(code_content);
+    let timestamp = chrono::Utc::now().to_rfc3339();
+
+    let sign_payload = format!("{}:{}:{}", file_path, code_hash, timestamp);
+    let sig = keypair.sign(sign_payload.as_bytes());
+
+    Ok(ProvenanceRecord {
+        id: None,
+        model_id: "unknown".to_string(),
+        model_version: String::new(),
+        prompt_hash: String::new(),
+        code_hash,
+        file_path: file_path.to_string(),
+        start_line,
+        end_line,
+        contributor_type: ContributorType::Ai,
+        attestation_sig: sig,
+        timestamp,
+        developer_id: whoami(),
+        session_id: session_id.to_string(),
+    })
+}
+
+fn whoami() -> String {
+    std::env::var("USER")
+        .or_else(|_| std::env::var("USERNAME"))
+        .unwrap_or_else(|_| "unknown".to_string())
+}
+
+fn get_db_path() -> Result<PathBuf> {
+    if let Ok(custom_path) = std::env::var("RTK_PROVENANCE_DB") {
+        return Ok(PathBuf::from(custom_path));
+    }
+    let data_dir = dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("."));
+    Ok(data_dir.join(RTK_DATA_DIR).join(PROVENANCE_DB))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_store() -> (ProvenanceStore, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("test_provenance.db");
+        let store = ProvenanceStore::open(&db_path).unwrap();
+        (store, dir)
+    }
+
+    fn sample_record() -> ProvenanceRecord {
+        ProvenanceRecord {
+            id: None,
+            model_id: "claude-sonnet-4-20250514".to_string(),
+            model_version: "1.0".to_string(),
+            prompt_hash: "abc123".to_string(),
+            code_hash: "def456".to_string(),
+            file_path: "src/main.rs".to_string(),
+            start_line: 10,
+            end_line: 20,
+            contributor_type: ContributorType::Ai,
+            attestation_sig: "sig_hex".to_string(),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            developer_id: "test_user".to_string(),
+            session_id: "session_001".to_string(),
+        }
+    }
+
+    #[test]
+    fn record_and_query_by_file() {
+        let (store, _dir) = test_store();
+        let record = sample_record();
+        let id = store.record_provenance(&record).unwrap();
+        assert!(id > 0);
+
+        let results = store.query_by_file("src/main.rs").unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].model_id, "claude-sonnet-4-20250514");
+        assert_eq!(results[0].start_line, 10);
+    }
+
+    #[test]
+    fn query_by_session() {
+        let (store, _dir) = test_store();
+        let mut r1 = sample_record();
+        r1.session_id = "sess_a".to_string();
+        let mut r2 = sample_record();
+        r2.session_id = "sess_b".to_string();
+
+        store.record_provenance(&r1).unwrap();
+        store.record_provenance(&r2).unwrap();
+
+        let results = store.query_by_session("sess_a").unwrap();
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn enrich_model_id() {
+        let (store, _dir) = test_store();
+        let mut record = sample_record();
+        record.model_id = "unknown".to_string();
+        record.session_id = "sess_enrich".to_string();
+        store.record_provenance(&record).unwrap();
+
+        let updated = store
+            .enrich_model_id("sess_enrich", "claude-opus-4-20250514")
+            .unwrap();
+        assert_eq!(updated, 1);
+
+        let results = store.query_by_session("sess_enrich").unwrap();
+        assert_eq!(results[0].model_id, "claude-opus-4-20250514");
+    }
+
+    #[test]
+    fn snapshot_save_and_get() {
+        let (store, _dir) = test_store();
+        store.save_snapshot("src/lib.rs", "hash_abc").unwrap();
+        let hash = store.get_snapshot("src/lib.rs").unwrap();
+        assert_eq!(hash, Some("hash_abc".to_string()));
+    }
+
+    #[test]
+    fn snapshot_missing_returns_none() {
+        let (store, _dir) = test_store();
+        let hash = store.get_snapshot("nonexistent.rs").unwrap();
+        assert_eq!(hash, None);
+    }
+
+    #[test]
+    fn contributor_type_roundtrip() {
+        assert_eq!(ContributorType::from_str("ai"), ContributorType::Ai);
+        assert_eq!(ContributorType::from_str("human"), ContributorType::Human);
+        assert_eq!(ContributorType::from_str("mixed"), ContributorType::Mixed);
+        assert_eq!(ContributorType::from_str("junk"), ContributorType::Unknown);
+        assert_eq!(ContributorType::Ai.as_str(), "ai");
+    }
+}

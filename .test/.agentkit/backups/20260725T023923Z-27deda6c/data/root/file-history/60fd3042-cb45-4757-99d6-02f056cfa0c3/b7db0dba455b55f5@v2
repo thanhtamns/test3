@@ -1,0 +1,50 @@
+---
+status: completed
+created: 2026-05-15
+slug: fix-training-utilization-gap
+---
+
+# Fix Training Data Utilization Gap
+
+## Problem
+Training corpus has 27 MM, 22 RF, 17 DH, 10 ARCH but verdicts only cite 10 MM, 0 RF, 2 ARCH.
+Root cause: Step 3.5.0 legacy load (lines 329-336 of stage0-spec-detail.md) doesn't load:
+- `mental-models.json` (machine-readable, 27 models) — only loads `mental-models.md` (6 models)
+- `reflex-training-corpus.json` (22 red flags) — never loaded
+- `domain-heuristics/*.json` (17 heuristics) — never loaded
+
+Step 7 verdict template instructs citing "Knowledge fired" but only from cognitive-context JSON
+or legacy .md files — since RF/DH are never loaded, they can never be cited.
+
+## Fix (2 files, ~20 lines changed)
+
+### Phase 1: Wire missing files into Step 3.5.0 legacy load
+**File:** `D:/code/invesments/master_investments/.claude/commands/stage0-spec-detail.md`
+**Location:** Lines 329-336 (legacy load block)
+
+Add after line 335 (`for f in data/training/archetypes/*.json`):
+```bash
+cat data/training/mental-models.json
+cat data/training/reflex-training-corpus.json
+for f in data/training/domain-heuristics/*.json; do cat "$f"; done
+```
+
+### Phase 2: Update Step 7 citation template to include RF/DH
+**File:** Same file, Step 7 section (~line 800)
+
+Update the citation instruction to explicitly mention:
+- `RF-NNN` red flag citations (from reflex-training-corpus.json)
+- `DH-XX-NNN` domain heuristic citations (from domain-heuristics/*.json)
+- `MM-NN` from mental-models.json (not just .md)
+
+### Phase 3: Update INDEX.json stage0_integration
+**File:** `D:/code/invesments/master_investments/data/training/INDEX.json`
+Already done in this session — `reflex_pattern_reads` and `domain_heuristic_reads` updated.
+
+## Success Criteria
+- [ ] After fix, run a test stage0 analysis → verdict cites RF-NNN and DH-XX-NNN
+- [ ] measure-evolution-speed.py shows RF cited > 0 and DH loaded
+
+## Risk
+- LOW: Changes are additive (adding more files to existing load block)
+- Context window: loading 3 more JSON files adds ~5-10K tokens to agent prompts

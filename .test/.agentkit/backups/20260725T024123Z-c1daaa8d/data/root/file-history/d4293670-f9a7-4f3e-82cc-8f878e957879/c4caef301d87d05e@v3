@@ -1,0 +1,536 @@
+//! Budget governance policy engine for RTK Codeflow.
+//!
+//! Evaluates spending limits against accumulated cost data and returns
+//! Allow / Warn / Block verdicts for PreToolUse hook enforcement.
+//!
+//! Config load order:
+//!   1. `.codeflow/budget.toml`       (project-scoped)
+//!   2. `~/.config/codeflow/budget.toml`   (user-global)
+//!   3. Default: no limits (all Allow)
+
+use anyhow::Result;
+use std::path::PathBuf;
+
+use super::cost_store::CostStore;
+
+// ── Public types ──────────────────────────────────────────────────────────────
+
+/// Action to take when a limit is exceeded.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LimitAction {
+    Warn,
+    Block,
+}
+
+/// Scope for a budget limit.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PolicyScope {
+    Developer,
+    Project,
+    Team,
+}
+
+/// Budget accounting period.
+#[derive(Debug, Clone, PartialEq)]
+pub enum BudgetPeriod {
+    Monthly,
+    Weekly,
+    Daily,
+}
+
+/// A single limit rule loaded from TOML.
+#[derive(Debug, Clone)]
+pub struct PolicyLimit {
+    pub scope: PolicyScope,
+    /// Exact name or `"*"` wildcard.
+    pub id: String,
+    pub max_usd: f64,
+    pub action_on_exceed: LimitAction,
+}
+
+/// Global settings loaded from the `[global]` table.
+#[derive(Debug, Clone)]
+pub struct GlobalSettings {
+    pub period: BudgetPeriod,
+    /// Warn threshold as percentage (0–100).
+    pub warn_at_pct: f64,
+    /// Block threshold as percentage (0–100).
+    pub block_at_pct: f64,
+}
+
+impl Default for GlobalSettings {
+    fn default() -> Self {
+        Self {
+            period: BudgetPeriod::Monthly,
+            warn_at_pct: 75.0,
+            block_at_pct: 100.0,
+        }
+    }
+}
+
+/// Full policy configuration deserialized from TOML.
+#[derive(Debug, Clone)]
+pub struct PolicyConfig {
+    pub global: GlobalSettings,
+    pub limits: Vec<PolicyLimit>,
+}
+
+impl Default for PolicyConfig {
+    fn default() -> Self {
+        Self {
+            global: GlobalSettings::default(),
+            limits: vec![],
+        }
+    }
+}
+
+impl PolicyConfig {
+    /// Load config from the first found path, falling back to Default.
+    pub fn load() -> Self {
+        let candidates: Vec<PathBuf> = vec![
+            PathBuf::from(".codeflow/budget.toml"),
+            dirs::config_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join("codeflow")
+                .join("budget.toml"),
+        ];
+
+        for path in &candidates {
+            if let Ok(content) = std::fs::read_to_string(path) {
+                match parse_toml_config(&content) {
+                    Ok(cfg) => return cfg,
+                    Err(e) => {
+                        eprintln!("[codeflow budget] failed to parse {}: {}", path.display(), e);
+                    }
+                }
+            }
+        }
+
+        Self::default()
+    }
+}
+
+/// Verdict returned by the policy engine.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Verdict {
+    Allow,
+    Warn(String),
+    Block(String),
+}
+
+/// Policy evaluation engine. Holds config and evaluates against CostStore.
+pub struct PolicyEngine {
+    pub config: PolicyConfig,
+}
+
+impl PolicyEngine {
+    pub fn new(config: PolicyConfig) -> Self {
+        Self { config }
+    }
+
+    /// Evaluate all matching limits for the given context.
+    ///
+    /// Returns the worst verdict (Block > Warn > Allow).
+    pub fn evaluate(&self, cost_store: &CostStore, dev_id: &str, project: &str) -> Verdict {
+        if self.config.limits.is_empty() {
+            return Verdict::Allow;
+        }
+
+        let since = period_start(&self.config.global.period);
+        let g = &self.config.global;
+        let mut worst = Verdict::Allow;
+
+        for limit in &self.config.limits {
+            let spent = match &limit.scope {
+                PolicyScope::Developer => {
+                    let target = if limit.id == "*" { dev_id } else { &limit.id };
+                    cost_store
+                        .accumulated_cost_by_dev(target, &since)
+                        .unwrap_or(0.0)
+                }
+                PolicyScope::Project => {
+                    let target = if limit.id == "*" { project } else { &limit.id };
+                    cost_store
+                        .accumulated_cost_by_project(target, &since)
+                        .unwrap_or(0.0)
+                }
+                // Team scope: sum across all records in the period (team = global budget)
+                PolicyScope::Team => cost_store.total_cost_since(&since).unwrap_or(0.0),
+            };
+
+            let pct = if limit.max_usd > 0.0 {
+                (spent / limit.max_usd) * 100.0
+            } else {
+                0.0
+            };
+
+            // Determine verdict for this specific limit
+            let v = if pct >= g.block_at_pct && limit.action_on_exceed == LimitAction::Block {
+                Verdict::Block(format!(
+                    "Budget limit exceeded: {} '{}' spent ${:.4} / ${:.2} ({:.1}%)",
+                    scope_label(&limit.scope),
+                    limit.id,
+                    spent,
+                    limit.max_usd,
+                    pct
+                ))
+            } else if pct >= g.warn_at_pct {
+                Verdict::Warn(format!(
+                    "Budget warning: {} '{}' spent ${:.4} / ${:.2} ({:.1}%)",
+                    scope_label(&limit.scope),
+                    limit.id,
+                    spent,
+                    limit.max_usd,
+                    pct
+                ))
+            } else {
+                Verdict::Allow
+            };
+
+            worst = worst_verdict(worst, v);
+        }
+
+        worst
+    }
+}
+
+// ── Period calculation ────────────────────────────────────────────────────────
+
+/// Return the RFC3339 timestamp of the start of the current period.
+pub fn period_start(period: &BudgetPeriod) -> String {
+    use chrono::{Datelike, TimeZone, Utc};
+    let now = Utc::now();
+    let dt = match period {
+        BudgetPeriod::Daily => {
+            Utc.with_ymd_and_hms(now.year(), now.month(), now.day(), 0, 0, 0)
+                .single()
+                .unwrap_or(now)
+        }
+        BudgetPeriod::Weekly => {
+            let weekday_num = now.weekday().num_days_from_monday() as i64;
+            let monday = (now - chrono::Duration::days(weekday_num))
+                .date_naive()
+                .and_hms_opt(0, 0, 0)
+                .unwrap();
+            Utc.from_utc_datetime(&monday)
+        }
+        BudgetPeriod::Monthly => {
+            Utc.with_ymd_and_hms(now.year(), now.month(), 1, 0, 0, 0)
+                .single()
+                .unwrap_or(now)
+        }
+    };
+    dt.to_rfc3339()
+}
+
+// ── TOML parsing ──────────────────────────────────────────────────────────────
+
+fn parse_toml_config(content: &str) -> Result<PolicyConfig> {
+    let doc: toml::Value = toml::from_str(content)?;
+
+    let global = parse_global(&doc);
+    let limits = parse_limits(&doc)?;
+
+    Ok(PolicyConfig { global, limits })
+}
+
+fn parse_global(doc: &toml::Value) -> GlobalSettings {
+    let mut settings = GlobalSettings::default();
+
+    let Some(g) = doc.get("global") else {
+        return settings;
+    };
+
+    if let Some(p) = g.get("period").and_then(|v| v.as_str()) {
+        settings.period = match p {
+            "weekly" => BudgetPeriod::Weekly,
+            "daily" => BudgetPeriod::Daily,
+            _ => BudgetPeriod::Monthly,
+        };
+    }
+    if let Some(w) = g.get("warn_at_pct").and_then(|v| v.as_float()) {
+        settings.warn_at_pct = w;
+    } else if let Some(w) = g.get("warn_at_pct").and_then(|v| v.as_integer()) {
+        settings.warn_at_pct = w as f64;
+    }
+    if let Some(b) = g.get("block_at_pct").and_then(|v| v.as_float()) {
+        settings.block_at_pct = b;
+    } else if let Some(b) = g.get("block_at_pct").and_then(|v| v.as_integer()) {
+        settings.block_at_pct = b as f64;
+    }
+
+    settings
+}
+
+fn parse_limits(doc: &toml::Value) -> Result<Vec<PolicyLimit>> {
+    let arr = match doc.get("limits").and_then(|v| v.as_array()) {
+        Some(a) => a,
+        None => return Ok(vec![]),
+    };
+
+    let mut limits = Vec::with_capacity(arr.len());
+    for item in arr {
+        let scope_str = item
+            .get("scope")
+            .and_then(|v| v.as_str())
+            .unwrap_or("developer");
+        let scope = match scope_str {
+            "project" => PolicyScope::Project,
+            "team" => PolicyScope::Team,
+            _ => PolicyScope::Developer,
+        };
+
+        let id = item
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("*")
+            .to_string();
+
+        let max_usd = item
+            .get("max_usd")
+            .and_then(|v| v.as_float())
+            .or_else(|| {
+                item.get("max_usd")
+                    .and_then(|v| v.as_integer())
+                    .map(|i| i as f64)
+            })
+            .unwrap_or(0.0);
+
+        let action_str = item
+            .get("action_on_exceed")
+            .and_then(|v| v.as_str())
+            .unwrap_or("warn");
+        let action_on_exceed = if action_str == "block" {
+            LimitAction::Block
+        } else {
+            LimitAction::Warn
+        };
+
+        limits.push(PolicyLimit {
+            scope,
+            id,
+            max_usd,
+            action_on_exceed,
+        });
+    }
+    Ok(limits)
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+fn scope_label(scope: &PolicyScope) -> &'static str {
+    match scope {
+        PolicyScope::Developer => "developer",
+        PolicyScope::Project => "project",
+        PolicyScope::Team => "team",
+    }
+}
+
+/// Return the more severe of two verdicts (Block > Warn > Allow).
+fn worst_verdict(a: Verdict, b: Verdict) -> Verdict {
+    match (&a, &b) {
+        (Verdict::Block(_), _) => a,
+        (_, Verdict::Block(_)) => b,
+        (Verdict::Warn(_), _) => a,
+        (_, Verdict::Warn(_)) => b,
+        _ => Verdict::Allow,
+    }
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_store_with_records(records: &[(&str, &str, f64)]) -> (CostStore, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("test_cost.db");
+        let store = CostStore::open(&db_path).unwrap();
+
+        let now = chrono::Utc::now().to_rfc3339();
+        for (dev, project, cost) in records {
+            let record = crate::core::cost_store::CostRecord {
+                id: None,
+                session_id: "sess".to_string(),
+                model_id: "claude-sonnet-4-20250514".to_string(),
+                input_tokens: 1000,
+                output_tokens: 500,
+                cache_read_tokens: 0,
+                cache_write_tokens: 0,
+                cost_usd: *cost,
+                pr_ref: None,
+                feature_tag: None,
+                project_path: project.to_string(),
+                developer_id: dev.to_string(),
+                timestamp: now.clone(),
+            };
+            store.record_cost(&record).unwrap();
+        }
+
+        (store, dir)
+    }
+
+    #[test]
+    fn parse_valid_config() {
+        let toml = r#"
+[global]
+period = "monthly"
+warn_at_pct = 75
+block_at_pct = 100
+
+[[limits]]
+scope = "developer"
+id = "*"
+max_usd = 500.0
+action_on_exceed = "warn"
+
+[[limits]]
+scope = "team"
+id = "platform"
+max_usd = 10000.0
+action_on_exceed = "block"
+"#;
+        let cfg = parse_toml_config(toml).unwrap();
+        assert_eq!(cfg.global.period, BudgetPeriod::Monthly);
+        assert!((cfg.global.warn_at_pct - 75.0).abs() < f64::EPSILON);
+        assert_eq!(cfg.limits.len(), 2);
+        assert_eq!(cfg.limits[0].scope, PolicyScope::Developer);
+        assert_eq!(cfg.limits[0].id, "*");
+        assert_eq!(cfg.limits[1].scope, PolicyScope::Team);
+        assert_eq!(cfg.limits[1].action_on_exceed, LimitAction::Block);
+    }
+
+    #[test]
+    fn default_config_has_no_limits() {
+        let cfg = PolicyConfig::default();
+        assert!(cfg.limits.is_empty());
+        assert_eq!(cfg.global.period, BudgetPeriod::Monthly);
+    }
+
+    #[test]
+    fn allow_when_no_limits_configured() {
+        let (store, _dir) = make_store_with_records(&[("alice", "/proj/a", 100.0)]);
+        let engine = PolicyEngine::new(PolicyConfig::default());
+        let verdict = engine.evaluate(&store, "alice", "/proj/a");
+        assert_eq!(verdict, Verdict::Allow);
+    }
+
+    #[test]
+    fn allow_when_under_warn_threshold() {
+        let (store, _dir) = make_store_with_records(&[("alice", "/proj/a", 10.0)]);
+        let config = PolicyConfig {
+            global: GlobalSettings {
+                period: BudgetPeriod::Monthly,
+                warn_at_pct: 75.0,
+                block_at_pct: 100.0,
+            },
+            limits: vec![PolicyLimit {
+                scope: PolicyScope::Developer,
+                id: "alice".to_string(),
+                max_usd: 500.0,
+                action_on_exceed: LimitAction::Warn,
+            }],
+        };
+        let engine = PolicyEngine::new(config);
+        let verdict = engine.evaluate(&store, "alice", "/proj/a");
+        assert_eq!(verdict, Verdict::Allow);
+    }
+
+    #[test]
+    fn warn_verdict_at_warn_threshold() {
+        // 400 / 500 = 80% >= warn_at_pct 75%
+        let (store, _dir) = make_store_with_records(&[("alice", "/proj/a", 400.0)]);
+        let config = PolicyConfig {
+            global: GlobalSettings {
+                period: BudgetPeriod::Monthly,
+                warn_at_pct: 75.0,
+                block_at_pct: 100.0,
+            },
+            limits: vec![PolicyLimit {
+                scope: PolicyScope::Developer,
+                id: "alice".to_string(),
+                max_usd: 500.0,
+                action_on_exceed: LimitAction::Warn,
+            }],
+        };
+        let engine = PolicyEngine::new(config);
+        let verdict = engine.evaluate(&store, "alice", "/proj/a");
+        assert!(matches!(verdict, Verdict::Warn(_)));
+    }
+
+    #[test]
+    fn block_verdict_at_block_threshold() {
+        // 500 / 500 = 100% >= block_at_pct 100%
+        let (store, _dir) = make_store_with_records(&[("alice", "/proj/a", 500.0)]);
+        let config = PolicyConfig {
+            global: GlobalSettings {
+                period: BudgetPeriod::Monthly,
+                warn_at_pct: 75.0,
+                block_at_pct: 100.0,
+            },
+            limits: vec![PolicyLimit {
+                scope: PolicyScope::Developer,
+                id: "alice".to_string(),
+                max_usd: 500.0,
+                action_on_exceed: LimitAction::Block,
+            }],
+        };
+        let engine = PolicyEngine::new(config);
+        let verdict = engine.evaluate(&store, "alice", "/proj/a");
+        assert!(matches!(verdict, Verdict::Block(_)));
+    }
+
+    #[test]
+    fn wildcard_matches_all_developers() {
+        // Wildcard "*" should match any dev_id passed to evaluate
+        let (store, _dir) = make_store_with_records(&[("bob", "/proj/b", 450.0)]);
+        let config = PolicyConfig {
+            global: GlobalSettings {
+                period: BudgetPeriod::Monthly,
+                warn_at_pct: 75.0,
+                block_at_pct: 100.0,
+            },
+            limits: vec![PolicyLimit {
+                scope: PolicyScope::Developer,
+                id: "*".to_string(), // wildcard
+                max_usd: 500.0,
+                action_on_exceed: LimitAction::Warn,
+            }],
+        };
+        let engine = PolicyEngine::new(config);
+        // evaluate uses dev_id="bob" because id="*" resolves to dev_id
+        let verdict = engine.evaluate(&store, "bob", "/proj/b");
+        // 450/500 = 90% > 75% warn threshold
+        assert!(matches!(verdict, Verdict::Warn(_)));
+    }
+
+    #[test]
+    fn fail_open_on_missing_config_file() {
+        // Missing file → Default config → no limits → Allow
+        let cfg = PolicyConfig::default();
+        let (store, _dir) = make_store_with_records(&[("alice", "/proj", 999.0)]);
+        let engine = PolicyEngine::new(cfg);
+        assert_eq!(engine.evaluate(&store, "alice", "/proj"), Verdict::Allow);
+    }
+
+    #[test]
+    fn block_beats_warn_in_worst_verdict() {
+        let a = Verdict::Warn("w".to_string());
+        let b = Verdict::Block("b".to_string());
+        assert!(matches!(worst_verdict(a.clone(), b.clone()), Verdict::Block(_)));
+        assert!(matches!(worst_verdict(b, a), Verdict::Block(_)));
+    }
+
+    #[test]
+    fn period_start_returns_valid_rfc3339() {
+        for period in &[BudgetPeriod::Monthly, BudgetPeriod::Weekly, BudgetPeriod::Daily] {
+            let s = period_start(period);
+            assert!(
+                chrono::DateTime::parse_from_rfc3339(&s).is_ok(),
+                "period_start returned invalid RFC3339: {}",
+                s
+            );
+        }
+    }
+}

@@ -1,0 +1,72 @@
+---
+title: "Stage0 Capital Deployment Paradigm Shift (v25.5)"
+description: "Rewrite stage0 from labor-thinking (find jobs) to capital-thinking (deploy dollars into micro-assets). Affects classifier, DQ generator, Mountain Test, quality scorer, stage0 spec, checklist."
+status: pending
+priority: P1
+branch: "master"
+tags: [stage0, paradigm-shift, capital-thinking, v25.5]
+blockedBy: [260518-1500-stage0-leverage-first-scoring-redesign]
+blocks: []
+created: "2026-05-18T10:52:49.513Z"
+createdBy: "ck:plan"
+source: skill
+---
+
+# Stage0 Capital Deployment Paradigm Shift (v25.5)
+
+## Overview
+
+Stage0 thinks in LABOR: "What should founder DO to earn money?" All 12 models from the $0-500 breadth run are labor-first (visit factories, translate, consult). Even after leverage scoring (v24), agents still SEARCH for jobs because:
+- `capital-path-classifier.py` TIER_0 hardcodes `no_product_dev: True`, `cash_first: True`
+- DQ generator asks `FIRST_500`, `TIME_TO_CASH` — labor questions
+- Mountain Test measures leverage AFTER the fact, doesn't filter BEFORE
+- Quality scorer rewards "mentions leverage" not "models ARE leverage"
+
+**New paradigm:** "Where should $X be DEPLOYED to multiply without founder time?"
+- Every dollar is a soldier — deployed, not spent
+- Sleep Test is FIRST FILTER, not last measurement
+- ROI per dollar, not $/month
+- Micro-asset portfolio: 5x$100 bets, 30-day kill, survivors get re-allocated
+- Agents find ASSETS not JOBS
+
+**Brainstorm:** `plans/reports/brainstorm-260518-1600-stage0-capital-deployment-paradigm-shift.md`
+**Target repo:** `D:\code\invesments\master_investments` (NOT _mmo)
+
+## Phases
+
+| Phase | Name | Status | Effort | Dependencies |
+|-------|------|--------|--------|--------------|
+| 1 | [Capital-Path Classifier Rewrite](./phase-01-capital-path-classifier-rewrite.md) | Pending | 3h | None |
+| 2 | [DQ Generator Capital Questions](./phase-02-dq-generator-capital-questions.md) | Pending | 2h | None |
+| 3 | [Mountain Test v25](./phase-03-mountain-test-v25.md) | Pending | 2h | None |
+| 4 | [Quality Score ROI Dimension](./phase-04-quality-score-roi-dimension.md) | Pending | 2h | None |
+| 5 | [Stage0 Spec Asset Scanner Pipeline](./phase-05-stage0-spec-asset-scanner-pipeline.md) | Pending | 4h | Phase 3 |
+| 6 | [Stage0 Checklist v25.5 Alignment](./phase-06-stage0-checklist-v25-5-alignment.md) | Pending | 1.5h | Phase 1-5 |
+| 7 | [Tests and Validation](./phase-07-tests-and-validation.md) | Pending | 3h | Phase 1-5 |
+
+**Total estimated effort:** ~17.5h
+**Phases 1-4 are independent — can run in parallel.**
+
+## Success Criteria
+
+1. `/stage0 "$500 deploy"` TIER_0 → 0 labor-only models in output. All models have ROI% metric
+2. Sleep Test (Q4) is Phase 1 filter in pipeline — not Phase 6 measurement
+3. Every model has: deploy_cost, roi_pct, payback_days, founder_hours_post_setup
+4. Portfolio construction with 30-day kill criteria per asset
+5. Quality scorer measures ROI calculation quality, not "mentions leverage"
+6. Backward compat: old case JSONs still parseable (leverage fields optional, default null)
+
+## Risks
+
+| Risk | Impact | Mitigation |
+|------|--------|-----------|
+| Paradigm rewrite in 2500-line stage0.md | HIGH: easy to break existing flow | Phase 5 scoped to specific sections only |
+| $500 capital can be lost in 30 days | MEDIUM: 3/5 micro-assets will die | Portfolio design expects death — kill criteria + reallocation |
+| Research agents must search DIFFERENTLY | HIGH: WebSearch queries change | New search templates in stage0 spec, not hardcoded in scripts |
+| Backward compat with existing 225-line case JSONs | MEDIUM | All new fields optional with null defaults |
+| TIER_0 CASHFLOW_SEED subtrack still labor-first | HIGH: defeats purpose | Remove `no_product_dev: True`, replace with `deploy_allocation` |
+
+## Dependencies
+
+- **Depends on:** `260518-1500-stage0-leverage-first-scoring-redesign` (completed) — leverage scoring already in place
+- **Depends on:** `260518-stage0-leverage-entry-routing-redesign` (completed) — dual-axis routing exists

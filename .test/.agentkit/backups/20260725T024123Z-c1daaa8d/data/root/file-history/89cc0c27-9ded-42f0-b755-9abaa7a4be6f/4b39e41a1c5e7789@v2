@@ -1,0 +1,171 @@
+---
+phase: 7
+title: "Fix Plans + Integration Test + Demo"
+status: complete
+priority: P2
+effort: "2d"
+dependencies: [1, 2, 3, 4, 5, 6]
+---
+
+# Phase 7: Fix Plans + Integration Test + Demo
+
+## Overview
+
+Correct false plan statuses. Run E2E integration test across all layers (CLI → Cloud → Dashboard). Write demo script with 10 verification steps proving every gap is closed.
+
+## Requirements
+
+- Functional: all plan frontmatter reflects reality, E2E test covers full data flow, demo script executable step-by-step
+- Non-functional: demo completable in <30 minutes, all manual tests reproducible
+
+## Related Code Files
+
+- Modify: `D:\code\codeflow\plans\260603-7phase-provenance-cost-quality-compliance\phase-04-*.md` — fix status
+- Modify: `D:\code\codeflow\plans\260603-7phase-provenance-cost-quality-compliance\phase-05-*.md` — fix status
+- Modify: `D:\code\codeflow\plans\260603-7phase-provenance-cost-quality-compliance\phase-06-*.md` — fix status
+- Modify: `D:\code\codeflow\plans\260603-7phase-provenance-cost-quality-compliance\phase-07-*.md` — fix status
+- Modify: `D:\code\codeflow\plans\260603-7phase-provenance-cost-quality-compliance\plan.md` — fix phase table
+- Create: `D:\code\codeflow\tests\e2e_integration.sh` — E2E test script
+- Create: `D:\code\codeflow\docs\demo-script.md` — step-by-step demo
+
+## Implementation Steps
+
+### Step 1: Fix plan statuses
+
+1. Read each phase-*.md in `260603-7phase-provenance-cost-quality-compliance/`
+2. Update frontmatter to match post-implementation reality:
+   - Phase 1: `status: complete` (after Phase 1 of this plan ships)
+   - Phase 2: `status: complete` (after this plan's Phase 1)
+   - Phase 3: `status: complete` (after this plan's Phase 1)
+   - Phase 4: `status: complete` (after this plan's Phase 2)
+   - Phase 5: `status: complete` (after this plan's Phase 3+4)
+   - Phase 6: `status: complete` (after this plan's Phase 5+6)
+   - Phase 7: `status: complete` (after this plan's Phase 7)
+3. Update plan.md phase table to match
+
+### Step 2: E2E integration test script
+
+4. Create `tests/e2e_integration.sh`:
+    ```bash
+    #!/bin/bash
+    set -euo pipefail
+    echo "=== CODEFLOW E2E Integration Test ==="
+
+    # 1. CLI: blame shows model_id
+    echo "--- Test 1: blame model_id ---"
+    export CLAUDE_MODEL="claude-opus-4-test"
+    # (trigger a provenance capture, then blame)
+    codeflow blame some_file.rs --json | jq '.records[0].model_id' | grep -q "claude-opus-4-test"
+
+    # 2. CLI: gate detects hallucinated dep
+    echo "--- Test 2: gate blocks hallucinated dep ---"
+    echo 'import nonexistent_hallucinated_pkg_xyz' > /tmp/test_gate.py
+    codeflow gate /tmp/test_gate.py && exit 1 || echo "PASS: gate blocked"
+
+    # 3. CLI: audit produces SLSA
+    echo "--- Test 3: audit SLSA ---"
+    codeflow audit --format slsa --range 90d
+    jq '._type' ./codeflow-audit/*/slsa.json | grep -q "in-toto.io"
+
+    # 4. CLI: export HTML
+    echo "--- Test 4: export HTML ---"
+    codeflow export --format html
+    grep -q "Chart.js" ./codeflow-export/*.html
+
+    # 5. CLI: budget team scope
+    echo "--- Test 5: budget team scope ---"
+    codeflow budget status --json | jq '.policies[] | select(.scope=="team")'
+
+    # 6. Cloud: ingest provenance event
+    echo "--- Test 6: cloud ingest ---"
+    curl -s -X POST http://localhost:8090/v1/events -d '...' | jq '.accepted'
+
+    # 7. Cloud: cost-by-PR endpoint
+    echo "--- Test 7: cost by PR ---"
+    curl -s http://localhost:8090/v1/cost/by-pr | jq '.data | length'
+
+    # 8. Dashboard: new pages exist
+    echo "--- Test 8: dashboard pages ---"
+    curl -s http://localhost:3000/cost | grep -q "Cost Analytics"
+    curl -s http://localhost:3000/provenance | grep -q "Provenance"
+    curl -s http://localhost:3000/quality | grep -q "Quality"
+
+    echo "=== ALL TESTS PASSED ==="
+    ```
+
+### Step 3: Demo script document
+
+5. Create `docs/demo-script.md` with 10 verification steps:
+
+    ```markdown
+    # CODEFLOW Demo Script — 10 Steps
+
+    ## Prerequisites
+    - Docker compose up (cloud + ClickHouse + dashboard)
+    - codeflow CLI installed
+
+    ## Step 1: Show AI Attribution (blame)
+    codeflow blame src/main.rs
+    → Shows line-level attribution with model_id (not "unknown")
+
+    ## Step 2: Show Cost Tracking (cost)
+    codeflow cost --by pr
+    → Shows cost per PR with model breakdown
+
+    ## Step 3: Show Budget Governance (budget)
+    codeflow budget status
+    → Shows spend vs limit for dev/project/team scopes
+
+    ## Step 4: Show Model Routing (route)
+    codeflow route "complex refactoring task" --tokens 50000
+    → Shows tier recommendation, changes under budget pressure
+
+    ## Step 5: Show Quality Gate (gate)
+    codeflow gate src/
+    → Scans for hallucinated deps, vulnerabilities, license issues
+
+    ## Step 6: Show Compliance Export (audit)
+    codeflow audit --format slsa --range 30d
+    → Produces SLSA attestation bundle
+
+    ## Step 7: Show Local Dashboard (export)
+    codeflow export --format html
+    → Opens self-contained HTML with charts
+
+    ## Step 8: Show Cloud Dashboard (browser)
+    open http://localhost:3000
+    → Navigate: Cost → Provenance → Budget → Quality → Compliance
+
+    ## Step 9: Show CI/CD Integration
+    codeflow gate --ci src/ ; echo "Exit code: $?"
+    → Exit 0 (pass) or 1 (blocked)
+
+    ## Step 10: Show Agent Trace Export
+    codeflow blame src/main.rs --trace
+    → Outputs Agent Trace v0.1.0 JSON (Cursor/Devin compatible)
+    ```
+
+### Step 4: Final verification
+
+6. Run `cargo test` in cli/ — all pass
+7. Run `go test ./...` in cloud/ — all pass
+8. Run `npm run build` in dashboard/ — clean build
+9. Run `tests/e2e_integration.sh` — all 8 checks pass
+10. Walk through demo-script.md manually — all 10 steps produce expected output
+
+## Success Criteria
+
+- [ ] All 7 phase frontmatter statuses match reality
+- [ ] plan.md phase table reflects correct statuses
+- [ ] E2E test script runs end-to-end without failures
+- [ ] Demo script is executable and produces expected output at each step
+- [ ] `cargo test` + `go test` + `npm run build` all pass
+- [ ] No regression from Phase 1-6 changes
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|---|---|
+| E2E test needs Docker + ClickHouse running | Document prerequisites. Provide docker-compose.yml. |
+| Demo depends on seeded data | Include seed step in demo script. Provide sample data fixtures. |
+| Plan status updates conflict with ongoing work | Update statuses AFTER all implementation phases complete. |

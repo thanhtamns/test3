@@ -1,0 +1,73 @@
+---
+phase: 4
+title: "Decision Question Generator"
+status: pending
+priority: P2
+effort: "1h"
+dependencies: []
+---
+
+# Phase 4: Decision Question Generator
+
+## Overview
+
+Add LEVERAGE as 7th mandatory question type in `tier-adjusted-dq-generator.py` and wire into `stage0.md` Step 2.65.
+
+## Related Code Files
+
+- Modify: `D:\code\invesments\master_investments\.claude\skills\business\transaction-layer\nui-hunter\scripts\tier-adjusted-dq-generator.py`
+- Modify: `D:\code\invesments\master_investments\.claude\commands\stage0.md` (Step 2.65)
+
+## Implementation Steps
+
+### tier-adjusted-dq-generator.py
+
+1. Add LEVERAGE question template to question templates dict:
+
+```python
+"LEVERAGE": {
+    "question": "Sau 12 thang ban SO HUU cai gi ban duoc ma khong can ban?",
+    "english": "After 12 months, what do you OWN that can be sold without you?",
+    "probes": [
+        "Is revenue recurring or does it stop when you stop?",
+        "What transferable asset exists at month 12?",
+        "If you sold the business, what would the buyer be buying?",
+        "Does this scale without adding your hours?"
+    ],
+    "kill_signal": "If answer is 'nothing' or 'my reputation/relationships' -> model is a job"
+}
+```
+
+2. Add `"LEVERAGE"` to mandatory types for TIER_2+ standard path:
+```python
+"WINNER", "KILL", "CUSTOMER", "ECONOMICS", "MOAT", "LEVERAGE"
+```
+
+3. For TIER_0 and TIER_1 (capital-path routing), add LEVERAGE to existing question sets.
+
+### stage0.md Step 2.65
+
+4. Update mandatory types count (line ~632):
+```
+All 6 mandatory types MUST appear: WINNER, KILL, CUSTOMER, ECONOMICS, MOAT, LEVERAGE.
+```
+
+5. Add LEVERAGE row to question type table (after MOAT):
+```
+| LEVERAGE | After 12 months, what do you OWN without you? |
+```
+
+6. Update Task prompt template to reference 6 types.
+
+## Success Criteria
+
+- [ ] LEVERAGE question type in `tier-adjusted-dq-generator.py`
+- [ ] LEVERAGE in mandatory types for all tiers
+- [ ] `stage0.md` Step 2.65 shows 6 mandatory types
+- [ ] Question type table includes LEVERAGE row
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|------|-----------|
+| Breaking existing DQ generation | Additive only — 5 existing types unchanged |

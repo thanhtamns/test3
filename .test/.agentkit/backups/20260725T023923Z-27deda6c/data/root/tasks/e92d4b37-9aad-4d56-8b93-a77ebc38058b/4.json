@@ -1,0 +1,20 @@
+{
+  "id": "4",
+  "subject": "Phase 2: File Read Dedup (Read/Grep/Glob Hooks)",
+  "description": "Create ReadDedup module, intercept Read/Grep/Glob in PreToolUse, check session log + mtime, return additionalContext on hit, log results in PostToolUse, track as SavingsLayer::ReadDedup.",
+  "activeForm": "Implementing File Read Dedup",
+  "status": "pending",
+  "blocks": [
+    "6"
+  ],
+  "blockedBy": [
+    "3"
+  ],
+  "metadata": {
+    "phase": 2,
+    "priority": "P1",
+    "effort": "3d",
+    "planDir": "plans/260604-codeflow-differentiation-mvp",
+    "phaseFile": "phase-02-file-read-dedup-read-grep-glob-hooks.md"
+  }
+}

@@ -1,0 +1,71 @@
+-- Pillar tables for provenance, cost, governance, and quality events.
+-- Additive-only: does not modify existing tables.
+
+CREATE TABLE IF NOT EXISTS codeflow.provenance_events (
+    tenant_id    String,
+    timestamp    DateTime64(3),
+    session_id   String,
+    project_dir  String,
+    machine_id   String,
+    file_path    String,
+    code_hash    String,
+    model_id     String,
+    model_version String,
+    contributor_type String,
+    start_line   UInt32,
+    end_line     UInt32,
+    attestation_sig String,
+    developer_id String,
+    prompt_hash  String,
+    cli_version  String
+) ENGINE = MergeTree()
+ORDER BY (tenant_id, project_dir, timestamp);
+
+CREATE TABLE IF NOT EXISTS codeflow.cost_events (
+    tenant_id    String,
+    timestamp    DateTime64(3),
+    session_id   String,
+    project_dir  String,
+    machine_id   String,
+    model_id     String,
+    input_tokens UInt64,
+    output_tokens UInt64,
+    cache_read_tokens UInt64,
+    cache_write_tokens UInt64,
+    cost_usd     Float64,
+    pr_ref       String,
+    feature_tag  String,
+    developer_id String,
+    cli_version  String
+) ENGINE = MergeTree()
+ORDER BY (tenant_id, project_dir, timestamp);
+
+CREATE TABLE IF NOT EXISTS codeflow.governance_events (
+    tenant_id    String,
+    timestamp    DateTime64(3),
+    session_id   String,
+    project_dir  String,
+    policy_id    String,
+    scope        String,
+    action       String,
+    budget_limit Float64,
+    budget_spent Float64,
+    developer_id String,
+    cli_version  String
+) ENGINE = MergeTree()
+ORDER BY (tenant_id, project_dir, timestamp);
+
+CREATE TABLE IF NOT EXISTS codeflow.quality_events (
+    tenant_id    String,
+    timestamp    DateTime64(3),
+    session_id   String,
+    project_dir  String,
+    check_type   String,
+    severity     String,
+    finding      String,
+    file_path    String,
+    line_number  UInt32,
+    blocked      UInt8,
+    cli_version  String
+) ENGINE = MergeTree()
+ORDER BY (tenant_id, project_dir, timestamp);

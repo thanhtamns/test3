@@ -1,0 +1,91 @@
+---
+phase: 4
+title: Integration and Pipeline Rewire
+status: completed
+priority: P1
+effort: 2d
+dependencies:
+  - 1
+  - 2
+  - 3
+---
+
+# Phase 4: Integration and Pipeline Rewire
+
+## Overview
+Wire all 3 layers together into a single pipeline flow. Modify V16 SKILL.md to insert new steps. Create orchestration script that runs full empire pipeline end-to-end.
+
+## Requirements
+- Functional: Single command runs full pipeline (signal → filter → staircase → verdict)
+- Non-functional: Backward compatible — V16 still works standalone if empire layer disabled
+
+## Architecture
+
+```
+/hunt (new empire mode)
+  ↓
+Layer 1: pain-signal-miner + platform-shift-detector + V16 archetype scanners
+  ↓
+founder-edge-matcher (filter by founder profile)
+  ↓
+Layer 2: compound-filter (5-year test) + timing-scorer
+  ↓
+V16 deep-reasoner (existing, unchanged)
+  ↓
+Layer 3: staircase-enforcer (block if below stair)
+  ↓
+Empire Verdict: GO_EMPIRE / GO_BRIDGE / KILL
+  ↓
+compound-dashboard update
+```
+
+## Related Code Files
+
+**Create (in master_investments):**
+- `.claude/skills/business/empire-trajectory/scripts/empire-pipeline-runner.py` — orchestrator
+
+**Modify (in master_investments):**
+- `.claude/skills/business/transaction-layer/SKILL.md` — add empire mode steps
+- `.claude/skills/business/deep-intelligence/SKILL.md` — reference empire pipeline
+
+## Implementation Steps
+
+1. Create `empire-pipeline-runner.py`:
+   - CLI: `python empire-pipeline-runner.py --mode empire` (default) or `--mode v16` (legacy)
+   - Empire mode flow:
+     a. Run pain-signal-miner + platform-shift-detector (parallel via subprocess)
+     b. Run founder-edge-matcher on combined signals
+     c. Run compound-filter on matched signals
+     d. For PASS signals: invoke V16 deep-reasoner (existing agent)
+     e. Run staircase-enforcer on results
+     f. Output: `{empire_verdicts: [{name, verdict, compound_score, timing_score, stair_allowed, reasons}]}`
+   - Save results to `data/empire/pipeline-runs/run-YYYY-MM-DD-HHMM.json`
+
+2. Update transaction-layer SKILL.md:
+   - Add "Empire Mode" section documenting new pipeline
+   - Keep V16 mode as default, empire mode as opt-in
+   - Document: `--mode empire` flag for empire pipeline
+
+3. Create verdict taxonomy:
+   - `GO_EMPIRE` — compound score ≥3, timing ≥6, staircase allowed, deep-reasoner positive
+   - `GO_BRIDGE` — compound score 2 (DOWNGRADE), staircase allows (Stair 0-1), good for cash bridge
+   - `KILL` — compound score ≤1, or staircase blocks, or deep-reasoner negative
+
+4. Wire ground truth capture:
+   - After verdict: prompt to record decision via ground-truth-cli.py
+   - After 30 days: prompt to record outcome
+   - Feed outcome into compound-dashboard for learning
+
+5. Test end-to-end: run empire pipeline with 3 mock opportunities (SaaS, freelance, template)
+
+## Success Criteria
+- [ ] empire-pipeline-runner.py runs full pipeline end-to-end
+- [ ] V16 legacy mode still works unchanged
+- [ ] Verdicts correctly classified (GO_EMPIRE, GO_BRIDGE, KILL)
+- [ ] Results saved to pipeline-runs directory
+- [ ] Ground truth capture wired at end of pipeline
+- [ ] 3 mock opportunities produce correct verdicts
+
+## Risk Assessment
+- Risk: Pipeline too slow (many scripts) → Mitigation: parallel execution for signal collectors
+- Risk: Breaking V16 → Mitigation: empire mode is separate flag, V16 default unchanged

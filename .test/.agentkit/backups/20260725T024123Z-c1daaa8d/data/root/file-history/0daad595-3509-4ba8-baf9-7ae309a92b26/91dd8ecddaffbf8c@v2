@@ -1,0 +1,192 @@
+# CODEFLOW Spec-vs-Reality Audit Report
+
+**Date:** 2026-06-08
+**Spec:** `brainstorm-final-260606.md` (574 lines, 4 pillars, 6 phases)
+**Codebase:** `D:\code\codeflow` (CLI Rust + Cloud Go + Dashboard Next.js)
+**Method:** 4 parallel source-reading agents + manual CLI testing + grep verification
+
+---
+
+## EXECUTIVE VERDICT
+
+**The CLI local layer is 60-70% implemented. The cloud + dashboard layer is 0% implemented for the new pillars. The system is a working token-compression/dedup tool with provenance and cost foundations bolted on locally — but NONE of the 4-pillar intelligence reaches the cloud or dashboard.**
+
+| Layer | Spec Coverage | Reality |
+|-------|:---:|---|
+| CLI (Rust) | ~65% | Provenance capture, cost tracking, budget policies, blame, pricing — all local-only |
+| Proto schema | ~50% | CLI proto has all event types; cloud proto stuck at compression+dedup era |
+| Cloud (Go) | ~5% | Zero provenance/cost/governance/quality endpoints. Only compression analytics |
+| Dashboard (Next.js) | ~5% | Zero new pages. Only Overview/Projects/Waste/ROI/Security/Billing |
+
+---
+
+## PILLAR-BY-PILLAR AUDIT
+
+### PILLAR 1: PROVENANCE ENGINE — "WHO wrote this code?"
+
+| # | Requirement | Status | Evidence |
+|---|---|:---:|---|
+| 1.1 | session.rs extracts model_id from hook context | ❌ MISSING | `grep model_id session.rs` = 0 hits. All records default to `"unknown"` (provenance.rs:333) |
+| 1.2 | Ed25519 signed attestation envelope | ⚠️ PARTIAL | Ed25519 sign/verify works (attestation.rs). But signs only `"{path}:{hash}:{time}"` — missing 3/6 spec fields (human_prompt_hash, model_id, developer_id) |
+| 1.3 | Agent Trace v0.1.0 export | ✅ DONE | agent_trace.rs: full v0.1.0 format, tested |
+| 1.4 | `codeflow blame` command | ✅ DONE | CLI tested: `blame --json`, `--trace`, `--session` flags work. **But** line granularity is file-level (start_line:1, end_line:total) not actual changed lines |
+| 1.5 | Proto EVENT_TYPE_PROVENANCE | ⚠️ PARTIAL | CLI proto: ✅ (line 33). Cloud proto: ❌ (stuck at compression+dedup) |
+| 1.6 | SLSA Level 2+ export | ❌ MISSING | Zero code. `grep -ri slsa cloud/ cli/crates/` = 0 hits |
+| 1.7 | CycloneDX AI-BOM export | ❌ MISSING | Zero code. `grep -ri cyclonedx cloud/ cli/crates/` = 0 hits |
+
+**Pillar 1 score: 2/7 done, 3/7 partial, 2/7 missing**
+
+### PILLAR 2: FINANCIAL CONTROL PLANE — "WHAT did it cost?"
+
+| # | Requirement | Status | Evidence |
+|---|---|:---:|---|
+| 2.1 | Token counting per tool call | ✅ DONE | tracking.rs + cost.rs: input/output/cache tokens tracked |
+| 2.2 | Session→PR linkage | ✅ DONE | pr_linker.rs: env vars + branch regex + commit message parsing |
+| 2.3 | Cost calculation (model × tokens × pricing) | ✅ DONE | pricing.rs: 5 models, cost_for_tokens(), user-override TOML |
+| 2.4 | Budget policies (dev/project/team caps) | ⚠️ PARTIAL | budget_policy.rs: dev + project scopes only. `grep team budget_policy.rs` = 0 hits. **No team scope.** |
+| 2.5 | Alert system ("Team X at 73%...") | ⚠️ PARTIAL | Pull-only (user runs `budget status`). No push alerts, no email/Slack/webhook, no temporal context |
+| 2.6 | Auto model routing on budget pressure | ⚠️ PARTIAL | router.rs routes by complexity only. `grep budget router.rs` = 0 hits. **Router ignores budget state.** |
+| 2.7 | Cost-per-PR dashboard | ✅ DONE | cost_cmd.rs: `--by pr`, `--pr <ref>`, `--json`. **CLI only** — no cloud endpoint, no dashboard page |
+| 2.8 | Proto EVENT_TYPE_COST | ⚠️ PARTIAL | CLI proto: ✅. Cloud proto: ❌ |
+| 2.9 | Proto EVENT_TYPE_GOVERNANCE | ⚠️ PARTIAL | CLI proto: ✅. Cloud proto: ❌ |
+
+**Pillar 2 score: 4/9 done, 5/9 partial, 0/9 missing**
+
+### PILLAR 3: QUALITY GATE — "IS this code safe?"
+
+| # | Requirement | Status | Evidence |
+|---|---|:---:|---|
+| 3.1 | Hallucinated dependency detection | ❌ MISSING | Zero code. Proto has QualityEvent.package_name field but no registry lookup impl |
+| 3.2 | Vulnerability scanning (SAST) | ⚠️ PARTIAL | security.rs = secret detection only (AWS keys, tokens, etc.). No general SAST (SQLi, XSS, path traversal) |
+| 3.3 | License compliance | ❌ MISSING | Zero code. No SPDX, no license header scan |
+| 3.4 | Quality scoring (complexity, coverage) | ❌ MISSING | Zero code. waste.rs = token waste, not code quality metrics |
+| 3.5 | `codeflow gate` CI/CD command | ❌ MISSING | **Manual test:** `codeflow gate` → "error: unrecognized subcommand 'gate'" |
+| 3.6 | Proto EVENT_TYPE_QUALITY | ⚠️ PARTIAL | CLI proto: ✅ (line 36). Cloud proto: ❌ |
+
+**Pillar 3 score: 0/6 done, 2/6 partial, 4/6 missing**
+
+### PILLAR 4: COMPLIANCE ENGINE — "CAN you prove it?"
+
+| # | Requirement | Status | Evidence |
+|---|---|:---:|---|
+| 4.1 | SLSA attestation bundle | ❌ MISSING | Ed25519 signing exists, but no in-toto/DSSE/SLSA format |
+| 4.2 | CycloneDX AI-BOM | ❌ MISSING | Zero code |
+| 4.3 | SOC 2 evidence package (CC6.1/CC8.1) | ❌ MISSING | Zero code |
+| 4.4 | EU AI Act transparency (Article 11) | ❌ MISSING | Zero code |
+| 4.5 | Retention policies (90d/7yr) | ❌ MISSING | No data purge or retention config |
+| 4.6 | `codeflow audit` command | ❌ MISSING | **Manual test:** `codeflow audit` → "error: unrecognized subcommand 'audit'" |
+| 4.7 | Export formats (SLSA/CycloneDX/PDF) | ⚠️ PARTIAL | CSV + Agent Trace JSON only. `grep -ri "slsa\|cyclonedx\|soc.2\|ai.act\|compliance" cloud/internal/api/` = 0 hits |
+
+**Pillar 4 score: 0/7 done, 1/7 partial, 6/7 missing**
+
+---
+
+## INFRASTRUCTURE GAPS
+
+### Cloud Proto Drift (CRITICAL BLOCKER)
+
+```
+CLI proto (cli/proto/events.proto):     Cloud proto (cloud/proto/events.proto):
+  EVENT_TYPE_COMPRESSION = 1             EVENT_TYPE_COMPRESSION = 1  ✅
+  EVENT_TYPE_DEDUP = 2                   EVENT_TYPE_DEDUP = 2        ✅
+  EVENT_TYPE_PROVENANCE = 3              ❌ MISSING
+  EVENT_TYPE_COST = 4                    ❌ MISSING
+  EVENT_TYPE_GOVERNANCE = 5              ❌ MISSING
+  EVENT_TYPE_QUALITY = 6                 ❌ MISSING
+  + ProvenanceEvent message              ❌ MISSING
+  + CostEvent message                    ❌ MISSING
+  + GovernanceEvent message              ❌ MISSING
+  + QualityEvent message                 ❌ MISSING
+  + ContributorType enum                 ❌ MISSING
+```
+
+**Impact:** CLI can emit provenance/cost/governance/quality events, but cloud ingest CANNOT deserialize them. The entire cloud pipeline is blind to Pillars 1-4.
+
+### Spec says EVENT_TYPE_SESSION = 4 — CLI has no SESSION event at all
+
+The spec defines `EVENT_TYPE_SESSION = 4` but the CLI proto jumps from PROVENANCE=3 to COST=4. Session lifecycle events are missing entirely.
+
+### Cloud API — Zero new endpoints
+
+All cloud API routes serve compression/dedup/waste analytics:
+```
+POST /v1/events         — ingest (compression+dedup only)
+GET  /v1/overview       — token savings
+GET  /v1/projects       — project list
+GET  /v1/savings/trend  — savings chart
+GET  /v1/waste          — waste report
+GET  /v1/security/alerts
+GET  /v1/billing/status
+GET  /v1/export/csv     — compression data CSV
+GET  /v1/roi            — token savings ROI
+```
+
+Missing from spec: cost-per-PR, provenance query, budget policy, compliance export, quality dashboard.
+
+### Dashboard — Zero new pages
+
+Existing pages: Overview, Projects, Waste, ROI, Security, Billing, Settings.
+Missing from spec: Cost Analytics, Provenance View, Budget Management, Quality Metrics, Compliance Reports.
+
+---
+
+## MANUAL TEST EVIDENCE
+
+| Test | Command | Result | Proves |
+|---|---|---|---|
+| blame exists | `codeflow blame --help` | ✅ Shows help | Blame CLI shipped |
+| blame model_id | `codeflow blame cli/src/main.rs` | "No provenance records" | No records captured = model_id never extracted |
+| cost exists | `codeflow cost --help` | ✅ Shows help | Cost CLI shipped |
+| budget exists | `codeflow budget --help` | ✅ Shows help | Budget CLI shipped |
+| gate MISSING | `codeflow gate` | "unrecognized subcommand" | Quality gate NOT shipped |
+| audit MISSING | `codeflow audit` | "unrecognized subcommand" | Compliance export NOT shipped |
+| route ignores budget | `codeflow route --help` | No --budget flag | Router is budget-unaware |
+
+---
+
+## SCORECARD SUMMARY
+
+| Pillar | Done | Partial | Missing | Total | % Complete |
+|--------|:---:|:---:|:---:|:---:|:---:|
+| P1: Provenance | 2 | 3 | 2 | 7 | ~43% |
+| P2: Cost | 4 | 5 | 0 | 9 | ~67% |
+| P3: Quality | 0 | 2 | 4 | 6 | ~8% |
+| P4: Compliance | 0 | 1 | 6 | 7 | ~4% |
+| **TOTAL** | **6** | **11** | **12** | **29** | **~35%** |
+
+### By Layer
+
+| Layer | Assessment |
+|---|---|
+| CLI Rust core | 60-70% — provenance, cost, budget, blame, pricing all work locally |
+| CLI proto | ~85% — all 4 new event types + messages defined (missing SESSION event) |
+| Cloud proto | ~0% — stuck at compression+dedup, 10 missing definitions |
+| Cloud Go API | ~0% — zero new endpoints for any pillar |
+| Cloud ClickHouse | ~0% — EventRow struct lacks all new fields |
+| Dashboard | ~0% — zero new pages for any pillar |
+
+---
+
+## TOP 5 CRITICAL GAPS (ordered by impact)
+
+1. **Cloud proto drift** — Cloud can't ingest ANY Pillar 1-4 events. Blocks all cloud features.
+2. **model_id always "unknown"** — Provenance records have no real model attribution. Entire blame system shows "unknown" for the most important field.
+3. **`codeflow gate` missing** — No CI/CD quality gate. No dependency hallucination check. Pillar 3 is essentially unbuilt.
+4. **`codeflow audit` missing** — No compliance export. No SLSA/CycloneDX/SOC2/EU AI Act reports. Pillar 4 is essentially unbuilt.
+5. **Router-budget disconnect** — Model routing ignores budget state. The "save money when budget tight" story doesn't work.
+
+---
+
+## WHAT'S ACTUALLY GOOD
+
+Despite the gaps, substantial foundational work IS done:
+- ✅ Ed25519 key management (attestation.rs) — solid crypto primitive
+- ✅ Agent Trace v0.1.0 export (agent_trace.rs) — spec-compliant
+- ✅ `codeflow blame` CLI — working, just needs model_id + line granularity
+- ✅ Cost attribution with PR linkage (cost.rs + pr_linker.rs) — real data, not placeholder
+- ✅ Model pricing table (pricing.rs) — 5 models, user-override support
+- ✅ Budget policy engine (budget_policy.rs) — dev/project scopes, warn/block verdicts
+- ✅ Proto schema (CLI side) — all 4 new event types + messages defined
+- ✅ Secret scanning (security.rs) — regex-based, functional
+
+The CLI is a real working tool. The gap is: nothing reaches the cloud or dashboard.

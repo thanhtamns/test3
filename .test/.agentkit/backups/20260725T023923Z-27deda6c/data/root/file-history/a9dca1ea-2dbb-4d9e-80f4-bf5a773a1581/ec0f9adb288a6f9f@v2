@@ -1,0 +1,171 @@
+---
+phase: 1
+title: "Mechanism Knob Extraction"
+status: pending
+priority: P1
+effort: "3d"
+dependencies: []
+---
+
+# Phase 1: Mechanism Knob Extraction
+
+## Overview
+
+Convert stage0's hardcoded "magic numbers" and behavioral controls from prose-embedded constants into a structured JSON config (`mechanism-knobs.json`). This makes the mechanism machine-readable and meta-editable — the foundation for everything else.
+
+**AEVO parallel:** AEVO represents mechanism as `Pi_r` (executable code). We represent it as JSON knobs that control agent dispatch, scoring, and gating.
+
+## Requirements
+
+**Functional:**
+- Extract all tunable parameters from stage0.md into `mechanism-knobs.json`
+- Each knob has: id, current_value, type, range, step_reference, description
+- Stage0 reads knobs at runtime instead of hardcoded values
+- Knob changes are versioned (git-tracked JSON, not in-memory)
+
+**Non-functional:**
+- Zero behavioral change on first deploy (extracted values = current values)
+- Stage0 execution time unchanged (JSON read adds <10ms)
+- Backward compatible: if knobs file missing, fall back to hardcoded defaults
+
+## Architecture
+
+```
+mechanism-knobs.json (source of truth)
+    ↓ read at Step 0.5
+stage0 pipeline (uses knobs instead of hardcoded)
+    ↓ after verdict
+meta-edit controller (Phase 4) modifies knobs
+    ↓ versioned
+mechanism-knobs-history.jsonl (audit trail)
+```
+
+## Related Code Files
+
+**Target repo:** `D:/code/invesments/master_investments`
+
+- Create: `data/config/mechanism-knobs.json` — knob registry
+- Create: `data/config/mechanism-knobs-history.jsonl` — change log
+- Create: `.claude/lib/intelligence/mechanism/knob_registry.py` — read/write/validate knobs
+- Modify: `.claude/commands/stage0.md` — replace hardcoded values with knob references
+- Modify: `.claude/commands/stage0-checklist.md` — add knob load step
+
+## Implementation Steps
+
+### Step 1: Audit stage0.md for all tunable parameters
+
+Grep stage0.md for all numeric thresholds, agent counts, confidence levels, etc. Categorize:
+
+**Category A — Scoring/Threshold knobs:**
+- `mountain_threshold_monthly`: $10,000 (Mountain definition)
+- `mountain_timeline_months`: 12 (repeatable timeline)
+- `confidence_gate_minimum`: 0.70 (persist-verdict gate)
+- `agents_fired_minimum`: 8 (quality gate)
+- `local_kill_confidence`: 0.80 (short-circuit threshold)
+- `coverage_threshold`: 0.80 (session trigger)
+- `accuracy_drop_threshold`: 0.70 (auto-trainer)
+
+**Category B — Composition knobs (which agents fire):**
+- `wave1_base_agents`: list of 8 agent types
+- `wave1_addendum_map`: intent_class → additional agents
+- `wave2_agents`: list of agent types per intent
+- `max_wave1_agents`: count cap
+- `max_wave2_agents`: count cap
+
+**Category C — Budget knobs:**
+- `max_web_calls_per_step`: web search budget
+- `max_llm_calls_session_trigger`: 3
+- `max_llm_calls_continuous_trigger`: 5
+- `max_stale_refresh`: 3
+- `forum_preflight_timeout_ms`: 90000
+
+**Category D — Synthesis knobs:**
+- `verdict_classes`: [KILL, SIDE_HUSTLE, MOUNTAIN_CANDIDATE, ...]
+- `mountain_test_weights`: per-dimension weights for scoring
+- `synthesis_strategy`: how agent outputs merge (currently implicit in prompt)
+
+### Step 2: Create knob registry Python module
+
+```python
+# .claude/lib/intelligence/mechanism/knob_registry.py
+class KnobRegistry:
+    def __init__(self, knobs_path: Path):
+        self.knobs = self._load(knobs_path)
+        self.defaults = self._load_defaults()
+    
+    def get(self, knob_id: str) -> Any:
+        """Get knob value, fall back to default if missing."""
+    
+    def set(self, knob_id: str, value: Any, reason: str, source: str):
+        """Set knob value with audit trail."""
+    
+    def validate(self, knob_id: str, value: Any) -> bool:
+        """Check value against type/range constraints."""
+    
+    def history(self, knob_id: str, n: int = 10) -> list:
+        """Get last N changes for a knob."""
+    
+    def snapshot(self) -> dict:
+        """Full knob state for injection into agent prompts."""
+```
+
+### Step 3: Create mechanism-knobs.json
+
+```json
+{
+  "version": 1,
+  "knobs": {
+    "mountain_threshold_monthly": {
+      "value": 10000,
+      "type": "int",
+      "range": [5000, 50000],
+      "step_ref": "stage0.md:Step 6",
+      "category": "scoring",
+      "description": "Minimum $/mo NET for Mountain classification"
+    },
+    "confidence_gate_minimum": {
+      "value": 0.70,
+      "type": "float",
+      "range": [0.50, 0.95],
+      "step_ref": "stage0.md:Step 9",
+      "category": "threshold",
+      "description": "Minimum confidence for non-exempt verdict persistence"
+    }
+  }
+}
+```
+
+### Step 4: Integrate knob reads into stage0 execution
+
+Add to Step 0.5 (runtime assertions load):
+```
+# Load mechanism knobs
+knobs = KnobRegistry("data/config/mechanism-knobs.json")
+# Inject into downstream agent prompts alongside runtime assertions
+```
+
+Replace all hardcoded references in stage0.md with `{knob:knob_id}` notation. Stage0-checklist.md gets matching updates.
+
+### Step 5: Write tests
+
+- Test: knob_registry loads valid JSON
+- Test: get() returns default when knob missing
+- Test: set() writes to history
+- Test: validate() rejects out-of-range values
+- Test: snapshot() returns all knobs for prompt injection
+
+## Success Criteria
+
+- [ ] `mechanism-knobs.json` contains ≥20 extracted knobs across 4 categories
+- [ ] `knob_registry.py` passes all 5 test cases
+- [ ] Stage0 execution produces identical verdicts with knobs (vs hardcoded) on 3 test topics
+- [ ] Every knob has: id, value, type, range, step_ref, category, description
+- [ ] History JSONL records every change with timestamp, old_value, new_value, reason, source
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|------|------------|
+| Stage0 breaks after knob extraction | Identical-output test on 3 topics before merge |
+| Too many knobs → complexity | Start with Category A+C (numeric), defer Category B+D (composition) to Phase 4 |
+| Knob file corrupted | validate() on load, fall back to defaults |

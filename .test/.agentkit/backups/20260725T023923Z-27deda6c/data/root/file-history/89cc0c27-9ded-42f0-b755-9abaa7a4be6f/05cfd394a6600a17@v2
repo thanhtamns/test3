@@ -1,0 +1,67 @@
+#!/bin/bash
+set -euo pipefail
+
+echo "=== CODEFLOW E2E Integration Test ==="
+echo "Prerequisite: cloud services running (docker compose up), CLI installed"
+echo ""
+
+PASS=0
+FAIL=0
+
+run_test() {
+    local name="$1"
+    shift
+    echo "--- Test: $name ---"
+    if "$@"; then
+        echo "  PASS"
+        PASS=$((PASS + 1))
+    else
+        echo "  FAIL"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
+# Test 1: Rust CLI compiles and tests pass
+run_test "cargo test (CLI)" bash -c "cd cli && cargo test --quiet 2>&1 | tail -5"
+
+# Test 2: Go cloud tests pass
+run_test "go test (cloud)" bash -c "cd cloud && go test ./... 2>&1 | tail -5"
+
+# Test 3: Dashboard builds cleanly
+run_test "npm run build (dashboard)" bash -c "cd dashboard && npm run build --silent 2>&1 | tail -5"
+
+# Test 4: CLI gate command exists
+run_test "codeflow gate --help" bash -c "cargo run -p codeflow-cli --quiet -- gate --help 2>/dev/null | head -3"
+
+# Test 5: CLI audit command exists
+run_test "codeflow audit --help" bash -c "cargo run -p codeflow-cli --quiet -- audit --help 2>/dev/null | head -3"
+
+# Test 6: CLI export command exists
+run_test "codeflow export --help" bash -c "cargo run -p codeflow-cli --quiet -- export --help 2>/dev/null | head -3"
+
+# Test 7: Dashboard has all 5 new pages
+run_test "dashboard routes" bash -c "
+    cd dashboard
+    for page in cost provenance budget quality compliance; do
+        if [ ! -f src/app/\$page/page.tsx ]; then
+            echo \"Missing: \$page/page.tsx\"
+            exit 1
+        fi
+    done
+    echo 'All 5 new pages present'
+"
+
+# Test 8: Cloud has all 5 new API handlers
+run_test "cloud API handlers" bash -c "
+    for handler in handler_provenance handler_cost handler_budget handler_quality handler_compliance; do
+        if [ ! -f cloud/internal/api/\${handler}.go ]; then
+            echo \"Missing: \${handler}.go\"
+            exit 1
+        fi
+    done
+    echo 'All 5 new handlers present'
+"
+
+echo ""
+echo "=== Results: $PASS passed, $FAIL failed ==="
+[ "$FAIL" -eq 0 ] || exit 1

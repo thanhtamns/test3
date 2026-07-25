@@ -1,0 +1,19 @@
+{
+  "id": "5",
+  "subject": "Phase 5: Cloud Proto + API Sync",
+  "description": "Sync cloud Go proto with CLI (4 new event types), ClickHouse migration, 5 new API endpoints (provenance, cost-by-pr, budget, quality, compliance). 25 TDD steps. Plan: plans/260608-codeflow-gap-closure-tdd/phase-05-cloud-proto-api-sync.md",
+  "status": "pending",
+  "blocks": [
+    "6",
+    "7"
+  ],
+  "blockedBy": [
+    "1"
+  ],
+  "metadata": {
+    "phase": 5,
+    "effort": "3d",
+    "priority": "P1",
+    "planDir": "plans/260608-codeflow-gap-closure-tdd"
+  }
+}

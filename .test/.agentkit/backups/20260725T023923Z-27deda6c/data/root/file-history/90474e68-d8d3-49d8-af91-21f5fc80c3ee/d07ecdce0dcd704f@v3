@@ -1,0 +1,176 @@
+package api
+
+import (
+	"context"
+	"sync"
+	"time"
+
+	"github.com/codeflow-dev/codeflow/cloud/internal/clickhouse"
+)
+
+type fakeStorage struct {
+	mu     sync.Mutex
+	events []clickhouse.EventRow
+}
+
+func newFakeStorage() *fakeStorage {
+	return &fakeStorage{}
+}
+
+func (f *fakeStorage) InsertEvents(_ context.Context, rows []clickhouse.EventRow) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.events = append(f.events, rows...)
+	return nil
+}
+
+func (f *fakeStorage) GetOverview(_ context.Context, tenantID string) (*clickhouse.OverviewStats, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	stats := &clickhouse.OverviewStats{}
+	cmdMap := make(map[string]*clickhouse.CommandStat)
+
+	for _, e := range f.events {
+		if e.TenantID != tenantID {
+			continue
+		}
+		stats.TotalInputTokens += e.InputTokens
+		stats.TotalOutputTokens += e.OutputTokens
+		stats.TotalSaved += e.TokensSaved
+		stats.EventCount++
+
+		if cs, ok := cmdMap[e.Command]; ok {
+			cs.Saved += e.TokensSaved
+			cs.Count++
+		} else {
+			cmdMap[e.Command] = &clickhouse.CommandStat{
+				Command: e.Command,
+				Saved:   e.TokensSaved,
+				Count:   1,
+			}
+		}
+	}
+
+	if stats.TotalInputTokens > 0 {
+		stats.SavingsPct = float64(stats.TotalSaved) / float64(stats.TotalInputTokens) * 100
+	}
+
+	for _, cs := range cmdMap {
+		stats.TopCommands = append(stats.TopCommands, *cs)
+	}
+
+	return stats, nil
+}
+
+func (f *fakeStorage) GetProjects(_ context.Context, tenantID string) ([]clickhouse.ProjectSummary, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	projMap := make(map[string]*clickhouse.ProjectSummary)
+	for _, e := range f.events {
+		if e.TenantID != tenantID {
+			continue
+		}
+		p, ok := projMap[e.ProjectDir]
+		if !ok {
+			p = &clickhouse.ProjectSummary{ProjectDir: e.ProjectDir}
+			projMap[e.ProjectDir] = p
+		}
+		p.TotalSaved += e.TokensSaved
+		p.TotalInput += e.InputTokens
+		p.EventCount++
+		p.LastEventAt = e.Timestamp.Format(time.RFC3339)
+	}
+
+	for _, p := range projMap {
+		if p.TotalInput > 0 {
+			p.SavingsPct = float64(p.TotalSaved) / float64(p.TotalInput) * 100
+		}
+	}
+
+	var result []clickhouse.ProjectSummary
+	for _, p := range projMap {
+		result = append(result, *p)
+	}
+	return result, nil
+}
+
+func (f *fakeStorage) GetProjectStats(_ context.Context, tenantID, projectDir string) (*clickhouse.ProjectStats, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	ps := &clickhouse.ProjectStats{ProjectDir: projectDir}
+	for _, e := range f.events {
+		if e.TenantID != tenantID || e.ProjectDir != projectDir {
+			continue
+		}
+		ps.Summary.TotalSaved += e.TokensSaved
+		ps.Summary.TotalInput += e.InputTokens
+		ps.Summary.EventCount++
+		ps.Summary.LastEventAt = e.Timestamp.Format(time.RFC3339)
+	}
+	ps.Summary.ProjectDir = projectDir
+	if ps.Summary.TotalInput > 0 {
+		ps.Summary.SavingsPct = float64(ps.Summary.TotalSaved) / float64(ps.Summary.TotalInput) * 100
+	}
+	return ps, nil
+}
+
+func (f *fakeStorage) GetSavingsTrend(_ context.Context, tenantID string, days int) ([]clickhouse.DailySavings, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	dayMap := make(map[string]*clickhouse.DailySavings)
+	cutoff := time.Now().AddDate(0, 0, -days)
+
+	for _, e := range f.events {
+		if e.TenantID != tenantID || e.Timestamp.Before(cutoff) {
+			continue
+		}
+		day := e.Timestamp.Format("2006-01-02")
+		d, ok := dayMap[day]
+		if !ok {
+			d = &clickhouse.DailySavings{Day: day}
+			dayMap[day] = d
+		}
+		d.TotalSaved += e.TokensSaved
+		d.TotalInput += e.InputTokens
+		d.EventCount++
+		if e.EventType == "compression" {
+			d.Compression += e.TokensSaved
+		}
+		if e.EventType == "dedup" {
+			d.Dedup += e.TokensSaved
+		}
+	}
+
+	var result []clickhouse.DailySavings
+	for _, d := range dayMap {
+		result = append(result, *d)
+	}
+	return result, nil
+}
+
+func (f *fakeStorage) eventCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.events)
+}
+
+func (f *fakeStorage) GetWasteReport(_ context.Context, tenantID string, days int) ([]clickhouse.WasteReport, error) {
+	return []clickhouse.WasteReport{}, nil
+}
+
+func (f *fakeStorage) GetProjectWasteScores(_ context.Context, tenantID string, days int) ([]clickhouse.ProjectWasteScore, error) {
+	return []clickhouse.ProjectWasteScore{}, nil
+}
+
+func (f *fakeStorage) tenantOfEvent(i int) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if i < 0 || i >= len(f.events) {
+		return ""
+	}
+	return f.events[i].TenantID
+}

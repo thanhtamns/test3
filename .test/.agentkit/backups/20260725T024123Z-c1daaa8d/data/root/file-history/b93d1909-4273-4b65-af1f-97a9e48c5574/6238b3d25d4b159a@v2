@@ -1,0 +1,104 @@
+{
+  "type": "brainstorm",
+  "trigger_patterns": ["brainstorm", "## Problem", "## Approach", "design doc", "## Options", "## Analysis"],
+  "min_length": 800,
+  "dimensions": {
+    "completeness": {
+      "weight": 0.3,
+      "checks": [
+        {
+          "id": "bs_problem_stated",
+          "rule": "section_exists('problem|issue|challenge|question')",
+          "severity": "critical",
+          "description": "No problem statement found",
+          "fix": "Add a clear problem definition section before solutions"
+        },
+        {
+          "id": "bs_multiple_approaches",
+          "rule": "count_pattern('approach|option|alternative|path|door|scenario') >= 2",
+          "severity": "major",
+          "description": "Only one approach considered — need multiple options",
+          "fix": "Add at least 2 distinct approaches/options with tradeoffs"
+        },
+        {
+          "id": "bs_tradeoffs",
+          "rule": "contains('pro|con|tradeoff|trade-off|risk|downside|upside|advantage|disadvantage')",
+          "severity": "major",
+          "description": "No tradeoff analysis between options",
+          "fix": "Add pros/cons or tradeoffs for each approach"
+        },
+        {
+          "id": "bs_recommendation",
+          "rule": "contains('recommend|propose|suggest|verdict|conclusion|pick|choose')",
+          "severity": "major",
+          "description": "No recommendation or conclusion",
+          "fix": "Add a clear recommendation with justification"
+        }
+      ]
+    },
+    "depth": {
+      "weight": 0.3,
+      "checks": [
+        {
+          "id": "bs_mechanism",
+          "rule": "contains('because|mechanism|caused by|works by|driven by|due to|reason')",
+          "severity": "major",
+          "description": "No mechanism/causal explanation — narrative without depth",
+          "fix": "Explain WHY each approach works or fails, not just WHAT it does"
+        },
+        {
+          "id": "bs_money_flow",
+          "rule": "contains('revenue|cost|margin|pricing|$|money|economics') OR contains('technical|architecture|performance|scale')",
+          "severity": "minor",
+          "description": "No economics or technical depth"
+        },
+        {
+          "id": "bs_not_table_only",
+          "rule": "prose_ratio() >= 0.3",
+          "severity": "major",
+          "description": "Output is mostly tables/lists without prose explanation",
+          "fix": "Add narrative prose explaining the reasoning behind tables/lists"
+        }
+      ]
+    },
+    "evidence": {
+      "weight": 0.2,
+      "checks": [
+        {
+          "id": "bs_no_unsourced",
+          "rule": "unsourced_number_count() <= 3",
+          "severity": "major",
+          "description": "Too many unsourced numeric claims",
+          "fix": "Source numeric claims or tag with [?] if unverified"
+        },
+        {
+          "id": "bs_anti_confirmation",
+          "rule": "contains('fail|risk|concern|against|problem|challenge|weakness|threat')",
+          "severity": "major",
+          "description": "No anti-confirmation — only positive framing",
+          "fix": "Add failure modes, risks, or counterarguments"
+        }
+      ]
+    },
+    "actionability": {
+      "weight": 0.2,
+      "checks": [
+        {
+          "id": "bs_next_steps",
+          "rule": "contains('next step|TODO|action item|will|should|must|implement')",
+          "severity": "major",
+          "description": "No actionable next steps",
+          "fix": "Add specific next steps or action items"
+        },
+        {
+          "id": "bs_concrete",
+          "rule": "vague_phrase_count('consider|perhaps|might want|could potentially|it depends') <= 4",
+          "severity": "minor",
+          "description": "Too many vague phrases without commitment"
+        }
+      ]
+    }
+  },
+  "pass_criteria": { "critical": 0, "major": 0 },
+  "max_iterations": 3
+}

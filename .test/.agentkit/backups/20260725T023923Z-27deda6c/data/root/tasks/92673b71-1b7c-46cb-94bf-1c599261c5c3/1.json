@@ -1,0 +1,18 @@
+{
+  "id": "1",
+  "subject": "Phase 1: Rust CLI MVP (L1 Compress + L2 Dedup + Local Metrics)",
+  "description": "Build single Rust binary: 8-stage TOML compression pipeline, LMDB dedup cache, SQLite tracking, mmap ring buffer, 40+ command filters, Claude Code hook installation. 6-platform cross-compile CI. See phase-01-rust-cli-mvp-l1-compress-l2-dedup-local-metrics.md",
+  "activeForm": "Building Rust CLI MVP",
+  "status": "pending",
+  "blocks": [
+    "2"
+  ],
+  "blockedBy": [],
+  "metadata": {
+    "phase": 1,
+    "effort": "6 weeks",
+    "priority": "P1",
+    "planDir": "plans/260603-codeflow-ai-cost-intelligence-engine",
+    "phaseFile": "phase-01-rust-cli-mvp-l1-compress-l2-dedup-local-metrics.md"
+  }
+}

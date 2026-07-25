@@ -1,0 +1,130 @@
+"""
+StalenessMonitor — finds facts approaching or past expiry.
+Feeds into continuous evolution trigger for automatic refresh.
+"""
+
+import sqlite3
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Optional
+
+ROOT = Path(__file__).resolve().parents[4]
+PROVENANCE_DB = ROOT / ".claude" / "data" / "provenance" / "facts.db"
+VECTORS_DB = ROOT / ".claude" / "data" / "knowledge-distillation" / "decision-vectors.db"
+
+
+@dataclass
+class StaleRecord:
+    id: int
+    fact_text: str
+    domain: str
+    expires_at: str
+    days_until_expiry: int
+    source: str
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "fact_text": self.fact_text[:100],
+            "domain": self.domain,
+            "expires_at": self.expires_at,
+            "days_until_expiry": self.days_until_expiry,
+            "source": self.source,
+        }
+
+
+class StalenessMonitor:
+    def __init__(
+        self,
+        provenance_db: Optional[Path] = None,
+        vectors_db: Optional[Path] = None,
+    ):
+        self.provenance_db = provenance_db or PROVENANCE_DB
+        self.vectors_db = vectors_db or VECTORS_DB
+
+    def scan(self, days_ahead: int = 7) -> list[StaleRecord]:
+        records = []
+        records.extend(self._scan_provenance(days_ahead))
+        records.extend(self._scan_vectors(days_ahead=90))
+        return sorted(records, key=lambda r: r.days_until_expiry)
+
+    def _scan_provenance(self, days_ahead: int) -> list[StaleRecord]:
+        if not self.provenance_db.exists():
+            return []
+
+        conn = sqlite3.connect(str(self.provenance_db))
+        conn.row_factory = sqlite3.Row
+        threshold = (datetime.utcnow() + timedelta(days=days_ahead)).isoformat()
+
+        rows = conn.execute(
+            "SELECT id, fact_text, domain, expires_at FROM fact_provenance WHERE expires_at < ? ORDER BY expires_at",
+            (threshold,),
+        ).fetchall()
+
+        now = datetime.utcnow()
+        records = []
+        for row in rows:
+            try:
+                exp = datetime.fromisoformat(row["expires_at"])
+                days = (exp - now).days
+            except (ValueError, TypeError):
+                days = 0
+
+            records.append(StaleRecord(
+                id=row["id"],
+                fact_text=row["fact_text"],
+                domain=row["domain"] or "unknown",
+                expires_at=row["expires_at"],
+                days_until_expiry=days,
+                source="provenance",
+            ))
+
+        conn.close()
+        return records
+
+    def _scan_vectors(self, days_ahead: int = 90) -> list[StaleRecord]:
+        if not self.vectors_db.exists():
+            return []
+
+        conn = sqlite3.connect(str(self.vectors_db))
+        conn.row_factory = sqlite3.Row
+        threshold = (datetime.utcnow() - timedelta(days=days_ahead)).isoformat()
+
+        rows = conn.execute(
+            "SELECT id, narrative_summary, source_persona, created_at FROM decision_vectors WHERE created_at < ?",
+            (threshold,),
+        ).fetchall()
+
+        now = datetime.utcnow()
+        records = []
+        for row in rows:
+            try:
+                created = datetime.fromisoformat(row["created_at"])
+                age_days = (now - created).days
+            except (ValueError, TypeError):
+                age_days = 999
+
+            records.append(StaleRecord(
+                id=hash(row["id"]) % 10**6,
+                fact_text=row["narrative_summary"] or row["id"],
+                domain=row["source_persona"] or "unknown",
+                expires_at=row["created_at"],
+                days_until_expiry=-age_days,
+                source="vectors",
+            ))
+
+        conn.close()
+        return records
+
+    def mark_refreshed(self, fact_id: int, new_confidence: float):
+        if not self.provenance_db.exists():
+            return
+        conn = sqlite3.connect(str(self.provenance_db))
+        new_expiry = (datetime.utcnow() + timedelta(days=90)).isoformat()
+        conn.execute(
+            "UPDATE fact_provenance SET confidence = ?, expires_at = ?, verified_by = 'refresh' WHERE id = ?",
+            (new_confidence, new_expiry, fact_id),
+        )
+        conn.commit()
+        conn.close()

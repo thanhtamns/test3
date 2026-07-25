@@ -1,0 +1,90 @@
+package main
+
+import (
+	"context"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/codeflow-dev/codeflow/cloud/internal/api"
+	"github.com/codeflow-dev/codeflow/cloud/internal/clickhouse"
+	"github.com/codeflow-dev/codeflow/cloud/internal/natsutil"
+)
+
+func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
+
+	chDSN := envOr("CLICKHOUSE_DSN", "clickhouse://localhost:9000/codeflow")
+	listenAddr := envOr("LISTEN_ADDR", ":8080")
+	natsURL := os.Getenv("NATS_URL")
+
+	ch, err := clickhouse.New(chDSN)
+	if err != nil {
+		slog.Error("failed to connect to clickhouse", "error", err)
+		os.Exit(1)
+	}
+	defer ch.Close()
+	slog.Info("connected to clickhouse", "dsn", chDSN)
+
+	var opts []api.RouterOption
+
+	if natsURL != "" {
+		pub, err := natsutil.NewPublisher(natsURL)
+		if err != nil {
+			slog.Error("failed to connect to nats", "error", err)
+			os.Exit(1)
+		}
+		defer pub.Close()
+
+		if err := pub.EnsureStream(context.Background()); err != nil {
+			slog.Error("failed to ensure nats stream", "error", err)
+			os.Exit(1)
+		}
+
+		opts = append(opts, api.WithPublisher(pub))
+		slog.Info("nats enabled — events will be published to jetstream", "url", natsURL)
+	} else {
+		slog.Info("nats not configured — events will be inserted directly to clickhouse")
+	}
+
+	handler := api.NewRouter(ch, logger, opts...)
+
+	srv := &http.Server{
+		Addr:         listenAddr,
+		Handler:      handler,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  120 * time.Second,
+	}
+
+	go func() {
+		slog.Info("ingest API listening", "addr", listenAddr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("server error", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	slog.Info("shutting down...")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		slog.Error("shutdown error", "error", err)
+	}
+	slog.Info("server stopped")
+}
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}

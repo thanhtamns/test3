@@ -1,0 +1,145 @@
+{
+  "schema_version": "1.0",
+  "last_global_check": "2026-05-03T18:18:43.546681",
+  "channels": [
+    {
+      "id": "markton_petproducts",
+      "platform": "tiktok",
+      "url": "https://www.tiktok.com/@markton.petproducts",
+      "name": "Mark Tôn XK SP Thú Cưng",
+      "archetype": "ARCH-006",
+      "domain": "export_practitioner",
+      "last_synced": "2026-05-03",
+      "total_videos_at_sync": 637,
+      "keywords_tracked": [
+        "xuất khẩu",
+        "khách hàng",
+        "sai lầm",
+        "AI",
+        "L/C",
+        "Incoterms",
+        "container",
+        "cước biển",
+        "đàm phán"
+      ],
+      "evolution_status": "active"
+    },
+    {
+      "id": "winvnint",
+      "platform": "website",
+      "url": "https://www.winvnint.com/",
+      "name": "WinVN Natural Pet Products",
+      "archetype": null,
+      "domain": "export_manufacturer",
+      "last_synced": null,
+      "total_videos_at_sync": 0,
+      "keywords_tracked": [
+        "coffee wood",
+        "loofah",
+        "pet products",
+        "export"
+      ],
+      "evolution_status": "pending_analysis",
+      "note": "Verified supplier 6+ years export to 30+ countries. Similar product line to Mark Tôn."
+    },
+    {
+      "id": "moc_xo_loofah",
+      "platform": "website",
+      "url": "https://mocxo.com/",
+      "name": "Mộc Xơ - Loofah Brand",
+      "archetype": null,
+      "domain": "export_manufacturer",
+      "last_synced": null,
+      "total_videos_at_sync": 0,
+      "keywords_tracked": [
+        "loofah",
+        "xơ mướp",
+        "eco-friendly",
+        "export US France"
+      ],
+      "evolution_status": "pending_analysis",
+      "note": "Vietnamese loofah brand exporting to US, Canada, Australia, UK, France, Korea."
+    },
+    {
+      "id": "nguyen_coffee_supply",
+      "platform": "tiktok",
+      "url": "https://www.tiktok.com/@nguyencoffeesupply",
+      "name": "Nguyen Coffee Supply",
+      "archetype": "ARCH-002",
+      "domain": "d2c_brand",
+      "last_synced": "2026-05-03",
+      "total_videos_at_sync": 706,
+      "keywords_tracked": [
+        "vietnamese coffee",
+        "specialty",
+        "direct trade",
+        "single origin"
+      ],
+      "evolution_status": "low_priority",
+      "note": "D2C brand content, not export operations. Consumer marketing focus.",
+      "training_value": "low"
+    },
+    {
+      "id": "xuatnhapkhau_logistics",
+      "platform": "tiktok",
+      "url": "https://www.tiktok.com/@xuatnhapkhau_logistics",
+      "name": "XNK Logistics Education",
+      "archetype": null,
+      "domain": "logistics_education",
+      "last_synced": "2026-05-03",
+      "total_videos_at_sync": 205,
+      "keywords_tracked": [
+        "hải quan",
+        "customs",
+        "logistics",
+        "manifest",
+        "quy trình",
+        "thuật ngữ"
+      ],
+      "evolution_status": "active",
+      "note": "Educational content about customs procedures and terminology. Medium value.",
+      "training_value": "medium"
+    },
+    {
+      "id": "xuatnhapkhau",
+      "platform": "tiktok",
+      "url": "https://www.tiktok.com/@xuatnhapkhau",
+      "name": "XNK Generic",
+      "archetype": null,
+      "domain": "unknown",
+      "last_synced": "2026-05-03",
+      "total_videos_at_sync": 30,
+      "keywords_tracked": [],
+      "evolution_status": "inactive",
+      "note": "Too few videos (30). Not enough content to analyze.",
+      "training_value": "none"
+    }
+  ],
+  "discovery_queue": [
+    {
+      "search_query": "TikTok xuất khẩu nông sản Việt Nam practitioner",
+      "domain": "agricultural_export",
+      "priority": "high",
+      "last_searched": null
+    },
+    {
+      "search_query": "YouTube Amazon FBA Vietnam seller thực chiến",
+      "domain": "cross_border_ecommerce",
+      "priority": "medium",
+      "last_searched": null
+    },
+    {
+      "search_query": "TikTok thủ công mỹ nghệ xuất khẩu handicraft export",
+      "domain": "handicraft_export",
+      "priority": "medium",
+      "last_searched": null
+    }
+  ],
+  "evolution_rules": {
+    "check_interval_days": 7,
+    "min_new_videos_to_extract": 5,
+    "keyword_match_threshold": 0.3,
+    "auto_extract": false,
+    "notify_on_new_content": true
+  }
+}

@@ -1,0 +1,183 @@
+"""
+Data models for the 3-brain anomaly intelligence engine.
+PriceDelta (Brain 1), ForcedFlow (Brain 2), AnomalyCard (Brain 3 output).
+"""
+
+import json
+from dataclasses import dataclass, field, asdict
+from datetime import datetime, timezone
+from typing import Optional
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _generate_anomaly_id() -> str:
+    ts = datetime.now(timezone.utc).strftime("%y%m%d-%H%M%S")
+    import uuid
+    suffix = uuid.uuid4().hex[:6]
+    return f"ANOM-{ts}-{suffix}"
+
+
+@dataclass
+class PriceDelta:
+    product: str
+    market_a: str
+    market_b: str
+    price_a: float
+    price_b: float
+    currency: str
+    unit: str
+    spread_pct: float = 0.0
+    bridge_cost: float = 0.0
+    net_margin: float = 0.0
+    net_margin_pct: float = 0.0
+    volume_estimate: str = ""
+    monthly_income: float = 0.0
+    confidence: str = "[?]"
+    sources: list[str] = field(default_factory=list)
+    timestamp: str = field(default_factory=_now_iso)
+
+    def __post_init__(self):
+        if self.price_a > 0 and self.spread_pct == 0.0:
+            self.spread_pct = ((self.price_b - self.price_a) / self.price_a) * 100
+        if self.spread_pct != 0.0 and self.net_margin == 0.0:
+            self.net_margin = self.price_b - self.price_a - self.bridge_cost
+        if self.price_a > 0 and self.net_margin_pct == 0.0 and self.net_margin != 0.0:
+            self.net_margin_pct = (self.net_margin / self.price_a) * 100
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "PriceDelta":
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
+
+@dataclass
+class ForcedFlow:
+    regulation: str
+    jurisdiction: str
+    effective_date: str
+    who_must_comply: str
+    entity_count: int = 0
+    compliance_cost: float = 0.0
+    total_forced_spend: float = 0.0
+    penalty_for_noncompliance: str = ""
+    current_providers: list[str] = field(default_factory=list)
+    provider_gap: str = ""
+    position_opportunity: str = ""
+    monthly_income_estimate: float = 0.0
+    deadline_urgency: int = 0
+    confidence: str = "[?]"
+    sources: list[str] = field(default_factory=list)
+
+    def __post_init__(self):
+        if self.entity_count > 0 and self.compliance_cost > 0 and self.total_forced_spend == 0.0:
+            self.total_forced_spend = self.entity_count * self.compliance_cost
+
+    def urgency_score(self) -> float:
+        if self.deadline_urgency <= 0:
+            return 0.0
+        return max(0.0, min(1.0, (365 - self.deadline_urgency) / 365))
+
+    def size_score(self) -> float:
+        if self.total_forced_spend <= 0:
+            return 0.0
+        import math
+        return min(1.0, math.log10(max(1, self.total_forced_spend)) / 10)
+
+    def priority_score(self) -> float:
+        gap = 1.0 if self.provider_gap else 0.3
+        return self.urgency_score() * 0.4 + self.size_score() * 0.3 + gap * 0.3
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ForcedFlow":
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
+
+@dataclass
+class AnomalyCard:
+    id: str = field(default_factory=_generate_anomaly_id)
+    anomaly_type: str = ""
+    title: str = ""
+
+    delta: Optional[dict] = None
+    flow: Optional[dict] = None
+    intersection_rule: str = ""
+
+    position_type: str = ""
+    action: str = ""
+    supply_side: str = ""
+    demand_side: str = ""
+    channel: str = ""
+
+    price_per_unit: float = 0.0
+    cost_per_unit: float = 0.0
+    margin_per_unit: float = 0.0
+    units_per_month: int = 0
+    monthly_income: float = 0.0
+
+    anomaly_score: float = 0.0
+    founder_fit: float = 0.0
+    urgency: float = 0.0
+    confidence: str = "[?]"
+
+    contacts: list[dict] = field(default_factory=list)
+    script: str = ""
+    deadline: str = ""
+    kill_criteria: str = ""
+
+    first_seen: str = field(default_factory=_now_iso)
+    last_verified: str = field(default_factory=_now_iso)
+    delta_trend: str = "STABLE"
+    status: str = "ACTIVE"
+
+    def __post_init__(self):
+        if self.margin_per_unit == 0.0 and self.price_per_unit > 0:
+            self.margin_per_unit = self.price_per_unit - self.cost_per_unit
+        if self.monthly_income == 0.0 and self.margin_per_unit > 0 and self.units_per_month > 0:
+            self.monthly_income = self.margin_per_unit * self.units_per_month
+
+    def final_rank(self) -> float:
+        margin_factor = self.margin_per_unit / 1000 if self.margin_per_unit > 0 else 0.01
+        return self.anomaly_score * margin_factor * max(self.founder_fit, 0.01) * max(self.urgency, 0.01)
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "AnomalyCard":
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
+
+@dataclass
+class FounderProfile:
+    industries: list[str] = field(default_factory=list)
+    languages: list[str] = field(default_factory=list)
+    location: str = ""
+    networks: list[str] = field(default_factory=list)
+    domain_expertise: list[str] = field(default_factory=list)
+    capital_range: str = ""
+
+    def has_language(self, lang: str) -> bool:
+        return lang.lower() in [l.lower() for l in self.languages]
+
+    def has_industry(self, industry: str) -> bool:
+        ind_lower = industry.lower()
+        return any(ind_lower in i.lower() or i.lower() in ind_lower for i in self.industries)
+
+    def has_expertise(self, domain: str) -> bool:
+        dom_lower = domain.lower()
+        return any(dom_lower in d.lower() or d.lower() in dom_lower for d in self.domain_expertise)
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "FounderProfile":
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})

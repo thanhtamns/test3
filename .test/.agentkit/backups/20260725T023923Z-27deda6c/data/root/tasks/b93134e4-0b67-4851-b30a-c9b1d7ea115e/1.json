@@ -1,0 +1,19 @@
+{
+  "id": "1",
+  "subject": "Phase 1: Dashboard Auth Bypass",
+  "description": "Add CODEFLOW_AUTH_DISABLED env var bypass to Next.js middleware, layout, and UserNav. Currently WorkOS AuthKit crashes with 500 when env vars missing. See plans/260605-investor-demo-stack/phase-01-dashboard-auth-bypass.md",
+  "activeForm": "Implementing dashboard auth bypass",
+  "status": "pending",
+  "blocks": [
+    "3",
+    "5"
+  ],
+  "blockedBy": [],
+  "metadata": {
+    "phase": 1,
+    "planDir": "plans/260605-investor-demo-stack",
+    "phaseFile": "phase-01-dashboard-auth-bypass.md",
+    "priority": "P1",
+    "effort": "1h"
+  }
+}

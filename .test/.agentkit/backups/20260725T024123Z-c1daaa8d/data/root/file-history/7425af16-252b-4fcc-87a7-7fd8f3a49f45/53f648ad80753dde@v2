@@ -1,0 +1,283 @@
+"""
+Brain 1: Price Delta Engine.
+Finds SPECIFIC price spreads >30% between markets.
+Python controls search templates. LLM parses raw text only.
+"""
+
+import json
+import logging
+from dataclasses import dataclass, field
+from typing import Callable, Optional
+
+from .models import PriceDelta, FounderProfile
+
+logger = logging.getLogger(__name__)
+
+PRICE_SEARCH_TEMPLATES = [
+    '"{product}" price per {unit} {market} 2025 2026',
+    '"{product}" wholesale price {market}',
+    '"{product}" export FOB price {market}',
+    '"{product}" import CIF price {market}',
+]
+
+BRIDGE_COST_TEMPLATES = [
+    "shipping cost {market_a} to {market_b} {product}",
+    "import tariff {product} {market_b}",
+]
+
+DEFAULT_SEEDS = [
+    "robusta coffee", "arabica coffee", "black pepper", "cashew nuts",
+    "pangasius fish", "shrimp", "rubber", "cinnamon",
+]
+
+DEFAULT_MARKETS = ["Vietnam", "EU", "US", "Japan", "China"]
+
+PRICE_EXTRACTION_PROMPT = """Extract price data from this text. Return JSON:
+{{"product": "...", "price": <number>, "currency": "USD|EUR|VND|CNY|JPY", "unit": "kg|ton|lb|unit", "source_url": "..."}}
+If multiple prices found, return the most recent wholesale/FOB price.
+If no price found, return {{"product": "...", "price": null}}.
+
+Text:
+{text}"""
+
+BRIDGE_EXTRACTION_PROMPT = """Extract shipping/tariff cost from this text. Return JSON:
+{{"cost_type": "shipping|tariff|documentation", "amount": <number>, "currency": "USD", "per_unit": "kg|ton|container"}}
+If no cost found, return {{"cost_type": "...", "amount": null}}.
+
+Text:
+{text}"""
+
+CURRENCY_TO_USD = {
+    "USD": 1.0,
+    "EUR": 1.08,
+    "VND": 0.000039,
+    "CNY": 0.14,
+    "JPY": 0.0065,
+    "GBP": 1.27,
+}
+
+UNIT_TO_KG = {
+    "kg": 1.0,
+    "ton": 1000.0,
+    "lb": 0.4536,
+    "unit": 1.0,
+}
+
+
+@dataclass
+class BudgetTracker:
+    max_calls: int = 30
+    calls_used: int = 0
+
+    def can_call(self) -> bool:
+        return self.calls_used < self.max_calls
+
+    def use(self) -> bool:
+        if not self.can_call():
+            return False
+        self.calls_used += 1
+        return True
+
+
+class PriceDeltaEngine:
+    def __init__(self, research_fn: Callable, llm_fn: Callable,
+                 max_calls: int = 30, spread_threshold: float = 30.0):
+        self.research_fn = research_fn
+        self.llm_fn = llm_fn
+        self.budget = BudgetTracker(max_calls=max_calls)
+        self.spread_threshold = spread_threshold
+
+    def scan(self, seed_products: Optional[list[str]] = None,
+             markets: Optional[list[str]] = None,
+             founder: Optional[FounderProfile] = None,
+             targeted_queries: Optional[list[str]] = None) -> list[PriceDelta]:
+        products = self._resolve_seeds(seed_products, founder)
+        markets = markets or DEFAULT_MARKETS
+        pairs = self._generate_pairs(products, markets)
+        logger.info(f"Scanning {len(pairs)} product×market pairs (budget: {self.budget.max_calls})"
+                    f"{f' + {len(targeted_queries)} IC-targeted queries' if targeted_queries else ''}")
+
+        raw_prices: dict[str, list[dict]] = {}
+
+        # IC-targeted queries first (hypothesis-guided)
+        if targeted_queries:
+            for query in targeted_queries:
+                if not self.budget.can_call():
+                    break
+                raw = self.research_fn(query)
+                if raw:
+                    price_data = self._parse_price_from_raw(raw, query)
+                    if price_data and price_data.get("price") is not None:
+                        product = price_data.get("product", "unknown")
+                        if product not in raw_prices:
+                            raw_prices[product] = []
+                        raw_prices[product].append(price_data)
+        for product, market in pairs:
+            if not self.budget.can_call():
+                logger.warning("Budget exhausted during price collection")
+                break
+            price_data = self._search_price(product, market)
+            if price_data and price_data.get("price") is not None:
+                key = product
+                if key not in raw_prices:
+                    raw_prices[key] = []
+                raw_prices[key].append({**price_data, "market": market})
+
+        deltas = []
+        for product, entries in raw_prices.items():
+            if len(entries) < 2:
+                continue
+            product_deltas = self._calculate_spreads(product, entries)
+            for delta in product_deltas:
+                if abs(delta.spread_pct) >= self.spread_threshold:
+                    enriched = self._enrich_bridge_cost(delta)
+                    deltas.append(enriched)
+
+        deltas.sort(key=lambda d: abs(d.net_margin_pct), reverse=True)
+        logger.info(f"Found {len(deltas)} deltas above {self.spread_threshold}% threshold "
+                    f"(used {self.budget.calls_used}/{self.budget.max_calls} calls)")
+        return deltas
+
+    def _resolve_seeds(self, explicit: Optional[list[str]],
+                       founder: Optional[FounderProfile]) -> list[str]:
+        seeds = list(explicit or [])
+        if founder:
+            seeds.extend(founder.industries)
+        if not seeds:
+            seeds = DEFAULT_SEEDS[:5]
+        seen = set()
+        unique = []
+        for s in seeds:
+            sl = s.lower().strip()
+            if sl not in seen:
+                seen.add(sl)
+                unique.append(s.strip())
+        return unique
+
+    def _generate_pairs(self, products: list[str],
+                        markets: list[str]) -> list[tuple[str, str]]:
+        pairs = []
+        for p in products:
+            for m in markets:
+                pairs.append((p, m))
+                if len(pairs) * 2 > self.budget.max_calls:
+                    return pairs
+        return pairs
+
+    def _parse_price_from_raw(self, raw: str, query: str) -> Optional[dict]:
+        """Parse price data from raw search results (used for IC-targeted queries)."""
+        if not raw:
+            return None
+        try:
+            prompt = PRICE_EXTRACTION_PROMPT.format(text=raw[:2000])
+            result = self.llm_fn(prompt)
+            if isinstance(result, str):
+                result = json.loads(result)
+            if not result.get("market"):
+                result["market"] = query[:50]
+            return result
+        except Exception as e:
+            logger.warning(f"Parse failed for targeted query '{query[:60]}': {e}")
+            return None
+
+    def _search_price(self, product: str, market: str) -> Optional[dict]:
+        template = PRICE_SEARCH_TEMPLATES[0]
+        query = template.format(product=product, unit="kg", market=market)
+
+        if not self.budget.use():
+            return None
+
+        try:
+            raw = self.research_fn(query)
+        except Exception as e:
+            logger.warning(f"Search failed for {product}/{market}: {e}")
+            return None
+
+        if not raw:
+            return None
+
+        try:
+            prompt = PRICE_EXTRACTION_PROMPT.format(text=raw[:2000])
+            result = self.llm_fn(prompt)
+            if isinstance(result, str):
+                result = json.loads(result)
+            return result
+        except Exception as e:
+            logger.warning(f"LLM extraction failed for {product}/{market}: {e}")
+            return None
+
+    def _normalize_price_to_usd_per_kg(self, price: float, currency: str,
+                                        unit: str) -> float:
+        usd_rate = CURRENCY_TO_USD.get(currency.upper(), 1.0)
+        kg_rate = UNIT_TO_KG.get(unit.lower(), 1.0)
+        return (price * usd_rate) / kg_rate
+
+    def _calculate_spreads(self, product: str,
+                           entries: list[dict]) -> list[PriceDelta]:
+        normalized = []
+        for e in entries:
+            price_usd_kg = self._normalize_price_to_usd_per_kg(
+                e["price"], e.get("currency", "USD"), e.get("unit", "kg")
+            )
+            normalized.append({**e, "price_usd_kg": price_usd_kg})
+
+        deltas = []
+        for i, a in enumerate(normalized):
+            for b in normalized[i + 1:]:
+                if a["market"] == b["market"]:
+                    continue
+                low, high = (a, b) if a["price_usd_kg"] <= b["price_usd_kg"] else (b, a)
+                spread = ((high["price_usd_kg"] - low["price_usd_kg"])
+                          / low["price_usd_kg"] * 100) if low["price_usd_kg"] > 0 else 0
+
+                sources = []
+                for x in [a, b]:
+                    if x.get("source_url"):
+                        sources.append(x["source_url"])
+
+                deltas.append(PriceDelta(
+                    product=product,
+                    market_a=low["market"],
+                    market_b=high["market"],
+                    price_a=low["price_usd_kg"],
+                    price_b=high["price_usd_kg"],
+                    currency="USD",
+                    unit="kg",
+                    spread_pct=spread,
+                    confidence="[T]",
+                    sources=sources,
+                ))
+        return deltas
+
+    def _enrich_bridge_cost(self, delta: PriceDelta) -> PriceDelta:
+        if not self.budget.can_call():
+            return delta
+
+        query = BRIDGE_COST_TEMPLATES[0].format(
+            market_a=delta.market_a, market_b=delta.market_b, product=delta.product
+        )
+
+        if not self.budget.use():
+            return delta
+
+        try:
+            raw = self.research_fn(query)
+            if not raw:
+                return delta
+            prompt = BRIDGE_EXTRACTION_PROMPT.format(text=raw[:2000])
+            result = self.llm_fn(prompt)
+            if isinstance(result, str):
+                result = json.loads(result)
+            if result and result.get("amount") is not None:
+                cost_per_kg = self._normalize_price_to_usd_per_kg(
+                    result["amount"], result.get("currency", "USD"),
+                    result.get("per_unit", "kg")
+                )
+                delta.bridge_cost = cost_per_kg
+                delta.net_margin = delta.price_b - delta.price_a - cost_per_kg
+                if delta.price_a > 0:
+                    delta.net_margin_pct = (delta.net_margin / delta.price_a) * 100
+        except Exception as e:
+            logger.warning(f"Bridge cost enrichment failed: {e}")
+
+        return delta

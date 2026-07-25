@@ -1,0 +1,188 @@
+#!/usr/bin/env python3
+"""
+Pain Signal Miner — Scan Reddit/HN for unsolved problems that are SaaS-solvable.
+Looks for "I wish", "I hate", "someone should build" patterns.
+Part of Empire Pipeline V1 Layer 1.
+
+Usage:
+    python pain-signal-miner.py --scan
+    python pain-signal-miner.py --scan --source hn
+    python pain-signal-miner.py --dry-run
+"""
+
+import argparse
+import json
+import re
+import sys
+import time
+import hashlib
+from datetime import datetime
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).parent.resolve()
+DATA_DIR = (SCRIPT_DIR / ".." / "data").resolve()
+CACHE_DIR = Path(__file__).parent.parent.parent.parent.parent / "data" / "empire" / "cache"
+
+sys.path.insert(0, str(SCRIPT_DIR))
+import importlib
+_dc = importlib.import_module("data-connector")
+search_hn = _dc.search_hn
+search_reddit = _dc.search_reddit
+
+PAIN_PATTERNS = [
+    "I wish there was",
+    "I wish someone would build",
+    "why doesn't",
+    "someone should build",
+    "I'd pay for",
+    "I hate when",
+    "frustrated with",
+    "there should be a tool",
+    "looking for a tool",
+    "need a better way to",
+]
+
+SAAS_SOLVABLE_SIGNALS = [
+    "automate", "dashboard", "track", "monitor", "schedule",
+    "integrate", "sync", "notify", "report", "manage",
+    "workflow", "template", "tool", "app", "platform",
+    "api", "plugin", "extension", "bot", "script",
+]
+
+SUBREDDITS = [
+    "SaaS", "startups", "Entrepreneur", "smallbusiness",
+    "webdev", "programming", "selfhosted", "NoStupidQuestions",
+    "sideproject", "indiehackers",
+]
+
+
+def is_saas_solvable(text: str) -> bool:
+    text_lower = text.lower()
+    return any(s in text_lower for s in SAAS_SOLVABLE_SIGNALS)
+
+
+def extract_pain_signals(results: list, source: str) -> list:
+    signals = []
+    for item in results:
+        title = item.get("title", "")
+        text = item.get("text", item.get("selftext", ""))
+        combined = f"{title} {text}".lower()
+
+        matched_pattern = None
+        for pattern in PAIN_PATTERNS:
+            if pattern.lower() in combined:
+                matched_pattern = pattern
+                break
+
+        if not matched_pattern:
+            continue
+
+        saas_ok = is_saas_solvable(combined)
+
+        signals.append({
+            "source": source,
+            "url": item.get("url", item.get("permalink", "")),
+            "title": title[:200],
+            "pain_statement": combined[:500],
+            "matched_pattern": matched_pattern,
+            "category": "saas_solvable" if saas_ok else "general_pain",
+            "upvotes": item.get("score", item.get("points", 0)),
+            "date": item.get("created_utc", item.get("created_at", "")),
+            "saas_solvable": saas_ok,
+        })
+
+    return signals
+
+
+def scan_hn(dry_run: bool = False) -> list:
+    all_signals = []
+    for pattern in PAIN_PATTERNS[:5]:
+        if dry_run:
+            print(f"  [DRY RUN] Would search HN for: {pattern}")
+            continue
+        try:
+            results = search_hn(pattern, limit=10)
+            signals = extract_pain_signals(results, "hackernews")
+            all_signals.extend(signals)
+            time.sleep(1)
+        except Exception as e:
+            print(f"  [WARN] HN search failed for '{pattern}': {e}", file=sys.stderr)
+    return all_signals
+
+
+def scan_reddit(dry_run: bool = False) -> list:
+    all_signals = []
+    for sub in SUBREDDITS[:5]:
+        for pattern in PAIN_PATTERNS[:3]:
+            if dry_run:
+                print(f"  [DRY RUN] Would search r/{sub} for: {pattern}")
+                continue
+            try:
+                results = search_reddit(pattern, subreddit=sub, limit=5)
+                signals = extract_pain_signals(results, f"reddit/r/{sub}")
+                all_signals.extend(signals)
+                time.sleep(1.5)
+            except Exception as e:
+                print(f"  [WARN] Reddit search failed for r/{sub} '{pattern}': {e}", file=sys.stderr)
+    return all_signals
+
+
+def deduplicate(signals: list) -> list:
+    seen = set()
+    unique = []
+    for s in signals:
+        key = hashlib.md5(s["title"].encode()).hexdigest()
+        if key not in seen:
+            seen.add(key)
+            unique.append(s)
+    return unique
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Pain Signal Miner — Empire Pipeline V1")
+    parser.add_argument("--scan", action="store_true", help="Run full scan")
+    parser.add_argument("--source", choices=["hn", "reddit", "all"], default="all")
+    parser.add_argument("--dry-run", action="store_true", help="Show what would be searched without API calls")
+    parser.add_argument("--min-upvotes", type=int, default=5, help="Minimum upvotes to include")
+    args = parser.parse_args()
+
+    if not args.scan and not args.dry_run:
+        parser.print_help()
+        sys.exit(1)
+
+    all_signals = []
+
+    if args.source in ("hn", "all"):
+        print("Scanning HN...")
+        all_signals.extend(scan_hn(args.dry_run))
+
+    if args.source in ("reddit", "all"):
+        print("Scanning Reddit...")
+        all_signals.extend(scan_reddit(args.dry_run))
+
+    if args.dry_run:
+        print(f"\n[DRY RUN] Would scan {len(PAIN_PATTERNS)} patterns across {len(SUBREDDITS)} subreddits + HN")
+        return
+
+    all_signals = deduplicate(all_signals)
+    all_signals = [s for s in all_signals if s.get("upvotes", 0) >= args.min_upvotes]
+    saas_signals = [s for s in all_signals if s["saas_solvable"]]
+
+    output = {
+        "scan_date": datetime.now().isoformat(),
+        "total_signals": len(all_signals),
+        "saas_solvable_count": len(saas_signals),
+        "signals": sorted(all_signals, key=lambda x: x.get("upvotes", 0), reverse=True),
+    }
+
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache_path = CACHE_DIR / f"pain-signals-{datetime.now().strftime('%Y-%m-%d')}.json"
+    cache_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    print(f"\nFound {len(all_signals)} pain signals ({len(saas_signals)} SaaS-solvable)")
+    print(f"Saved to: {cache_path}")
+    print(json.dumps(output, indent=2, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

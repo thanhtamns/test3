@@ -1,0 +1,130 @@
+"""
+DuckDB-backed anomaly persistence store.
+Saves, loads, and tracks anomaly cards across /hunt runs.
+"""
+
+import json
+import os
+from pathlib import Path
+from typing import Optional
+
+import duckdb
+
+from ..brains.models import AnomalyCard
+
+_SCHEMA_PATH = Path(__file__).parent / "schema.sql"
+
+
+class AnomalyStore:
+    def __init__(self, db_path: str = ""):
+        if not db_path:
+            db_path = str(Path(__file__).resolve().parents[4] / "data" / "anomalies.duckdb")
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        self.db_path = db_path
+        self.conn = duckdb.connect(db_path)
+        self._init_schema()
+
+    def _init_schema(self):
+        schema_sql = _SCHEMA_PATH.read_text(encoding="utf-8")
+        for statement in schema_sql.split(";"):
+            stmt = statement.strip()
+            if stmt:
+                try:
+                    self.conn.execute(stmt)
+                except duckdb.CatalogException:
+                    pass
+
+    def save_card(self, card: AnomalyCard) -> None:
+        raw = json.dumps(card.to_dict(), default=str)
+        self.conn.execute("""
+            INSERT OR REPLACE INTO anomaly_cards
+            (id, anomaly_type, title, position_type, margin_per_unit,
+             monthly_income, anomaly_score, founder_fit, confidence,
+             first_seen, last_verified, delta_trend, status, raw_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, [
+            card.id, card.anomaly_type, card.title, card.position_type,
+            card.margin_per_unit, card.monthly_income, card.anomaly_score,
+            card.founder_fit, card.confidence, card.first_seen,
+            card.last_verified, card.delta_trend, card.status, raw,
+        ])
+
+    def save_signal(self, anomaly_id: str, signal_type: str, data: dict) -> None:
+        import hashlib
+        sig_id = hashlib.sha256(
+            f"{anomaly_id}:{signal_type}:{json.dumps(data, sort_keys=True, default=str)}".encode()
+        ).hexdigest()[:16]
+        self.conn.execute("""
+            INSERT OR REPLACE INTO anomaly_signals
+            (signal_id, anomaly_id, signal_type, raw_json)
+            VALUES (?, ?, ?, ?)
+        """, [sig_id, anomaly_id, signal_type, json.dumps(data, default=str)])
+
+    def load_active_cards(self) -> list[AnomalyCard]:
+        rows = self.conn.execute(
+            "SELECT raw_json FROM anomaly_cards WHERE status = 'ACTIVE' ORDER BY anomaly_score DESC"
+        ).fetchall()
+        return [AnomalyCard.from_dict(json.loads(r[0])) for r in rows]
+
+    def load_card(self, card_id: str) -> Optional[AnomalyCard]:
+        rows = self.conn.execute(
+            "SELECT raw_json FROM anomaly_cards WHERE id = ?", [card_id]
+        ).fetchall()
+        if not rows:
+            return None
+        return AnomalyCard.from_dict(json.loads(rows[0][0]))
+
+    def update_status(self, card_id: str, status: str) -> None:
+        valid = {"ACTIVE", "PURSUED", "DEAD", "CONVERTED"}
+        if status not in valid:
+            raise ValueError(f"Invalid status '{status}', must be one of {valid}")
+        row = self.conn.execute(
+            "SELECT raw_json FROM anomaly_cards WHERE id = ?", [card_id]
+        ).fetchone()
+        if row:
+            data = json.loads(row[0])
+            data["status"] = status
+            self.conn.execute(
+                "UPDATE anomaly_cards SET status = ?, raw_json = ? WHERE id = ?",
+                [status, json.dumps(data, default=str), card_id]
+            )
+        else:
+            raise ValueError(f"Card '{card_id}' not found")
+
+    def record_history(self, card_id: str, score: float, income: float,
+                       delta_pct: float, notes: str = "") -> None:
+        self.conn.execute("""
+            INSERT INTO anomaly_history (id, anomaly_score, monthly_income, delta_pct, notes)
+            VALUES (?, ?, ?, ?, ?)
+        """, [card_id, score, income, delta_pct, notes])
+
+    def get_history(self, card_id: str) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT id, verified_at, anomaly_score, monthly_income, delta_pct, notes "
+            "FROM anomaly_history WHERE id = ? ORDER BY verified_at ASC",
+            [card_id]
+        ).fetchall()
+        return [
+            {"id": r[0], "verified_at": str(r[1]), "anomaly_score": r[2],
+             "monthly_income": r[3], "delta_pct": r[4], "notes": r[5]}
+            for r in rows
+        ]
+
+    def compute_delta_trend(self, card_id: str) -> str:
+        history = self.get_history(card_id)
+        if len(history) < 3:
+            return "STABLE"
+        recent_scores = [h["anomaly_score"] for h in history[-3:]]
+        if recent_scores[-1] > recent_scores[0] * 1.1:
+            return "GROWING"
+        elif recent_scores[-1] < recent_scores[0] * 0.8:
+            return "SHRINKING"
+        return "STABLE"
+
+    def card_count(self) -> int:
+        return self.conn.execute("SELECT COUNT(*) FROM anomaly_cards").fetchone()[0]
+
+    def close(self):
+        if self.conn:
+            self.conn.close()
+            self.conn = None

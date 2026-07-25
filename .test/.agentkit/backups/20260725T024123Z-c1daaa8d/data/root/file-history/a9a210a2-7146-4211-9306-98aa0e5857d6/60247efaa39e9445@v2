@@ -1,0 +1,13 @@
+{
+  "pass_threshold": 3,
+  "downgrade_threshold": 2,
+  "timing_weight": 0.3,
+  "stair_overrides": {
+    "0": {"allow_downgrade": true},
+    "1": {"allow_downgrade": true},
+    "2": {"allow_downgrade": false},
+    "3": {"allow_downgrade": false},
+    "4": {"allow_downgrade": false},
+    "5": {"allow_downgrade": false}
+  }
+}

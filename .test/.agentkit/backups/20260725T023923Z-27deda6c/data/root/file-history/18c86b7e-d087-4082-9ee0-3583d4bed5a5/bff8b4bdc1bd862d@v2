@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package codeflow.events.v1;
+
+// Versioning contract: proto3 additive-only.
+// Never remove or rename fields. Ingest accepts v1+ with defaults.
+
+message EventBatch {
+  string cli_version = 1;
+  string machine_id = 2;
+  repeated Event events = 3;
+}
+
+message Event {
+  string id = 1;
+  int64 timestamp_ms = 2;
+  string session_id = 3;
+  string project_dir = 4;
+  string command = 5;
+  EventType event_type = 6;
+  CompressionEvent compression = 7;
+  DedupEvent dedup = 8;
+}
+
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+  EVENT_TYPE_COMPRESSION = 1;
+  EVENT_TYPE_DEDUP = 2;
+}
+
+message CompressionEvent {
+  uint64 input_bytes = 1;
+  uint64 output_bytes = 2;
+  uint64 input_tokens = 3;
+  uint64 output_tokens = 4;
+  uint64 tokens_saved = 5;
+  string filter_name = 6;
+  string compression_level = 7;
+  double latency_ms = 8;
+}
+
+message DedupEvent {
+  string content_hash = 1;
+  bool cache_hit = 2;
+  uint64 tokens_saved = 3;
+  string file_path = 4;
+  double latency_ms = 5;
+}

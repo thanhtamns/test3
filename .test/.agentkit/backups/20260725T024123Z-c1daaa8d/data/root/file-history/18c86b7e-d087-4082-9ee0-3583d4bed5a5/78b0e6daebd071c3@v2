@@ -1,0 +1,19 @@
+strip_ansi = true
+on_empty = "(no type errors)"
+
+[command]
+name = "tsc"
+
+[[strip_lines]]
+pattern = '^\s*$'
+
+[truncate_lines]
+max_length = 150
+suffix = "…"
+
+[head_tail]
+head = 30
+tail = 10
+separator = "\n... ({omitted} lines omitted) ...\n"
+
+max_lines = 100

@@ -1,0 +1,131 @@
+# /hunt Compact Checklist (v2)
+
+RULE: Execute EVERY step. Two modes: PAIN (default) and FLOW (--flow).
+- PAIN mode: PROOF gate (Step 3) is BLOCKING — no skip.
+- FLOW mode: No proof gate — but MARGIN gate (F3) kills non-viable positions.
+
+PURPOSE:
+- PAIN: Find SPECIFIC customer with VERIFIED pain → offer → sales scripts.
+- FLOW: Trace REAL money chain → find position gap → calculate margins → action plan.
+
+OUTPUT: All outputs in data/hunts/HUNT-<id>/
+
+## MODE DETECTION
+- [ ] Step 0: Parse args — if `--flow` present → execute FLOW MODE steps (F1-F5). Else → execute PAIN MODE steps (1-5).
+- [ ] Step 0.1: CWD validate — must end in `master_investments`
+- [ ] Step 0.2: Load founder profile from kb/profiles/
+
+## PAIN MODE (default — Steps 1-5)
+
+## STEP 1: PREY — Who is the target?
+- [ ] Step 1.1: If args provided → extract prey description. Else → AskUser 3 questions:
+      Q1: "Who can you reach WITHOUT advertising?" (relationships, position, language, industry)
+      Q2: "What problem do you understand that NORMAL PEOPLE don't?" (domain knowledge)
+      Q3: "Where is money flowing that YOU CAN OBSERVE?" (proximity to cash flow)
+- [ ] Step 1.2: Build prey_profile — who, count_estimate+source+confidence, where_they_gather (3+ specific places), how_founder_reaches_them, money_flow, founder_advantage
+- [ ] Step 1.3: GATE — count < 1000 → WARN (niche too small). reach = "advertising" → WARN (needs capital). advantage = empty → BLOCK, re-ask
+
+## STEP 2: PAIN — What specifically hurts?
+- [ ] Step 2.1: Forum mining — search where_they_gather for complaints. Keywords per language:
+      EN: "waste of time", "anyone know how", "so frustrating", "looking for tool"
+      VN: "chán quá", "mất thời gian", "ai biết cách", "có tool nào", "mệt mỏi"
+      Target: 5+ distinct complaints with frequency counts
+- [ ] Step 2.2: Money quantification — for each pain: time_cost × hourly_rate OR direct_cost_per_occurrence
+- [ ] Step 2.3: Solution landscape — for each pain: current_solution, existing_paid_tools (name+price), gap
+- [ ] Step 2.4: GATE — 0 forum mentions for ALL pains → KILL this prey group, return Step 1. money_cost < $10/occurrence → WARN (not painful enough to pay)
+- [ ] Step 2.5: Rank pains by (money_cost × frequency × forum_mentions). Pick top 1-2.
+
+## STEP 3: PROOF — Is the pain REAL? (BLOCKING — NO SKIP)
+- [ ] Step 3.1: Generate 3 outreach scripts (DM/email/comment, under 50 words each). Purpose: ASK, not sell.
+      Template: "[Name], I noticed you [context]. I'm researching [pain]. Do you experience this? How much time does it cost you?"
+- [ ] Step 3.2: Identify 20 specific people to contact (from where_they_gather). List names/handles.
+- [ ] Step 3.3: HUMAN ACTION REQUIRED — User sends 20 messages. /hunt PAUSES here.
+      Create ACTION file: data/actions/ACTION-HUNT-<id>-proof.json (due: 7 days)
+      Display: "Send these 20 messages. Come back with results. Run: /hunt continue <id>"
+- [ ] Step 3.4: On /hunt continue — collect results. proof_status:
+      >= 5 replies + >= 3 confirmed pain = PASSED
+      >= 5 replies + < 3 confirmed = WEAK (continue with warning)
+      < 5 replies = FAILED → return Step 1 or Step 2 (different prey/pain)
+- [ ] Step 3.5: WTP collection — for confirmed-pain people, ask: "If a tool solved this in 30 seconds instead of X hours, what would you pay per month?"
+
+## STEP 4: OFFER — What exactly to sell?
+- [ ] Step 4.1: Minimum Viable Offer — smallest thing that solves top pain. Buildable in ≤ 2 weeks.
+- [ ] Step 4.2: Price from WTP — median WTP × 0.7. Calculate: TAM × 1% conversion × price = MRR floor
+- [ ] Step 4.3: Delivery format — code/service/template based on founder skills
+- [ ] Step 4.4: Money flow position — which segment of existing flow does this sit in?
+- [ ] Step 4.5: Delegation test — who replaces founder at $500-1K/mo? If nobody → it's a job, flag it.
+- [ ] Step 4.6: Kill criteria — < X sign-ups after 30 days → pivot pain or pivot group
+
+## STEP 5: SCRIPT — How to sell (copy-paste ready)
+- [ ] Step 5.1: Cold outreach script (3 variants: DM, email, forum comment)
+- [ ] Step 5.2: Landing page copy (under 200 words, problem→solution→price→CTA)
+- [ ] Step 5.3: Follow-up sequence (3 messages, days 2/5/10)
+- [ ] Step 5.4: Objection handling (top 5 objections + responses)
+- [ ] Step 5.5: First-week action plan — Day 1: send 10 outreach. Day 3: follow up. Day 7: evaluate.
+
+## PERSIST
+- [ ] Step 6.1: Save all outputs to data/hunts/HUNT-<date>-<prey_slug>/
+- [ ] Step 6.2: Create ACTION file for first outreach batch (due: 3 days)
+- [ ] Step 6.3: Display full output to user. STOP. No chaining.
+
+## PAIN MODE QUALITY CHECK
+- [ ] Prey profile has count_estimate with source?
+- [ ] Pain has forum_mentions > 0 with URLs?
+- [ ] Proof gate ran (or ACTION created for human to run)?
+- [ ] Offer price derived from WTP, not from "industry standard"?
+- [ ] Scripts are under 50 words each (DM) / 200 words (landing page)?
+- [ ] Kill criteria specified with number + timeframe?
+- [ ] No Google "business model" searches anywhere in pipeline?
+
+---
+
+## FLOW MODE (`--flow` — Steps F1-F5)
+
+## STEP F1: TRACE — Map the money chain
+- [ ] Step F1.1: If topic provided → research money flow. Else → AskUser:
+      Q1: "What TRANSACTION can you observe right now?" (actual money changing hands)
+      Q2: "How many people are involved in this chain?" (who pays → who → who)
+- [ ] Step F1.2: Trace minimum 5 nodes. For each: entity, $ per tx, volume/month, take_rate, monthly_income. Tag every number [K]/[T]/[?].
+- [ ] Step F1.3: Calculate total chain volume (monthly $ flowing through entire chain)
+- [ ] Step F1.4: GATE — chain volume < $10K/mo → WARN. All numbers [?] → BLOCK. < 3 nodes → BLOCK.
+
+## STEP F2: GAP — Find position opportunities
+- [ ] Step F2.1: For each node: who occupies it? Strength: STRONG / WEAK / EMPTY
+- [ ] Step F2.2: For WEAK/EMPTY nodes → classify gap type: BROKER / REFERRAL / ARBITRAGE / AGGREGATOR / INTELLIGENCE / BUILDER
+- [ ] Step F2.3: AI resistance test per gap: HIGH (trust/physical/license) / MEDIUM (human adds value) / LOW (pure info → skip)
+- [ ] Step F2.4: Founder access test: can reach both sides of gap without capital?
+- [ ] Step F2.5: GATE — all gaps = BUILDER → WARN, suggest pain mode. All gaps = LOW AI resistance → WARN. No $0 entry → WARN.
+- [ ] Step F2.6: Rank gaps by (margin × volume × access × AI_resistance). Pick top 2-3.
+
+## STEP F3: MARGIN — Calculate real income (KILL GATE)
+- [ ] Step F3.1: Three scenarios per gap: FLOOR / BASE / CEILING. Decisions on FLOOR only.
+- [ ] Step F3.2: Include ALL costs: founder hours × rate, tools, fees, communication, travel.
+- [ ] Step F3.3: Calculate net_monthly = (volume × take_rate) - total_costs. Calculate $/hr equivalent.
+- [ ] Step F3.4: Compound test: EXPONENTIAL / LINEAR / FLAT. Why?
+- [ ] Step F3.5: KILL GATE — FLOOR < $200/mo after 90 days → NOT VIABLE, remove.
+- [ ] Step F3.6: If ALL positions killed → KILL this flow chain, return to F1 with different transaction.
+
+## STEP F4: ROLE — Match to founder + design entry
+- [ ] Step F4.1: Founder-position fit: access to supply? access to demand? trust? language?
+- [ ] Step F4.2: Entry design: Day 1 action, first transaction, scaling mechanism.
+- [ ] Step F4.3: Disintermediation defense: what stops parties from cutting you out?
+- [ ] Step F4.4: Pick ONE position. Save role.json.
+
+## STEP F5: ACTION — 30-day execution plan
+- [ ] Step F5.1: Generate scripts per role type (broker intro / referral pitch / arb buy+sell / etc.)
+- [ ] Step F5.2: Week-by-week plan: W1=supply access, W2=demand access, W3=first transactions, W4=evaluate.
+- [ ] Step F5.3: Kill criteria with dates: W2 <3 supply → kill. W3 zero deals → kill. W4 margin <50% floor → kill.
+
+## FLOW MODE PERSIST
+- [ ] Step F6.1: Save all outputs to data/hunts/HUNT-<date>-<topic_slug>/
+- [ ] Step F6.2: hunt-meta.json with mode:"flow", position_type, status
+- [ ] Step F6.3: Display full output. STOP. No chaining.
+
+## FLOW MODE QUALITY CHECK
+- [ ] Every $ amount has [K]/[T]/[?] tag?
+- [ ] At least 5 chain nodes mapped?
+- [ ] Position type is NOT BUILDER (unless explicitly warned)?
+- [ ] FLOOR scenario used for all decisions (not BASE/CEILING)?
+- [ ] Disintermediation defense designed for broker/referral/aggregator?
+- [ ] Kill criteria have specific numbers + week deadlines?
+- [ ] No Google "business model" searches anywhere?

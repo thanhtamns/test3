@@ -1,0 +1,157 @@
+---
+phase: 3
+title: "Xây Dựng AI & Matching Engine"
+status: pending
+priority: P1
+effort: "15 giờ (Tuần 3)"
+dependencies: [2]
+---
+
+# Giai đoạn 3: Xây Dựng AI & Matching Engine
+
+## Tổng quan
+
+Thay thế matching từ khoá bằng phân tích AI. GPT-4o-mini phân tích sản phẩm → tạo gợi ý kênh cá nhân hoá + kịch bản tiếp cận copy-paste cho từng kênh. Đây là BỘ NHÂN GIÁ TRỊ biện minh cho việc trả tiền.
+
+## Yêu cầu
+
+- Chức năng: AI tạo phân tích sản phẩm + kịch bản tiếp cận cá nhân hoá cho từng kênh
+- Phi chức năng: Tổng thời gian phản hồi <10 giây, chi phí <$0.01 mỗi phân tích (GPT-4o-mini), cache kết quả
+
+## Kiến trúc
+
+```
+ProductProfile (từ bộ thu thập)
+  → GPT-4o-mini: "Phân tích sản phẩm này. Ai là người dùng mục tiêu?"
+  → ProductProfile nâng cao: target_persona, value_prop, unique_angle
+  → Matching kênh (ngữ nghĩa, không chỉ từ khoá)
+  → Cho từng kênh: GPT-4o-mini tạo kịch bản tiếp cận
+  → Cache kết quả vào Turso DB
+  → Trả về báo cáo đầy đủ
+```
+
+## Tệp mã nguồn liên quan
+
+- Tạo: `src/ai-analyzer.ts` — Phân tích sản phẩm qua OpenAI
+- Tạo: `src/script-generator.ts` — Tạo kịch bản tiếp cận cho từng kênh
+- Tạo: `src/db.ts` — Kết nối Turso/SQLite + schema
+- Sửa: `src/channels.ts` — Thêm matching ngữ nghĩa
+- Sửa: `src/index.ts` — Kết nối AI vào pipeline phân tích
+
+## Các bước thực hiện
+
+### Bước 1: Thiết lập cơ sở dữ liệu (2 giờ)
+
+1. Thiết lập Turso (gói miễn phí):
+   ```sql
+   CREATE TABLE analyses (
+     id TEXT PRIMARY KEY,
+     url TEXT NOT NULL,
+     product_profile JSON,
+     ai_analysis JSON,
+     channels JSON,
+     scripts JSON,
+     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+   );
+   
+   CREATE TABLE users (
+     id TEXT PRIMARY KEY,
+     email TEXT,
+     stripe_customer_id TEXT,
+     plan TEXT DEFAULT 'free',
+     analyses_count INTEGER DEFAULT 0,
+     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+   );
+   ```
+
+2. Lớp cache: cùng URL phân tích trong vòng 24 giờ → trả kết quả cache
+
+### Bước 2: Bộ phân tích sản phẩm AI (4 giờ)
+
+3. Xây prompt phân tích sản phẩm:
+   ```
+   System: Bạn là chuyên gia chiến lược phân phối cho sản phẩm phần mềm indie.
+   
+   Thông tin sản phẩm:
+   - Tiêu đề: {title}
+   - Mô tả: {description}
+   - Tính năng: {features}
+   - Giá: {pricing}
+   
+   Phân tích và trả về JSON:
+   {
+     "target_persona": "Ai chính xác sẽ dùng sản phẩm này?",
+     "pain_point": "Vấn đề cụ thể nào được giải quyết?",
+     "value_prop": "Tại sao chọn cái này thay vì giải pháp khác?",
+     "unique_angle": "Điểm nhấn để tiếp cận lạnh?",
+     "category": "saas|api|marketplace|extension|template|content",
+     "keywords": ["5-10 từ khoá liên quan để matching kênh"]
+   }
+   ```
+
+4. Dùng GPT-4o-mini để tối ưu chi phí (~$0.002 mỗi phân tích)
+5. Phân tích phản hồi, xác nhận JSON, dùng matching từ khoá nếu AI thất bại
+
+### Bước 3: Matching kênh ngữ nghĩa (4 giờ)
+
+6. Thuật toán matching nâng cao:
+   ```
+   Điểm = (trùng_từ_khoá × 0.3) + (khớp_danh_mục × 0.3) + 
+           (liên_quan_đối_tượng × 0.2) + (chấp_nhận_quảng_cáo × 0.2)
+   ```
+
+7. Thêm quy tắc "chống khớp sai":
+   - r/SaaS: chỉ khi sản phẩm LÀ SaaS
+   - r/webdev: chỉ khi sản phẩm nhắm developer
+   - Nhóm Facebook: chỉ khi sản phẩm phục vụ người không chuyên công nghệ
+   - HN: chỉ khi sản phẩm có tính mới về kỹ thuật
+
+8. Trả về 15 kênh hàng đầu, sắp theo chuyển đổi kỳ vọng (không chỉ quy mô đối tượng)
+
+### Bước 4: Bộ tạo kịch bản (3 giờ)
+
+9. Tạo kịch bản tiếp cận cho từng kênh:
+   ```
+   System: Viết bài đăng/tin nhắn phù hợp {platform} cho sản phẩm này.
+   
+   Sản phẩm: {ai_analysis}
+   Kênh: {channel_name} trên {platform}
+   Quy tắc kênh: {dont_do}
+   Format tốt nhất: {best_format}
+   
+   Yêu cầu:
+   - Giá trị trước (dẫn bằng insight, không phải quảng cáo)
+   - Dưới 150 từ
+   - Bao gồm điểm nhấn riêng cho cộng đồng NÀY
+   - Kết thúc bằng CTA nhẹ (xin phản hồi, không phải "mua ngay")
+   ```
+
+10. Tạo kịch bản cho 10 kênh hàng đầu (gọi API hàng loạt)
+11. Bao gồm cảnh báo "KHÔNG NÊN làm" cho từng kênh
+
+### Bước 5: Kết nối + Triển khai (2 giờ)
+
+12. Cập nhật endpoint phân tích:
+    - Miễn phí: phân tích sản phẩm + 5 kênh hàng đầu (không có kịch bản)
+    - Trả phí: đầy đủ 15 kênh + kịch bản AI + "Không nên làm" + gợi ý thời điểm
+13. Triển khai lên Cloudflare Workers với binding Turso
+14. Thử nghiệm với 20 URL sản phẩm thật
+
+## Tiêu chí thành công
+
+- [ ] Phân tích AI trả về JSON hợp lệ cho 18/20 URL thử nghiệm
+- [ ] Matching ngữ nghĩa cho kết quả liên quan hơn chỉ từ khoá (so sánh A/B)
+- [ ] Kịch bản được cá nhân hoá và phù hợp kênh (QA thủ công: 7/10 chất lượng)
+- [ ] Tổng chi phí mỗi phân tích <$0.01
+- [ ] Thời gian phản hồi <10 giây cho phân tích đầy đủ
+- [ ] Kết quả được cache trong Turso, cache hit trả về <1 giây
+- [ ] Phân tầng miễn phí/trả phí hoạt động đúng
+
+## Đánh giá rủi ro
+
+| Rủi ro | Xác suất | Cách giảm thiểu |
+|--------|----------|-----------------|
+| Chi phí API OpenAI tăng đột biến | 15% | GPT-4o-mini rất rẻ; thêm giới hạn 100 phân tích/ngày |
+| AI tạo kịch bản kém | 25% | Xem xét thủ công 50 phân tích đầu; cải tiến prompt |
+| Vượt giới hạn Turso miễn phí | 10% | 9GB lưu trữ, 500M hàng đọc/tháng — đủ cho MVP |
+| AI ảo giác trong phân tích sản phẩm | 20% | Luôn hiển thị dữ liệu thu thập bên cạnh diễn giải AI |

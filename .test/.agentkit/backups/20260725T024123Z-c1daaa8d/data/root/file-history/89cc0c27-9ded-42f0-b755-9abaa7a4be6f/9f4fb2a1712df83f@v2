@@ -1,0 +1,160 @@
+use serde_json::json;
+
+use crate::cost::CostRecord;
+use crate::provenance::ProvenanceRecord;
+
+pub fn generate(records: &[ProvenanceRecord], costs: &[CostRecord]) -> serde_json::Value {
+    let subjects: Vec<_> = records
+        .iter()
+        .map(|r| {
+            json!({
+                "name": r.file_path,
+                "digest": { "blake3": r.code_hash }
+            })
+        })
+        .collect();
+
+    let deps: Vec<_> = records
+        .iter()
+        .map(|r| {
+            json!({
+                "uri": format!("ai-model://{}/{}", r.model_id, r.model_version),
+                "digest": {}
+            })
+        })
+        .collect();
+
+    let total_cost: f64 = costs.iter().map(|c| c.cost_usd).sum();
+    let total_tokens: u64 = costs
+        .iter()
+        .map(|c| c.input_tokens + c.output_tokens)
+        .sum();
+
+    json!({
+        "_type": "https://in-toto.io/Statement/v1",
+        "subject": subjects,
+        "predicateType": "https://slsa.dev/provenance/v1",
+        "predicate": {
+            "buildDefinition": {
+                "buildType": "https://codeflow.dev/ai-code-provenance/v1",
+                "externalParameters": {},
+                "resolvedDependencies": deps
+            },
+            "runDetails": {
+                "builder": { "id": "https://codeflow.dev/cli" },
+                "metadata": {
+                    "invocationId": records.first().map(|r| &r.session_id),
+                    "startedOn": records.first().map(|r| r.timestamp_ms),
+                    "finishedOn": records.last().map(|r| r.timestamp_ms),
+                    "totalCostUsd": total_cost,
+                    "totalTokens": total_tokens,
+                }
+            }
+        }
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::provenance::ContributorType;
+
+    fn sample_records() -> Vec<ProvenanceRecord> {
+        vec![
+            ProvenanceRecord {
+                id: None,
+                session_id: "sess-1".into(),
+                timestamp_ms: 1000,
+                file_path: "src/main.rs".into(),
+                code_hash: "abc123".into(),
+                model_id: "claude-sonnet-4-20250514".into(),
+                model_version: "20250514".into(),
+                contributor_type: ContributorType::Ai,
+                start_line: 1,
+                end_line: 50,
+                attestation_sig: "sig123".into(),
+                developer_id: "dev-1".into(),
+                prompt_hash: "ph1".into(),
+                project_dir: "/proj".into(),
+            },
+            ProvenanceRecord {
+                id: None,
+                session_id: "sess-1".into(),
+                timestamp_ms: 2000,
+                file_path: "src/lib.rs".into(),
+                code_hash: "def456".into(),
+                model_id: "claude-sonnet-4-20250514".into(),
+                model_version: "20250514".into(),
+                contributor_type: ContributorType::Ai,
+                start_line: 10,
+                end_line: 30,
+                attestation_sig: "sig456".into(),
+                developer_id: "dev-1".into(),
+                prompt_hash: "ph2".into(),
+                project_dir: "/proj".into(),
+            },
+        ]
+    }
+
+    fn sample_costs() -> Vec<CostRecord> {
+        vec![CostRecord {
+            id: None,
+            session_id: "sess-1".into(),
+            timestamp_ms: 1500,
+            model_id: "claude-sonnet-4-20250514".into(),
+            input_tokens: 1000,
+            output_tokens: 500,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+            cost_usd: 0.015,
+            pr_ref: "".into(),
+            feature_tag: "".into(),
+            project_dir: "/proj".into(),
+            developer_id: "dev-1".into(),
+        }]
+    }
+
+    #[test]
+    fn test_slsa_envelope_structure() {
+        let result = generate(&sample_records(), &sample_costs());
+        assert_eq!(result["_type"], "https://in-toto.io/Statement/v1");
+        assert_eq!(
+            result["predicateType"],
+            "https://slsa.dev/provenance/v1"
+        );
+        assert!(result["subject"].is_array());
+        assert!(result["predicate"]["buildDefinition"].is_object());
+        assert!(result["predicate"]["runDetails"].is_object());
+    }
+
+    #[test]
+    fn test_slsa_subject_contains_code_hashes() {
+        let result = generate(&sample_records(), &sample_costs());
+        let subjects = result["subject"].as_array().unwrap();
+        assert_eq!(subjects.len(), 2);
+        assert_eq!(subjects[0]["name"], "src/main.rs");
+        assert_eq!(subjects[0]["digest"]["blake3"], "abc123");
+        assert_eq!(subjects[1]["name"], "src/lib.rs");
+        assert_eq!(subjects[1]["digest"]["blake3"], "def456");
+    }
+
+    #[test]
+    fn test_slsa_resolved_dependencies() {
+        let result = generate(&sample_records(), &sample_costs());
+        let deps = result["predicate"]["buildDefinition"]["resolvedDependencies"]
+            .as_array()
+            .unwrap();
+        assert!(!deps.is_empty());
+        assert!(deps[0]["uri"]
+            .as_str()
+            .unwrap()
+            .starts_with("ai-model://"));
+    }
+
+    #[test]
+    fn test_slsa_empty_records() {
+        let result = generate(&[], &[]);
+        assert_eq!(result["_type"], "https://in-toto.io/Statement/v1");
+        assert_eq!(result["subject"].as_array().unwrap().len(), 0);
+    }
+}

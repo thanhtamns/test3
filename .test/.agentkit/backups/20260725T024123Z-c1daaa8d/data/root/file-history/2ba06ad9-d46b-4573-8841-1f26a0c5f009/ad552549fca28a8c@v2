@@ -1,0 +1,40 @@
+# Full System Audit — Brainstorm Report
+
+**Date:** 2026-06-05
+**Scope:** All 3 components (CLI Rust, Cloud Go, Dashboard Next.js)
+**Goal:** Review architecture, logic, patterns; fix issues; all tests pass + builds green
+**Total LOC:** ~10,400
+
+## Problem Statement
+
+System built rapidly across multiple phases. Need systematic audit to catch logic errors, inconsistent patterns, missing error handling, broken tests, and integration gaps before investor demos.
+
+## Decomposition (6 Sub-projects, Sequential)
+
+| # | Sub-Project | Files | Done Criteria |
+|---|------------|-------|---------------|
+| 1 | CLI Core | filter, dedup, read_dedup, session, waste, router, events, tracking, security | `cargo test` green, logic verified |
+| 2 | CLI Binary | main, hooks, wrap, stats, sync, auth, paths | Commands work, hook contract valid |
+| 3 | Cloud API | handlers, middleware, clickhouse client, nats, migrations | `go test ./...` green |
+| 4 | Dashboard | pages, api client, hooks, components, auth bypass | `next build` green, all pages 200 |
+| 5 | Integration | proto schema Rust↔Go, docker-compose, env vars, CORS | Schema parity, config alignment |
+| 6 | CI + Final | Run all suites, verify CI workflows, produce findings | All green |
+
+## Approach Per Sub-project
+
+1. Read every source file
+2. Check logic correctness, error handling, edge cases
+3. Flag inconsistent or risky patterns
+4. Run tests, fix failures
+5. Verify build
+
+## Constraints
+
+- Windows host — Go builds blocked by AppControl (Docker required)
+- Rust builds work locally via cargo
+- Next.js builds work locally via npm
+- ClickHouse/NATS only available via Docker
+
+## Decision
+
+Start with Sub-project 1 (CLI Core) immediately. Sequential execution through all 6.

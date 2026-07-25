@@ -1,0 +1,117 @@
+"""
+PostAnalysisStore — stores claims and mechanisms from brainstorm output
+into the vectors DB for compound learning.
+
+Usage (from brainstorm SKILL.md):
+    python post_analysis_store.py --claims '<JSON array of claims>' --topic '<topic>'
+"""
+
+import argparse
+import json
+import sqlite3
+import sys
+from datetime import datetime
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[4]
+VECTORS_DB = ROOT / ".claude" / "data" / "knowledge-distillation" / "decision-vectors.db"
+
+
+def ensure_tables(db_path: Path):
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS brainstorm_claims (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            topic TEXT NOT NULL,
+            fact TEXT NOT NULL,
+            dimension TEXT DEFAULT 'general',
+            zone_tag TEXT DEFAULT 'T',
+            confidence REAL DEFAULT 0.5,
+            source_url TEXT,
+            created_at TEXT NOT NULL,
+            UNIQUE(topic, fact)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS brainstorm_mechanisms (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            topic TEXT NOT NULL,
+            mechanism TEXT NOT NULL,
+            bottleneck_node TEXT,
+            money_flow TEXT,
+            created_at TEXT NOT NULL,
+            UNIQUE(topic, mechanism)
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def store_claims(claims: list[dict], topic: str, db_path: Path = VECTORS_DB):
+    ensure_tables(db_path)
+    conn = sqlite3.connect(str(db_path))
+    now = datetime.now().isoformat()
+    stored = 0
+    for c in claims:
+        fact = c.get("fact", "").strip()
+        if not fact or len(fact) < 10:
+            continue
+        try:
+            conn.execute(
+                "INSERT OR IGNORE INTO brainstorm_claims (topic, fact, dimension, zone_tag, confidence, source_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (topic, fact[:500], c.get("dimension", "general"), c.get("zone_tag", "T"),
+                 c.get("confidence", 0.5), c.get("source_url"), now)
+            )
+            stored += 1
+        except sqlite3.Error:
+            continue
+    conn.commit()
+    conn.close()
+    return stored
+
+
+def store_mechanism(topic: str, mechanism: str, bottleneck: str = "", money_flow: str = "", db_path: Path = VECTORS_DB):
+    ensure_tables(db_path)
+    conn = sqlite3.connect(str(db_path))
+    now = datetime.now().isoformat()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO brainstorm_mechanisms (topic, mechanism, bottleneck_node, money_flow, created_at) VALUES (?, ?, ?, ?, ?)",
+            (topic, mechanism[:500], bottleneck[:200], money_flow[:1000], now)
+        )
+        conn.commit()
+    except sqlite3.Error:
+        pass
+    conn.close()
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Store brainstorm claims and mechanisms")
+    parser.add_argument("--claims", help="JSON array of claims")
+    parser.add_argument("--mechanism", help="Mechanism description")
+    parser.add_argument("--bottleneck", default="", help="Bottleneck node")
+    parser.add_argument("--money-flow", default="", help="Money flow trace")
+    parser.add_argument("--topic", required=True, help="Analysis topic")
+    parser.add_argument("--db", default=str(VECTORS_DB), help="DB path override")
+    args = parser.parse_args()
+
+    db = Path(args.db)
+    total = 0
+
+    if args.claims:
+        try:
+            claims = json.loads(args.claims)
+            total = store_claims(claims, args.topic, db)
+        except json.JSONDecodeError as e:
+            print(f"ERROR: Invalid claims JSON: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    if args.mechanism:
+        store_mechanism(args.topic, args.mechanism, args.bottleneck, args.money_flow, db)
+        total += 1
+
+    print(json.dumps({"stored": total, "topic": args.topic}))
+
+
+if __name__ == "__main__":
+    main()

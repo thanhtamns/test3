@@ -1,0 +1,212 @@
+"""Data models for Idea Tournament Engine. Standalone — no imports from money_flow_graph."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from itertools import combinations
+from typing import Optional
+
+
+BUSINESS_MODEL_KEYWORDS: dict[str, list[str]] = {
+    "SaaS": ["subscription", "platform", "software", "tool", "app", "api"],
+    "Service": ["consulting", "agency", "freelance", "done-for-you", "coaching"],
+    "Commerce": ["sell", "product", "ecommerce", "dropship", "fba", "export"],
+    "Content": ["course", "ebook", "newsletter", "media", "youtube", "community"],
+    "Arbitrage": ["arbitrage", "flip", "spread", "middleman", "broker", "resell"],
+    "Infrastructure": ["api", "data", "hosting", "picks-and-shovels", "tooling"],
+}
+
+ACTIVATION_KEYWORDS: list[str] = [
+    "opportunity", "business model", "revenue", "pricing", "market",
+    "saas", "service", "commerce", "export", "arbitrage", "platform",
+    "subscription", "affiliate", "consulting", "agency", "product",
+]
+
+
+@dataclass
+class OpportunityHypothesis:
+    id: str
+    title: str
+    thesis: str
+    business_model_type: str
+    customer_segment: str
+    evidence_refs: list[str]
+    estimated_revenue_range: str
+    source_phase: str
+    elo_rating: float = 1500.0
+    matches_played: int = 0
+    wins: int = 0
+    cluster: str = ""
+    debate_highlights: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "title": self.title,
+            "thesis": self.thesis,
+            "business_model_type": self.business_model_type,
+            "customer_segment": self.customer_segment,
+            "evidence_refs": self.evidence_refs,
+            "estimated_revenue_range": self.estimated_revenue_range,
+            "source_phase": self.source_phase,
+            "elo_rating": self.elo_rating,
+            "matches_played": self.matches_played,
+            "wins": self.wins,
+            "cluster": self.cluster,
+            "debate_highlights": list(self.debate_highlights),
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> OpportunityHypothesis:
+        return cls(
+            id=d["id"],
+            title=d["title"],
+            thesis=d["thesis"],
+            business_model_type=d["business_model_type"],
+            customer_segment=d["customer_segment"],
+            evidence_refs=d["evidence_refs"],
+            estimated_revenue_range=d["estimated_revenue_range"],
+            source_phase=d["source_phase"],
+            elo_rating=d.get("elo_rating", 1500.0),
+            matches_played=d.get("matches_played", 0),
+            wins=d.get("wins", 0),
+            cluster=d.get("cluster", ""),
+            debate_highlights=d.get("debate_highlights", []),
+        )
+
+
+@dataclass
+class DebateResult:
+    pair_id: str
+    hypothesis_a_id: str
+    hypothesis_b_id: str
+    scores_a: dict[str, float]
+    scores_b: dict[str, float]
+    total_a: float
+    total_b: float
+    winner: str  # "A" | "B" | "DRAW"
+    key_argument: str
+    is_retry: bool = False
+
+    def to_dict(self) -> dict:
+        return {
+            "pair_id": self.pair_id,
+            "hypothesis_a_id": self.hypothesis_a_id,
+            "hypothesis_b_id": self.hypothesis_b_id,
+            "scores_a": dict(self.scores_a),
+            "scores_b": dict(self.scores_b),
+            "total_a": self.total_a,
+            "total_b": self.total_b,
+            "winner": self.winner,
+            "key_argument": self.key_argument,
+            "is_retry": self.is_retry,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> DebateResult:
+        return cls(
+            pair_id=d["pair_id"],
+            hypothesis_a_id=d["hypothesis_a_id"],
+            hypothesis_b_id=d["hypothesis_b_id"],
+            scores_a=d["scores_a"],
+            scores_b=d["scores_b"],
+            total_a=d["total_a"],
+            total_b=d["total_b"],
+            winner=d["winner"],
+            key_argument=d["key_argument"],
+            is_retry=d.get("is_retry", False),
+        )
+
+
+@dataclass
+class TournamentResult:
+    hypotheses: list[OpportunityHypothesis]
+    debates: list[DebateResult]
+    diversity_report: dict
+    debate_count: int
+    retry_count: int
+
+    def to_dict(self) -> dict:
+        return {
+            "hypotheses": [h.to_dict() for h in self.hypotheses],
+            "debates": [d.to_dict() for d in self.debates],
+            "diversity_report": self.diversity_report,
+            "debate_count": self.debate_count,
+            "retry_count": self.retry_count,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> TournamentResult:
+        return cls(
+            hypotheses=[OpportunityHypothesis.from_dict(h) for h in d["hypotheses"]],
+            debates=[DebateResult.from_dict(db) for db in d["debates"]],
+            diversity_report=d["diversity_report"],
+            debate_count=d["debate_count"],
+            retry_count=d["retry_count"],
+        )
+
+
+def generate_round_robin_pairs(
+    hypotheses: list[OpportunityHypothesis],
+) -> list[tuple[OpportunityHypothesis, OpportunityHypothesis]]:
+    """All unique pairs for round-robin tournament."""
+    return list(combinations(hypotheses, 2))
+
+
+def classify_cluster(thesis: str) -> str:
+    """Assign business model cluster via keyword matching. Returns best match or 'Unknown'."""
+    text = thesis.lower()
+    scores: dict[str, int] = {}
+    for cluster, keywords in BUSINESS_MODEL_KEYWORDS.items():
+        scores[cluster] = sum(1 for kw in keywords if kw in text)
+    best = max(scores, key=scores.get)  # type: ignore[arg-type]
+    return best if scores[best] > 0 else "Unknown"
+
+
+def enforce_diversity(
+    ranked: list[OpportunityHypothesis], min_clusters: int = 3, top_n: int = 5,
+) -> list[OpportunityHypothesis]:
+    """Ensure top-N spans min_clusters distinct clusters. Promotes underrepresented."""
+    if len(ranked) <= top_n:
+        return list(ranked)
+
+    top = list(ranked[:top_n])
+    rest = list(ranked[top_n:])
+    clusters_in_top = {h.cluster for h in top}
+
+    if len(clusters_in_top) >= min_clusters:
+        return list(ranked)
+
+    seen_clusters = set(clusters_in_top)
+    while len(seen_clusters) < min_clusters:
+        candidate = next((h for h in rest if h.cluster not in seen_clusters), None)
+        if candidate is None:
+            break
+        cluster_counts: dict[str, int] = {}
+        for h in top:
+            cluster_counts[h.cluster] = cluster_counts.get(h.cluster, 0) + 1
+        duplicates = [h for h in top if cluster_counts.get(h.cluster, 0) > 1]
+        demoted = min(duplicates, key=lambda h: h.elo_rating, default=None)
+        if demoted is None:
+            break
+        top.remove(demoted)
+        top.append(candidate)
+        rest.remove(candidate)
+        rest.append(demoted)
+        seen_clusters.add(candidate.cluster)
+
+    top.sort(key=lambda h: h.elo_rating, reverse=True)
+    rest.sort(key=lambda h: h.elo_rating, reverse=True)
+    return top + rest
+
+
+def should_activate_tournament(pattern_matcher_output: str, pattern_count: int) -> bool:
+    """Dual gate: keyword matches >= 3 AND pattern_count >= 3. Zero LLM cost."""
+    if pattern_count < 3:
+        return False
+    text_lower = pattern_matcher_output.lower()
+    matches = {kw for kw in ACTIVATION_KEYWORDS if kw in text_lower}
+    return len(matches) >= 3
+
+
+MAX_HYPOTHESES = 10

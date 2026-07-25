@@ -1,0 +1,179 @@
+"""Phase 5: Integration tests for Thinking Evolution (adversarial loop + causal rules)."""
+
+import json
+import pytest
+
+from ..adversarial_questioner import AdversarialQuestioner, AdversarialResult
+from ..causal_rules import CausalRuleEngine, CausalResult
+from ..dimension_scorer import DimensionScore
+from ..synthesis_engine import SynthesisEngine, SynthesisResult
+from ..decomposer import Decomposer
+from ...hunger.claim_parser import ParsedClaim
+
+
+def _make_fact(fact, dimension="career_path", confidence=0.7, zone="T"):
+    return ParsedClaim(
+        fact=fact, value=None, dimension=dimension,
+        source_url=None, source_date="2026-01-01",
+        confidence=confidence, zone_tag=zone,
+    )
+
+
+KVISION_FACTS = [
+    _make_fact("Thành is Director at KVision Vietnam, part of GEM Group JSC", "career_path", 0.6, "T"),
+    _make_fact("KVision backed by Kasikornbank CVC Thailand", "network_access", 0.5, "T"),
+    _make_fact("GEM Group JSC is a mid-size Vietnamese conglomerate", "network_access", 0.4, "T"),
+    _make_fact("Fund management director role may yield $3-5K/mo in Vietnam context", "unit_economics", 0.4, "T"),
+    _make_fact("KVision Vietnam launched 2024", "timing_windows", 0.5, "T"),
+]
+
+
+class TestAdversarialQuestioner:
+    def test_no_llm_returns_empty(self):
+        q = AdversarialQuestioner(llm_fn=None)
+        result = q.generate_questions(KVISION_FACTS, "KVision analysis", {})
+        assert result.questions == []
+        assert result.micro_queries == []
+
+    def test_parses_json_array(self):
+        def mock_llm(prompt):
+            return json.dumps([
+                "Who held the KVision Vietnam director role before Thành?",
+                "What is GEM Group JSC annual revenue?",
+                "How many investments has Kasikornbank CVC made in Vietnam 2023-2025?",
+                "What is Thành's actual compensation vs title?",
+                "Has KVision Vietnam deployed any capital yet?",
+            ])
+        q = AdversarialQuestioner(llm_fn=mock_llm)
+        result = q.generate_questions(KVISION_FACTS, "KVision analysis", {})
+        assert len(result.questions) >= 5
+        assert len(result.micro_queries) == len(result.questions)
+        assert all(mq.dimension == "adversarial" for mq in result.micro_queries)
+
+    def test_questions_are_situation_specific(self):
+        def mock_llm(prompt):
+            return json.dumps([
+                "Who held the KVision Vietnam director role before Thành?",
+                "What is GEM Group JSC annual revenue and employee count?",
+                "Kasikornbank CVC investments in Vietnam 2023-2025?",
+            ])
+        q = AdversarialQuestioner(llm_fn=mock_llm)
+        result = q.generate_questions(KVISION_FACTS, "KVision analysis", {})
+        entities = ["KVision", "Thành", "GEM", "Kasikorn"]
+        entity_questions = [
+            qu for qu in result.questions
+            if any(e.lower() in qu.lower() for e in entities)
+        ]
+        assert len(entity_questions) >= 1
+
+    def test_parses_numbered_fallback(self):
+        def mock_llm(prompt):
+            return "1. Who held this role before Thành at KVision?\n2. What is GEM Group revenue?\n3. Is the fund actually deployed?"
+        q = AdversarialQuestioner(llm_fn=mock_llm)
+        result = q.generate_questions(KVISION_FACTS, "test", {})
+        assert len(result.questions) >= 2
+
+    def test_handles_llm_error(self):
+        def mock_llm(prompt):
+            raise RuntimeError("API down")
+        q = AdversarialQuestioner(llm_fn=mock_llm)
+        result = q.generate_questions(KVISION_FACTS, "test", {})
+        assert result.questions == []
+
+    def test_handles_dict_response(self):
+        def mock_llm(prompt):
+            return {"fact": "some data", "confidence": 0.5}
+        q = AdversarialQuestioner(llm_fn=mock_llm)
+        result = q.generate_questions(KVISION_FACTS, "test", {})
+        assert isinstance(result.questions, list)
+
+
+class TestCausalRuleEngine:
+    def _make_dim_scores(self, overrides=None):
+        defaults = {
+            "base_rates": DimensionScore("base_rates", 0.5, 2, 0.5, 0, "T"),
+            "network_access": DimensionScore("network_access", 0.6, 3, 0.5, 0, "T"),
+            "unit_economics": DimensionScore("unit_economics", 0.2, 1, 0.4, 0, "?"),
+            "career_path": DimensionScore("career_path", 0.5, 2, 0.5, 0, "T"),
+            "indirect_entry": DimensionScore("indirect_entry", 0.6, 2, 0.6, 0, "T"),
+            "competitive_landscape": DimensionScore("competitive_landscape", 0.5, 2, 0.5, 0, "T"),
+        }
+        if overrides:
+            defaults.update(overrides)
+        return defaults
+
+    def test_title_not_income_detected(self):
+        ds = self._make_dim_scores({
+            "network_access": DimensionScore("network_access", 0.7, 3, 0.7, 0, "K"),
+            "unit_economics": DimensionScore("unit_economics", 0.2, 1, 0.3, 0, "?"),
+        })
+        engine = CausalRuleEngine()
+        result = engine.evaluate(ds, KVISION_FACTS)
+        title_insights = [i for i in result.insights if "title" in i.lower() or "credibility" in i.lower()]
+        assert len(title_insights) >= 1
+
+    def test_base_rate_indirect_entry_adjustment(self):
+        ds = self._make_dim_scores({
+            "base_rates": DimensionScore("base_rates", 0.2, 1, 0.3, 0, "?"),
+            "indirect_entry": DimensionScore("indirect_entry", 0.7, 2, 0.7, 0, "K"),
+        })
+        engine = CausalRuleEngine()
+        result = engine.evaluate(ds, KVISION_FACTS)
+        assert "base_rates" in result.adjusted_scores
+        assert result.adjusted_scores["base_rates"] > 0.2
+
+    def test_zero_k_facts_caps_overall(self):
+        facts = [_make_fact("something", zone="T") for _ in range(3)]
+        engine = CausalRuleEngine()
+        result = engine.evaluate(self._make_dim_scores(), facts)
+        assert "_overall_cap" in result.overrides
+        cap = float(result.overrides["_overall_cap"])
+        assert cap <= 0.3
+
+    def test_all_question_mark_facts_zeroed(self):
+        ds = self._make_dim_scores()
+        facts = [_make_fact("unknown stuff", dimension="career_path", zone="?")]
+        engine = CausalRuleEngine()
+        result = engine.evaluate(ds, facts)
+        assert "career_path" in result.adjusted_scores
+        assert result.adjusted_scores["career_path"] == 0.0
+
+    def test_strong_evidence_insight(self):
+        facts = [_make_fact(f"verified fact {i}", zone="K", confidence=0.9) for i in range(6)]
+        engine = CausalRuleEngine()
+        result = engine.evaluate(self._make_dim_scores(), facts)
+        strong = [i for i in result.insights if "strong evidence" in i.lower()]
+        assert len(strong) >= 1
+
+    def test_no_moat_no_compounding(self):
+        ds = self._make_dim_scores({
+            "moat_patterns": DimensionScore("moat_patterns", 0.1, 1, 0.2, 0, "?"),
+            "compounding_mechanisms": DimensionScore("compounding_mechanisms", 0.1, 1, 0.2, 0, "?"),
+        })
+        engine = CausalRuleEngine()
+        result = engine.evaluate(ds, KVISION_FACTS)
+        commodity = [i for i in result.insights if "commodity" in i.lower()]
+        assert len(commodity) >= 1
+
+
+class TestSynthesisWithCausal:
+    def test_causal_insights_on_result(self):
+        tree = Decomposer().decompose("Should I join KVision Vietnam?")
+        facts = [_make_fact("regulatory data", dimension="regulatory_risks", confidence=0.8, zone="K") for _ in range(3)]
+        engine = SynthesisEngine()
+        result = engine.synthesize(tree, facts)
+        assert hasattr(result, "causal_insights")
+        assert isinstance(result.causal_insights, list)
+
+    def test_causal_insights_in_to_dict(self):
+        tree = Decomposer().decompose("Evaluate market entry")
+        facts = [_make_fact("test", dimension="regulatory_risks", confidence=0.8, zone="K")]
+        result = SynthesisEngine().synthesize(tree, facts)
+        d = result.to_dict()
+        assert "causal_insights" in d
+
+    def test_llm_calls_still_zero(self):
+        tree = Decomposer().decompose("Test query")
+        facts = [_make_fact("test", dimension="regulatory_risks")]
+        result = SynthesisEngine().synthesize(tree, facts)
+        assert result.llm_calls_made == 0

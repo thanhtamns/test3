@@ -1,0 +1,116 @@
+---
+phase: 5
+title: "Stage0 Integration + /think Command"
+status: pending
+priority: P2
+effort: "1-2d"
+dependencies: [4]
+---
+
+# Phase 5: Stage0 Integration + /think Command
+
+## Overview
+
+Wire the Micro-Decomposition Engine into two entry points: (1) Stage0 Step 1.5 — pre-decompose opportunity before Wave 1 agents fire, (2) /think command — standalone for arbitrary complex questions.
+
+## Requirements
+
+- Functional: Stage0 Step 1.5: after profile capture, decompose the opportunity → pre-fill facts → Wave agents get richer context
+- Functional: /think command: user asks any big question → decomposition → micro-research → synthesis → answer
+- Functional: /think output includes dimension scores, zone-tagged facts, actionable path
+- Non-functional: Stage0 integration must not block — if decomposition fails, proceed with normal flow
+- Non-functional: /think must work standalone (no Stage0 dependency)
+
+## Architecture
+
+### Stage0 Integration (Step 1.5)
+
+```
+Step 1: Profile capture → case.json
+  ↓
+Step 1.5: Decompose opportunity
+  → decomposer.decompose(case.opportunity_description)
+  → micro_query_runner.run_batch(unfilled_queries, research_fn)
+  → fact_assembler.assemble(results)
+  → Inject facts into case context for Wave 1/2 agents
+  ↓
+Step 2: Wave 1 agents (now with pre-loaded facts)
+```
+
+### /think Command
+
+```
+User: /think "How to achieve like Giang Trần Minh Thành?"
+  → decomposer.decompose(query)
+  → micro_query_runner.run_batch(queries, research_fn=llm_search)
+  → fact_assembler.assemble(results)
+  → synthesis_engine.synthesize(tree, facts)
+  → output_formatter.format(result)
+  → Display structured answer with [K]/[T]/[?] tags
+```
+
+## Related Code Files
+
+- Create: `.claude/commands/think.md` — /think command definition
+- Modify: Stage0 spec to add Step 1.5 hook point (`.claude/skills/business/transaction-layer/nui-hunter/`)
+- Create: `.claude/lib/intelligence/decomposition/think_runner.py` — standalone orchestrator
+- Create: `.claude/lib/intelligence/decomposition/stage0_bridge.py` — Stage0 integration adapter
+- Create: `.claude/lib/intelligence/decomposition/tests/test_think_runner.py`
+
+## Implementation Steps
+
+1. Create `think_runner.py`:
+   - `ThinkRunner(research_fn: Callable, db_path: Path)`
+   - `think(query: str) → SynthesisResult`
+   - Orchestrates full pipeline: decompose → run → assemble → synthesize
+   - Prints progress: "Decomposing... 23 micro-queries across 6 dimensions"
+   - Prints progress: "Researching... 18 queries (5 cached)"
+   - Prints progress: "Synthesizing... 15 verified facts"
+   - Returns formatted output with summary table + path
+
+2. Create `stage0_bridge.py`:
+   - `Stage0Bridge(research_fn: Callable, db_path: Path)`
+   - `pre_decompose(case: dict) → dict` — takes case.json, returns enriched case
+   - Extracts opportunity description from case
+   - Runs decomposition + research (limited to 20 queries max for speed)
+   - Injects facts into case["pre_decomposition_facts"] for Wave agents
+   - Non-blocking: catches all exceptions, returns original case on failure
+
+3. Create `commands/think.md`:
+   ```
+   /think <question>
+   
+   Decomposes complex questions into micro-factual queries.
+   LLM retrieves individual facts. LOCAL engine synthesizes answer.
+   
+   Examples:
+   - /think "How to build a $100M fund by age 30?"
+   - /think "What's the realistic path to $10K MRR for a solo SaaS?"
+   - /think "Compare coffee export margins: Vietnam vs Colombia"
+   ```
+
+4. Wire Stage0 Step 1.5:
+   - Add hook point in stage0 spec after Step 1 (profile capture)
+   - Call Stage0Bridge.pre_decompose(case) before Wave 1
+   - Pass enriched case to Wave agents
+   - Log: dimensions decomposed, facts pre-loaded, time taken
+
+5. Create `tests/test_think_runner.py`:
+   - Test full pipeline with mock research_fn
+   - Test Stage0 bridge integration
+   - Test non-blocking failure handling
+   - Test compound cache usage (second run faster)
+   - Target: 15+ tests
+
+## Success Criteria
+
+- [ ] /think command produces structured answer with zone tags
+- [ ] Stage0 Step 1.5 pre-fills facts for Wave agents
+- [ ] Stage0 integration is non-blocking (fails gracefully)
+- [ ] Compound cache reduces queries on repeated similar topics
+- [ ] All tests pass (15+)
+
+## Risk Assessment
+
+- Stage0 slowdown from decomposition → mitigation: 20-query cap for Step 1.5, full run only in /think
+- /think too slow for interactive use → mitigation: batch queries, show progress, cache aggressively

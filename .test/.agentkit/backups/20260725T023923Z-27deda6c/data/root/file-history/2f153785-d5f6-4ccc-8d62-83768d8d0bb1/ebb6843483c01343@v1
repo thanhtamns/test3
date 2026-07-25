@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "description": "Capital tier definitions for stage0 local orchestrator routing",
+  "tiers": {
+    "TIER_0": {
+      "range": [0, 1000],
+      "track": "SERVICE_ENTRY",
+      "target_range": [500, 2000],
+      "timeline_days": [30, 90],
+      "primary_hypothesis": "service",
+      "constraints": {
+        "no_product_dev": true,
+        "no_paid_ads": true,
+        "no_hiring": true,
+        "cash_first": true
+      },
+      "decision_question_codes": ["FIRST_500", "TIME_TO_CASH", "SKILL_MATCH", "NETWORK_ENTRY", "RISK_CAP"]
+    },
+    "TIER_1": {
+      "range": [1000, 5000],
+      "track": "HYBRID",
+      "target_range": [2000, 5000],
+      "timeline_days": [60, 180],
+      "primary_hypothesis": "service_funds_product",
+      "constraints": {
+        "product_budget_cap": 2000,
+        "paid_ads_cap": 500,
+        "no_hiring": true
+      },
+      "decision_question_codes": ["SERVICE_FLOOR", "PRODUCT_SEED", "REINVESTMENT", "NETWORK_LEVERAGE", "KILL_CRITERIA"]
+    },
+    "TIER_2": {
+      "range": [5000, 20000],
+      "track": "PRODUCT",
+      "target_range": [5000, 10000],
+      "timeline_days": [90, 360],
+      "primary_hypothesis": "product_with_service_floor",
+      "constraints": {
+        "product_budget_cap": 10000,
+        "paid_ads_cap": 2000,
+        "hiring_cap": 2
+      },
+      "decision_question_codes": ["WINNER", "KILL", "CUSTOMER", "ECONOMICS", "MOAT", "SERVICE_FLOOR"]
+    },
+    "TIER_3": {
+      "range": [20000, null],
+      "track": "ACQUISITION",
+      "target_range": [10000, 50000],
+      "timeline_days": [180, 720],
+      "primary_hypothesis": "buy_not_build",
+      "constraints": {},
+      "decision_question_codes": ["ACQUISITION_TARGET", "INTEGRATION_COST", "OPERATOR_FIT", "COMPOUNDING", "EXIT_PATH"]
+    }
+  }
+}

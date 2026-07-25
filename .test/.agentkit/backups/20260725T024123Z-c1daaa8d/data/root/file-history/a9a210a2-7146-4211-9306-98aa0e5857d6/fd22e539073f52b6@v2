@@ -1,0 +1,139 @@
+#!/usr/bin/env python3
+"""
+Platform Shift Detector — Monitor API changes, regulation shifts, big tech moves.
+Identifies opportunity windows created by platform disruption.
+Part of Empire Pipeline V1 Layer 1.
+
+Usage:
+    python platform-shift-detector.py --scan
+    python platform-shift-detector.py --dry-run
+"""
+
+import argparse
+import json
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).parent.resolve()
+CACHE_DIR = Path(__file__).parent.parent.parent.parent.parent / "data" / "empire" / "cache"
+
+sys.path.insert(0, str(SCRIPT_DIR))
+import importlib
+_dc = importlib.import_module("data-connector")
+search_hn = _dc.search_hn
+
+SHIFT_QUERIES = [
+    "API deprecated 2026",
+    "API breaking change",
+    "platform shutdown",
+    "new API launch",
+    "regulation change tech",
+    "Show HN: alternative to",
+    "migrating away from",
+    "platform policy change",
+]
+
+SHIFT_TYPES = {
+    "deprecation": ["deprecated", "sunset", "end of life", "shutting down", "discontinue"],
+    "breaking_change": ["breaking change", "migration required", "v2", "new version", "incompatible"],
+    "new_platform": ["launched", "introducing", "now available", "Show HN", "just released"],
+    "regulation": ["regulation", "compliance", "GDPR", "policy change", "banned", "restricted"],
+    "exodus": ["migrating", "switching from", "leaving", "alternative to", "moved away"],
+}
+
+
+def classify_shift(text: str) -> str:
+    text_lower = text.lower()
+    for shift_type, keywords in SHIFT_TYPES.items():
+        if any(k in text_lower for k in keywords):
+            return shift_type
+    return "unknown"
+
+
+def estimate_opportunity_window(shift_type: str) -> int:
+    windows = {
+        "deprecation": 12,
+        "breaking_change": 6,
+        "new_platform": 18,
+        "regulation": 24,
+        "exodus": 9,
+        "unknown": 6,
+    }
+    return windows.get(shift_type, 6)
+
+
+def scan_shifts(dry_run: bool = False) -> list:
+    shifts = []
+    for query in SHIFT_QUERIES:
+        if dry_run:
+            print(f"  [DRY RUN] Would search HN for: {query}")
+            continue
+        try:
+            results = search_hn(query, limit=10)
+            for item in results:
+                title = item.get("title", "")
+                text = item.get("text", "")
+                combined = f"{title} {text}"
+                shift_type = classify_shift(combined)
+
+                if shift_type == "unknown" and item.get("points", 0) < 20:
+                    continue
+
+                shifts.append({
+                    "platform": title[:100],
+                    "change_type": shift_type,
+                    "impact": "high" if item.get("points", 0) > 50 else "medium",
+                    "opportunity_window_months": estimate_opportunity_window(shift_type),
+                    "confidence": min(0.9, item.get("points", 0) / 100),
+                    "source": "hackernews",
+                    "url": item.get("url", ""),
+                    "points": item.get("points", 0),
+                    "date": item.get("created_at", ""),
+                })
+            time.sleep(1)
+        except Exception as e:
+            print(f"  [WARN] Search failed for '{query}': {e}", file=sys.stderr)
+
+    shifts.sort(key=lambda x: x.get("points", 0), reverse=True)
+    return shifts
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Platform Shift Detector — Empire Pipeline V1")
+    parser.add_argument("--scan", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--min-points", type=int, default=10)
+    args = parser.parse_args()
+
+    if not args.scan and not args.dry_run:
+        parser.print_help()
+        sys.exit(1)
+
+    print("Scanning for platform shifts...")
+    shifts = scan_shifts(args.dry_run)
+
+    if args.dry_run:
+        print(f"\n[DRY RUN] Would scan {len(SHIFT_QUERIES)} queries on HN")
+        return
+
+    shifts = [s for s in shifts if s.get("points", 0) >= args.min_points]
+
+    output = {
+        "scan_date": datetime.now().isoformat(),
+        "total_shifts": len(shifts),
+        "shifts": shifts[:20],
+    }
+
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache_path = CACHE_DIR / f"platform-shifts-{datetime.now().strftime('%Y-%m-%d')}.json"
+    cache_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    print(f"\nFound {len(shifts)} platform shifts")
+    print(f"Saved to: {cache_path}")
+    print(json.dumps(output, indent=2, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

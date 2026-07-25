@@ -1,0 +1,236 @@
+#!/usr/bin/env node
+/**
+ * knowledge-auto-refresh.cjs — SessionStart hook
+ * Auto-refreshes stale persona knowledge in background (non-blocking)
+ *
+ * Triggers when:
+ * - >30% of personas are stale (>30 days)
+ * - On startup/resume/clear events
+ *
+ * Behavior:
+ * - Queues top 5 most relevant stale personas for refresh
+ * - Spawns background refresh (non-blocking)
+ * - Updates knowledge-state.yaml after refresh
+ *
+ * Exit: Always 0 (non-blocking)
+ */
+
+try {
+  const fs = require('fs');
+  const path = require('path');
+  const { spawn } = require('child_process');
+
+  let isHookEnabled;
+  try {
+    ({ isHookEnabled } = require('./lib/ck-config-utils.cjs'));
+  } catch {
+    isHookEnabled = () => true;
+  }
+
+  if (!isHookEnabled('knowledge-auto-refresh')) {
+    process.exit(0);
+  }
+
+  const STATE_FILE = path.join(__dirname, '..', 'knowledge-state.yaml');
+  const REFRESH_LOCK = path.join(__dirname, '.logs', 'kb-refresh.lock');
+  const REFRESH_LOG = path.join(__dirname, '.logs', 'kb-refresh.log');
+  const PYTHON_PATH = path.join(__dirname, '..', 'skills', '.venv', 'Scripts', 'python.exe');
+  const KB_LOADER = path.join(__dirname, '..', 'skills', 'business', 'feedback_loop', 'intelligent-kb-loader.py');
+
+  // Config
+  const STALENESS_THRESHOLD_DAYS = 30;
+  const STALE_RATIO_TRIGGER = 0.3;  // Trigger refresh if >30% stale
+  const MAX_REFRESH_BATCH = 5;
+
+  function ensureLogDir() {
+    const logDir = path.join(__dirname, '.logs');
+    if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+  }
+
+  function isRefreshRunning() {
+    if (!fs.existsSync(REFRESH_LOCK)) return false;
+    try {
+      const lockData = JSON.parse(fs.readFileSync(REFRESH_LOCK, 'utf8'));
+      const lockAge = Date.now() - new Date(lockData.started).getTime();
+      // Lock expires after 10 minutes
+      return lockAge < 600000;
+    } catch {
+      return false;
+    }
+  }
+
+  function createRefreshLock(personas) {
+    ensureLogDir();
+    fs.writeFileSync(REFRESH_LOCK, JSON.stringify({
+      started: new Date().toISOString(),
+      personas,
+      pid: process.pid
+    }));
+  }
+
+  function clearRefreshLock() {
+    if (fs.existsSync(REFRESH_LOCK)) {
+      fs.unlinkSync(REFRESH_LOCK);
+    }
+  }
+
+  function parseKnowledgeState() {
+    if (!fs.existsSync(STATE_FILE)) return { personas: {}, threshold: STALENESS_THRESHOLD_DAYS };
+
+    const content = fs.readFileSync(STATE_FILE, 'utf-8');
+    const lines = content.split('\n');
+
+    let threshold = STALENESS_THRESHOLD_DAYS;
+    let inPersonas = false;
+    let currentPersona = null;
+    const personas = {};
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+
+      if (trimmed.startsWith('staleness_threshold_days:')) {
+        threshold = parseInt(trimmed.split(':')[1].trim(), 10) || STALENESS_THRESHOLD_DAYS;
+      } else if (trimmed === 'personas:') {
+        inPersonas = true;
+      } else if (inPersonas && line.startsWith('  ') && !line.startsWith('    ') && trimmed.endsWith(':')) {
+        currentPersona = trimmed.slice(0, -1);
+        personas[currentPersona] = { last_sync: null, freshness_score: 0 };
+      } else if (currentPersona && line.startsWith('    ')) {
+        if (trimmed.startsWith('last_sync:')) {
+          const val = trimmed.split(':').slice(1).join(':').trim();
+          personas[currentPersona].last_sync = val === 'null' ? null : val;
+        } else if (trimmed.startsWith('freshness_score:')) {
+          personas[currentPersona].freshness_score = parseFloat(trimmed.split(':')[1].trim()) || 0;
+        }
+      }
+    }
+
+    return { personas, threshold };
+  }
+
+  function getStalePersonas(personas, threshold) {
+    const now = Date.now();
+    const msPerDay = 86400000;
+    const stale = [];
+
+    for (const [name, data] of Object.entries(personas)) {
+      let daysSince = Infinity;
+
+      if (data.last_sync) {
+        try {
+          const syncDate = new Date(data.last_sync).getTime();
+          daysSince = (now - syncDate) / msPerDay;
+        } catch {
+          daysSince = Infinity;
+        }
+      }
+
+      if (daysSince > threshold) {
+        stale.push({
+          name,
+          days_stale: Math.floor(daysSince),
+          freshness_score: data.freshness_score || 0
+        });
+      }
+    }
+
+    // Sort by staleness (most stale first)
+    stale.sort((a, b) => b.days_stale - a.days_stale);
+
+    return stale;
+  }
+
+  function spawnBackgroundRefresh(personas) {
+    ensureLogDir();
+
+    // Log refresh start
+    fs.appendFileSync(REFRESH_LOG,
+      `[${new Date().toISOString()}] Starting refresh for: ${personas.join(', ')}\n`
+    );
+
+    // Create lock
+    createRefreshLock(personas);
+
+    // Spawn background process for each persona
+    // Using intelligent-kb-loader to trigger cache rebuild
+    try {
+      const child = spawn(PYTHON_PATH, [KB_LOADER, '--list-all', '--json'], {
+        detached: true,
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+
+      child.stdout.on('data', (data) => {
+        fs.appendFileSync(REFRESH_LOG, `[stdout] ${data.toString()}\n`);
+      });
+
+      child.stderr.on('data', (data) => {
+        fs.appendFileSync(REFRESH_LOG, `[stderr] ${data.toString()}\n`);
+      });
+
+      child.on('close', (code) => {
+        fs.appendFileSync(REFRESH_LOG,
+          `[${new Date().toISOString()}] Refresh completed with code ${code}\n`
+        );
+        clearRefreshLock();
+      });
+
+      child.unref();
+    } catch (err) {
+      fs.appendFileSync(REFRESH_LOG, `[error] ${err.message}\n`);
+      clearRefreshLock();
+    }
+  }
+
+  function main() {
+    try {
+      // Don't run if refresh already in progress
+      if (isRefreshRunning()) {
+        process.exit(0);
+      }
+
+      const { personas, threshold } = parseKnowledgeState();
+      const totalPersonas = Object.keys(personas).length;
+
+      if (totalPersonas === 0) {
+        process.exit(0);
+      }
+
+      const stalePersonas = getStalePersonas(personas, threshold);
+      const staleRatio = stalePersonas.length / totalPersonas;
+
+      // Only auto-refresh if stale ratio exceeds threshold
+      if (staleRatio < STALE_RATIO_TRIGGER) {
+        process.exit(0);
+      }
+
+      // Select top N for refresh
+      const toRefresh = stalePersonas.slice(0, MAX_REFRESH_BATCH).map(p => p.name);
+
+      if (toRefresh.length > 0) {
+        console.log(`🔄 Auto-refreshing ${toRefresh.length} stale personas in background...`);
+        spawnBackgroundRefresh(toRefresh);
+      }
+
+      process.exit(0);
+    } catch (err) {
+      // Silent failure
+      if (process.env.CK_DEBUG) {
+        console.error(`[knowledge-auto-refresh] Error: ${err.message}`);
+      }
+      process.exit(0);
+    }
+  }
+
+  main();
+} catch (e) {
+  // Minimal crash logging
+  try {
+    const fs = require('fs');
+    const p = require('path');
+    const logDir = p.join(__dirname, '.logs');
+    if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+    fs.appendFileSync(p.join(logDir, 'hook-log.jsonl'),
+      JSON.stringify({ ts: new Date().toISOString(), hook: 'knowledge-auto-refresh', status: 'crash', error: e.message }) + '\n');
+  } catch (_) {}
+  process.exit(0);
+}

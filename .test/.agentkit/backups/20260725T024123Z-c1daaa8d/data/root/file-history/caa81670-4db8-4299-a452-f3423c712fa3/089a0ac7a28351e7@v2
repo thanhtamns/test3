@@ -1,0 +1,79 @@
+# Stage0 Intelligence System Upgrade — P1-P4 Complete
+
+**Date:** 2026-05-15 | **Repo:** master_investments | **Branch:** master
+
+## Diagnosis
+
+Previous business analysis used ~5% of system capacity. 37 Python modules, 15 reasoning techniques, 25 personas, 11 SQLite databases available but NOT wired into the analysis flow.
+
+## Changes Made
+
+### P1: Business Dimensions + Domain Heuristics
+**File:** `.claude/lib/intelligence/decomposition/dimension_registry.py`
+- Added 6 dimensions: `solo_execution_ceiling`, `ai_disruption_risk`, `compound_asset_velocity`, `customer_behavior_reality`, `channel_durability`, `cash_flow_mechanics`
+- Added query type `cash_flow_business` with 15 weighted dimensions
+- Registry: 25 → 31 dimensions, 9 → 10 query types
+
+**Files created:** `data/training/domain-heuristics/`
+- `western-bootstrap-saas.json` (7 heuristics)
+- `developer-tools.json` (5 heuristics)
+- `b2b-data-services.json` (5 heuristics)
+- `embedded-fintech.json` (5 heuristics)
+- `ai-augmented-services.json` (5 heuristics)
+
+### P2: ThinkRunner → Technique Wiring + Ladder Routes
+**File:** `.claude/lib/intelligence/decomposition/live_think_runner.py`
+- Wired TechniqueOrchestrator as fallback after ThinkRunner.think()
+- Avoids double-execution (only fires if techniques not already in result)
+
+**File:** `.claude/lib/intelligence/decomposition/ladder_bridge.py`
+- Added 4 keyword tuples: `_CASHFLOW_KEYWORDS`, `_OPERATOR_KEYWORDS`, `_AI_KEYWORDS`, `_CREATOR_KEYWORDS`
+- `detect_route()` now covers 8 routes (was 3)
+- Verified: `cash_flow_business` and `operator_layer` routes exist in research-ladder.json
+
+### P3: Compound Cache Seeded
+**Script:** `data/calibration/seed-compound-cache.py`
+- Extracted 30 claims from 45 Brier score entries
+- Seeded into `decision-vectors.db` brainstorm_claims table
+- Categories: calibration, cashflow, platform, compounding, fdi, vn, etc.
+
+### P4: Reflexion Processing
+**Script:** `data/calibration/process-pending-reflexions.py`
+- Processed 28 pending reflexions (was 27 triggered, 27 pending → now 0 pending)
+- Results: 16 correct, 11 wrong, 1 no outcome
+- 4 calibration rules extracted to `learned-rules-priority.json`
+- Evolution log updated
+
+**Key calibration findings:**
+| Verdict | Accuracy | Insight |
+|---------|----------|---------|
+| PROVISIONAL_MOUNTAIN | 6/6 (100%) | Mountain detection highly reliable |
+| EXPLORATION_ONGOING | 7/7 (100%) | Exploration signals lead to real opportunities |
+| CONDITIONAL_GO | 3/3 (100%) | Conditional-go is trustworthy |
+| CONDITIONAL | 0/3 (0%) | Bare conditional = effectively KILL |
+| UNKNOWN | 0/4 (0%) | Should trigger re-research, not be stored |
+
+## Verification
+
+- All 3 modified Python files pass `ast.parse()` syntax check
+- Ladder route detection: 8/8 test queries routed correctly
+- Compound cache: 9 compounding_mechanisms claims retrievable
+- Pending reflexion queue: cleared to 0
+
+## Impact on Future Analysis
+
+| Before | After |
+|--------|-------|
+| ThinkRunner uses ~10 generic dimensions | 15 business-specific dimensions |
+| Ladder fires for 3 route types | 8 route types detected |
+| No domain heuristics for Western SaaS | 27 heuristics across 5 domains |
+| Compound cache empty | 30 claims from prior cases |
+| 27 reflexions stuck pending | Processed, 4 rules extracted |
+| Techniques not wired | Fallback wiring active |
+
+## Unresolved
+
+1. ThinkRunner background test still running — verify technique integration output
+2. Persona debate still manual (not auto-triggered) — future upgrade candidate
+3. Cognitive retrieval system (Bayesian/Hebbian DBs) status unknown — needs audit
+4. Drift-alerts.jsonl still empty — drift detection mechanism may need review

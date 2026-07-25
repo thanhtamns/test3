@@ -1,0 +1,68 @@
+---
+name: synthesis
+description: Run weekly pattern synthesis (Phase 1, Sunday 30-min review). Usage: /synthesis
+---
+
+# /synthesis - Weekly Pattern Synthesis
+
+Sunday 30-minute review. Compound learning only happens when you WRITE IT DOWN.
+
+## Usage
+
+```
+/synthesis           # Start this week's synthesis
+/synthesis history   # Show all past syntheses
+```
+
+## Process
+
+### Step 1: Load Current Data
+
+Read deal journal and failure journal to show what was logged this week:
+```bash
+cd "D:\code\invesments\master_investments" && python execution/scripts/positioning-crud.py phase-check
+```
+
+Show user: deals logged this week, failures logged, cumulative totals.
+
+### Step 2: Interactive Synthesis (AskUserQuestion)
+
+1. **New patterns recognized this week** — What patterns did you notice? (free text, can be multiple)
+2. **Failure patterns repeating** — Any failure types you keep seeing? Which?
+3. **Middleman opportunities spotted** — Any gaps where a middleman could add value?
+4. **Question for next week** — What do you need to research/observe next?
+
+### Step 3: Save
+
+```bash
+cd "D:\code\invesments\master_investments" && python execution/scripts/positioning-crud.py add-synthesis '{JSON}'
+```
+
+### Step 4: Output
+
+```markdown
+## ✅ Week {N} Synthesis Complete
+
+**Deals this week:** {deals_observed_this_week}
+**Failures this week:** {failures_observed_this_week}
+**New patterns:** {list}
+**Opportunities:** {list}
+
+### 📊 Cumulative
+- Total deals: {total_deals}
+- Total failures: {total_failures}
+- Total syntheses: {total_syntheses}
+- Weeks active: {week_number}
+
+### 🔍 Next Week Focus
+{question_for_next_week}
+
+---
+*Next synthesis: Sunday | Log deals with `/observe` | Log failures with `/failure`*
+```
+
+## Anti-Patterns
+
+- "No new patterns" → Push back. If you logged deals, there ARE patterns. Look harder.
+- "Everything is the same" → Compare to week 1. What changed?
+- Skipping 2+ weeks → Flag as risk. Compound learning breaks with gaps.

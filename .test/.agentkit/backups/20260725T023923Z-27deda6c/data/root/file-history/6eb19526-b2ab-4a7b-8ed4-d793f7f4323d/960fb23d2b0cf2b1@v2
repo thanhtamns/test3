@@ -1,0 +1,146 @@
+#!/usr/bin/env python3
+"""Generate positioning context injection block for stage0 pipeline.
+Reads deal journal, failure journal, phase gates, and weekly syntheses
+to produce a context block that feeds pattern recognition into deal scoring."""
+
+import json
+import sys
+from pathlib import Path
+
+DATA_ROOT = Path(__file__).resolve().parent.parent.parent / "data"
+
+
+def load_json(path: Path) -> dict:
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def generate_context(topic: str = "") -> dict:
+    deals = load_json(DATA_ROOT / "deals" / "deal-journal.json")
+    failures = load_json(DATA_ROOT / "deals" / "failure-journal.json")
+    gates = load_json(DATA_ROOT / "positioning" / "phase-gates.json")
+    syntheses = load_json(DATA_ROOT / "positioning" / "weekly-synthesis.json")
+    pipeline = load_json(DATA_ROOT / "deals" / "deal-pipeline.json")
+    dream5 = load_json(DATA_ROOT / "relationships" / "dream5.json")
+
+    deal_list = deals.get("deals", [])
+    fail_list = failures.get("failures", [])
+    synth_list = syntheses.get("syntheses", [])
+    micro_deals = pipeline.get("deals", [])
+    targets = dream5.get("targets", [])
+
+    sector_counts = {}
+    for d in deal_list:
+        s = d.get("sector", "unknown")
+        sector_counts[s] = sector_counts.get(s, 0) + 1
+
+    failure_patterns = {}
+    for f in fail_list:
+        p = f.get("failure_pattern", "unknown")
+        failure_patterns[p] = failure_patterns.get(p, 0) + 1
+
+    topic_matches = []
+    if topic:
+        topic_lower = topic.lower()
+        for d in deal_list:
+            searchable = json.dumps(d, ensure_ascii=False).lower()
+            if topic_lower in searchable:
+                topic_matches.append({
+                    "id": d.get("id"),
+                    "sector": d.get("sector"),
+                    "size_vnd": d.get("size_vnd"),
+                    "outcome": d.get("outcome"),
+                    "prediction": d.get("prediction", {}).get("my_prediction_before_outcome"),
+                })
+
+    latest_patterns = []
+    if synth_list:
+        last = synth_list[-1]
+        latest_patterns = last.get("new_patterns_recognized", [])
+
+    phases = gates.get("phases", {})
+    p1 = phases.get("phase_1_pattern_recognition", {})
+    chosen_stream = p1.get("chosen_cashflow_stream")
+
+    active_targets = [t["name"] for t in targets if t.get("status") != "replaced"]
+    closed_micro = [d for d in micro_deals if d.get("stage") in ("closed", "paid")]
+
+    context = {
+        "has_positioning_data": len(deal_list) > 0 or len(fail_list) > 0,
+        "summary": {
+            "deals_observed": len(deal_list),
+            "failures_logged": len(fail_list),
+            "weekly_syntheses": len(synth_list),
+            "micro_deals_closed": len(closed_micro),
+            "dream5_active": len(active_targets),
+            "chosen_cashflow_stream": chosen_stream,
+        },
+        "sector_distribution": sector_counts,
+        "failure_pattern_distribution": failure_patterns,
+        "latest_patterns_recognized": latest_patterns,
+        "topic_matches": topic_matches[:5],
+        "phase_status": {
+            "phase_1": p1.get("status", "pending"),
+            "phase_2": phases.get("phase_2_info_asymmetry", {}).get("status", "pending"),
+            "phase_3": phases.get("phase_3_micro_deals", {}).get("status", "pending"),
+            "phase_4": phases.get("phase_4_relationships", {}).get("status", "pending"),
+            "phase_5": phases.get("phase_5_consolidation", {}).get("status", "pending"),
+        },
+    }
+
+    injection = _build_injection_block(context)
+    context["injection_block"] = injection
+
+    return context
+
+
+def _build_injection_block(ctx: dict) -> str:
+    s = ctx["summary"]
+    if not ctx["has_positioning_data"]:
+        return (
+            "## POSITIONING CONTEXT (Phase 1 not started)\n"
+            "Founder has not begun deal observation. No pattern recognition data available.\n"
+            "Recommendation: Start /observe to build deal journal before committing to opportunities.\n"
+        )
+
+    lines = [
+        "## POSITIONING CONTEXT (from founder's deal journal)",
+        f"- Deals observed: {s['deals_observed']} | Failures logged: {s['failures_logged']}",
+        f"- Weekly syntheses: {s['weekly_syntheses']} | Micro-deals closed: {s['micro_deals_closed']}",
+        f"- Dream 5 active: {s['dream5_active']}",
+    ]
+
+    if s["chosen_cashflow_stream"]:
+        lines.append(f"- Chosen cashflow stream: {s['chosen_cashflow_stream']}")
+
+    if ctx["sector_distribution"]:
+        top_sectors = sorted(ctx["sector_distribution"].items(), key=lambda x: -x[1])[:5]
+        lines.append(f"- Top observed sectors: {', '.join(f'{k}({v})' for k,v in top_sectors)}")
+
+    if ctx["failure_pattern_distribution"]:
+        top_fails = sorted(ctx["failure_pattern_distribution"].items(), key=lambda x: -x[1])[:3]
+        lines.append(f"- Top failure patterns: {', '.join(f'{k}({v})' for k,v in top_fails)}")
+
+    if ctx["latest_patterns_recognized"]:
+        lines.append(f"- Latest patterns: {'; '.join(ctx['latest_patterns_recognized'][:3])}")
+
+    if ctx["topic_matches"]:
+        lines.append(f"- Topic matches in deal journal: {len(ctx['topic_matches'])} deals found")
+        for m in ctx["topic_matches"][:3]:
+            lines.append(f"  - {m['id']}: {m['sector']}, {m['outcome']}, size={m['size_vnd']}VND")
+
+    lines.append("")
+    lines.append("USE this context to: (1) check if topic aligns with founder's observed patterns,")
+    lines.append("(2) flag if founder has seen similar deals succeed/fail, (3) assess pattern recognition depth.")
+    lines.append("")
+
+    return "\n".join(lines)
+
+
+if __name__ == "__main__":
+    topic = sys.argv[1] if len(sys.argv) > 1 else ""
+    result = generate_context(topic)
+    print(json.dumps(result, indent=2, ensure_ascii=False))

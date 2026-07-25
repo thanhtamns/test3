@@ -1,0 +1,19 @@
+{
+  "id": "4",
+  "subject": "Phase 2: Scoring Modules — flow_topology.py, structural_leverage.py, position_intelligence.py",
+  "description": "Build 3 new Python modules in money_mechanisms/. Each ~150-200 lines, same interface as leverage.py (CLI + importable). FlowTopologyAnalyzer (6 patterns + 4 anti-patterns), StructuralLeverageScorer (5 types beyond Naval), PositionIntelligence (6 dimensions + exit-first). Update __init__.py exports.",
+  "activeForm": "Building 3 scoring modules",
+  "status": "pending",
+  "blocks": [
+    "2"
+  ],
+  "blockedBy": [
+    "1"
+  ],
+  "metadata": {
+    "phase": 2,
+    "effort": "2d",
+    "planDir": "plans/260517-1934-money-architecture-layer-upgrade",
+    "phaseFile": "phase-02-scoring-modules-3-engines.md"
+  }
+}

@@ -1,0 +1,426 @@
+#!/usr/bin/env python3
+"""
+Prediction Extractor - Phase 2 of Evolution Architecture
+Parses advisory command output and extracts structured prediction cards.
+"""
+
+import re
+import json
+import hashlib
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import List, Dict, Any, Optional, Tuple
+from dataclasses import dataclass, asdict
+
+# Import validator from Phase 1
+try:
+    from prediction_schema_validator import validate_prediction_card, generate_id, ValidationResult
+except ImportError:
+    # Fallback for standalone execution
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from importlib import import_module
+    validator_mod = import_module('prediction-schema-validator')
+    validate_prediction_card = validator_mod.validate_prediction_card
+    generate_id = validator_mod.generate_id
+    ValidationResult = validator_mod.ValidationResult
+
+# Extraction patterns by command type
+EXTRACTION_PATTERNS = {
+    # Verdict block
+    "verdict": r"VERDICT:\s*(MOUNTAIN|PROVISIONAL|KILL|CONDITIONAL|UNKNOWN)",
+    "confidence": r"(?:Confidence|p_mountain)[:\s=]+(\d+\.?\d*)",
+    "tracking_id": r"(?:tracking_id|TRACKING)[:\s]+([a-zA-Z0-9\-_]+)",
+
+    # Revenue/metric predictions
+    "revenue_month": r"\$?([\d,]+(?:\.\d+)?)[kK]?(?:\s*/\s*(?:mo(?:nth)?|month)|\s+per\s+month)",
+    "revenue_year": r"\$?([\d,]+(?:\.\d+)?)[kK]?(?:\s*/\s*(?:yr|year)|\s+per\s+year)",
+    "p90_income": r"P90[:\s]+\$?([\d,]+)",
+    "p50_income": r"P50[:\s]+\$?([\d,]+)",
+
+    # Timeline markers
+    "timeline_days": r"within\s+(\d+)\s+days?",
+    "timeline_months": r"within\s+(\d+)\s+months?",
+    "timeline_weeks": r"within\s+(\d+)\s+weeks?",
+    "by_month": r"by\s+month\s+(\d+)",
+
+    # Kill criteria (verification criteria)
+    "kill_if": r"KILL\s+(?:IF|if)[:\s]+(.+?)(?:\n|$)",
+    "must_condition": r"MUST\s+(.+?)(?:\n|$)",
+
+    # Confidence zone markers
+    "zone_k": r"\[K\]",
+    "zone_t": r"\[T\]",
+    "zone_q": r"\[\?\]",
+}
+
+# Confidence estimation rules
+CONFIDENCE_SIGNALS = {
+    "high": [
+        (r"VERDICT:\s*MOUNTAIN", 0.85),
+        (r"\[K\]", 0.80),
+        (r"high confidence", 0.80),
+        (r"strongly recommend", 0.75),
+        (r"proven|verified|confirmed", 0.75),
+    ],
+    "medium": [
+        (r"VERDICT:\s*PROVISIONAL", 0.65),
+        (r"VERDICT:\s*CONDITIONAL", 0.60),
+        (r"\[T\]", 0.55),
+        (r"moderate confidence", 0.60),
+        (r"consider|suggest|likely", 0.55),
+    ],
+    "low": [
+        (r"VERDICT:\s*KILL", 0.20),
+        (r"\[\?\]", 0.35),
+        (r"low confidence", 0.35),
+        (r"uncertain|risky|experimental", 0.40),
+    ],
+}
+
+# Default deadline days by command type
+DEFAULT_DEADLINES = {
+    "stage0": 30,
+    "startup": 90,
+    "brainstorm": 60,
+    "invest": 30,
+    "debate": 60,
+    "council": 60,
+    "nui-hunter": 30,
+    "other": 30,
+}
+
+
+def extract_revenue_target(text: str) -> Optional[str]:
+    """Extract primary revenue target from text."""
+    # Try monthly first
+    match = re.search(EXTRACTION_PATTERNS["revenue_month"], text, re.IGNORECASE)
+    if match:
+        amount = match.group(1).replace(",", "")
+        if 'k' in match.group(0).lower():
+            amount = str(float(amount) * 1000)
+        return f"${float(amount):,.0f}/month"
+
+    # Try P90
+    match = re.search(EXTRACTION_PATTERNS["p90_income"], text, re.IGNORECASE)
+    if match:
+        amount = match.group(1).replace(",", "")
+        return f"P90: ${float(amount):,.0f}"
+
+    return None
+
+
+def estimate_confidence(text: str) -> float:
+    """
+    Estimate confidence from text signals.
+    Returns 0.0-1.0 with 0.5 as neutral default.
+    """
+    # First check for explicit confidence value
+    match = re.search(EXTRACTION_PATTERNS["confidence"], text, re.IGNORECASE)
+    if match:
+        conf = float(match.group(1))
+        # Normalize if expressed as percentage
+        if conf > 1:
+            conf = conf / 100
+        return min(max(conf, 0.0), 1.0)
+
+    # Count signals by category
+    high_score = 0.0
+    medium_score = 0.0
+    low_score = 0.0
+
+    for pattern, weight in CONFIDENCE_SIGNALS["high"]:
+        if re.search(pattern, text, re.IGNORECASE):
+            high_score = max(high_score, weight)
+
+    for pattern, weight in CONFIDENCE_SIGNALS["medium"]:
+        if re.search(pattern, text, re.IGNORECASE):
+            medium_score = max(medium_score, weight)
+
+    for pattern, weight in CONFIDENCE_SIGNALS["low"]:
+        if re.search(pattern, text, re.IGNORECASE):
+            low_score = max(low_score, weight)
+
+    # Take highest confidence signal found, default to 0.5
+    scores = [s for s in [high_score, medium_score, low_score] if s > 0]
+    if not scores:
+        return 0.5
+
+    # If conflicting signals, use weighted average
+    if len(scores) > 1:
+        return sum(scores) / len(scores)
+
+    return scores[0]
+
+
+def extract_deadline(text: str, default_days: int = 30) -> Tuple[str, int]:
+    """
+    Extract deadline from text.
+    Returns (YYYY-MM-DD, days_from_now).
+    """
+    today = datetime.now().date()
+
+    # Check explicit timelines
+    match = re.search(EXTRACTION_PATTERNS["timeline_days"], text, re.IGNORECASE)
+    if match:
+        days = int(match.group(1))
+        deadline = today + timedelta(days=days)
+        return deadline.strftime("%Y-%m-%d"), days
+
+    match = re.search(EXTRACTION_PATTERNS["timeline_weeks"], text, re.IGNORECASE)
+    if match:
+        days = int(match.group(1)) * 7
+        deadline = today + timedelta(days=days)
+        return deadline.strftime("%Y-%m-%d"), days
+
+    match = re.search(EXTRACTION_PATTERNS["timeline_months"], text, re.IGNORECASE)
+    if match:
+        days = int(match.group(1)) * 30
+        deadline = today + timedelta(days=days)
+        return deadline.strftime("%Y-%m-%d"), days
+
+    match = re.search(EXTRACTION_PATTERNS["by_month"], text, re.IGNORECASE)
+    if match:
+        month_num = int(match.group(1))
+        days = month_num * 30
+        deadline = today + timedelta(days=days)
+        return deadline.strftime("%Y-%m-%d"), days
+
+    # Default deadline
+    deadline = today + timedelta(days=default_days)
+    return deadline.strftime("%Y-%m-%d"), default_days
+
+
+def extract_verification_criteria(text: str) -> List[str]:
+    """Extract measurable verification criteria from text."""
+    criteria = []
+
+    # Extract KILL IF conditions
+    for match in re.finditer(EXTRACTION_PATTERNS["kill_if"], text, re.IGNORECASE):
+        condition = match.group(1).strip()
+        if condition and len(condition) > 10:
+            # Invert: "KILL IF X" becomes "Avoid: X"
+            criteria.append(f"Verify NOT: {condition}")
+
+    # Extract MUST conditions
+    for match in re.finditer(EXTRACTION_PATTERNS["must_condition"], text, re.IGNORECASE):
+        condition = match.group(1).strip()
+        if condition and len(condition) > 10:
+            criteria.append(f"MUST: {condition}")
+
+    # If no criteria found, create generic ones based on content
+    if not criteria:
+        revenue = extract_revenue_target(text)
+        if revenue:
+            criteria.append(f"Achieve {revenue}")
+
+        # Add generic verification
+        match = re.search(EXTRACTION_PATTERNS["verdict"], text, re.IGNORECASE)
+        if match:
+            verdict = match.group(1)
+            if verdict in ["MOUNTAIN", "PROVISIONAL"]:
+                criteria.append("First paying customer acquired")
+            elif verdict == "CONDITIONAL":
+                criteria.append("All conditions met within deadline")
+
+    # Fallback
+    if not criteria:
+        criteria.append("Outcome verified via user report")
+
+    return criteria[:5]  # Max 5 criteria
+
+
+def extract_verdict_type(text: str) -> str:
+    """Extract verdict type from text."""
+    match = re.search(EXTRACTION_PATTERNS["verdict"], text, re.IGNORECASE)
+    if match:
+        return match.group(1).upper()
+    return "UNKNOWN"
+
+
+def extract_domain(text: str, source_command: str) -> str:
+    """Infer domain from text content."""
+    domain_keywords = {
+        "saas": ["saas", "software", "subscription", "mrr", "arr", "churn"],
+        "ecommerce": ["ecommerce", "e-commerce", "dropship", "amazon", "shopify", "product"],
+        "export": ["export", "import", "coffee", "trade", "fob", "shipping"],
+        "agency": ["agency", "smma", "client", "retainer", "service"],
+        "content": ["youtube", "tiktok", "newsletter", "content", "creator"],
+        "automation": ["n8n", "make", "zapier", "automation", "workflow"],
+        "freelance": ["freelance", "upwork", "fiverr", "contract"],
+    }
+
+    text_lower = text.lower()
+
+    for domain, keywords in domain_keywords.items():
+        if any(kw in text_lower for kw in keywords):
+            return domain
+
+    # Default based on command
+    command_domains = {
+        "stage0": "opportunity",
+        "startup": "startup",
+        "brainstorm": "idea",
+        "invest": "investment",
+        "debate": "strategy",
+    }
+    return command_domains.get(source_command, "general")
+
+
+def extract_predictions(
+    verdict_text: str,
+    source_command: str,
+    session_id: str = None,
+    personas: List[str] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Extract prediction cards from verdict text.
+
+    Args:
+        verdict_text: Raw output from advisory command
+        source_command: One of: startup, stage0, brainstorm, invest, debate
+        session_id: Optional session identifier
+        personas: List of personas that contributed
+
+    Returns:
+        List of prediction card dicts matching schema
+    """
+    if not verdict_text or len(verdict_text.strip()) < 50:
+        return []
+
+    predictions = []
+    now = datetime.now()
+
+    # Extract core elements
+    confidence = estimate_confidence(verdict_text)
+    verdict_type = extract_verdict_type(verdict_text)
+    domain = extract_domain(verdict_text, source_command)
+    default_days = DEFAULT_DEADLINES.get(source_command, 30)
+    deadline, deadline_days = extract_deadline(verdict_text, default_days)
+    criteria = extract_verification_criteria(verdict_text)
+    revenue_target = extract_revenue_target(verdict_text)
+
+    # Extract tracking ID if present
+    tracking_match = re.search(EXTRACTION_PATTERNS["tracking_id"], verdict_text)
+    tracking_id = tracking_match.group(1) if tracking_match else None
+
+    # Build primary prediction
+    pred_text = f"{verdict_type} verdict for {domain}"
+    if revenue_target:
+        pred_text = f"{verdict_type}: {revenue_target} target"
+
+    # Generate hash for query identification
+    query_hash = hashlib.md5(verdict_text[:500].encode()).hexdigest()[:12]
+
+    prediction = {
+        "id": generate_id(now),
+        "timestamp": now.isoformat(),
+        "source_command": source_command,
+        "session_id": session_id or f"session-{now.strftime('%y%m%d')}-{query_hash[:6]}",
+        "domain": domain,
+        "prediction_text": pred_text[:500],
+        "measurable_outcome": revenue_target or f"{verdict_type} outcome achieved",
+        "deadline": deadline,
+        "deadline_days": min(deadline_days, 90),  # Cap at 90
+        "confidence": round(confidence, 3),
+        "confidence_stake": round(confidence * 10, 1),
+        "verification_criteria": criteria,
+        "personas_involved": personas or [],
+        "verdict_type": verdict_type,
+        "status": "pending",
+        "outcome": None,
+        "metadata": {
+            "query_hash": query_hash,
+            "tracking_id": tracking_id,
+        }
+    }
+
+    predictions.append(prediction)
+
+    return predictions
+
+
+def extract_from_file(filepath: Path, source_command: str) -> List[Dict]:
+    """Extract predictions from a verdict file."""
+    with open(filepath, 'r', encoding='utf-8') as f:
+        content = f.read()
+
+    # Try to extract personas from file metadata
+    personas = []
+    if "personas_involved" in content:
+        match = re.search(r"personas_involved[:\s]+\[([^\]]+)\]", content)
+        if match:
+            personas = [p.strip().strip('"\'') for p in match.group(1).split(",")]
+
+    return extract_predictions(
+        verdict_text=content,
+        source_command=source_command,
+        personas=personas
+    )
+
+
+def validate_extracted(predictions: List[Dict]) -> Tuple[List[Dict], List[str]]:
+    """Validate extracted predictions, return (valid, errors)."""
+    valid = []
+    errors = []
+
+    for pred in predictions:
+        result = validate_prediction_card(pred)
+        if result.valid:
+            valid.append(pred)
+        else:
+            errors.extend([f"{pred['id']}: {e}" for e in result.errors])
+
+    return valid, errors
+
+
+# CLI
+if __name__ == "__main__":
+    import argparse
+    import sys
+
+    parser = argparse.ArgumentParser(description="Extract predictions from advisory output")
+    parser.add_argument("--input", "-i", help="Input file path (default: stdin)")
+    parser.add_argument("--command", "-c", required=True,
+                       choices=["startup", "stage0", "brainstorm", "invest", "debate", "nui-hunter", "other"],
+                       help="Source command type")
+    parser.add_argument("--output", "-o", help="Output file (default: stdout)")
+    parser.add_argument("--session", "-s", help="Session ID")
+    parser.add_argument("--personas", "-p", nargs="*", help="Personas involved")
+    parser.add_argument("--validate", "-v", action="store_true", help="Validate output")
+
+    args = parser.parse_args()
+
+    # Read input
+    if args.input:
+        with open(args.input, 'r', encoding='utf-8') as f:
+            text = f.read()
+    else:
+        text = sys.stdin.read()
+
+    # Extract
+    predictions = extract_predictions(
+        verdict_text=text,
+        source_command=args.command,
+        session_id=args.session,
+        personas=args.personas
+    )
+
+    # Validate if requested
+    if args.validate:
+        valid, errors = validate_extracted(predictions)
+        if errors:
+            print("Validation errors:", file=sys.stderr)
+            for err in errors:
+                print(f"  - {err}", file=sys.stderr)
+            predictions = valid
+
+    # Output
+    output = json.dumps(predictions, indent=2, ensure_ascii=False)
+
+    if args.output:
+        with open(args.output, 'w', encoding='utf-8') as f:
+            f.write(output)
+        print(f"Wrote {len(predictions)} predictions to {args.output}")
+    else:
+        print(output)

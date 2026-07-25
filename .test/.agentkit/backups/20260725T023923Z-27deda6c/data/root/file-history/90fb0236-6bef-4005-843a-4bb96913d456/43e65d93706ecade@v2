@@ -1,0 +1,62 @@
+---
+title: "Layer 2: Deep Intelligence Side-Door Engine"
+description: "Upgrade side-door thinking from Level 1-2 (chain+script) to Level 4 (wound extraction, compound objectives, persona matrices, info asymmetry warfare, human-mentor output voice)"
+status: completed
+priority: P1
+branch: "master"
+tags: [side-door, power-network, operator-voice, stage0]
+blockedBy: []
+blocks: []
+created: "2026-05-10T01:48:20.016Z"
+completedAt: "2026-05-10T09:12:00.000Z"
+createdBy: "ck:plan"
+source: skill
+---
+
+# Layer 2: Deep Intelligence Side-Door Engine
+
+## Overview
+
+Current side-door engine (Layer 1) fires 4 agents with generic prompts on relationship-barrier KILLs. Produces Level 1-2 output: chains + scripts but no psychological depth, no compound objectives, no persona switching, no information warfare.
+
+Layer 2 upgrades: (1) wound extraction BEFORE approach design, (2) every action requires ≥2 objectives, (3) auto-generated persona per chain link, (4) info asymmetry mapping, (5) output reads like human mentor — zero LLM artifacts.
+
+**Target repo:** `D:/code/invesments/master_investments/` (NOT _mmo)
+**Key files modified:** `side-door-trigger.py`, `stage0.md`, `stage0-checklist.md`, `anti-orthodox-gate.py`
+**Key files created:** `wound-extractor.py`, `compound-objective-validator.py`, `persona-matrix-generator.py`
+
+## Phases
+
+| Phase | Name | Status | Effort |
+|-------|------|--------|--------|
+| 1 | [Wound Extractor Module](./phase-01-wound-extractor-module.md) | Completed | 3h |
+| 2 | [Compound Objective Engine](./phase-02-compound-objective-engine.md) | Completed | 2h |
+| 3 | [Persona Matrix and Info Asymmetry](./phase-03-persona-matrix-and-info-asymmetry.md) | Completed | 2h |
+| 4 | [Output Voice Revolution](./phase-04-output-voice-revolution.md) | Completed | 3h |
+| 5 | [Integration and Wiring](./phase-05-integration-and-wiring.md) | Completed | 2h |
+
+## Architecture
+
+```
+KILL + relationship_barrier detected
+         ↓
+Step 6.8.4 (NEW): Wound Extractor
+  → research target's pain points, failures, anxieties
+  → output: wound_map JSON
+         ↓
+Step 6.8.5 (UPGRADED): Side-Door Scanner
+  → inject wound_map into ALL 8 agent prompts (not just 4)
+  → compound objective validator rejects single-purpose actions
+  → persona matrix generates different founder-persona per chain link
+  → info asymmetry tracker maps knowledge gaps per party
+         ↓
+Step 7 (UPGRADED): Verdict with human-mentor voice
+  → zero LLM format artifacts
+  → reads like private notes from experienced operator
+  → scripts as dialogue, math as conversation, risks as warnings
+```
+
+## Dependencies
+
+- Depends on: Layer 1 (side-door-trigger.py, anti-orthodox-gate.py, operator voice) — COMPLETED
+- Blocked by: nothing

@@ -1,0 +1,114 @@
+---
+status: in_progress
+created: 2026-05-27
+target_repo: D:\code\invesments\master_investments
+title: "Hypothesis-Driven Intelligence Engine"
+description: >-
+  Evolve Stage0 from search-aggregation pipeline to hypothesis-driven
+  adversarial intelligence engine. Inspired by DeepMind Co-Scientist:
+  shift compute from SEARCH (60%) to THINK (80%). 5 phases.
+total_phases: 5
+estimated_effort: "35h"
+---
+
+# Hypothesis-Driven Intelligence Engine
+
+## Problem
+
+Stage0 produces DATA, not INTELLIGENCE. Current pipeline: 7+ web search agents → flat evidence vault → single-pass reasoning chain → synthesis. User critique: "quá bình thường và vẫn web search quá nhiều" (too ordinary, relies too much on web search).
+
+**Root cause:** Pipeline is COLLECT → ORGANIZE → SUMMARIZE. Missing the THINK step that makes Co-Scientist (DeepMind, Nature May 2025) produce novel discoveries.
+
+## Co-Scientist Architecture (reference)
+
+```
+Generation(10%) → [Verify against structured DBs(70%) + Debate(20%)] × N rounds → Convergence
+```
+
+Key principles:
+1. Generate NOVEL hypotheses before any search (first principles, not web-first)
+2. 70% compute on VERIFICATION against structured knowledge, not generation
+3. Contradictions are MORE valuable than confirmations
+4. Iterative refinement until ranking CONVERGES (not single-pass)
+5. Evolution: top ideas MERGE into stronger forms
+
+## Current Stage0 vs Proposed
+
+```
+CURRENT:
+  Search(60%) → Organize(20%) → Debate(10%) → Synthesize(10%)
+  Single-pass: Phase 0 → 1 → 2 → 2.5A/B/C → 2.7 → 3 → 4
+
+PROPOSED:
+  Seed(10%) → [Generate → Verify → Debate → Evolve] × N → Synthesize(10%)
+  Iterative: Phase 2.6 (Generate) → 2.7 (Debate) → 2.8 (Refine) loops until convergence
+```
+
+## Phase Overview
+
+| # | Phase | Status | Effort | Files |
+|---|-------|--------|--------|-------|
+| 1 | [First Principles Generator](phase-01-first-principles-generator.md) | complete | 5h | 3 new + 1 modify |
+| 1B | [Reflection Agent (Self-Critique)](phase-01b-reflection-agent.md) | pending | 3h | 2 new |
+| 2 | [Knowledge Graph](phase-02-knowledge-graph.md) | pending | 8h | 4 new + 2 modify |
+| 3 | [Refinement Loop + Evolution](phase-03-refinement-loop.md) | pending | 8h | 3 new + 2 modify |
+| 3A | [Proximity & Diversity Enforcer](phase-03a-proximity-diversity.md) | pending | 3h | 2 new + 1 modify |
+| 4 | [Mechanism-First Output](phase-04-mechanism-first-output.md) | pending | 3h | 1 new + 2 modify |
+| 5 | [Integration + Unification](phase-05-integration-testing.md) | pending | 5h | 2 modify + tests |
+
+## Architecture
+
+```
+Phase 2 research agents (existing, UNCHANGED)
+        ↓
+Phase 2.5A: Evidence Vault (existing, UPGRADED → Knowledge Graph)
+Phase 2.5B: Reasoning Chain (existing, UNCHANGED)
+Phase 2.5C: Pattern Matcher (existing, UNCHANGED)
+        ↓
+Phase 2.6: FIRST PRINCIPLES GENERATOR (PLAN COMPLETE)
+  - Generate 5-8 novel hypotheses WITHOUT web search
+  - Pure LLM reasoning from founder context + domain knowledge
+  - Each hypothesis has: mechanism, falsification criteria, causal chain
+        ↓
+Phase 2.6B: REFLECTION AGENT (NEW — Co-Scientist gap #5)
+  - Self-critique EACH hypothesis before tournament entry
+  - Weak hypotheses killed/refined BEFORE wasting debate compute
+  - Output: filtered + pre-strengthened candidate pool
+        ↓
+Phase 2.7: Tournament (existing, UPGRADED)
+  - Deep self-play debate: hypotheses ARGUE with evidence (gap #3)
+  - Proximity/diversity enforcement prevents premature convergence (gap #2)
+  - Feeds results to refinement loop
+        ↓
+Phase 2.8: REFINEMENT LOOP (NEW — UPGRADED with gaps #1, #4)
+  - For top-3: STRENGTHEN + ATTACK + EVOLVE (merge)
+  - Dynamic compute: Elo delta rate determines rounds, not fixed cap (gap #1)
+  - Test-time compute scaling: more rounds when Elo still improving (gap #4)
+  - Converge when Elo movement < threshold OR max 5 rounds
+        ↓
+Phase 3-4: Lens Analysis + Synthesis (existing, receives richer input)
+        ↓
+Phase 5: UNIFICATION (gap #6)
+  - Merge IntelligenceController's hypothesis loop with refinement loop
+  - Single convergence system: graph + hypotheses + debate + evolve
+```
+
+## Dependencies
+
+- Tournament engine (Phase 2.7) — SHIPPED, 33/33 tests
+- Intelligence Controller — SHIPPED, hypothesis loop pattern reusable
+- Evidence Vault Protocol — exists, needs upgrade to Knowledge Graph
+- SKILL.md — will be modified in Phase 5 integration
+
+## Key Design Decisions
+
+1. **Knowledge Graph is Python, not markdown** — structured queryable data, not flat text
+2. **First Principles Generator is a PROTOCOL (markdown)** — follows evidence-vault-protocol pattern, LLM is the executor
+3. **Refinement Loop uses DYNAMIC convergence, not fixed rounds** — Elo delta rate determines when to stop. If top-3 Elo still improving >5% per round → continue. If <5% → converge. Hard cap = 5 rounds (up from 3).
+4. **Convergence = Elo movement rate + ranking stability** — two signals: (a) top-3 IDs stable across 2 rounds, OR (b) Elo delta <5% across round. Either triggers stop.
+5. **All new code in `.claude/lib/intelligence/`** — extends existing module structure
+6. **Evidence vault is NOT replaced** — Knowledge Graph is a structured LAYER on top of it
+7. **Reflection agent filters BEFORE tournament** — weak hypotheses killed pre-debate, saving compute
+8. **Proximity enforcement is a DIVERSITY TAX on tournament** — top-3 cannot all be same archetype
+9. **IntelligenceController merges with Refinement Loop** — single convergence system, shared graph infrastructure
+10. **Deep debate = evidence-backed argumentation** — tournament debates include SPECIFIC evidence citations, not just LLM opinion

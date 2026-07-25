@@ -1,0 +1,108 @@
+"""
+T01 Tree of Thoughts — evaluate 3 reasoning paths (optimistic / pessimistic / unexpected).
+Select best-scoring path and derive overall score from it.
+Zero LLM calls.
+"""
+
+from .base import TechniqueInput, TechniqueResult
+
+POSITIVE_DIMS = {"unit_economics", "moat_patterns", "compounding_mechanisms"}
+RISK_DIMS = {"base_rates", "failure_patterns"}
+COMPETITIVE_DIM = "competitive_landscape"
+INDIRECT_DIM = "indirect_entry"
+
+
+def tree_of_thoughts(inp: TechniqueInput) -> TechniqueResult:
+    facts = inp.facts
+
+    if not facts:
+        return TechniqueResult(
+            technique_id="T01_tree_of_thoughts",
+            score=0.0,
+            confidence=0.0,
+            verdict="NEEDS_DATA",
+            reasoning_chain=["No facts provided — cannot evaluate paths"],
+            zone_tag="?",
+            needs_data=["facts"],
+        )
+
+    # --- Path A: Optimistic ---
+    path_a_facts = [
+        f for f in facts
+        if f.dimension in POSITIVE_DIMS and f.confidence >= 0.7
+    ]
+    path_a_score = _path_score(path_a_facts)
+
+    # --- Path B: Pessimistic ---
+    path_b_facts = [
+        f for f in facts
+        if f.dimension in RISK_DIMS
+        or (f.dimension == COMPETITIVE_DIM and ("competitor" in f.fact.lower() or "saturated" in f.fact.lower()))
+    ]
+    path_b_score = _path_score(path_b_facts)
+
+    # --- Path C: Unexpected ---
+    path_c_facts = [
+        f for f in facts
+        if (f.confidence < 0.5 and (f.value or 0) > 0.5)
+        or f.dimension == INDIRECT_DIM
+    ]
+    path_c_score = _path_score(path_c_facts)
+
+    paths = {
+        "optimistic": (path_a_score, path_a_facts),
+        "pessimistic": (path_b_score, path_b_facts),
+        "unexpected": (path_c_score, path_c_facts),
+    }
+
+    best_name = max(paths, key=lambda k: paths[k][0])
+    best_score_raw, best_facts = paths[best_name]
+
+    chain = [
+        f"Path A (Optimistic, conf>=0.7 in positive dims): {len(path_a_facts)} facts, score={path_a_score:.3f}",
+        f"Path B (Pessimistic, risk dims + competitive signals): {len(path_b_facts)} facts, score={path_b_score:.3f}",
+        f"Path C (Unexpected, low-conf high-value + indirect): {len(path_c_facts)} facts, score={path_c_score:.3f}",
+        f"Best path: {best_name} with raw score {best_score_raw:.3f}",
+    ]
+
+    # Normalize: cap raw score at 3.0 (3 high-confidence facts = strong signal)
+    normalized = min(best_score_raw / 3.0, 1.0)
+
+    # Verdict logic
+    if best_name == "optimistic" and normalized >= 0.6:
+        verdict = "GO"
+    elif best_name == "pessimistic" and normalized >= 0.4:
+        verdict = "KILL"
+    elif best_name == "unexpected":
+        verdict = "INVESTIGATE"
+    elif normalized >= 0.3:
+        verdict = "CAUTION"
+    else:
+        verdict = "INVESTIGATE"
+
+    confidence = min(0.9, 0.3 + len(facts) * 0.07)
+    chain.append(f"Normalized score: {normalized:.3f} → verdict: {verdict}")
+
+    return TechniqueResult(
+        technique_id="T01_tree_of_thoughts",
+        score=round(normalized, 3),
+        confidence=round(confidence, 3),
+        verdict=verdict,
+        reasoning_chain=chain,
+        zone_tag="T" if confidence < 0.75 else "K",
+        data_used=[f"total_facts:{len(facts)}"],
+        metadata={
+            "path_a_score": round(path_a_score, 3),
+            "path_b_score": round(path_b_score, 3),
+            "path_c_score": round(path_c_score, 3),
+            "best_path": best_name,
+            "best_fact_count": len(best_facts),
+        },
+    )
+
+
+def _path_score(facts: list) -> float:
+    if not facts:
+        return 0.0
+    avg_conf = sum(f.confidence for f in facts) / len(facts)
+    return len(facts) * avg_conf

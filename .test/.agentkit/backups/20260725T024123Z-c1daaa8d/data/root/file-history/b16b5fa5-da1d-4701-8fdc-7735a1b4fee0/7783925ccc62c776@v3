@@ -1,0 +1,80 @@
+# Phase 4: Integration & Testing
+
+**Priority:** P2
+**Status:** pending
+**Estimated time:** 1-2 hours
+**Depends on:** Phase 1, 2, 3
+
+## Context
+- Command must be discoverable via skill system
+- Must integrate with existing /action, /blueprint, /exec pipeline
+- Must not break stage0 or any existing command
+
+## Integration Points
+
+### 1. Skill Registration
+Add `/hunt` to skill catalog so it appears in available commands.
+File: check if commands auto-register or need explicit listing.
+
+### 2. /action Integration
+Step 3.3 creates ACTION file: `data/actions/ACTION-HUNT-<id>-proof.json`
+- Format matches existing action system (from stage0 Step 9.8)
+- `/action list` shows hunt proof actions alongside stage0 actions
+- `/action resolve` marks proof as complete, triggers `/hunt continue`
+
+### 3. /blueprint Bridge
+After `/hunt` completes (status = SCRIPTS_READY):
+- Suggest: "Run `/blueprint` to create execution plan for building [offer_name]"
+- Pass offer.json as input context to blueprint
+
+### 4. /exec Bridge
+After scripts ready:
+- First action auto-created: "Send 10 cold outreach messages using scripts/cold-outreach-dm.md"
+- /exec tracks daily execution
+
+### 5. Stage0 Bridge (optional, non-blocking)
+- Stage0 verdict can suggest `/hunt` for specific prey groups identified in analysis
+- Hunt can reference stage0 case_id for context continuity
+
+## Testing Strategy
+
+### Manual Test 1: Full Pipeline (Steps 1-2)
+```
+/hunt kế toán thuế cá nhân hành nghề tại Việt Nam
+```
+Expected: prey_profile created, pain_map created, proof outreach scripts generated, ACTION created, pipeline pauses at Step 3.
+
+### Manual Test 2: Continue After Proof
+```
+/hunt continue HUNT-260522-ke-toan-thue-vn
+```
+Input: "8 replies, 5 confirmed pain, 3 asked for solution, WTP range 50K-200K VND"
+Expected: proof.json updated, proof_status = PASSED, offer designed, scripts generated.
+
+### Manual Test 3: Failed Proof
+```
+/hunt continue HUNT-260522-ke-toan-thue-vn
+```
+Input: "2 replies, 0 confirmed pain"
+Expected: proof_status = FAILED, suggestion to try different pain or different prey.
+
+### Manual Test 4: Independent Run (no stage0)
+```
+/hunt chủ quán cà phê nhỏ tại Đà Nẵng
+```
+Expected: runs without requiring prior stage0 verdict.
+
+## Implementation Steps
+
+1. Verify command auto-registration (or add to skill list)
+2. Test ACTION file creation matches existing format
+3. Test /hunt continue state loading
+4. Document in hunt.md: bridges to /blueprint, /exec, /stage0
+5. Run Manual Test 1 end-to-end
+
+## Success Criteria
+- [ ] /hunt appears in available commands
+- [ ] ACTION files compatible with existing /action system
+- [ ] /hunt continue loads previous hunt state
+- [ ] Pipeline pauses correctly at Step 3 (human action required)
+- [ ] No breaking changes to stage0 or other commands

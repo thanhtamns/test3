@@ -1,0 +1,610 @@
+//! CostRecord storage — SQLite-backed attribution metadata.
+//!
+//! Tracks which PR / feature / developer consumed what API cost.
+//! Source of truth for billing is ccusage.rs; this stores attribution context.
+//!
+//! DB path resolution order:
+//!   1. `RTK_COST_DB` env var
+//!   2. `dirs::data_local_dir()/rtk/cost.db`
+
+use anyhow::{Context, Result};
+use rusqlite::{params, Connection};
+use serde::Serialize;
+use std::path::PathBuf;
+
+use super::constants::RTK_DATA_DIR;
+
+const COST_DB: &str = "cost.db";
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CostRecord {
+    pub id: Option<i64>,
+    pub session_id: String,
+    pub model_id: String,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+    pub cost_usd: f64,
+    pub pr_ref: Option<String>,
+    pub feature_tag: Option<String>,
+    pub project_path: String,
+    pub developer_id: String,
+    pub timestamp: String,
+}
+
+/// Aggregated cost summary for a grouping key.
+#[derive(Debug, Serialize)]
+pub struct CostSummary {
+    pub key: String,
+    pub total_cost_usd: f64,
+    pub record_count: u64,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+}
+
+pub struct CostStore {
+    conn: Connection,
+}
+
+impl CostStore {
+    pub fn new() -> Result<Self> {
+        let db_path = get_db_path()?;
+        Self::open(&db_path)
+    }
+
+    pub fn open(db_path: &std::path::Path) -> Result<Self> {
+        if let Some(parent) = db_path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("create cost DB dir: {}", parent.display()))?;
+        }
+
+        let conn = Connection::open(db_path)
+            .with_context(|| format!("open cost DB: {}", db_path.display()))?;
+
+        let _ = conn.execute_batch(
+            "PRAGMA journal_mode=WAL;
+             PRAGMA busy_timeout=5000;",
+        );
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS cost_records (
+                id               INTEGER PRIMARY KEY,
+                session_id       TEXT NOT NULL DEFAULT '',
+                model_id         TEXT NOT NULL DEFAULT 'unknown',
+                input_tokens     INTEGER NOT NULL DEFAULT 0,
+                output_tokens    INTEGER NOT NULL DEFAULT 0,
+                cache_read_tokens  INTEGER NOT NULL DEFAULT 0,
+                cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+                cost_usd         REAL NOT NULL DEFAULT 0.0,
+                pr_ref           TEXT,
+                feature_tag      TEXT,
+                project_path     TEXT NOT NULL DEFAULT '',
+                developer_id     TEXT NOT NULL DEFAULT '',
+                timestamp        TEXT NOT NULL
+            )",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_cost_session ON cost_records(session_id)",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_cost_pr ON cost_records(pr_ref)",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_cost_timestamp ON cost_records(timestamp)",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_cost_developer ON cost_records(developer_id)",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_cost_model ON cost_records(model_id)",
+            [],
+        )?;
+
+        Ok(Self { conn })
+    }
+
+    /// Insert a new cost attribution record.
+    pub fn record_cost(&self, record: &CostRecord) -> Result<i64> {
+        self.conn.execute(
+            "INSERT INTO cost_records
+                (session_id, model_id, input_tokens, output_tokens,
+                 cache_read_tokens, cache_write_tokens, cost_usd,
+                 pr_ref, feature_tag, project_path, developer_id, timestamp)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            params![
+                record.session_id,
+                record.model_id,
+                record.input_tokens as i64,
+                record.output_tokens as i64,
+                record.cache_read_tokens as i64,
+                record.cache_write_tokens as i64,
+                record.cost_usd,
+                record.pr_ref,
+                record.feature_tag,
+                record.project_path,
+                record.developer_id,
+                record.timestamp,
+            ],
+        )?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Fetch all records for a given PR ref.
+    pub fn query_by_pr(&self, pr_ref: &str) -> Result<Vec<CostRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, session_id, model_id, input_tokens, output_tokens,
+                    cache_read_tokens, cache_write_tokens, cost_usd,
+                    pr_ref, feature_tag, project_path, developer_id, timestamp
+             FROM cost_records WHERE pr_ref = ?1 ORDER BY timestamp ASC",
+        )?;
+        collect_records(&mut stmt, params![pr_ref])
+    }
+
+    /// Fetch all records for a given developer.
+    pub fn query_by_dev(&self, developer_id: &str) -> Result<Vec<CostRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, session_id, model_id, input_tokens, output_tokens,
+                    cache_read_tokens, cache_write_tokens, cost_usd,
+                    pr_ref, feature_tag, project_path, developer_id, timestamp
+             FROM cost_records WHERE developer_id = ?1 ORDER BY timestamp ASC",
+        )?;
+        collect_records(&mut stmt, params![developer_id])
+    }
+
+    /// Fetch all records for a given model.
+    pub fn query_by_model(&self, model_id: &str) -> Result<Vec<CostRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, session_id, model_id, input_tokens, output_tokens,
+                    cache_read_tokens, cache_write_tokens, cost_usd,
+                    pr_ref, feature_tag, project_path, developer_id, timestamp
+             FROM cost_records WHERE model_id LIKE ?1 ORDER BY timestamp ASC",
+        )?;
+        // Use LIKE prefix so "claude-opus-4%" matches versioned IDs too
+        let pattern = format!("{}%", model_id);
+        collect_records(&mut stmt, params![pattern])
+    }
+
+    /// Fetch all records for a specific UTC date (YYYY-MM-DD).
+    pub fn query_by_day(&self, date: &str) -> Result<Vec<CostRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, session_id, model_id, input_tokens, output_tokens,
+                    cache_read_tokens, cache_write_tokens, cost_usd,
+                    pr_ref, feature_tag, project_path, developer_id, timestamp
+             FROM cost_records WHERE timestamp LIKE ?1 ORDER BY timestamp ASC",
+        )?;
+        let pattern = format!("{}%", date);
+        collect_records(&mut stmt, params![pattern])
+    }
+
+    /// Sum total cost across all records (optionally filtered by project path).
+    pub fn total_cost(&self, project_path: Option<&str>) -> Result<f64> {
+        let total: f64 = if let Some(path) = project_path {
+            self.conn.query_row(
+                "SELECT COALESCE(SUM(cost_usd), 0.0) FROM cost_records WHERE project_path = ?1",
+                params![path],
+                |row| row.get(0),
+            )?
+        } else {
+            self.conn.query_row(
+                "SELECT COALESCE(SUM(cost_usd), 0.0) FROM cost_records",
+                [],
+                |row| row.get(0),
+            )?
+        };
+        Ok(total)
+    }
+
+    /// Cost breakdown grouped by PR ref.
+    pub fn summarize_by_pr(&self) -> Result<Vec<CostSummary>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT COALESCE(pr_ref, '<unlinked>') as key,
+                    SUM(cost_usd), COUNT(*),
+                    SUM(input_tokens), SUM(output_tokens)
+             FROM cost_records
+             GROUP BY key ORDER BY SUM(cost_usd) DESC",
+        )?;
+        collect_summaries(&mut stmt)
+    }
+
+    /// Cost breakdown grouped by developer.
+    pub fn summarize_by_dev(&self) -> Result<Vec<CostSummary>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT developer_id as key,
+                    SUM(cost_usd), COUNT(*),
+                    SUM(input_tokens), SUM(output_tokens)
+             FROM cost_records
+             GROUP BY key ORDER BY SUM(cost_usd) DESC",
+        )?;
+        collect_summaries(&mut stmt)
+    }
+
+    /// Cost breakdown grouped by model.
+    pub fn summarize_by_model(&self) -> Result<Vec<CostSummary>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT model_id as key,
+                    SUM(cost_usd), COUNT(*),
+                    SUM(input_tokens), SUM(output_tokens)
+             FROM cost_records
+             GROUP BY key ORDER BY SUM(cost_usd) DESC",
+        )?;
+        collect_summaries(&mut stmt)
+    }
+
+    /// Cost breakdown grouped by day (YYYY-MM-DD prefix of timestamp).
+    pub fn summarize_by_day(&self) -> Result<Vec<CostSummary>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT SUBSTR(timestamp, 1, 10) as key,
+                    SUM(cost_usd), COUNT(*),
+                    SUM(input_tokens), SUM(output_tokens)
+             FROM cost_records
+             GROUP BY key ORDER BY key ASC",
+        )?;
+        collect_summaries(&mut stmt)
+    }
+
+    /// Sum cost_usd for a specific developer since a given RFC3339 timestamp.
+    ///
+    /// Used by the budget policy engine to check per-developer period spend.
+    pub fn accumulated_cost_by_dev(&self, dev_id: &str, since: &str) -> Result<f64> {
+        let total: f64 = self.conn.query_row(
+            "SELECT COALESCE(SUM(cost_usd), 0.0) FROM cost_records
+             WHERE developer_id = ?1 AND timestamp >= ?2",
+            rusqlite::params![dev_id, since],
+            |row| row.get(0),
+        )?;
+        Ok(total)
+    }
+
+    /// Sum cost_usd for a specific project path since a given RFC3339 timestamp.
+    ///
+    /// Used by the budget policy engine to check per-project period spend.
+    pub fn accumulated_cost_by_project(&self, project_path: &str, since: &str) -> Result<f64> {
+        // Match both full paths ("/home/dev/myproj") and basenames ("myproj")
+        // by checking exact match OR path ending with /basename
+        let suffix_pattern = format!("%/{}", project_path);
+        let total: f64 = self.conn.query_row(
+            "SELECT COALESCE(SUM(cost_usd), 0.0) FROM cost_records
+             WHERE (project_path = ?1 OR project_path LIKE ?2) AND timestamp >= ?3",
+            rusqlite::params![project_path, suffix_pattern, since],
+            |row| row.get(0),
+        )?;
+        Ok(total)
+    }
+
+    /// Sum all cost_usd since a given RFC3339 timestamp (used for team/global limits).
+    pub fn total_cost_since(&self, since: &str) -> Result<f64> {
+        let total: f64 = self.conn.query_row(
+            "SELECT COALESCE(SUM(cost_usd), 0.0) FROM cost_records
+             WHERE timestamp >= ?1",
+            rusqlite::params![since],
+            |row| row.get(0),
+        )?;
+        Ok(total)
+    }
+}
+
+// ── Row mapping helpers ───────────────────────────────────────────────────────
+
+fn map_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<CostRecord> {
+    Ok(CostRecord {
+        id: Some(row.get(0)?),
+        session_id: row.get(1)?,
+        model_id: row.get(2)?,
+        input_tokens: row.get::<_, i64>(3)?.max(0) as u64,
+        output_tokens: row.get::<_, i64>(4)?.max(0) as u64,
+        cache_read_tokens: row.get::<_, i64>(5)?.max(0) as u64,
+        cache_write_tokens: row.get::<_, i64>(6)?.max(0) as u64,
+        cost_usd: row.get(7)?,
+        pr_ref: row.get(8)?,
+        feature_tag: row.get(9)?,
+        project_path: row.get(10)?,
+        developer_id: row.get(11)?,
+        timestamp: row.get(12)?,
+    })
+}
+
+fn collect_records(
+    stmt: &mut rusqlite::Statement<'_>,
+    params: impl rusqlite::Params,
+) -> Result<Vec<CostRecord>> {
+    let rows = stmt
+        .query_map(params, map_record)?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+fn collect_summaries(stmt: &mut rusqlite::Statement<'_>) -> Result<Vec<CostSummary>> {
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(CostSummary {
+                key: row.get(0)?,
+                total_cost_usd: row.get(1)?,
+                record_count: row.get::<_, i64>(2)? as u64,
+                input_tokens: row.get::<_, i64>(3)? as u64,
+                output_tokens: row.get::<_, i64>(4)? as u64,
+            })
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+// ── DB path resolution ────────────────────────────────────────────────────────
+
+fn get_db_path() -> Result<PathBuf> {
+    if let Ok(custom) = std::env::var("RTK_COST_DB") {
+        return Ok(PathBuf::from(custom));
+    }
+    let data_dir = dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("."));
+    Ok(data_dir.join(RTK_DATA_DIR).join(COST_DB))
+}
+
+fn whoami() -> String {
+    std::env::var("USER")
+        .or_else(|_| std::env::var("USERNAME"))
+        .unwrap_or_else(|_| "unknown".to_string())
+}
+
+/// Build a ready-to-insert CostRecord with current timestamp and developer.
+pub fn new_record(
+    session_id: &str,
+    model_id: &str,
+    input_tokens: u64,
+    output_tokens: u64,
+    cache_read_tokens: u64,
+    cache_write_tokens: u64,
+    cost_usd: f64,
+    pr_ref: Option<String>,
+    feature_tag: Option<String>,
+    project_path: &str,
+) -> CostRecord {
+    CostRecord {
+        id: None,
+        session_id: session_id.to_string(),
+        model_id: model_id.to_string(),
+        input_tokens,
+        output_tokens,
+        cache_read_tokens,
+        cache_write_tokens,
+        cost_usd,
+        pr_ref,
+        feature_tag,
+        project_path: project_path.to_string(),
+        developer_id: whoami(),
+        timestamp: chrono::Utc::now().to_rfc3339(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_store() -> (CostStore, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("test_cost.db");
+        let store = CostStore::open(&db_path).unwrap();
+        (store, dir)
+    }
+
+    fn sample_record(session: &str, pr: Option<&str>) -> CostRecord {
+        CostRecord {
+            id: None,
+            session_id: session.to_string(),
+            model_id: "claude-sonnet-4-20250514".to_string(),
+            input_tokens: 1_000,
+            output_tokens: 500,
+            cache_read_tokens: 200,
+            cache_write_tokens: 0,
+            cost_usd: 0.015,
+            pr_ref: pr.map(|s| s.to_string()),
+            feature_tag: Some("feat".to_string()),
+            project_path: "/home/dev/myproject".to_string(),
+            developer_id: "alice".to_string(),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+
+    #[test]
+    fn insert_and_total_cost() {
+        let (store, _dir) = test_store();
+        let r = sample_record("sess1", Some("#42"));
+        let id = store.record_cost(&r).unwrap();
+        assert!(id > 0);
+
+        let total = store.total_cost(None).unwrap();
+        assert!((total - 0.015).abs() < 1e-9);
+    }
+
+    #[test]
+    fn query_by_pr_returns_matching_records() {
+        let (store, _dir) = test_store();
+        store.record_cost(&sample_record("s1", Some("#10"))).unwrap();
+        store.record_cost(&sample_record("s2", Some("#20"))).unwrap();
+        store.record_cost(&sample_record("s3", Some("#10"))).unwrap();
+
+        let results = store.query_by_pr("#10").unwrap();
+        assert_eq!(results.len(), 2);
+        assert!(results.iter().all(|r| r.pr_ref.as_deref() == Some("#10")));
+    }
+
+    #[test]
+    fn query_by_dev_filters_correctly() {
+        let (store, _dir) = test_store();
+        let mut r_alice = sample_record("s1", None);
+        r_alice.developer_id = "alice".to_string();
+        let mut r_bob = sample_record("s2", None);
+        r_bob.developer_id = "bob".to_string();
+
+        store.record_cost(&r_alice).unwrap();
+        store.record_cost(&r_bob).unwrap();
+
+        let alice_results = store.query_by_dev("alice").unwrap();
+        assert_eq!(alice_results.len(), 1);
+        assert_eq!(alice_results[0].developer_id, "alice");
+    }
+
+    #[test]
+    fn query_by_model_prefix_match() {
+        let (store, _dir) = test_store();
+        store.record_cost(&sample_record("s1", None)).unwrap(); // model: claude-sonnet-4-20250514
+
+        let results = store.query_by_model("claude-sonnet-4").unwrap();
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn summarize_by_pr_groups_correctly() {
+        let (store, _dir) = test_store();
+        store.record_cost(&sample_record("s1", Some("#5"))).unwrap();
+        store.record_cost(&sample_record("s2", Some("#5"))).unwrap();
+        store.record_cost(&sample_record("s3", Some("#9"))).unwrap();
+
+        let summaries = store.summarize_by_pr().unwrap();
+        let pr5 = summaries.iter().find(|s| s.key == "#5").unwrap();
+        assert_eq!(pr5.record_count, 2);
+        assert!((pr5.total_cost_usd - 0.030).abs() < 1e-9);
+
+        let pr9 = summaries.iter().find(|s| s.key == "#9").unwrap();
+        assert_eq!(pr9.record_count, 1);
+    }
+
+    #[test]
+    fn total_cost_project_filter() {
+        let (store, _dir) = test_store();
+        let mut r1 = sample_record("s1", None);
+        r1.project_path = "/proj/a".to_string();
+        r1.cost_usd = 0.10;
+        let mut r2 = sample_record("s2", None);
+        r2.project_path = "/proj/b".to_string();
+        r2.cost_usd = 0.20;
+
+        store.record_cost(&r1).unwrap();
+        store.record_cost(&r2).unwrap();
+
+        let total_a = store.total_cost(Some("/proj/a")).unwrap();
+        assert!((total_a - 0.10).abs() < 1e-9);
+
+        let total_all = store.total_cost(None).unwrap();
+        assert!((total_all - 0.30).abs() < 1e-9);
+    }
+
+    #[test]
+    fn summarize_by_model() {
+        let (store, _dir) = test_store();
+        store.record_cost(&sample_record("s1", None)).unwrap();
+        store.record_cost(&sample_record("s2", None)).unwrap();
+
+        let summaries = store.summarize_by_model().unwrap();
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].record_count, 2);
+    }
+
+    #[test]
+    fn summarize_by_dev() {
+        let (store, _dir) = test_store();
+        let mut r = sample_record("s1", None);
+        r.developer_id = "charlie".to_string();
+        store.record_cost(&r).unwrap();
+
+        let summaries = store.summarize_by_dev().unwrap();
+        assert!(summaries.iter().any(|s| s.key == "charlie"));
+    }
+
+    #[test]
+    fn new_record_helper_sets_timestamp_and_dev() {
+        let r = new_record("sess", "claude-opus-4", 100, 50, 0, 0, 0.001, None, None, "/p");
+        assert!(!r.timestamp.is_empty());
+        assert!(!r.developer_id.is_empty());
+        assert_eq!(r.model_id, "claude-opus-4");
+    }
+
+    #[test]
+    fn accumulated_cost_by_dev_sums_correctly() {
+        let (store, _dir) = test_store();
+
+        let past = "2000-01-01T00:00:00+00:00"; // well before any real record
+
+        let mut r1 = sample_record("s1", None);
+        r1.developer_id = "alice".to_string();
+        r1.cost_usd = 0.10;
+
+        let mut r2 = sample_record("s2", None);
+        r2.developer_id = "alice".to_string();
+        r2.cost_usd = 0.20;
+
+        let mut r3 = sample_record("s3", None);
+        r3.developer_id = "bob".to_string();
+        r3.cost_usd = 0.50;
+
+        store.record_cost(&r1).unwrap();
+        store.record_cost(&r2).unwrap();
+        store.record_cost(&r3).unwrap();
+
+        let alice_total = store.accumulated_cost_by_dev("alice", past).unwrap();
+        assert!((alice_total - 0.30).abs() < 1e-9, "alice total: {}", alice_total);
+
+        let bob_total = store.accumulated_cost_by_dev("bob", past).unwrap();
+        assert!((bob_total - 0.50).abs() < 1e-9);
+
+        // Future cutoff excludes everything
+        let future = "2099-01-01T00:00:00+00:00";
+        let none = store.accumulated_cost_by_dev("alice", future).unwrap();
+        assert!((none - 0.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn accumulated_cost_by_project_sums_correctly() {
+        let (store, _dir) = test_store();
+
+        let past = "2000-01-01T00:00:00+00:00";
+
+        let mut r1 = sample_record("s1", None);
+        r1.project_path = "/proj/alpha".to_string();
+        r1.cost_usd = 0.15;
+
+        let mut r2 = sample_record("s2", None);
+        r2.project_path = "/proj/alpha".to_string();
+        r2.cost_usd = 0.35;
+
+        let mut r3 = sample_record("s3", None);
+        r3.project_path = "/proj/beta".to_string();
+        r3.cost_usd = 0.99;
+
+        store.record_cost(&r1).unwrap();
+        store.record_cost(&r2).unwrap();
+        store.record_cost(&r3).unwrap();
+
+        let alpha = store.accumulated_cost_by_project("/proj/alpha", past).unwrap();
+        assert!((alpha - 0.50).abs() < 1e-9, "alpha total: {}", alpha);
+
+        let beta = store.accumulated_cost_by_project("/proj/beta", past).unwrap();
+        assert!((beta - 0.99).abs() < 1e-9);
+
+        let unknown = store.accumulated_cost_by_project("/proj/unknown", past).unwrap();
+        assert!((unknown - 0.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn total_cost_since_filters_by_timestamp() {
+        let (store, _dir) = test_store();
+
+        let past = "2000-01-01T00:00:00+00:00";
+
+        let mut r = sample_record("s1", None);
+        r.cost_usd = 1.23;
+        store.record_cost(&r).unwrap();
+
+        let total = store.total_cost_since(past).unwrap();
+        assert!((total - 1.23).abs() < 1e-9);
+
+        let future = "2099-01-01T00:00:00+00:00";
+        let none = store.total_cost_since(future).unwrap();
+        assert!((none - 0.0).abs() < 1e-9);
+    }
+}

@@ -1,0 +1,80 @@
+# DM Outreach Templates (Day 3 — 3 hours)
+
+## Target Selection (10 people)
+
+Find indie hackers who posted about distribution struggles in the LAST 30 days on:
+- Reddit (r/SideProject, r/SaaS, r/indiehackers)
+- Twitter/X (search: "launched my SaaS" OR "built a tool" + "no users" OR "no traction")
+- Indie Hackers forum
+
+### Selection criteria:
+- Posted about distribution/marketing struggle specifically
+- Has a live product (URL visible)
+- Solo founder or small team (2-3 people)
+- Product is B2B SaaS, dev tool, or productivity tool (our target segment)
+
+## DM Templates
+
+### Template A: Reddit DM (warm — they posted about the problem)
+
+```
+Hey [name], saw your post about [specific thing they said] in r/[subreddit].
+
+I'm researching how indie builders find their first users — it's a problem I've hit myself.
+
+Quick question: what's the ONE distribution thing you tried that wasted the most time? And would you pay for a tool that told you exactly WHERE to post your product + gave you copy-paste outreach scripts?
+
+No pitch — genuinely collecting data. Happy to share what I find.
+```
+
+### Template B: Twitter/X DM
+
+```
+Hey [name] — saw your tweet about [product]. Looks solid.
+
+Curious: what's been your biggest challenge getting it in front of the right people? I'm mapping out what actually works for indie products vs what's just noise.
+
+Would love to hear your experience (2 min max). Happy to share the data I'm collecting.
+```
+
+### Template C: Offering free analysis (if low response rate)
+
+```
+Hey [name], I'm building a tool that analyzes products and recommends the best distribution channels with outreach scripts.
+
+Want me to run your product through it for free? I'll send you a custom report — which communities to target, what to say, best timing.
+
+All I'd ask is 2 minutes of feedback after.
+```
+
+## Tracking Sheet: `dm-responses.csv`
+
+```
+date,platform,username,product_url,template_used,responded,response_summary,friction_mentioned,solution_tried,would_pay,how_much,follow_up_needed
+```
+
+## Response Handling
+
+**If they respond with pain:**
+- Ask: "If a tool could analyze your product URL and instantly give you 15 ranked channels + copy-paste scripts for each — would you pay $9 for that?"
+- Ask: "What have you tried that didn't work? (so I know what to NOT build)"
+
+**If they respond skeptically:**
+- "Totally fair. What DO you think is the #1 problem? I might be wrong about distribution being the top friction."
+
+**If no response after 48h:**
+- One follow-up max: "No worries if busy — even a one-word answer helps. What's harder: building or getting users?"
+
+## Success Criteria
+
+- [ ] 10 DMs sent across platforms
+- [ ] 3+ responses received (30% response rate)
+- [ ] At least 2 people describe distribution as top friction
+- [ ] At least 1 person says they'd pay for solution
+- [ ] Exact language captured for landing page copy
+
+## Time Budget
+
+- 1 hour: Find 10 targets + personalize DMs
+- 30 min: Send all DMs
+- 1.5 hours: Follow up + record responses (can span 2-3 days)

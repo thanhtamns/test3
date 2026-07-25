@@ -1,0 +1,250 @@
+# Equity Position Playbook: Cach nhung tay loi doi thuc su lam
+
+**Hunt ID:** HUNT-260524-equity-position-operator
+**Mode:** Flow (equity money flow tracing)
+**Query:** "Lam sao tim cong ty khoi dau/kho khan, co co phan, thu nhap thu dong?"
+
+---
+
+## CANH BAO TRUOC
+
+90% startup that bai. Bat ky co phan nao trong startup = 90% xac suat = 0 dong. [K, CB Insights, Carta 2024]
+
+Nhung tay loi doi BIET dieu nay. Ho khong "dau tu" — ho **TAO VI TRI** trong dong tien. Equity chi la PHAN THUONG cho vi tri, khong phai muc tieu.
+
+---
+
+## 7 CO CHE THUC SU (Xep theo do "loi doi")
+
+### CO CHE 1: SWEAT EQUITY — "Doi code lay co phan" (Co ban nhat)
+
+**Cau truc chinh xac:**
+- Idea-stage, dong gop ngang nhau: 30-50% equity [K, Carta 2024 — 73% startup 2 nguoi chia 50/50]
+- Post-idea, CTO-level: 15-30%
+- Post-MVP, co traction: 5-15%
+- Vest 4 nam, cliff 1 nam. Double-trigger acceleration: neu bi mua lai truoc khi vest het → vest 100% ngay
+
+**Noi tim:**
+- Wellfound (AngelList): filter "equity only" + "co-founder"
+- CoFoundersLab, YC co-founder matching
+- VN: facebook.com/groups/cto.founder, facebook.com/groups/cto.platform (1,800+ posts), voz.vn co-founder threads
+- TopDev Founder Matching events
+- Antler Vietnam: $120K cho 12% post-match [K]
+
+**DO LOI DOI: 3/10.** Ai cung biet cach nay. Khong co asymmetry. Ban doi thoi gian lay lottery ticket.
+
+---
+
+### CO CHE 2: ADVISOR EQUITY — "Ban chuyen mon, nhan co phan nho, dau tu 5h/thang"
+
+**Cau truc chinh xac (FAST Agreement — fi.co/fast, mien phi):**
+
+| Muc do tham gia | Idea Stage | Startup Stage | Growth Stage |
+|---|---|---|---|
+| Standard (call hang thang) | 0.25% | 0.20% | 0.15% |
+| Expert (intros + projects) | 1.00% | 0.80% | 0.60% |
+
+- Vest 2 nam, cliff 3 thang
+- Khong can luat su — template 1 trang tai fi.co/fast
+
+**Cach choi cua tay loi doi:** Khong advise 1 startup. Advise 10-15 startup cung luc. Moi cai 0.25-1%. 5h/thang/cai. Neu 1/10 thanh cong (base rate hop ly) → 1 equity co gia tri. **Portfolio approach — giong VC nhung bang thoi gian.**
+
+**DO LOI DOI: 5/10.** Diversification strategy dung. Nhung van la lottery — chi khac la ban mua nhieu ve hon.
+
+---
+
+### CO CHE 3: EQUITY FOR SERVICES — "Lam dich vu, lay co phan thay tien"
+
+**Cau truc (EASE Agreement — fi.co/ease):**
+- Tinh: gia tri dich vu theo gia thi truong / valuation cong ty = % equity
+- VD: $30K dev work / $300K valuation = 10%
+- Hoac: (luong bo / valuation) x risk factor (1.5-3x) = equity %
+- Vest theo milestone, hoac cliff khi hoan thanh
+
+**Noi tim:**
+- Upwork/Toptal founders post "need dev, no budget" → offer equity deal
+- Product Hunt launches khong co CTO
+- Indie Hackers "Partner Up" section
+
+**DO LOI DOI: 4/10.** Van la doi skill lay lottery ticket. Nhung it nhat co cau truc phap ly ro rang hon co-founder.
+
+---
+
+### CO CHE 4: SELF-FUNDED SEARCH (ETA) — "Tim cong ty co loi nhuan, mua bang tien nguoi khac"
+
+**Day la co che cua THUC SU LOI DOI:**
+
+**Cau truc chinh xac [K, Searchfunder.com + SearchFund.org]:**
+- Operator tim deal, ky LOI, van hanh cong ty
+- Investor bo 100% von
+- Chia: Investor 50% (preferred return 8-14%) + Operator 50% (common stock)
+- Tiered carry: 30% duoi 15% IRR, 40% duoi 20% IRR, 60% tren 20% IRR
+- SBA loan (chi My): 10% down, 10 nam, chinh phu bao lanh
+
+**Target:** Cong ty $500K-$2.5M EBITDA, dich vu, manufacturing nhe, software. Chu muon nghi huu/chan.
+
+**Von can:** $0 neu seller carry 100%. Thuc te: $10-50K legal + due diligence.
+
+**HAN CHE LON:** SBA chi cho nguoi My. Operator VN can partner voi US-based searcher hoac target cong ty VN.
+
+**DO LOI DOI: 8/10.** Day la co che that. Ban khong dau tu TIEN — ban dau tu KHA NANG TIM VA VAN HANH. $0 capital → 50% equity trong cong ty co loi nhuan.
+
+---
+
+### CO CHE 5: DISTRESSED ACQUISITION — "Mua cong ty sap chet"
+
+**Co che:**
+- Startup het tien, team con nguyen → acqui-hire (mua team + IP)
+- Hoac: CEO role + 10-25% equity grant + luong thap, earn-in theo milestone
+
+**Noi tim startup sap chet:**
+- Crunchbase: filter "last funding >18 months, seed stage, no Series A"
+- Twitter/X: founders noi "running out of runway"
+- VN: CafeF.vn + VnEconomy.vn — search "giai the" + "startup"
+- DPI registry: dangkykinhdoanh.gov.vn — dissolution records
+- **sanmuabandoanhnghiep.net** — san mua ban doanh nghiep VN. Listings tu 0 dong den 50 ty. [K]
+- **mva.vn** — MVA Group advisory + marketplace M&A
+
+**VN data: startup sap chet cu the:**
+- Telio ($65M raised → dissolved 12/2024, 400+ nhan vien)
+- LuxStay ($15.5M raised → dissolved 2022)
+- WeFit ($1M raised → pha san 2020)
+- Shark Tank VN: We Escape (30B → giai the), WeFit → pha san
+
+**Thoi diem tot nhat:** Thang 6-9 cua crisis (het tien nhung chua chinh thuc giai the). Truc tiep lien lac founder.
+
+**Von toi thieu VN:**
+- Shell company (sach thue, 0 tai san): 0-50M VND ($0-2,000)
+- Acqui-hire team 3-5 nguoi: 200-500M VND ($8-20K)
+
+**DO LOI DOI: 7/10.** Gap gio luc thi truong VN startup investment giam 38% (2024: $196M → $120M). Founders tuyet vong hon → equity re hon. [K, Vietstock 2025]
+
+---
+
+### CO CHE 6: MICRO PE ROLLUP — "Mua 1, gom nhieu, ban cao"
+
+**Co che cua tay thuc su loi doi (Tiny.com model):**
+- Mua 1 cong ty nho (platform) bang seller financing
+- Gom them doi thu nho bang stock swap (tra co phan thay tien)
+- Logic: mua o 3-4x EBITDA, ban o 6-10x EBITDA sau khi gom
+
+**VN relevant industries:** F&B chains, beauty salon, logistics, education center — fragmented, nhieu chu nho
+
+**Von:** $0 neu seller carry 100%. Thuc te: 200-500M VND ($8-20K)
+
+**DO LOI DOI: 9/10.** Day la co che cua nhung Andrew Wilkinson, Brent Beshore. Khong xay gi moi. Tim cai da co loi nhuan. Mua re. Gom lai. Ban dat.
+
+---
+
+### CO CHE 7: REVENUE SHARE → EQUITY CONVERSION — "Chung minh truoc, lay equity sau"
+
+**Co che:**
+- Buoc 1: Thoa thuan X% revenue trong Y thang doi lay dich vu (khong equity)
+- Buoc 2: Sau 6-12 thang chung minh gia tri → convert revenue share thanh equity
+- Cap: 1.5-2.5x invested value roi convert
+
+**DO LOI DOI: 6/10.** An toan hon vi ban duoc tra truoc. Nhung cham — can 6-12 thang truoc khi co equity.
+
+---
+
+## NGUOI LOI DOI THUC SU LAM GI MA NGUOI THUONG KHONG THAY
+
+### 1. HO KHONG "DAU TU" — HO **TAO VI TRI**
+
+Nguoi thuong: "Tim startup tot → bo tien vao → hy vong len gia"
+Tay loi doi: "Tim DONG TIEN dang chay → tim NODE BOTTLENECK → ngoi vao do → equity la phan thuong cho vi tri, khong phai muc tieu"
+
+VD cu the: Khong mua co phan startup F&B. Thay vao do, lam CHUOI CUNG CAP cho 20 startup F&B. Khi ho can nguyen lieu → ban cung cap → lay % equity nho (0.5-2%) tu moi cong ty thay vi chiet khau. 20 cong ty x 1% = portfolio.
+
+### 2. HO DUNG "SELLER FINANCING" — KHONG BAO GIO TRA TRUOC
+
+Nguoi thuong: "Toi can tien de mua cong ty"
+Tay loi doi: "Chu cong ty tra tien cho chinh toi de toi mua cong ty cua ho"
+
+Co che: Seller carry 70-100% gia tri. Tra dan tu cash flow cua chinh cong ty do. $0 down.
+
+Khi nao seller dong y? Khi ho TUYET VONG: sap nghi huu, benh, ly hon, chan. Tim nhung nguoi nay.
+
+### 3. HO DIVERSIFY BANG THOI GIAN, KHONG BANG TIEN
+
+Nguoi thuong: "Bo $10K vao 1 startup"
+Tay loi doi: "Advise 15 startup, moi cai 5h/thang, lay 0.5-1% equity. Cost = 75h/thang. 1/15 thanh cong = win."
+
+### 4. HO TIM "BRIDGE DEALS" — KHONG PHAI "LONG-TERM INVESTMENT"
+
+Khong nam giu co phan 5-10 nam. Tim cong ty DANG CAN bridge financing → cho muon/dich vu → lay equity → exit trong 12-24 thang khi ho raise round tiep.
+
+### 5. HO DUNG THONG TIN BAT DOI XUNG
+
+Biet TRUOC khi thi truong biet:
+- Cong ty nao sap het tien (qua nguoi quen trong team)
+- Nganh nao dang co regulation moi (co hoi compliance)
+- Startup nao dang bi founder conflict (co hoi mua re)
+
+**Day la ly do NETWORK > CAPITAL.** Thong tin den truoc tien bao gio cung thang.
+
+---
+
+## DIEU VN-SPECIFIC CAN BIET
+
+### Luat VN giet vesting kieu My
+
+- Enterprise Law 2020: moi von gop phai dong trong **90 ngay** tu khi cap ERC [K, Baker McKenzie VN]
+- Khong co cliff/vest native trong luat VN
+- Workaround: dieu khoan charter + han che chuyen nhuong + quyen mua lai. Can luat su (~15-20M VND / $600-800)
+- **LLC (TNHH)**: chuyen nhuong can 75% thanh vien dong y — co-founder bi ket
+- **JSC (Co phan)**: tu do chuyen nhuong sau 3 nam — tot hon cho equity deals
+
+### Thi truong hien tai = buyer's market
+
+- VN startup investment giam 38% (2024) [K, Vietstock]
+- Founders tuyet vong hon → equity re hon
+- Window: 2025-2026 la thoi diem tot de mua equity re
+- Nhieu startup seed/pre-seed da raise 18+ thang truoc ma khong co Series A → target
+
+---
+
+## HANH DONG CU THE — KHONG PHAI "NGHIEN CUU THEM"
+
+### Tuan 1: Thiet lap infra
+
+1. **Dang ky Wellfound** — profile "Technical Co-founder, Vietnam-based, equity-only"
+2. **Tai FAST agreement** tu fi.co/fast — doc va hieu
+3. **Join 3 FB groups:** cto.founder, cto.platform, taostartup
+4. **Dang ky sanmuabandoanhnghiep.net** — browse IT/tech category
+5. **Set Crunchbase alert:** VN startups, seed stage, last funding >12 months
+
+### Tuan 2-4: Pipeline
+
+6. **Tim 10 VN startup seed da raise 18+ thang, chua co Series A** (Crunchbase filter)
+7. **Tim 5 listing tren sanmuabandoanhnghiep.net** duoi 200M VND co asset (domain, code, customer list)
+8. **Reply 5 co-founder posts** tren FB groups/VOZ — khong pitch, chi hoi "anh can gi? toi co the giup gi?"
+9. **Cold email 3 founder startup dang kho khan** (tu CafeF/VnEconomy news) — "Toi la dev, toi muon giup, khong can luong, ban co the chia se tinh hinh?"
+
+### Thang 2-3: Chon 1 deal
+
+10. Tu pipeline tren, chon 1 co hoi:
+    - **Advisor deal** (0.5-1%, 5h/thang, FAST agreement) — thap rui ro
+    - **HOAC Co-founder deal** (15-30%, full-time) — cao rui ro, cao thuong
+    - **HOAC Mua shell company** (<50M VND) co domain/code → rebuild
+11. **BAT BUOC:** Co hop dong bang van ban truoc khi lam bat ky gi. EASE hoac FAST template.
+
+---
+
+## KILL CRITERIA
+
+| Dieu kien | Hanh dong |
+|---|---|
+| 4 tuan khong co 1 cuoc tro chuyen voi founder nao | KHO KHAN — doi prey group |
+| Founder khong chiu ky agreement | KILL deal do — di tiep |
+| Startup khong co 1 khach hang tra tien | CANH BAO — equity = 0 neu khong co revenue |
+| Ban khong the bo >=10h/tuan | DUNG — equity game can thoi gian, khong phai tien |
+
+---
+
+## UNRESOLVED
+
+1. FAST/EASE agreement co enforceable trong luat VN khong? Can luat su VN xac nhan. [?]
+2. Zalo groups tim co-founder — co ton tai nhung khong indexable. Can hoi truc tiep trong FB groups. [?]
+3. VN co tuong duong SAFE notes khong? Legal framework khong ro — can Baker McKenzie VN tu van. [?]
+4. Thue ca nhan tren co phan cong ty nuoc ngoai (Delaware C-Corp) — chua ro nghia vu thue VN. [?]

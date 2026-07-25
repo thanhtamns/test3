@@ -1,0 +1,78 @@
+{
+  "case_id": "stage0-260517-zero-capital-large-cashflow",
+  "title_en": "Business model $0-500 capital, sustainable 10 years, truly large cash flow",
+  "title_vn": "Mô hình kinh doanh $0-500 vốn, bền vững 10 năm, dòng tiền thực sự lớn",
+  "domain": "bootstrap_service_to_commerce",
+  "topic": "mô hình kinh doanh $0-500 vốn, bền vững 10 năm, dòng tiền thực sự lớn",
+  "verdict": "SIDE_HUSTLE with stair-step to MOUNTAIN. Three models identified with specific instance data. Q1=yes (founder URLs verified), Q2=no (no KG cohort), Compounding=yes. TIER_0 founder must bridge from service to commerce.",
+  "verdict_class": "SIDE_HUSTLE",
+  "confidence": 0.72,
+  "agents_fired": 12,
+  "founder_profile_fit": {
+    "capital_tier": "TIER_0",
+    "track": "SERVICE_ENTRY",
+    "constraints": ["no_product_dev", "no_paid_ads", "service_first"],
+    "location": "Vietnam"
+  },
+  "knowledge_fired": ["MM-03", "SCH-012", "SCH-018"],
+  "new_artifacts": [],
+  "source_urls": [
+    "https://medium.com/@deividas_tokaris/how-i-scaled-my-agency-to-50k-month-8d9d4f4bc6e7",
+    "https://startupbros.com/service-arbitrage/",
+    "https://www.starterstory.com/ideas/growth-agency/success-stories",
+    "https://assembly.com/blog/productized-services",
+    "https://www.shareuhack.com/en/posts/what-is-drop-servicing",
+    "https://cashflowfrog.com/blog/10-great-business-ideas-for-high-cash-flow/",
+    "https://www.aldebaran.nl/our-products/cashews/",
+    "https://kimmyfarm.com/en/vietnam-cashew-nuts",
+    "https://hello5coffee.com/vietnam-robusta-coffee-price-2026/"
+  ],
+  "mountain_test_v2": {
+    "Q1_founder_url": "https://medium.com/@deividas_tokaris/how-i-scaled-my-agency-to-50k-month-8d9d4f4bc6e7",
+    "Q1_result": true,
+    "Q2_kg_cohort": false,
+    "Q3_lindy": true,
+    "lindy_category": "professional_service + commodity_trade",
+    "lindy_age_years": 200,
+    "compounding": true,
+    "compounding_type": "relationship + data + SOPs",
+    "asymmetry_ratio": 20,
+    "stair_step_check": "bypass_approved"
+  },
+  "pulse_replies": null,
+  "voice_mode": "analyst",
+  "positioning_data": {
+    "has_positioning_data": false,
+    "deals_observed": 0,
+    "failures_logged": 0
+  },
+  "instance_models": [
+    {
+      "sub_niche_name": "B2B Cold Email Lead Gen for US SaaS",
+      "specific_product": "Outsourced SDR pipeline via cold email for $1M-10M ARR SaaS companies",
+      "specific_buyers": "Series A-B SaaS on Crunchbase with 10-50 employees, no Head of Sales on LinkedIn. Upwork 'cold email specialist' (428 active jobs $30-80/hr). Direct LinkedIn outreach to SaaS founders posting about pipeline needs.",
+      "specific_suppliers": "Instantly.ai $37/mo (email warmup+sending), Apollo.io free tier 10K credits/mo (lead data), Smartlead $39/mo alt. Total stack: $37-76/mo.",
+      "price_spread": "Client retainer $1,500-3,000/mo. Tool cost $37-76/mo. Labor 15-20hrs/client. Margin 70-85%. Breakeven at 1 client.",
+      "first_action_message": "Subject: Quick question about [Company]'s pipeline. Hi [Name], I noticed [Company] just raised [round]. Most SaaS at your stage need 20-30 qualified meetings/month but don't have a dedicated SDR yet. I run cold email campaigns for [similar company] generating [X meetings/month]. Want me to show you the campaign? Free audit of your current ICP targeting.",
+      "competitor_count_exact_niche": "High — estimated 2,000+ cold email agencies globally. But fragmented, no dominant player under $3K/mo. Key competitors: SalesRoads, Belkins, CIENCE (all $3K-10K/mo, enterprise-focused). Sub-$2K/mo niche underserved."
+    },
+    {
+      "sub_niche_name": "Vietnam Agricultural Export Broker — Cashew/Pepper/Coffee to European Importers",
+      "specific_product": "Cashew W320 FOB HCM $7,200-$7,500/MT, Black Pepper 500g/l FOB HCM $6,100/MT, Robusta S16 FOB Cat Lai $2,920-$3,050/MT",
+      "specific_buyers": "Aldebaran Commodities B.V. (Netherlands, trade@aldebaran.nl, +31 10 436 4937, 272 import shipments from VN), August Topfer & Co. (Germany, contact@atco.de, +49 40 32003-0, owns VN factory), Intersnack Group (Germany, info@intersnackgroup.com, +49 211 710 65-0, dedicated cashew subsidiaries), Max Kiene GmbH (Germany, 11% DE cashew import share, 57 shipments), Olam Food Ingredients (Singapore/VN, ofi.com/contact, 20% global cashew imports)",
+      "specific_suppliers": "KIMMY Farm (Bu Dang, Binh Phuoc, WhatsApp +84947729829, contact@kimmyfarm.com, ISO/BRC/HACCP certified), Binh Minh Cooperative (Ea Po, Cu Jut, Dak Nong, Director Le Anh Son, 825 households, Rainforest Alliance certified), Black Pepper Vietnam/Gold-Agri (33 Le Duan HCMC, WhatsApp +84 369 866 175, LC/TT/FOB/CIF)",
+      "price_spread": "Cashew W320: FOB $7,200-$7,500/MT, CIF Rotterdam ~$8,000-$8,500/MT, commission 2-5% = $2,646-$6,615/container (18MT). Black Pepper: farmgate ~$5,700/MT, FOB $6,100/MT, CIF ~$6,800-$7,000/MT, commission $2,196-$5,490/container. Robusta S16: farmgate ~$3,270/MT, FOB $2,920-$3,050/MT, commission $1,104-$2,761/container.",
+      "first_action_message": "Subject: Vietnam Cashew W320 — Direct Cooperative Source, Rainforest Alliance. Dear Trade Team at Aldebaran, I work directly with cashew processors in Binh Phuoc and pepper/coffee cooperatives in the Central Highlands. I can offer W320 cashew kernels AFI standard FOB HCM at $7,200-$7,500/MT, BRC/HACCP certified. Black pepper 500g/l Rainforest Alliance certified FOB HCM $6,100/MT. Robusta S16 Grade 1 ST FOB Cat Lai $2,920-$3,050/MT EUDR-ready. Samples within 5 business days. Would spec sheets and lab reports be useful?",
+      "competitor_count_exact_niche": "7,500+ VN cashew exporters total but mostly processors/exporters not commission brokers. 6 named European agents/brokers on CBI list (MW Nuts DE, Belfrudis BE, Global Trading NL, Rotterdam Commodity Trading NL, QFN Trading NL, Cardassilaris GR). Commission broker niche is fragmented and relationship-based."
+    },
+    {
+      "sub_niche_name": "AI Podcast Post-Production Service for B2B Podcasters",
+      "specific_product": "Full post-production: show notes, audiogram clips, blog post repurposing, social snippets. AI tools do 70% (Descript, Opus Clip, ChatGPT), you do QC + strategy.",
+      "specific_buyers": "B2B podcast hosts on LinkedIn with <50 episodes and no 'produced by' credit. Listennotes.com search 'SaaS' or 'B2B' filtered by recent+small audience. Upwork 'podcast show notes' (200+ active jobs $20-50/episode).",
+      "specific_suppliers": "Descript $24/mo (transcription+editing), Opus Clip $19/mo (auto clips), ChatGPT Plus $20/mo (show notes+blog), Canva Pro $13/mo (audiogram visuals). Total: ~$76/mo.",
+      "price_spread": "Client retainer $500-1,500/mo (4 episodes/month). Tool cost $76/mo. Time: 2-3hrs/episode. Capacity solo: 6-8 clients. Margin 65-80%.",
+      "first_action_message": "Hi [Name], I listened to your latest episode on [topic] — great insights on [specific point]. I noticed you're not repurposing episodes into blog posts or LinkedIn clips yet. I help B2B podcasters turn each episode into 5-7 content pieces (show notes, blog post, 3 social clips, audiogram). Most clients see 2-3x more downloads within 3 months. Want me to do your latest episode for free as a sample?",
+      "competitor_count_exact_niche": "Estimated 500-1,000 podcast production freelancers on Upwork/Fiverr. Key productized competitors: Podcast Motor ($1,200-2,400/mo), Podcastpage.io (DIY tool), Sweet Fish Media ($3K+/mo enterprise). Sub-$1K/mo niche with AI-leverage is underserved."
+    }
+  ]
+}

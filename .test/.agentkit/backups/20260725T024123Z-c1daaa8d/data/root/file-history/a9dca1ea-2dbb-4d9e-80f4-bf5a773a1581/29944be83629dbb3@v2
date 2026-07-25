@@ -1,0 +1,181 @@
+---
+phase: 2
+title: "Causal Error Attribution"
+status: pending
+priority: P1
+effort: "4d"
+dependencies: [1]
+---
+
+# Phase 2: Causal Error Attribution
+
+## Overview
+
+When a verdict is WRONG, the system knows THAT it was wrong (Brier score) but not WHICH STEP caused the error. This phase adds mechanism-level causal tracing: every verdict records which steps contributed which signals, so errors can be attributed to specific knobs.
+
+**AEVO parallel:** AEVO's "Observe state" reads traces of what happened. Without this, meta-edit is blind.
+
+## Requirements
+
+**Functional:**
+- Every stage0 step logs its contribution to final verdict as structured trace
+- When outcome logged, attribution engine identifies which step(s) caused error
+- Attribution results stored in `data/calibration/mechanism-errors.jsonl`
+- Each error links to specific knob(s) that could fix it
+
+**Non-functional:**
+- Trace overhead: <5% additional tokens per stage0 run (JSON, no LLM)
+- Attribution runs in <30s (pure logic)
+- Works retroactively on existing cases where chain_traces.jsonl has data
+
+## Architecture
+
+```
+Stage0 execution (inner loop)
+    ↓ each step logs trace
+data/traces/stage0-trace-{case_id}.json
+    ↓ on outcome logged
+mechanism-error-attributor.py
+    ↓ identifies failing step(s) + knob(s)
+data/calibration/mechanism-errors.jsonl
+    ↓ feeds into
+Meta-Edit Controller (Phase 4)
+```
+
+## Related Code Files
+
+**Target repo:** `D:/code/invesments/master_investments`
+
+- Create: `.claude/lib/intelligence/mechanism/trace_logger.py`
+- Create: `.claude/lib/intelligence/mechanism/error_attributor.py`
+- Create: `data/traces/` directory
+- Create: `data/calibration/mechanism-errors.jsonl`
+- Modify: `.claude/commands/stage0.md` — add trace logging at each step
+- Modify: `.claude/lib/intelligence/evolution/outcome_trigger.py` — wire attribution
+- Modify: `.claude/skills/business/feedback_loop/real-outcome-recorder.py` — trigger attribution
+
+## Implementation Steps
+
+### Step 1: Design trace schema
+
+Each stage0 step produces a trace entry:
+
+```json
+{
+  "case_id": "NTH-260516-abc123",
+  "step": "3.5_wave1",
+  "step_name": "Wave 1 Agent Dispatch",
+  "agents_fired": ["researcher", "contrarian-research-agent"],
+  "knobs_used": ["wave1_base_agents", "max_web_calls_per_step"],
+  "signal_produced": {
+    "direction": "GO",
+    "confidence": 0.72,
+    "key_facts": ["market size $2B [K]", "3 competitors [T]"]
+  },
+  "token_cost": 12500,
+  "wall_time_ms": 45000
+}
+```
+
+### Step 2: Implement trace_logger.py
+
+```python
+class TraceLogger:
+    def __init__(self, case_id: str, traces_dir: Path):
+        self.case_id = case_id
+        self.entries = []
+    
+    def log_step(self, step: str, step_name: str, knobs_used: list,
+                 signal: dict, agents: list = None, cost: int = 0):
+        """Log a single step's contribution."""
+    
+    def log_verdict_composition(self, final_verdict: str, step_weights: dict):
+        """Log how steps combined into final verdict."""
+    
+    def save(self):
+        """Write trace to data/traces/stage0-trace-{case_id}.json"""
+```
+
+12 key steps to trace:
+1. Step 1.8 — Local Knowledge Pre-Screen
+2. Step 2.45 — Premise Challenge
+3. Step 2.6 — Query Intent Classification
+4. Step 2.6.2 — Capital-Path Routing
+5. Step 3 — KB-first lookup
+6. Step 3.4b — Calc-Dispatcher
+7. Step 3.5 Wave 1 — Agent research
+8. Step 3.5 Wave 2 — Deep agents
+9. Step 5 — Hypothesis generation
+10. Step 6 — Mountain Test
+11. Step 7 — Verdict synthesis
+12. Step 7.5 — Gap analysis
+
+### Step 3: Implement error_attributor.py
+
+Attribution logic (deterministic, no LLM):
+
+```python
+class ErrorAttributor:
+    def attribute(self, case_id: str, actual_outcome: str, 
+                  predicted_verdict: str) -> list[MechanismError]:
+        trace = self.load_trace(case_id)
+        errors = []
+        
+        # Type 1: Direction mismatch
+        # Step pushed GO but outcome=KILL → step is culpable
+        for step in trace.steps:
+            if step.signal.direction aligned_with wrong_verdict:
+                errors.append(MechanismError(
+                    step=step.step, knobs=step.knobs_used,
+                    error_type="direction_mismatch",
+                    severity=step.signal.confidence
+                ))
+        
+        # Type 2: Missing signal (critical dimension scored 0)
+        # Type 3: Override error (Wave1 KILL overridden by synthesis)
+        
+        return sorted(errors, key=lambda e: e.severity, reverse=True)
+```
+
+### Step 4: Wire into outcome_trigger.py
+
+Add to `OutcomeTrigger.on_outcome()`:
+```python
+attributor = ErrorAttributor()
+mechanism_errors = attributor.attribute(case_id, actual_outcome, predicted_verdict)
+self._persist_mechanism_errors(case_id, mechanism_errors)
+result.mechanism_errors = mechanism_errors
+```
+
+### Step 5: Add trace injection to stage0
+
+At each step, minimal trace call. Example for Wave 1:
+```
+trace.log_step("3.5_wave1", "Wave 1 Agent Dispatch",
+    knobs_used=["wave1_base_agents", "max_web_calls_per_step"],
+    signal={"direction": agent_consensus, "confidence": avg_conf},
+    agents=fired_agent_names, cost=total_tokens)
+```
+
+### Step 6: Tests
+
+- trace_logger produces valid JSON for all 12 steps
+- error_attributor identifies direction mismatch correctly
+- attribution links to correct knobs from Phase 1
+- mechanism-errors.jsonl accumulates across sessions
+
+## Success Criteria
+
+- [ ] 12 stage0 steps produce structured traces
+- [ ] Attribution identifies ≥1 mechanism error per wrong verdict
+- [ ] Each error links to specific knob(s)
+- [ ] Retroactive attribution on ≥10 existing cases
+- [ ] Correct verdicts produce 0 mechanism errors (no false positives)
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|------|------------|
+| Trace overhead | JSON only, no LLM — <5% cost increase |
+| Attribution noise with small N | High-severity errors only (confidence >0.7) |
+| Old cases lack traces | Retroactive only where chain_traces.jsonl exists |

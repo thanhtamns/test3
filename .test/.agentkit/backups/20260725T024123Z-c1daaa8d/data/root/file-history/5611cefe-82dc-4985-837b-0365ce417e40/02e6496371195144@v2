@@ -1,0 +1,204 @@
+[
+  {
+    "id": "CR-001",
+    "name": "inverse_guru_signal",
+    "axiom": "By the time gurus teach it, early movers already won.",
+    "rule": {
+      "condition_fields": ["guru_count"],
+      "expression": "guru_count > 20",
+      "action": "KILL",
+      "confidence_when_triggered": 0.70
+    },
+    "micro_questions": [
+      "how many courses teach {opportunity}",
+      "how many gurus sell {business_type} training"
+    ],
+    "scoring": {
+      "field": "guru_count",
+      "bands": [
+        {"range": [0, 5], "score": 8, "signal": "early"},
+        {"range": [6, 20], "score": 4, "signal": "mainstream"},
+        {"range": [21, 99999], "score": 0, "signal": "past_peak"}
+      ]
+    },
+    "weight": 1.0,
+    "evolution": "FROZEN"
+  },
+  {
+    "id": "CR-002",
+    "name": "ugly_duckling",
+    "axiom": "Opportunities that look unattractive repel competition. Ugly = less crowded.",
+    "rule": {
+      "condition_fields": ["perceived_attractiveness"],
+      "expression": "perceived_attractiveness < 4",
+      "action": "BONUS",
+      "confidence_when_triggered": 0.65
+    },
+    "micro_questions": [
+      "would most people find {business_type} boring or unglamorous",
+      "is {niche} considered 'unsexy' by tech twitter"
+    ],
+    "scoring": {
+      "field": "perceived_attractiveness",
+      "bands": [
+        {"range": [0, 3], "score": 9, "signal": "ugly_duckling_gold"},
+        {"range": [4, 6], "score": 5, "signal": "neutral"},
+        {"range": [7, 10], "score": 2, "signal": "shiny_object_trap"}
+      ]
+    },
+    "bonus_points": 3,
+    "weight": 1.0,
+    "evolution": "FROZEN"
+  },
+  {
+    "id": "CR-003",
+    "name": "pain_over_pleasure",
+    "axiom": "People pay 3x more to remove pain than to gain pleasure.",
+    "rule": {
+      "condition_fields": ["solves_pain"],
+      "expression": "solves_pain == 1",
+      "action": "BONUS",
+      "confidence_when_triggered": 0.75
+    },
+    "micro_questions": [
+      "does {opportunity} solve an active pain or provide a nice-to-have",
+      "would target customer describe problem as painful or annoying"
+    ],
+    "scoring": {
+      "field": "solves_pain",
+      "bands": [
+        {"range": [1, 1], "score": 9, "signal": "pain_killer"},
+        {"range": [0, 0], "score": 3, "signal": "vitamin"}
+      ]
+    },
+    "bonus_points": 2,
+    "weight": 1.0,
+    "evolution": "FROZEN"
+  },
+  {
+    "id": "CR-004",
+    "name": "sell_shovels",
+    "axiom": "In a gold rush, sell shovels. Meta-opportunity always safer than direct play.",
+    "rule": {
+      "condition_fields": ["is_meta_opportunity"],
+      "expression": "is_meta_opportunity == 1",
+      "action": "BONUS",
+      "confidence_when_triggered": 0.70
+    },
+    "micro_questions": [
+      "is {opportunity} selling tools to others in a hot market",
+      "does {business_type} profit regardless of who wins the gold rush"
+    ],
+    "scoring": {
+      "field": "is_meta_opportunity",
+      "bands": [
+        {"range": [1, 1], "score": 9, "signal": "shovel_seller"},
+        {"range": [0, 0], "score": 4, "signal": "direct_player"}
+      ]
+    },
+    "bonus_points": 3,
+    "weight": 1.0,
+    "evolution": "FROZEN"
+  },
+  {
+    "id": "CR-005",
+    "name": "friction_as_feature",
+    "axiom": "Intentional friction filters out weak competitors. Easy entry = crowded.",
+    "rule": {
+      "condition_fields": ["entry_friction_score"],
+      "expression": "entry_friction_score > 6",
+      "action": "BONUS",
+      "confidence_when_triggered": 0.65
+    },
+    "micro_questions": [
+      "what is the effort required to enter {niche}",
+      "does {business_type} require credentials, capital, or rare skills"
+    ],
+    "scoring": {
+      "field": "entry_friction_score",
+      "bands": [
+        {"range": [0, 3], "score": 2, "signal": "easy_entry_crowded"},
+        {"range": [4, 6], "score": 5, "signal": "moderate_barrier"},
+        {"range": [7, 10], "score": 9, "signal": "friction_moat"}
+      ]
+    },
+    "bonus_points": 2,
+    "weight": 1.0,
+    "evolution": "FROZEN"
+  },
+  {
+    "id": "CR-006",
+    "name": "second_mover",
+    "axiom": "Let first mover validate market and make mistakes. Copy + improve = lower risk.",
+    "rule": {
+      "condition_fields": ["first_mover_exists", "first_mover_has_weakness"],
+      "expression": "first_mover_exists == 1 AND first_mover_has_weakness == 1",
+      "action": "BONUS",
+      "confidence_when_triggered": 0.70
+    },
+    "micro_questions": [
+      "who is the first mover in {niche} and what are their weaknesses",
+      "what mistakes has the market leader in {business_type} made"
+    ],
+    "scoring": {
+      "field": "second_mover_advantage",
+      "bands": [
+        {"range": [0, 0], "score": 4, "signal": "no_precedent"},
+        {"range": [1, 1], "score": 8, "signal": "second_mover_opportunity"}
+      ]
+    },
+    "bonus_points": 2,
+    "weight": 1.0,
+    "evolution": "FROZEN"
+  },
+  {
+    "id": "CR-007",
+    "name": "arbitrage_window",
+    "axiom": "Arbitrage windows close. If visible to everyone, you're too late.",
+    "rule": {
+      "condition_fields": ["arbitrage_visibility"],
+      "expression": "arbitrage_visibility > 7",
+      "action": "KILL",
+      "confidence_when_triggered": 0.75
+    },
+    "micro_questions": [
+      "how widely known is this price/service gap in {niche}",
+      "when did first blog post about {opportunity} arbitrage appear"
+    ],
+    "scoring": {
+      "field": "arbitrage_visibility",
+      "bands": [
+        {"range": [0, 3], "score": 9, "signal": "hidden_arb"},
+        {"range": [4, 7], "score": 5, "signal": "known_arb"},
+        {"range": [8, 10], "score": 1, "signal": "arb_closing"}
+      ]
+    },
+    "weight": 1.0,
+    "evolution": "FROZEN"
+  },
+  {
+    "id": "CR-008",
+    "name": "distribution_first",
+    "axiom": "Product without distribution = nothing. Distribution without product = still valuable.",
+    "rule": {
+      "condition_fields": ["has_distribution_channel"],
+      "expression": "has_distribution_channel == 0",
+      "action": "PENALTY",
+      "confidence_when_triggered": 0.75
+    },
+    "micro_questions": [
+      "what existing distribution channel can {opportunity} use",
+      "does founder have audience or access to customers for {business_type}"
+    ],
+    "scoring": {
+      "field": "has_distribution_channel",
+      "bands": [
+        {"range": [0, 0], "score": 2, "signal": "no_distribution"},
+        {"range": [1, 1], "score": 8, "signal": "has_distribution"}
+      ]
+    },
+    "penalty_points": -3,
+    "weight": 1.0,
+    "evolution": "FROZEN"
+  }
+]

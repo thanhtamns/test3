@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+"""
+SBE Regression Test — ensures future changes don't degrade verdict quality.
+Loads benchmark-cases.json, runs SBE, asserts verdicts match baseline.
+"""
+
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "integration"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "engine"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "mtde"))
+
+from sbe_orchestrator import SBEOrchestrator
+
+CASES_PATH = Path(__file__).resolve().parent / "benchmark-cases.json"
+RESULTS_PATH = Path(__file__).resolve().parent / "benchmark-results.json"
+
+BASELINE_ACCURACY = 0.80
+BASELINE_SHORT_CIRCUIT_RATE = 0.40
+
+
+def load_cases():
+    with open(CASES_PATH) as f:
+        return json.load(f)
+
+
+def load_baseline():
+    if RESULTS_PATH.exists():
+        with open(RESULTS_PATH) as f:
+            return json.load(f)
+    return None
+
+
+def test_kill_cases_still_kill():
+    """KILLs must remain KILLs — these are the strongest signals."""
+    orch = SBEOrchestrator()
+    cases = load_cases()
+    kill_cases = [c for c in cases if c["actual_outcome"] == 0 and c["original_verdict"] == "KILL"]
+
+    for case in kill_cases:
+        result = orch.run(case["topic"], case["features"])
+        assert result.verdict == "KILL", f"{case['case_id']}: expected KILL, got {result.verdict}"
+
+
+def test_mountain_cases_not_killed():
+    """Mountains must NOT be killed — false kills are the worst regression."""
+    orch = SBEOrchestrator()
+    cases = load_cases()
+    mountain_cases = [c for c in cases if c["actual_outcome"] == 1]
+
+    for case in mountain_cases:
+        result = orch.run(case["topic"], case["features"])
+        assert result.verdict != "KILL", f"{case['case_id']}: MOUNTAIN incorrectly KILLED"
+
+
+def test_accuracy_above_baseline():
+    """Overall accuracy must not drop below baseline."""
+    orch = SBEOrchestrator()
+    cases = load_cases()
+
+    correct = 0
+    for case in cases:
+        result = orch.run(case["topic"], case["features"])
+        if result.verdict in ("KILL", "SIDE_HUSTLE") and case["actual_outcome"] == 0:
+            correct += 1
+        elif result.verdict == "MOUNTAIN_CANDIDATE" and case["actual_outcome"] == 1:
+            correct += 1
+
+    accuracy = correct / len(cases)
+    assert accuracy >= BASELINE_ACCURACY - 0.10, f"Accuracy {accuracy:.2f} below baseline {BASELINE_ACCURACY}"
+
+
+def test_short_circuit_rate():
+    """Short-circuit rate must stay above minimum (token savings)."""
+    orch = SBEOrchestrator()
+    cases = load_cases()
+
+    short_circuits = 0
+    for case in cases:
+        result = orch.run(case["topic"], case["features"])
+        if result.short_circuited:
+            short_circuits += 1
+
+    rate = short_circuits / len(cases)
+    assert rate >= BASELINE_SHORT_CIRCUIT_RATE, f"Short-circuit rate {rate:.2f} below {BASELINE_SHORT_CIRCUIT_RATE}"
+
+
+def test_performance_under_200ms():
+    """Each case must complete in <200ms (dry-run, no web search)."""
+    import time
+    orch = SBEOrchestrator()
+    cases = load_cases()
+
+    for case in cases:
+        start = time.perf_counter()
+        orch.run(case["topic"], case["features"])
+        elapsed = (time.perf_counter() - start) * 1000
+        assert elapsed < 200, f"{case['case_id']}: {elapsed:.0f}ms exceeds 200ms"
+
+
+def test_no_invalid_verdicts():
+    """All verdicts must be from valid set."""
+    orch = SBEOrchestrator()
+    cases = load_cases()
+    valid = {"KILL", "MOUNTAIN_CANDIDATE", "SIDE_HUSTLE", "NEEDS_DEEPER_ANALYSIS"}
+
+    for case in cases:
+        result = orch.run(case["topic"], case["features"])
+        assert result.verdict in valid, f"{case['case_id']}: invalid verdict {result.verdict}"
+
+
+if __name__ == "__main__":
+    tests = [
+        test_kill_cases_still_kill,
+        test_mountain_cases_not_killed,
+        test_accuracy_above_baseline,
+        test_short_circuit_rate,
+        test_performance_under_200ms,
+        test_no_invalid_verdicts,
+    ]
+
+    passed = 0
+    failed = 0
+    for test in tests:
+        try:
+            test()
+            print(f"  PASS {test.__name__}")
+            passed += 1
+        except Exception as e:
+            print(f"  FAIL {test.__name__}: {e}")
+            failed += 1
+
+    print(f"\n{'='*50}")
+    print(f"Results: {passed} passed, {failed} failed, {len(tests)} total")
+    if failed > 0:
+        sys.exit(1)

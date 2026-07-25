@@ -1,0 +1,72 @@
+---
+phase: 1
+title: "Brier Score Inversion Fix"
+status: pending
+priority: P1
+effort: "1h"
+dependencies: []
+---
+
+# Phase 1: Brier Score Inversion Fix
+
+## Overview
+Fix the mathematical bug where KILL verdict confidence is stored as `p_mountain` without inversion, causing all KILL predictions to appear "wrong" when they're actually correct.
+
+## Requirements
+- Functional: `p_mountain` must represent P(this IS a mountain), not raw confidence
+- For KILL verdicts: `p_mountain = 1 - confidence` (confidence means "sure it's NOT mountain")
+- For MOUNTAIN verdicts: `p_mountain = confidence` (already correct)
+- Non-functional: Zero disruption to existing MOUNTAIN scoring
+
+## Architecture
+```
+Current flow (BROKEN for KILLs):
+  stage0 verdict → confidence=0.92 → trajectory-logger stores p_mountain=0.92
+  → auto-outcome-detector calculates Brier=(0.92-0)²=0.8464 (WRONG)
+
+Fixed flow:
+  stage0 verdict → confidence=0.92 + verdict=KILL
+  → prediction-extractor stores p_mountain = 1-0.92 = 0.08
+  → auto-outcome-detector calculates Brier=(0.08-0)²=0.0064 (CORRECT)
+```
+
+## Related Code Files
+- Modify: `D:\code\invesments\master_investments\.claude\skills\business\feedback_loop\auto-outcome-detector.py` (line 79-102, 105-107)
+- Modify: `D:\code\invesments\master_investments\.claude\skills\business\feedback_loop\prediction-extractor.py` (line 295-326)
+- Modify: `D:\code\invesments\master_investments\.claude\hooks\trajectory-logger.cjs` (line 89)
+- Modify: `D:\code\invesments\master_investments\.claude\skills\business\feedback_loop\stage0-outcomes-db-writer.py` (line 194)
+
+## Implementation Steps
+
+1. In `prediction-extractor.py`, after `confidence = estimate_confidence(verdict_text)` (line 295):
+   - Detect if verdict is negative (KILL, REJECT, FAIL, NO_GO)
+   - If negative: set `p_mountain = 1 - confidence`
+   - If positive: set `p_mountain = confidence` (unchanged)
+   - Store `p_mountain` explicitly in output dict
+
+2. In `auto-outcome-detector.py` `derive_outcome_from_verdict()` (line 79-102):
+   - No change needed — outcome derivation is correct (KILL → observed=0)
+   - But ADD: a new helper `normalize_p_mountain(confidence, verdict)` that returns inverted value for negatives
+
+3. In `trajectory-logger.cjs` (line 89):
+   - When extracting `p_mountain` from verdict text, check if verdict contains KILL/negative
+   - If so: `p_mountain = 1 - parseFloat(pMountainMatch[1])`
+
+4. In `stage0-outcomes-db-writer.py` (line 194):
+   - When reading `e.get("p_mountain")`, verify it's already normalized
+   - Add assertion: if verdict=KILL and p_mountain > 0.5, log warning "p_mountain not inverted"
+
+5. Add unit test: `test_brier_inversion.py`
+   - Test KILL+conf=0.92 → p_mountain=0.08 → Brier=(0.08-0)²=0.0064
+   - Test MOUNTAIN+conf=0.72 → p_mountain=0.72 → Brier=(0.72-1)²=0.0784
+   - Test edge: conf=0.5 → same either way
+
+## Success Criteria
+- [ ] KILL verdict with confidence 0.92 produces p_mountain=0.08
+- [ ] MOUNTAIN verdict with confidence 0.72 produces p_mountain=0.72
+- [ ] Unit tests pass for both positive and negative verdict types
+- [ ] No regression in existing MOUNTAIN Brier scores
+
+## Risk Assessment
+- Risk: Existing brier-scores.jsonl has wrong p_mountain values → handled in Phase 4 recalculation
+- Mitigation: Phase 1 only fixes the STORAGE logic; Phase 4 recalculates historical data

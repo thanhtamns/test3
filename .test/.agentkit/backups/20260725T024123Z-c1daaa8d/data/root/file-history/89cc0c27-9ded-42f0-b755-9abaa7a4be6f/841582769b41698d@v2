@@ -1,0 +1,141 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import {
+  fetchCostByPR,
+  formatTokens,
+  type CostByPR,
+} from "@/lib/api";
+import { DateRangeSelector } from "@/components/date-range-selector";
+
+export default function CostPage() {
+  const [data, setData] = useState<CostByPR[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [days, setDays] = useState(90);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    fetchCostByPR(days)
+      .then((r) => { if (!cancelled) setData(r || []); })
+      .catch((e) => { if (!cancelled) setError(e.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [days]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold">Cost Analytics</h1>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-muted-foreground">
+              Could not load cost data. Make sure the API is running.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const totalCost = data.reduce((sum, r) => sum + r.total_cost_usd, 0);
+  const totalInput = data.reduce((sum, r) => sum + r.input_tokens, 0);
+  const totalOutput = data.reduce((sum, r) => sum + r.output_tokens, 0);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Cost Analytics</h1>
+        <DateRangeSelector value={days} onChange={setDays} />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <MetricCard title="Total Cost" value={`$${totalCost.toFixed(2)}`} description="across all PRs" />
+        <MetricCard title="Input Tokens" value={formatTokens(totalInput)} description="total consumed" />
+        <MetricCard title="Output Tokens" value={formatTokens(totalOutput)} description="total generated" />
+        <MetricCard title="PRs Tracked" value={data.length.toString()} description="with cost data" />
+      </div>
+
+      {data.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Cost by Pull Request</CardTitle>
+            <CardDescription>AI coding cost breakdown per PR</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>PR</TableHead>
+                  <TableHead className="text-right">Cost (USD)</TableHead>
+                  <TableHead className="text-right">Input Tokens</TableHead>
+                  <TableHead className="text-right">Output Tokens</TableHead>
+                  <TableHead className="text-right">Records</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.map((r) => (
+                  <TableRow key={r.pr_ref}>
+                    <TableCell className="font-medium">{r.pr_ref || "(no PR)"}</TableCell>
+                    <TableCell className="text-right">
+                      <Badge variant="secondary">${r.total_cost_usd.toFixed(2)}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right">{formatTokens(r.input_tokens)}</TableCell>
+                    <TableCell className="text-right">{formatTokens(r.output_tokens)}</TableCell>
+                    <TableCell className="text-right">{r.record_count}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-muted-foreground">No cost data yet. Cost tracking begins when the CLI hook reports token usage.</p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function MetricCard({ title, value, description }: { title: string; value: string; description: string }) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardDescription>{title}</CardDescription>
+        <CardTitle className="text-3xl">{value}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </CardContent>
+    </Card>
+  );
+}

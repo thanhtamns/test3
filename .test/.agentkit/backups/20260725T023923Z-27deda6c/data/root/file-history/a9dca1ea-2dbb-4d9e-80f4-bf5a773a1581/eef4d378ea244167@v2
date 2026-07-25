@@ -1,0 +1,213 @@
+"""Tests for SafetyHarness — anti-reward-hacking protection."""
+
+import json
+from pathlib import Path
+from datetime import datetime, timezone, timedelta
+
+import pytest
+
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
+from intelligence.mechanism.safety_harness import SafetyHarness, SafetyViolation
+
+
+@pytest.fixture
+def invariants_path(tmp_path):
+    data = {
+        "version": 1,
+        "invariants": [
+            {
+                "id": "confidence_floor",
+                "type": "floor",
+                "protected_knob": "confidence_gate_minimum",
+                "min_value": 0.50,
+                "description": "Cannot drop below 0.50",
+            },
+            {
+                "id": "meta_ceiling",
+                "type": "ceiling",
+                "protected_knob": "meta_edit_max_pct_change",
+                "max_value": 0.40,
+                "description": "Cannot exceed 0.40",
+            },
+            {
+                "id": "mountain_drift",
+                "type": "drift_limit",
+                "protected_knob": "mountain_threshold_monthly",
+                "original_value": 10000,
+                "max_total_drift_pct": 30,
+                "description": "Cannot drift >30% from 10000",
+            },
+        ],
+    }
+    p = tmp_path / "invariants.json"
+    p.write_text(json.dumps(data), encoding="utf-8")
+    return p
+
+
+@pytest.fixture
+def history_path(tmp_path):
+    return tmp_path / "knobs-history.jsonl"
+
+
+@pytest.fixture
+def harness(invariants_path, history_path):
+    return SafetyHarness(
+        invariants_path=invariants_path,
+        history_path=history_path,
+        max_edits_per_week=3,
+        max_pct_change=0.20,
+    )
+
+
+class TestHardInvariants:
+    def test_floor_blocks_below(self, harness):
+        result = harness.validate_edit("confidence_gate_minimum", 0.70, 0.45)
+        assert not result.allowed
+        assert any(v.violation_type == "hard_invariant_floor" for v in result.violations)
+
+    def test_floor_allows_above(self, harness):
+        result = harness.validate_edit("confidence_gate_minimum", 0.70, 0.55)
+        assert result.allowed
+
+    def test_ceiling_blocks_above(self, harness):
+        result = harness.validate_edit("meta_edit_max_pct_change", 0.20, 0.45)
+        assert not result.allowed
+        assert any(v.violation_type == "hard_invariant_ceiling" for v in result.violations)
+
+    def test_ceiling_allows_below(self, harness):
+        result = harness.validate_edit("meta_edit_max_pct_change", 0.20, 0.35)
+        assert result.allowed
+
+    def test_drift_blocks_excessive(self, harness):
+        result = harness.validate_edit("mountain_threshold_monthly", 10000, 14000)
+        assert not result.allowed
+        assert any(v.violation_type == "hard_invariant_drift" for v in result.violations)
+
+    def test_drift_allows_within_bounds(self, harness):
+        result = harness.validate_edit("mountain_threshold_monthly", 10000, 12000)
+        assert result.allowed
+
+    def test_unprotected_knob_passes(self, harness):
+        result = harness.validate_edit("wave1_base_agent_count", 8, 10)
+        assert result.allowed
+
+
+class TestSoftBounds:
+    def test_magnitude_blocks_large_change(self, harness):
+        result = harness.validate_edit(
+            "wave1_base_agent_count", 8, 12,
+            knob_range=(4, 12),
+        )
+        assert not result.allowed
+        assert any(v.violation_type == "magnitude_limit" for v in result.violations)
+
+    def test_magnitude_allows_small_change(self, harness):
+        result = harness.validate_edit(
+            "wave1_base_agent_count", 8, 9,
+            knob_range=(4, 12),
+        )
+        assert result.allowed
+
+    def test_manual_override_skips_soft_bounds(self, harness):
+        result = harness.validate_edit(
+            "wave1_base_agent_count", 8, 12,
+            knob_range=(4, 12),
+            source="manual_override",
+        )
+        assert result.allowed
+
+
+class TestWeeklyBudget:
+    def test_budget_blocks_after_max(self, harness, history_path):
+        now = datetime.now(timezone.utc)
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(history_path, "w", encoding="utf-8") as f:
+            for i in range(3):
+                record = {
+                    "knob_id": f"knob_{i}",
+                    "source": "meta_edit_controller",
+                    "timestamp": (now - timedelta(hours=i)).isoformat(),
+                }
+                f.write(json.dumps(record) + "\n")
+
+        result = harness.validate_edit(
+            "wave1_base_agent_count", 8, 9,
+            knob_range=(4, 12),
+            source="meta_edit_controller",
+        )
+        assert not result.allowed
+        assert any(v.violation_type == "budget_exhausted" for v in result.violations)
+
+    def test_budget_allows_under_limit(self, harness, history_path):
+        now = datetime.now(timezone.utc)
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(history_path, "w", encoding="utf-8") as f:
+            record = {
+                "knob_id": "knob_0",
+                "source": "meta_edit_controller",
+                "timestamp": now.isoformat(),
+            }
+            f.write(json.dumps(record) + "\n")
+
+        result = harness.validate_edit(
+            "wave1_base_agent_count", 8, 9,
+            knob_range=(4, 12),
+            source="meta_edit_controller",
+        )
+        assert result.allowed
+
+    def test_manual_source_not_counted(self, harness, history_path):
+        now = datetime.now(timezone.utc)
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(history_path, "w", encoding="utf-8") as f:
+            for i in range(5):
+                record = {
+                    "knob_id": f"knob_{i}",
+                    "source": "manual",
+                    "timestamp": (now - timedelta(hours=i)).isoformat(),
+                }
+                f.write(json.dumps(record) + "\n")
+
+        result = harness.validate_edit(
+            "wave1_base_agent_count", 8, 9,
+            knob_range=(4, 12),
+            source="meta_edit_controller",
+        )
+        assert result.allowed
+
+
+class TestEdgeCases:
+    def test_missing_invariants_file(self, tmp_path):
+        harness = SafetyHarness(
+            invariants_path=tmp_path / "nonexistent.json",
+            history_path=tmp_path / "history.jsonl",
+        )
+        result = harness.validate_edit("any_knob", 1, 2)
+        assert result.allowed
+
+    def test_to_dict(self, harness):
+        result = harness.validate_edit("confidence_gate_minimum", 0.70, 0.45)
+        d = result.to_dict()
+        assert d["allowed"] is False
+        assert len(d["violations"]) > 0
+        assert "type" in d["violations"][0]
+
+    def test_multiple_violations(self, harness, history_path):
+        now = datetime.now(timezone.utc)
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(history_path, "w", encoding="utf-8") as f:
+            for i in range(3):
+                f.write(json.dumps({
+                    "knob_id": f"k{i}", "source": "meta_edit_controller",
+                    "timestamp": (now - timedelta(hours=i)).isoformat(),
+                }) + "\n")
+
+        # Floor violation + budget exhausted
+        result = harness.validate_edit("confidence_gate_minimum", 0.70, 0.45,
+                                        source="meta_edit_controller")
+        assert not result.allowed
+        types = {v.violation_type for v in result.violations}
+        assert "hard_invariant_floor" in types
+        assert "budget_exhausted" in types

@@ -1,0 +1,206 @@
+---
+phase: "6B"
+title: "Hunt Pipeline Upgrade — IC at Start, Not End"
+status: pending
+priority: P1
+effort: "4h"
+dependencies: [5, 6]
+---
+
+# Phase 6B: Hunt Pipeline Upgrade
+
+## Overview
+
+Restructure hunt pipeline so IntelligenceController runs FIRST (generates hypotheses before any data collection), then Price Delta and Forced Flow engines execute TARGETED searches guided by those hypotheses. Currently IC runs at Step 5 (after data collection) — too late to guide search strategy.
+
+## Problem
+
+Hunt current flow:
+```
+Step 1-2: Load profile + seeds
+Step 3: Price Delta Engine (30 broad web searches)
+Step 4: Forced Flow Engine (30 broad web searches)  
+Step 5: IC + MoneyFlowGraph (15 targeted searches — TOO LATE)
+Step 6: Cross-Reference (pure computation)
+```
+
+60 broad searches happen BEFORE thinking. IC's hypotheses can't redirect the search because data is already collected.
+
+## Requirements
+
+- Functional: IC generates 3-5 hypotheses BEFORE Price Delta and Forced Flow engines run
+- Functional: Hypotheses guide search queries for Price Delta and Forced Flow
+- Functional: IC's MoneyFlowGraph populated incrementally as data arrives
+- Functional: Deal Drill runs on top-1 anomaly card after cross-reference
+- Non-functional: Total search budget stays ≤ 75 (current 60 + IC 15)
+- Non-functional: hunt_runner.py backward compatible (old flow still works if IC fails)
+
+## Architecture
+
+### New Hunt Flow
+
+```
+Step 1: Load founder profile + historical anomalies
+Step 2: Extract seeds from profile + history
+
+Step 2.5: INTELLIGENCE CONTROLLER — HYPOTHESIS FIRST (NEW position)
+  IC.generate_hypotheses(founder_profile, seeds)
+  → 3-5 hypotheses with:
+    - search_queries: specific queries for Price Delta to verify
+    - flow_queries: specific queries for Forced Flow to verify  
+    - falsification: what would kill each hypothesis
+  
+Step 3: Price Delta Engine (UPGRADED)
+  - PRIMARY: execute IC's search_queries (targeted, ~10 queries)
+  - SECONDARY: broad scan for remaining budget (~15 queries)
+  - Feed results back to IC's MoneyFlowGraph
+
+Step 4: Forced Flow Engine (UPGRADED)  
+  - PRIMARY: execute IC's flow_queries (targeted, ~10 queries)
+  - SECONDARY: broad scan for remaining budget (~15 queries)
+  - Feed results back to IC's MoneyFlowGraph
+
+Step 5: IC UPDATE + CROSS-REFERENCE
+  - IC.update_graph(price_delta_results, forced_flow_results)
+  - IC.judge_hypotheses() — which survived the data?
+  - AnomalyCrossReferencer.score(hypotheses, delta_results, flow_results)
+  - Produce anomaly cards with hypothesis provenance
+
+Step 6: DEAL DRILL (from Phase 6)
+  - Top-1 anomaly card → deal-drill-protocol
+  - Output: mechanism-specific actionable deal
+
+Step 7: Output + Persist
+```
+
+### Search Budget Redistribution
+
+| Step | Current | New | Rationale |
+|------|---------|-----|-----------|
+| IC hypothesis gen | 0 | 0 | Pure LLM, no search |
+| Price Delta targeted | 0 | 10 | IC-guided queries |
+| Price Delta broad | 30 | 15 | Reduced — targeted queries more valuable |
+| Forced Flow targeted | 0 | 10 | IC-guided queries |
+| Forced Flow broad | 30 | 15 | Reduced |
+| IC graph update | 15 | 5 | Most data comes from engines now |
+| Deal Drill | 0 | 15 | New phase |
+| **Total** | **75** | **70** | Slightly fewer, much more targeted |
+
+### Code Changes to hunt_runner.py
+
+```python
+# Current flow (simplified):
+def run_hunt(profile, seeds):
+    delta_results = PriceDeltaEngine.scan(seeds, research_fn, 30)
+    flow_results = ForcedFlowEngine.scan(seeds, research_fn, 30)
+    graph = MoneyFlowGraph()
+    ic = IntelligenceController(graph)
+    ic.run(seeds, research_fn, llm_fn, 15)  # runs AFTER data
+    cards = AnomalyCrossReferencer.score(delta_results, flow_results, graph)
+    return cards
+
+# New flow:
+def run_hunt(profile, seeds):
+    # Step 2.5: IC FIRST — generate hypotheses
+    graph = MoneyFlowGraph()
+    ic = IntelligenceController(graph)
+    hypotheses = ic.generate_hypotheses(seeds, llm_fn)
+    
+    # Step 3-4: TARGETED search guided by hypotheses
+    targeted_delta_queries = [h.search_queries for h in hypotheses]
+    targeted_flow_queries = [h.flow_queries for h in hypotheses]
+    
+    delta_results = PriceDeltaEngine.scan(
+        seeds, research_fn, 
+        targeted_queries=targeted_delta_queries,  # NEW param
+        broad_budget=15  # reduced from 30
+    )
+    flow_results = ForcedFlowEngine.scan(
+        seeds, research_fn,
+        targeted_queries=targeted_flow_queries,  # NEW param
+        broad_budget=15
+    )
+    
+    # Step 5: IC UPDATE with real data
+    ic.update_from_results(delta_results, flow_results)
+    ic.judge_hypotheses()
+    
+    # Step 6: Cross-reference + Deal Drill
+    cards = AnomalyCrossReferencer.score(
+        delta_results, flow_results, graph,
+        hypothesis_provenance=hypotheses  # NEW: cards know which hypothesis spawned them
+    )
+    
+    # Deal Drill on top-1 (if confidence >= 0.7)
+    if cards and cards[0].confidence >= 0.7:
+        deal_drill = run_deal_drill(cards[0], profile, graph)
+        cards[0].deal_drill = deal_drill
+    
+    return cards
+```
+
+### Backward Compatibility
+
+```python
+try:
+    hypotheses = ic.generate_hypotheses(seeds, llm_fn)
+except Exception:
+    hypotheses = []  # fallback: no targeted queries
+    
+if not hypotheses:
+    # OLD flow: 30 broad + 30 broad + 15 IC
+    delta_results = PriceDeltaEngine.scan(seeds, research_fn, 30)
+    flow_results = ForcedFlowEngine.scan(seeds, research_fn, 30)
+    ic.run(seeds, research_fn, llm_fn, 15)
+```
+
+## Related Code Files
+
+- Modify: `.claude/lib/intelligence/brains/hunt_runner.py` — restructure flow, add hypothesis-first step
+- Modify: `.claude/lib/intelligence/brains/price_delta_engine.py` — add `targeted_queries` parameter
+- Modify: `.claude/lib/intelligence/brains/forced_flow_engine.py` — add `targeted_queries` parameter
+- Modify: `.claude/lib/intelligence/brains/anomaly_crossref.py` — add `hypothesis_provenance` to scoring
+- Modify: `.claude/lib/intelligence/controller/intelligence_controller.py` — extract `generate_hypotheses()` as callable step
+- Read: `.claude/lib/intelligence/brains/models.py` — AnomalyCard dataclass (add deal_drill field)
+- Read: `.claude/agents/core/intelligence/deal-drill-protocol.md` — reuse for hunt drill
+
+## Implementation Steps
+
+1. Read current hunt_runner.py, price_delta_engine.py, forced_flow_engine.py fully
+2. Add `generate_hypotheses(seeds, llm_fn) -> list[Hypothesis]` to IntelligenceController
+   - Reuses existing `hypothesis_generator.py` internally
+   - Each Hypothesis gets `search_queries` and `flow_queries` fields
+3. Modify PriceDeltaEngine.scan() to accept `targeted_queries` param
+   - Execute targeted queries first (budget: len(queries))
+   - Remaining budget goes to broad scan
+4. Same modification for ForcedFlowEngine.scan()
+5. Add `update_from_results()` and `judge_hypotheses()` to IC
+   - update_from_results feeds Price Delta + Forced Flow data into MoneyFlowGraph
+   - judge_hypotheses marks which hypotheses survived vs killed by data
+6. Modify AnomalyCrossReferencer.score() to accept hypothesis_provenance
+   - Cards carry provenance: which hypothesis generated them
+   - Scoring bonus for hypothesis-backed cards (verified mechanism)
+7. Add deal_drill field to AnomalyCard dataclass
+8. Add deal drill invocation after cross-reference in hunt_runner
+9. Write tests for new IC methods + modified engines
+10. Integration test: mock hunt run with hypothesis-first flow
+
+## Success Criteria
+
+- [ ] IC generates hypotheses BEFORE Price Delta and Forced Flow run
+- [ ] Price Delta and Forced Flow accept targeted queries
+- [ ] Anomaly cards carry hypothesis provenance
+- [ ] Deal Drill runs on top-1 anomaly card
+- [ ] Backward compatible: hunt works if IC hypothesis generation fails
+- [ ] Total search budget ≤ 75
+- [ ] hunt_runner.py tests pass
+- [ ] Manual test: run /hunt and verify hypothesis-guided output
+
+## Risk Assessment
+
+- **Risk:** IC hypothesis generation is slow, adds latency before data engines
+  - Mitigation: IC generation is pure LLM (no web search), takes ~10-15s. Acceptable tradeoff for targeted search.
+- **Risk:** Targeted queries miss important opportunities that broad scan would find
+  - Mitigation: 50% budget still goes to broad scan (15 per engine). Targeted queries ADD specificity, don't replace breadth entirely.
+- **Risk:** Breaking existing hunt tests
+  - Mitigation: Backward compatibility fallback. All new parameters are optional with defaults matching old behavior.

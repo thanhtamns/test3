@@ -1,0 +1,18 @@
+{
+  "id": "6",
+  "subject": "Phase 4: Hook Installer Update + Integration Tests",
+  "description": "Update codeflow init to install Read/Grep/Glob hooks, write E2E integration tests for full dedup cycle, update README with new features and vs-RTK comparison.",
+  "activeForm": "Updating hook installer and writing E2E tests",
+  "status": "pending",
+  "blocks": [],
+  "blockedBy": [
+    "4"
+  ],
+  "metadata": {
+    "phase": 4,
+    "priority": "P1",
+    "effort": "2d",
+    "planDir": "plans/260604-codeflow-differentiation-mvp",
+    "phaseFile": "phase-04-hook-installer-update-integration-tests.md"
+  }
+}

@@ -1,0 +1,481 @@
+ M .claude/commands/stage0.md
+ M .claude/data/knowledge-integrity-status.json
+ M .claude/hooks/.logs/hook-log.jsonl
+ D .claude/hooks/agent-knowledge-injector.cjs
+ D .claude/hooks/agent-performance-tracker.cjs
+ D .claude/hooks/auto-refresh-knowledge-graph.cjs
+ D .claude/hooks/behavior-tracker.cjs
+ D .claude/hooks/cashflow-degraded-tagger.cjs
+ D .claude/hooks/cognitive-consolidation-cron.cjs
+ D .claude/hooks/cognitive-session-init.cjs
+ D .claude/hooks/cron-brain-refresh-weekly.cjs
+ D .claude/hooks/cron-meta-learner-weekly.cjs
+ D .claude/hooks/cron-pattern-aggregator-daily.cjs
+ D .claude/hooks/cron-rollback-checker-daily.cjs
+ D .claude/hooks/cron-skill-evolver-daily.cjs
+ D .claude/hooks/cron-trace-cleanup-daily.cjs
+ D .claude/hooks/discovery-pipeline-enforcer.cjs
+ D .claude/hooks/execution-gate.cjs
+ M .claude/hooks/ground-truth-check.cjs
+ D .claude/hooks/implicit-signal-tracker.cjs
+ M .claude/hooks/learning-loop-full-wire.cjs
+ D .claude/hooks/market-scan-check.cjs
+ D .claude/hooks/output-compliance-checker.cjs
+ D .claude/hooks/pipeline-enforcer.cjs
+ D .claude/hooks/post-advisory-prediction-tracker.cjs
+ D .claude/hooks/post-agent-output-validator.cjs
+ D .claude/hooks/pre-commit-threshold-check.cjs
+ D .claude/hooks/session-start-creator-intel.cjs
+ D .claude/hooks/session-start-knowledge-graph.cjs
+ D .claude/hooks/skill-dedup.cjs
+ D .claude/hooks/stage0-cashflow-audit.cjs
+ D .claude/hooks/stage0-claim-verification-audit.cjs
+ D .claude/hooks/stage0-computation-check.cjs
+ D .claude/hooks/stage0-content-extraction-audit.cjs
+ D .claude/hooks/stage0-dispatch-enforcer.cjs
+ D .claude/hooks/stage0-gate-enforcement.cjs
+ D .claude/hooks/stage0-parallel-tracks-check.cjs
+ D .claude/hooks/stage0-pending-outcomes.cjs
+ M .claude/hooks/stage0-post-audit.cjs
+ D .claude/hooks/stage0-pre-evolution-check.cjs
+ D .claude/hooks/stage0-tool-call-audit.cjs
+ D .claude/hooks/stage0-trajectory-logger.cjs
+ D .claude/hooks/stage0-wave2-enforcement.cjs
+ D .claude/hooks/startup-preflight-confidence-builder.cjs
+ D .claude/hooks/task-completed-handler.cjs
+ D .claude/hooks/teammate-idle-handler.cjs
+ M .claude/settings.json
+ M .claude/settings.local.json
+ M .claude/skills/business/analysis-safety/data/bias_detection_rules.json
+ M .claude/skills/business/analysis-safety/scripts/hidden-bias-detector.py
+ D .claude/skills/business/feedback_loop/accuracy-updater.py
+ D .claude/skills/business/feedback_loop/accuracy_scorer.py
+ M .claude/skills/business/feedback_loop/auto-outcome-detector.py
+ D .claude/skills/business/feedback_loop/auto-verifier.py
+ D .claude/skills/business/feedback_loop/bayesian-priors-update.py
+ M .claude/skills/business/feedback_loop/brier-update-from-outcome.py
+ D .claude/skills/business/feedback_loop/competence_matrix.py
+ M .claude/skills/business/feedback_loop/confidence_calculator.py
+ D .claude/skills/business/feedback_loop/confidence_updater.py
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260104-056ea3.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260104-0b7adc.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260104-0de344.json
+ M .claude/skills/business/feedback_loop/data/predictions/pred-260104-3fe841.json
+ M .claude/skills/business/feedback_loop/data/predictions/pred-260104-54a5ef.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260104-688f1d.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260104-99f68f.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260104-a7647e.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260104-b4e120.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260104-be3dfc.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260104-be8f14.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260104-feb6bd.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260204-0cf4e7.json
+ M .claude/skills/business/feedback_loop/data/predictions/pred-260204-46537f.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260204-4b2279.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260204-4c31ad.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260204-5115bb.json
+ M .claude/skills/business/feedback_loop/data/predictions/pred-260204-557515.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260204-5e3463.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260204-658d28.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260204-71796b.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260204-7c48d6.json
+ M .claude/skills/business/feedback_loop/data/predictions/pred-260204-bba728.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260204-d3d347.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260204-e294b0.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260207-242a17.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260207-2fc77b.json
+ M .claude/skills/business/feedback_loop/data/predictions/pred-260207-374939.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260207-3bda0f.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260207-b3722d.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260207-fef5f0.json
+ M .claude/skills/business/feedback_loop/data/predictions/pred-260223-25060c.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260223-26dc0b.json
+ M .claude/skills/business/feedback_loop/data/predictions/pred-260223-5b49ac.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260223-a85640.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260223-ad7d21.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260223-b677dc.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260223-c3bac5.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260223-c9d308.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260223-ca9b9d.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260223-da4b46.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260223-e51c07.json
+ D .claude/skills/business/feedback_loop/data/predictions/pred-260223-ed3319.json
+ D .claude/skills/business/feedback_loop/decision-replay-injector.py
+ D .claude/skills/business/feedback_loop/decision-replay-logger.py
+ D .claude/skills/business/feedback_loop/decision-replay-retriever.py
+ D .claude/skills/business/feedback_loop/demo-competence-matrix-usage.py
+ D .claude/skills/business/feedback_loop/generate-agent-accuracy-summary.py
+ D .claude/skills/business/feedback_loop/implicit-signal-capture.py
+ D .claude/skills/business/feedback_loop/outcome-logger.py
+ D .claude/skills/business/feedback_loop/outcome-reviewer.py
+ D .claude/skills/business/feedback_loop/prediction-bootstrapper.py
+ D .claude/skills/business/feedback_loop/prediction-post-processor.py
+ D .claude/skills/business/feedback_loop/prediction-schema-validator.py
+ D .claude/skills/business/feedback_loop/prediction_tracker.py
+ D .claude/skills/business/feedback_loop/run-test-suite-with-utf8-encoding-fix.py
+ D .claude/skills/business/feedback_loop/signal_hooks.py
+ D .claude/skills/business/feedback_loop/sync-brier-to-predictions.py
+ D .claude/skills/business/feedback_loop/test_competence_matrix_unit_tests.py
+ D .claude/skills/business/feedback_loop/test_confidence_calculator.py
+ D .claude/skills/business/feedback_loop/test_domain_freshness.py
+ D .claude/skills/business/feedback_loop/test_feedback_loop.py
+ D .claude/skills/business/feedback_loop/test_prediction_bootstrapper.py
+ D .claude/skills/business/feedback_loop/test_runner_wrapper_ascii_output.py
+ D .claude/skills/business/feedback_loop/test_signal_hooks.py
+ D .claude/skills/business/feedback_loop/test_startup_orchestration_integration.py
+ D .claude/skills/business/feedback_loop/weight-updater.py
+ D .claude/skills/business/feedback_loop/weight_adjuster.py
+ M .claude/skills/business/knowledge_base/outcomes/data/outcomes.jsonl
+ M .claude/skills/business/money-intelligence/experience-brain-runner.py
+ M .claude/skills/business/money-intelligence/experience_layer/brain.py
+ M .claude/skills/business/money-intelligence/experience_layer/data/cross_patterns.json
+ M .claude/skills/business/money-intelligence/experience_layer/data/outcomes/outcomes.json
+ M .claude/skills/business/money-intelligence/experience_layer/data/outcomes/recommendations.json
+ M .claude/skills/business/money-intelligence/experience_layer/data/prototypes.json
+ M .claude/skills/business/money-intelligence/experience_layer/data/reflex_chains.json
+ M .claude/skills/business/money-intelligence/experience_layer/outcome_tracker.py
+ M .claude/skills/business/money-intelligence/experience_layer/performance_dashboard.py
+ M .claude/skills/business/money-intelligence/experience_layer/schemas/outcome.py
+ M .claude/skills/business/money-intelligence/experience_layer/schemas/situation_prototype.py
+ M .claude/skills/business/money-intelligence/experience_layer/situation_prototype_library.py
+ M .claude/skills/business/transaction-layer/nui-hunter/kb/memory.jsonl
+ M .claude/skills/business/transaction-layer/nui-hunter/scripts/auto-evolve.py
+ M .claude/skills/business/transaction-layer/nui-hunter/scripts/brain-dashboard.py
+ M .claude/skills/business/transaction-layer/nui-hunter/scripts/brain-refresh-weekly.py
+ M .claude/skills/business/transaction-layer/nui-hunter/scripts/persist-verdict.py
+ M anti-confirmation-checklist.json
+ M data/agent-accuracy.json
+ M data/calibration/brier-history.jsonl
+ M data/calibration/brier-scores.jsonl
+ M data/calibration/evolution-policy.json
+ M data/cognitive/custom/consolidation-log.jsonl
+ M data/cognitive/scripts/retrieve/cognitive_retrieve.py
+ M data/experience-bank/2026-04.jsonl
+ M data/intelligence/outcomes.db
+ M data/kg/entities.jsonl
+ M data/kg/index.json
+ M data/kg/relations.jsonl
+ M data/knowledge-sources/learning-state.json
+ M data/quality-scores/insight-history.json
+ M data/reflexion/pending-prompts.jsonl
+ M data/training/INDEX.json
+ M data/training/archetypes/_index.json
+ M data/training/extracted-rules-channel-analysis.json
+ M data/training/mental-models.json
+?? .claude/agents/core/transaction/generic-industry-validator.md
+?? .claude/agents/core/transaction/industry-discovery-agent.md
+?? .claude/commands/stage0-checklist.md
+?? .claude/data/depth-tracking/
+?? .claude/scheduled_tasks.lock
+?? .claude/skills/business/analysis-safety/scripts/verdict-staleness-scanner.py
+?? .claude/skills/business/analysis-safety/scripts/version-outcome-checker.py
+?? .claude/skills/business/auto-evolution/
+?? .claude/skills/business/feedback_loop/data/predictions/_test-data-archived/
+?? .claude/skills/business/feedback_loop/experience-brain-feeder.py
+?? .claude/skills/business/feedback_loop/learning-loop-closer.py
+?? .claude/skills/business/feedback_loop/real-outcome-recorder.py
+?? .claude/skills/business/knowledge-evolution/
+?? .claude/skills/business/knowledge-extraction/prompts/
+?? .claude/skills/business/knowledge-extraction/scripts/build-kb-index.py
+?? .claude/skills/business/knowledge-extraction/scripts/download-source.py
+?? .claude/skills/business/knowledge-extraction/scripts/process-transcript.py
+?? .claude/skills/business/knowledge-extraction/scripts/run-extraction.py
+?? .claude/skills/business/knowledge-extraction/scripts/source-meta-tracker.py
+?? .claude/skills/business/knowledge_base/outcomes/data/outcomes-seed-archive.jsonl
+?? .claude/skills/business/knowledge_base/outcomes/data/success/outcome-260509-saas-bc6a5f.json
+?? .claude/skills/business/money-intelligence/demo-cash-flow-deep.py
+?? .claude/skills/business/money-intelligence/demo-integrated-money-system.py
+?? .claude/skills/business/money-intelligence/demo-money-laws.py
+?? .claude/skills/business/money-intelligence/demo_real_reasoning.py
+?? .claude/skills/business/money-intelligence/experience_layer/data/calibration/
+?? .claude/skills/business/money-intelligence/experience_layer/data/simulations/sim-260509-1216-coffee-export.json
+?? .claude/skills/business/money-intelligence/experience_layer/data/simulations/sim-260509-digital-product.json
+?? .claude/skills/business/money-intelligence/experience_layer/data/simulations/sim-260509-ecom-dropship.json
+?? .claude/skills/business/money-intelligence/experience_layer/data/simulations/sim-260509-freemium-saas.json
+?? .claude/skills/business/money-intelligence/experience_layer/data/simulations/sim-260509-service-agency.json
+?? .claude/skills/business/money-intelligence/full_output.txt
+?? .claude/skills/business/money-intelligence/run_full_output.py
+?? .claude/skills/business/operator-experience/
+?? .claude/skills/business/personas/dang-le-nguyen-vu/
+?? .claude/skills/business/personas/mj-demarco/
+?? .claude/skills/business/personas/robert-kiyosaki/
+?? .claude/skills/business/real-time-intel/
+?? .claude/skills/business/teaching-mode/
+?? .claude/skills/business/transaction-layer/nui-hunter/kb/archetypes-history/2026-05-04/
+?? .claude/skills/business/transaction-layer/nui-hunter/kb/cases/phamt-260507-fund-infiltration.json
+?? .claude/skills/business/transaction-layer/nui-hunter/kb/cases/phamt-260507-vc-replication.json
+?? .claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260422-coffee-export-fob.json
+?? .claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260426-cashflow-design-bridge.json
+?? .claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260426-cashflow-tonyle.json
+?? .claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260426-ceo-high-retention.json
+?? .claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260426-ceo-serial-entrepreneur.json
+?? .claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260426-high-cashflow-market-scan.json
+?? .claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260426-high-cashflow-markets.json
+?? .claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260426-market-cash-flow-exploration.json
+?? .claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260426-serial-entrepreneur-vision.json
+?? .claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260507-ai-startup-dependency.json
+?? .claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260507-b2b-large-customer-commerce.json
+?? .claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260507-cashflow-commerce-only.json
+?? .claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260507-cashflow-mastery-4branch.json
+?? .claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260507-commodity-trading-bridge.json
+?? .claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260507-fund-infiltration.json
+?? .claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260507-masters-cashflow-commerce.json
+?? .claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260507-vc-replication.json
+?? .claude/skills/business/transaction-layer/nui-hunter/kb/cases/stage0-260509-mobile-app-800k-thinking.json
+?? .claude/skills/business/transaction-layer/nui-hunter/kb/profiles/phamt-260507.json
+?? .claude/skills/business/transaction-layer/nui-hunter/kb/verdicts/
+?? .claude/skills/business/transaction-layer/nui-hunter/scripts/equal-depth-checker.py
+?? .claude/skills/business/transaction-layer/nui-hunter/scripts/industry-discovery-validator.py
+?? .claude/skills/business/transaction-layer/nui-hunter/scripts/query-mode-detector.py
+?? .claude/skills/business/transaction-layer/nui-hunter/scripts/stage0-quality-score.py
+?? .claude/skills/business/transaction-layer/nui-hunter/verdicts/verdict-260426-cashflow-design-bridge.md
+?? .claude/skills/business/transaction-layer/nui-hunter/verdicts/verdict-260426-ceo-high-retention.md
+?? .claude/skills/business/transaction-layer/nui-hunter/verdicts/verdict-260426-ceo-serial-entrepreneur.md
+?? .claude/skills/business/transaction-layer/nui-hunter/verdicts/verdict-260426-high-cashflow-market-scan.md
+?? .claude/skills/business/transaction-layer/nui-hunter/verdicts/verdict-260426-serial-entrepreneur-vision.md
+?? .claude/skills/business/transaction-layer/nui-hunter/verdicts/verdict-260506-260507-cashflow-mastery-4branch.md
+?? .claude/skills/business/transaction-layer/nui-hunter/verdicts/verdict-260507-ai-startup-dependency.md
+?? .claude/skills/business/transaction-layer/nui-hunter/verdicts/verdict-260507-b2b-large-customer-commerce.md
+?? .claude/skills/business/transaction-layer/nui-hunter/verdicts/verdict-260507-cashflow-commerce-only.md
+?? .claude/skills/business/transaction-layer/nui-hunter/verdicts/verdict-260507-commodity-trading-bridge.md
+?? .claude/skills/business/transaction-layer/nui-hunter/verdicts/verdict-260507-masters-cashflow-commerce.md
+?? .claude/skills/business/transaction-layer/nui-hunter/verdicts/verdict-260507-phamt-fund-infiltration.md
+?? .claude/skills/business/transaction-layer/nui-hunter/verdicts/verdict-260507-phamt-vc-replication.md
+?? .claude/skills/business/transaction-layer/nui-hunter/verdicts/verdict-260509-mobile-app-800k-thinking.md
+?? .claude/skills/business/wisdom/
+?? ANALYSIS-SAFETY-TEST-COMPLETION.txt
+?? case-stage0-260507-commodity-trading-bridge.json
+?? data/calibration/brain-refresh-2026-05-04.md
+?? data/calibration/brain-refresh-2026-05-09.md
+?? data/calibration/cold-start-overrides.json
+?? data/calibration/learning-loop-log.jsonl
+?? data/case-studies/stage0/phamt-260507-fund-infiltration.json
+?? data/case-studies/stage0/phamt-260507-vc-replication.json
+?? data/case-studies/stage0/stage0-260422-coffee-export-fob.json
+?? data/case-studies/stage0/stage0-260426-cashflow-design-bridge.json
+?? data/case-studies/stage0/stage0-260426-cashflow-tonyle.json
+?? data/case-studies/stage0/stage0-260426-ceo-high-retention.json
+?? data/case-studies/stage0/stage0-260426-ceo-serial-entrepreneur.json
+?? data/case-studies/stage0/stage0-260426-high-cashflow-market-scan.json
+?? data/case-studies/stage0/stage0-260507-ai-startup-dependency.json
+?? data/case-studies/stage0/stage0-260507-b2b-large-customer-commerce.json
+?? data/case-studies/stage0/stage0-260507-cashflow-commerce-only.json
+?? data/case-studies/stage0/stage0-260507-cashflow-mastery-4branch.json
+?? data/case-studies/stage0/stage0-260507-commodity-trading-bridge.json
+?? data/case-studies/stage0/stage0-260507-masters-cashflow-commerce.json
+?? data/case-studies/stage0/stage0-260509-mobile-app-800k-thinking.json
+?? data/cognitive/custom/pending-inferences.db
+?? data/cognitive/scripts/benchmark/cognitive-overlap-measurer.py
+?? data/cognitive/scripts/hitl/hitl-auto-approver.py
+?? data/deals/
+?? data/execution/verdict-execution-tracker.json
+?? data/experience-bank/.brain-processed.json
+?? data/experience-bank/2026-05.jsonl
+?? data/kb-embeddings/
+?? data/knowledge-sources/cache/ai-tools-grey-ai-automation-on-mobile-phone-24-7-openclaw-autonomous-ai-agent-mobile-e751659002.json
+?? data/knowledge-sources/cache/ai-tools-grey-h-y-ki-m-tra-v-test-l-i-h-th-ng-master-investments-xem-th-c-s-c-c-i-thi-n-h-n-ch-0495ae4fd7.json
+?? data/knowledge-sources/cache/ai-tools-grey-l-m-sao-c-c-ai-startup-c-chuy-n-m-n-s-u-v-data-moat-ph-i-ph-thu-c-v-o-startup-c--25fd46d3a1.json
+?? data/knowledge-sources/cache/competitor-intelligence-long-running-ecommerce-stores-business-model-analysis-revenue-barriers-entry-964b65502a.json
+?? data/knowledge-sources/cache/competitor-intelligence-sustainable-e-commerce-niches-with-high-profit-margins-that-have-survived-10-20--30a121e4cd.json
+?? data/knowledge-sources/cache/competitor-intelligence-sustainable-product-niches-decades-old-overlooked-shopify-ecommerce-b2b-boring-b-00e8dd4301.json
+?? data/knowledge-sources/cache/creator-economy-bootstrap-saas-philosophy-methodology-nathan-barry-jason-fried-rob-walling-detai-f29e41ba76.json
+?? data/knowledge-sources/cache/creator-economy-crunchlabs-mark-rober-subscription-box-business-model-revenue-profitability-2024-02df74cad4.json
+?? data/knowledge-sources/cache/creator-economy-deep-business-knowledge-vietnamese-content-creators-tonyle-vibemastery-operator--e8ab3b83bf.json
+?? data/knowledge-sources/cache/creator-economy-operator-level-business-knowledge-higher-than-tonyle-specific-numbers-private-co-49e922a85f.json
+?? data/knowledge-sources/cache/creator-economy-social-media-accounts-valuation-asset-worth-selling-price-creator-economy-4c9306cf3a.json
+?? data/knowledge-sources/cache/creator-economy-successful-entrepreneurs-2024-2025-2026-new-business-models-growing-revenue-stre-092e64f39f.json
+?? data/knowledge-sources/cache/creator-economy-tonyle-revenue-streams-vietnamese-digital-entrepreneurs-0dc6bee4fe.json
+?? data/knowledge-sources/cache/creator-economy-vietnamese-export-training-creator-business-model-monetization-tiktok-course-sel-b6a34952e5.json
+?? data/knowledge-sources/cache/crypto-grey-t-i-mu-n-s-d-ng-s-c-m-nh-c-a-h-th-ng-d-code-invesments-master-investments-c-bi-t-0b4529fd66.json
+?? data/knowledge-sources/cache/crypto-grey-t-i-mu-n-s-d-ng-s-c-m-nh-c-a-h-th-ng-d-code-invesments-master-investments-c-bi-t-9eb174f2a6.json
+?? data/knowledge-sources/cache/crypto-grey-t-i-mu-n-s-d-ng-s-c-m-nh-c-a-h-th-ng-d-code-invesments-master-investments-ph-n-t-6eae8dac56.json
+?? data/knowledge-sources/cache/crypto-grey-task-notification-task-id-a9e1d951ad0c1921f-task-id-tool-use-id-toolu-017capnjje-de3c993f05.json
+?? data/knowledge-sources/cache/founder-due-diligence-b-y-gi-test-l-i-sau-khi-fix-bug-s-d-ng-s-c-m-nh-c-a-stage0-trong-d-code-invesmen-18c0b194b8.json
+?? data/knowledge-sources/cache/founder-due-diligence-how-to-access-wealthy-people-and-get-them-to-give-you-money-investment-capital-n-dd1ec588da.json
+?? data/knowledge-sources/cache/founder-due-diligence-kangyi-official-tiktok-vietnam-business-philosophy-income-streams-fashion-invest-c524ef3e11.json
+?? data/knowledge-sources/cache/founder-due-diligence-s-d-ng-s-c-m-nh-c-a-stage0-trong-d-code-invesments-master-investments-b-t-u-kinh-4e4d7c6192.json
+?? data/knowledge-sources/cache/founder-due-diligence-vietnamese-app-developer-330-billion-vnd-revenue-2020-individual-admob-ad-revenu-2fc82b48e2.json
+?? data/knowledge-sources/cache/market-regulatory-all-parallel-depth-1-synthesis-query-th-tr-ng-n-o-c-nhu-c-u-l-n-d-ng-ti-n-th-t-s-8a140d7a31.json
+?? data/knowledge-sources/cache/market-regulatory-h-th-ng-v-n-kh-ng-c-t-duy-th-c-s-t-t-v-n-y-u-c-u-ti-n-m-t-thay-v-s-d-ng-u-c-v-k--a992e3ea46.json
+?? data/knowledge-sources/cache/market-regulatory-h-y-review-l-i-stage0-trong-d-code-invesments-master-investments-h-th-ng-lu-n-th-e64b6d392d.json
+?? data/knowledge-sources/cache/supply-chain-sourcing-global-coffee-supply-chain-equipment-manufacturer-roaster-network-distribution-p-df9c9d7b92.json
+?? data/knowledge-sources/cache/supply-chain-sourcing-h-th-ng-v-n-kh-ng-c-t-duy-th-c-s-t-t-v-n-y-u-c-u-ti-n-m-t-thay-v-s-d-ng-u-c-v-k--d8051502ca.json
+?? data/knowledge-sources/cache/supply-chain-sourcing-h-y-ch-ra-t-duy-chuy-n-s-u-v-nguy-n-l-ho-t-ng-th-c-s-c-a-d-ng-ti-n-v-v-n-h-nh-d--968e7c24bb.json
+?? data/knowledge-sources/cache/supply-chain-sourcing-h-y-review-l-i-stage0-trong-d-code-invesments-master-investments-h-th-ng-lu-n-th-f706464789.json
+?? data/knowledge-sources/cache/supply-chain-sourcing-high-demand-physical-products-vietnam-export-fast-turnover-low-competition-whole-184d514b4b.json
+?? data/knowledge-sources/cache/supply-chain-sourcing-vietnam-coffee-export-global-specialty-robusta-arabica-micro-export-b2b-1908bac2c3.json
+?? data/knowledge-sources/cache/supply-chain-sourcing-x-y-d-ng-portfolio-doanh-nghi-p-t-v-n-h-nh-10-n-m-t-saas-ai-edtech-it-outsourcin-a6ab6f07f4.json
+?? data/knowledge-sources/cache/technical-deep-research-vietnam-software-developer-remote-jobs-000-salary-freelance-platforms-rates-651d3b75f2.json
+?? data/knowledge-sources/cache/vn-greyhat-mmo-fob-coffee-export-vietnam-container-shipping-green-coffee-beans-c635062597.json
+?? data/knowledge-sources/cache/vn-greyhat-mmo-h-y-review-l-i-stage0-trong-d-code-invesments-master-investments-h-th-ng-lu-n-th-f91f6c4d3a.json
+?? data/knowledge-sources/cache/vn-greyhat-mmo-serial-entrepreneur-ceo-portfolio-building-multiple-businesses-vietnam-9df7c32e59.json
+?? data/knowledge-sources/cache/vn-greyhat-mmo-t-duy-nh-cao-t-20-t-vn-th-ng-ph-n-m-m-mobile-application-ffeb2349ca.json
+?? data/knowledge-sources/cache/vn-greyhat-mmo-th-ng-m-i-h-ng-h-a-commodity-trading-xu-t-nh-p-kh-u-1e965f4fec.json
+?? data/knowledge-sources/cache/vn-legitimate-business-fob-coffee-export-vietnam-container-shipping-green-coffee-beans-0696f02714.json
+?? data/knowledge-sources/cache/vn-legitimate-business-global-sourcing-agent-vietnam-trading-company-middleman-factory-broker-7211607f4a.json
+?? data/knowledge-sources/cache/vn-legitimate-business-herbal-tea-export-global-wellness-functional-beverage-vietnamese-agricultural-ex-57476304f0.json
+?? data/knowledge-sources/cache/vn-legitimate-business-kinh-doanh-online-vietnam-t-duy-operator-ki-m-ti-n-m-h-nh-th-c-mmo4me-voz-tinhte-61b86507e3.json
+?? data/knowledge-sources/cache/vn-legitimate-business-th-ng-m-i-h-ng-h-a-commodity-trading-xu-t-nh-p-kh-u-1b6f16b43c.json
+?? data/knowledge-sources/cache/vn-legitimate-business-tonyle-mmo4me-nguon-thu-nhap-thu-2-kinh-doanh-online-viet-nam-275c2bf565.json
+?? data/knowledge-sources/cache/vn-legitimate-business-vietnamese-tiktok-financial-mindset-content-creator-analysis-tuan-com98-channel--1161ad18f0.json
+?? data/knowledge-sources/cache/western-bootstrap-saas-all-parallel-depth-1-synthesis-query-th-tr-ng-n-o-c-nhu-c-u-l-n-d-ng-ti-n-th-t-s-5ba375dfae.json
+?? data/knowledge-sources/cache/western-bootstrap-saas-business-philosophy-verification-retention-economics-toll-booth-positioning-leve-5f07023a30.json
+?? data/knowledge-sources/cache/western-bootstrap-saas-cash-flow-mechanics-understanding-large-money-flows-entrepreneur-mindset-753e9ab723.json
+?? data/knowledge-sources/cache/western-bootstrap-saas-freelance-developer-first-client-acquisition-exact-steps-success-playbook-proven-c2a9630bf2.json
+?? data/knowledge-sources/cache/western-bootstrap-saas-freelance-platform-success-rate-failure-patterns-toptal-upwork-why-developers-fa-63494e34de.json
+?? data/knowledge-sources/cache/western-bootstrap-saas-h-y-ki-m-tra-v-test-l-i-h-th-ng-master-investments-xem-th-c-s-c-c-i-thi-n-h-n-ch-78a98fcf05.json
+?? data/knowledge-sources/cache/western-bootstrap-saas-h-y-review-l-i-to-n-b-output-t-u-t-i-gi-ch-ng-u-kh-ng-c-gi-tr-kh-ng-th-c-s-hi-u--7d9473e8c4.json
+?? data/knowledge-sources/cache/western-bootstrap-saas-high-value-business-knowledge-sources-podcasts-masterminds-books-beyond-tonyle-l-3e71175758.json
+?? data/knowledge-sources/cache/western-bootstrap-saas-large-cash-flow-from-global-funds-enterprise-b2b-sales-intermediary-positions-e0f0c2d2ee.json
+?? data/knowledge-sources/cache/western-bootstrap-saas-proven-business-models-5-10-years-sustainable-revenue-entrepreneurs-bootstrap-1a6f075cd2.json
+?? data/knowledge-sources/cache/western-bootstrap-saas-saas-digital-product-painpoints-global-users-daily-problems-mass-market-software-44a8c9de3f.json
+?? data/knowledge-sources/cache/western-bootstrap-saas-seo-website-money-making-niche-2026-profitability-affiliate-content-site-ebf39d3190.json
+?? data/knowledge-sources/cache/western-bootstrap-saas-tao-dong-tien-thuc-su-tham-gia-dong-tien-lon-37e1e141ab.json
+?? data/knowledge-sources/cache/western-bootstrap-saas-th-tr-ng-n-o-c-nhu-c-u-l-n-c-d-ng-ti-n-th-t-s-v-d-ng-ti-n-l-n-4b281a871f.json
+?? data/knowledge-sources/cache/western-bootstrap-saas-x-y-d-ng-portfolio-doanh-nghi-p-t-v-n-h-nh-10-n-m-t-saas-ai-edtech-it-outsourcin-cc41f153fe.json
+?? data/meta-learning/2026-W19-digest.md
+?? data/patterns/cross-case-library.json
+?? data/patterns/cross-case-pattern-extractor.py
+?? data/patterns/failure-signatures.json
+?? data/patterns/retro-prediction-extractor.py
+?? data/patterns/success-signatures.json
+?? data/positioning/
+?? data/quality-scores/2026-04-26T11-28-16-contrarian-research-agent.json
+?? data/quality-scores/2026-04-26T11-31-43-risk-mapper.json
+?? data/quality-scores/2026-04-26T11-32-34-market-reality-checker.json
+?? data/quality-scores/2026-04-26T11-33-47-failure-archaeologist.json
+?? data/quality-scores/2026-05-06T23-54-15-failure-archaeologist.json
+?? data/quality-scores/2026-05-06T23-54-18-persona-loader.json
+?? data/quality-scores/2026-05-06T23-54-20-contrarian-research-agent.json
+?? data/quality-scores/2026-05-07T12-47-44-first-dollar-hunter.json
+?? data/quality-scores/2026-05-07T12-51-15-failure-archaeologist.json
+?? data/relationships/coffee-meetings.json
+?? data/relationships/dream5.json
+?? data/relationships/intel-network.json
+?? data/schemas/schema-decay-handler.py
+?? data/schemas/schema-usage-log-writer.py
+?? data/schemas/usage-log.jsonl
+?? data/trace-outputs/2026-04-22/unknown-1776841763011.md
+?? data/trace-outputs/2026-04-22/unknown-1776843336961.md
+?? data/trace-outputs/2026-04-22/unknown-1776847250780.md
+?? data/trace-outputs/2026-04-22/unknown-1776847342494.md
+?? data/trace-outputs/2026-04-22/unknown-1776847675165.md
+?? data/trace-outputs/2026-04-22/unknown-1776848717137.md
+?? data/trace-outputs/2026-04-22/unknown-1776849909244.md
+?? data/trace-outputs/2026-04-22/unknown-1776850049901.md
+?? data/trace-outputs/2026-04-22/unknown-1776850199112.md
+?? data/trace-outputs/2026-04-26/
+?? data/trace-outputs/2026-05-04/
+?? data/trace-outputs/2026-05-06/
+?? data/trace-outputs/2026-05-07/
+?? data/trace-outputs/2026-05-08/
+?? data/trace-outputs/2026-05-09/
+?? data/trace-tools/2026-04-22/unknown-1776841763011.jsonl
+?? data/trace-tools/2026-04-22/unknown-1776843336961.jsonl
+?? data/trace-tools/2026-04-22/unknown-1776847250780.jsonl
+?? data/trace-tools/2026-04-22/unknown-1776847342494.jsonl
+?? data/trace-tools/2026-04-22/unknown-1776847675165.jsonl
+?? data/trace-tools/2026-04-22/unknown-1776848717137.jsonl
+?? data/trace-tools/2026-04-22/unknown-1776849909244.jsonl
+?? data/trace-tools/2026-04-22/unknown-1776850049901.jsonl
+?? data/trace-tools/2026-04-22/unknown-1776850199112.jsonl
+?? data/trace-tools/2026-04-26/
+?? data/trace-tools/2026-05-04/
+?? data/trace-tools/2026-05-06/
+?? data/trace-tools/2026-05-07/
+?? data/trace-tools/2026-05-08/
+?? data/trace-tools/2026-05-09/
+?? data/training/archetypes/ai-content-farm-educator.json
+?? data/training/archetypes/bds-educator-realtor.json
+?? data/training/archetypes/book-founder-archetypes.json
+?? data/training/book-knowledge-mental-models.json
+?? data/training/book-knowledge-reflex-patterns.json
+?? data/training/domain-heuristics/
+?? data/training/reflex-training-corpus.md
+?? data/training/scripts/consolidate-mmo-knowledge.py
+?? data/trajectories/260422-unknown-1776841763011.jsonl
+?? data/trajectories/260422-unknown-1776843336961.jsonl
+?? data/trajectories/260422-unknown-1776847250780.jsonl
+?? data/trajectories/260422-unknown-1776847342494.jsonl
+?? data/trajectories/260422-unknown-1776847675165.jsonl
+?? data/trajectories/260422-unknown-1776848717137.jsonl
+?? data/trajectories/260422-unknown-1776849909244.jsonl
+?? data/trajectories/260422-unknown-1776850049901.jsonl
+?? data/trajectories/260422-unknown-1776850199112.jsonl
+?? data/trajectories/260426-unknown-1777169939503.jsonl
+?? data/trajectories/260426-unknown-1777170050760.jsonl
+?? data/trajectories/260426-unknown-1777170372201.jsonl
+?? data/trajectories/260426-unknown-1777170454899.jsonl
+?? data/trajectories/260426-unknown-1777172098387.jsonl
+?? data/trajectories/260426-unknown-1777173488230.jsonl
+?? data/trajectories/260426-unknown-1777173535525.jsonl
+?? data/trajectories/260426-unknown-1777173887297.jsonl
+?? data/trajectories/260426-unknown-1777173914519.jsonl
+?? data/trajectories/260426-unknown-1777179352333.jsonl
+?? data/trajectories/260426-unknown-1777179426258.jsonl
+?? data/trajectories/260426-unknown-1777179454396.jsonl
+?? data/trajectories/260426-unknown-1777183835751.jsonl
+?? data/trajectories/260426-unknown-1777184177686.jsonl
+?? data/trajectories/260426-unknown-1777184195168.jsonl
+?? data/trajectories/260426-unknown-1777184700509.jsonl
+?? data/trajectories/260426-unknown-1777184860724.jsonl
+?? data/trajectories/260426-unknown-1777185791146.jsonl
+?? data/trajectories/260426-unknown-1777187170179.jsonl
+?? data/trajectories/260426-unknown-1777187502594.jsonl
+?? data/trajectories/260426-unknown-1777187629592.jsonl
+?? data/trajectories/260426-unknown-1777188248942.jsonl
+?? data/trajectories/260426-unknown-1777188704453.jsonl
+?? data/trajectories/260426-unknown-1777188740682.jsonl
+?? data/trajectories/260426-unknown-1777188771906.jsonl
+?? data/trajectories/260426-unknown-1777188852516.jsonl
+?? data/trajectories/260426-unknown-1777192010285.jsonl
+?? data/trajectories/260426-unknown-1777192291094.jsonl
+?? data/trajectories/260426-unknown-1777192606647.jsonl
+?? data/trajectories/260426-unknown-1777193699354.jsonl
+?? data/trajectories/260426-unknown-1777202671474.jsonl
+?? data/trajectories/260426-unknown-1777203401327.jsonl
+?? data/trajectories/260504-unknown-1777864299026.jsonl
+?? data/trajectories/260504-unknown-1777890960903.jsonl
+?? data/trajectories/260506-unknown-1778070955956.jsonl
+?? data/trajectories/260506-unknown-1778072100333.jsonl
+?? data/trajectories/260506-unknown-1778074343298.jsonl
+?? data/trajectories/260506-unknown-1778074542016.jsonl
+?? data/trajectories/260507-unknown-1778112075182.jsonl
+?? data/trajectories/260507-unknown-1778113822930.jsonl
+?? data/trajectories/260507-unknown-1778114131776.jsonl
+?? data/trajectories/260507-unknown-1778114360464.jsonl
+?? data/trajectories/260507-unknown-1778116216873.jsonl
+?? data/trajectories/260507-unknown-1778141886266.jsonl
+?? data/trajectories/260507-unknown-1778152275459.jsonl
+?? data/trajectories/260507-unknown-1778152792819.jsonl
+?? data/trajectories/260507-unknown-1778153177335.jsonl
+?? data/trajectories/260507-unknown-1778158521976.jsonl
+?? data/trajectories/260507-unknown-1778158651766.jsonl
+?? data/trajectories/260508-unknown-1778229831166.jsonl
+?? data/trajectories/260508-unknown-1778229910613.jsonl
+?? data/trajectories/260508-unknown-1778230000999.jsonl
+?? data/trajectories/260508-unknown-1778230260221.jsonl
+?? data/trajectories/260509-unknown-1778318962381.jsonl
+?? data/version-outcome-ledger.json
+?? execution/templates/case-study.json
+?? execution/templates/coffee-meeting.json
+?? execution/templates/deal-observation.json
+?? execution/templates/dream5-target.json
+?? execution/templates/failure-observation.json
+?? execution/templates/micro-deal.json
+?? execution/templates/weekly-synthesis.json
+?? kb/profiles/
+?? knowledge/billionaires/
+?? test-analysis-safety-corrected-results.json
+?? test-analysis-safety-corrected.py
+?? test-analysis-safety-results.json
+?? test-analysis-safety-runner.py
+?? test-analysis-safety.sh
+?? test-results.txt
+?? verdicts/verdict-260426-cashflow-design-bridge.md
+?? verdicts/verdict-260426-ceo-high-retention.md
+?? verdicts/verdict-260426-ceo-serial-entrepreneur.md
+?? verdicts/verdict-260426-high-cashflow-markets-validated.md
+?? verdicts/verdict-260426-high-cashflow-markets.md
+?? verdicts/verdict-260426-serial-entrepreneur-vision.md
+?? verdicts/verdict-260507-commodity-trading-bridge.md

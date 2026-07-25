@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "StructuredAgentOutput",
+  "description": "Schema for Wave 1/2 agent structured output — fuel line from LLM to local KB",
+  "type": "object",
+  "required": ["agent", "domain", "claims"],
+  "properties": {
+    "agent": {
+      "type": "string",
+      "description": "Agent identifier (e.g. failure-archaeologist, market-reality-checker)"
+    },
+    "domain": {
+      "type": "string",
+      "description": "Business domain being analyzed (e.g. micro_saas, ecommerce_dropship)"
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["fact", "dimension", "confidence", "zone_tag"],
+        "properties": {
+          "fact": {
+            "type": "string",
+            "description": "Single factual claim, verifiable"
+          },
+          "value": {
+            "type": ["number", "null"],
+            "description": "Numeric value if applicable (rate, count, dollar amount)"
+          },
+          "dimension": {
+            "type": "string",
+            "enum": [
+              "failure_rates",
+              "unit_economics",
+              "competitive_landscape",
+              "moat_patterns",
+              "founder_paths",
+              "timing_windows",
+              "regulatory_risks",
+              "compounding_mechanisms"
+            ]
+          },
+          "source_url": {
+            "type": ["string", "null"],
+            "format": "uri"
+          },
+          "source_date": {
+            "type": ["string", "null"],
+            "description": "ISO date or YYYY-MM partial date"
+          },
+          "mechanism": {
+            "type": ["string", "null"],
+            "description": "Causal mechanism behind this fact"
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0
+          },
+          "zone_tag": {
+            "type": "string",
+            "enum": ["K", "T", "?"],
+            "description": "K=verified >=0.75, T=inference 0.5-0.74, ?=insufficient <0.5"
+          }
+        }
+      }
+    },
+    "mechanisms": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": ["cause", "effect", "strength"],
+        "properties": {
+          "cause": { "type": "string" },
+          "effect": { "type": "string" },
+          "strength": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0
+          },
+          "evidence": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "contradictions": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": ["claim_a", "claim_b"],
+        "properties": {
+          "claim_a": { "type": "string" },
+          "claim_b": { "type": "string" },
+          "resolution_needed": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      }
+    },
+    "gaps": {
+      "type": "array",
+      "default": [],
+      "items": { "type": "string" }
+    },
+    "sources_checked": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0
+    },
+    "sources_with_data": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0
+    }
+  }
+}

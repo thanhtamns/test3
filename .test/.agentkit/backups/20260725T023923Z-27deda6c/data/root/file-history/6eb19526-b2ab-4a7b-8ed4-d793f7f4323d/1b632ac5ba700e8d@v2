@@ -1,0 +1,78 @@
+---
+phase: 1
+title: Create evolution-auto-runner.cjs
+status: completed
+priority: P1
+effort: 1h
+dependencies: []
+---
+
+# Phase 1: Create evolution-auto-runner.cjs
+
+## Overview
+
+New SessionStart hook in `D:\code\invesments\master_investments\.claude\hooks\` that checks 4 staleness conditions and spawns Python evolution scripts as detached background processes.
+
+## Related Code Files
+
+- Create: `D:\code\invesments\master_investments\.claude\hooks\evolution-auto-runner.cjs`
+- Read (existing patterns): `D:\code\invesments\master_investments\.claude\hooks\cron-weekly-runner.cjs`
+
+## Architecture
+
+```
+SessionStart → evolution-auto-runner.cjs
+  ├── Check 1: evolution_log.json last cycle >7 days?
+  │   YES → spawn auto_evolve.py (detached)
+  ├── Check 2: evolution-config.json last_run >7 days?
+  │   YES → spawn scheduled-evolution-loop.py (detached)
+  ├── Check 3: pending-index.json has expired + last batch-verify >3 days?
+  │   YES → spawn batch-auto-verify.py --all-expired (detached)
+  └── Check 4: knowledge staleness >50% + last hunt >14 days?
+      YES → spawn knowledge_hunter.py (detached)
+```
+
+## Implementation Steps
+
+1. Create hook file following `cron-weekly-runner.cjs` pattern (fail-open, `isHookEnabled` check)
+2. Implement 4 checker functions, each with:
+   - Read timestamp from respective JSON/log file
+   - Compare against threshold
+   - If due: create lock file, spawn detached process, unref
+3. Each checker has independent lock file in `.logs/` (10-min expiry)
+4. Log all actions to `.logs/evolution-auto-runner.log`
+
+### Checker Details
+
+| # | Data File | Threshold | Script to Spawn | Args |
+|---|---|---|---|---|
+| 1 | `data/deep-intelligence/evolution_log.json` → last cycle timestamp | 7 days | `auto_evolve.py` | (none) |
+| 2 | `.claude/data/evolution-config.json` → `last_run` | 7 days | `scheduled-evolution-loop.py` | (none) |
+| 3 | `.logs/batch-verify-last-run.txt` (create if missing) | 3 days | `batch-auto-verify.py` | `--all-expired` |
+| 4 | `data/deep-intelligence/evolution_log.json` → last hunt timestamp | 14 days | `knowledge_hunter.py` | (none, runs `hunt_all()` internally) |
+
+### Python Paths
+
+```
+PYTHON = path.join(repoRoot, '.claude', 'skills', '.venv', 'Scripts', 'python.exe')
+SCRIPTS = {
+  autoEvolve: path.join(repoRoot, '.claude/skills/business/deep-intelligence/auto_evolve.py'),
+  scheduledEvolution: path.join(repoRoot, '.claude/skills/business/compound/scheduled-evolution-loop.py'),
+  batchVerify: path.join(repoRoot, '.claude/skills/business/feedback_loop/batch-auto-verify.py'),
+  knowledgeHunter: path.join(repoRoot, '.claude/skills/business/deep-intelligence/knowledge_hunter.py'),
+}
+```
+
+## Success Criteria
+
+- [ ] Hook file created with 4 checkers
+- [ ] Each checker reads correct timestamp file
+- [ ] Detached spawn with lock file protection
+- [ ] Fail-open (exit 0 always, try/catch everything)
+- [ ] Log file captures all actions
+
+## Risk Assessment
+
+- **Risk:** Python venv not found → fail-open, log warning
+- **Risk:** Lock file left stale → 10-min expiry auto-clears
+- **Risk:** Multiple sessions start simultaneously → lock prevents double-spawn

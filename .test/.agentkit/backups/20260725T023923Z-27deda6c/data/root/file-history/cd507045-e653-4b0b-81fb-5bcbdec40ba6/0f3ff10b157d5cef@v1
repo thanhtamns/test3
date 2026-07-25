@@ -1,0 +1,150 @@
+"""
+Outcome Tracker Schemas - Prediction and Decision data models.
+
+Covers intelligence-layer predictions (market calls, opportunity bets) and
+operator decisions (invest, pivot, exit). Distinct from the cash-flow
+experience_layer schemas which track advisor recommendations.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field, asdict
+from datetime import datetime
+from enum import Enum
+from typing import Optional
+import json
+
+
+# ---------------------------------------------------------------------------
+# Outcome codes (S / P / F / N)
+# ---------------------------------------------------------------------------
+
+class OutcomeCode(str, Enum):
+    """S=Success, P=Partial, F=Failure, N=Not applicable."""
+    SUCCESS = "S"
+    PARTIAL = "P"
+    FAILURE = "F"
+    NOT_APPLICABLE = "N"
+
+
+# ---------------------------------------------------------------------------
+# Prediction schema
+# ---------------------------------------------------------------------------
+
+@dataclass
+class Prediction:
+    """
+    A forward-looking prediction made by the intelligence system.
+
+    Fields
+    ------
+    id              : Unique identifier — format ``PRED-YYYYMMDD-HHMMSS-<hex6>``
+    made_at         : When the prediction was created (UTC)
+    prediction      : Plain-text statement of what is predicted
+    confidence      : 0.0–1.0 probability estimate at time of prediction
+    timeframe       : Human-readable window, e.g. "30d", "90d", "6mo"
+    signals_used    : List of signal IDs or descriptors that drove the call
+    reasoning       : Explanation of how signals led to the prediction
+    resolved_at     : When actual outcome was recorded (None if still open)
+    actual_outcome  : Plain-text description of what actually happened
+    accuracy_score  : 0.0–1.0 post-hoc accuracy; None until resolved
+    """
+
+    id: str
+    made_at: datetime
+    prediction: str
+    confidence: float  # 0.0–1.0
+    timeframe: str     # e.g. "30d", "90d", "6mo"
+    signals_used: list[str] = field(default_factory=list)
+    reasoning: str = ""
+    resolved_at: Optional[datetime] = None
+    actual_outcome: Optional[str] = None
+    accuracy_score: Optional[float] = None  # None until resolved
+
+    def __post_init__(self) -> None:
+        if not 0.0 <= self.confidence <= 1.0:
+            raise ValueError(f"confidence must be 0.0–1.0, got {self.confidence}")
+        if self.accuracy_score is not None and not 0.0 <= self.accuracy_score <= 1.0:
+            raise ValueError(f"accuracy_score must be 0.0–1.0, got {self.accuracy_score}")
+
+    @property
+    def is_resolved(self) -> bool:
+        return self.resolved_at is not None
+
+    def to_dict(self) -> dict:
+        d = asdict(self)
+        # Convert datetimes to ISO strings for JSON serialization
+        d["made_at"] = self.made_at.isoformat()
+        d["resolved_at"] = self.resolved_at.isoformat() if self.resolved_at else None
+        return d
+
+    def to_json(self, indent: int = 2) -> str:
+        return json.dumps(self.to_dict(), indent=indent)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Prediction":
+        return cls(
+            id=data["id"],
+            made_at=datetime.fromisoformat(data["made_at"]),
+            prediction=data["prediction"],
+            confidence=float(data["confidence"]),
+            timeframe=data["timeframe"],
+            signals_used=data.get("signals_used", []),
+            reasoning=data.get("reasoning", ""),
+            resolved_at=datetime.fromisoformat(data["resolved_at"]) if data.get("resolved_at") else None,
+            actual_outcome=data.get("actual_outcome"),
+            accuracy_score=float(data["accuracy_score"]) if data.get("accuracy_score") is not None else None,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Decision schema
+# ---------------------------------------------------------------------------
+
+@dataclass
+class Decision:
+    """
+    An operator decision logged for accountability and learning.
+
+    Fields
+    ------
+    id              : Unique identifier — format ``DEC-YYYYMMDD-HHMMSS-<hex6>``
+    made_at         : When the decision was made (UTC)
+    decision        : Plain-text description of the action taken
+    alternatives    : Other options that were considered but not chosen
+    expected_outcome: What the decision-maker predicted would happen
+    result          : Actual result observed (None until resolved)
+    variance        : Narrative delta between expected and actual (None until resolved)
+    """
+
+    id: str
+    made_at: datetime
+    decision: str
+    alternatives: list[str] = field(default_factory=list)
+    expected_outcome: str = ""
+    result: Optional[str] = None
+    variance: Optional[str] = None  # None until resolved
+
+    @property
+    def is_resolved(self) -> bool:
+        return self.result is not None
+
+    def to_dict(self) -> dict:
+        d = asdict(self)
+        d["made_at"] = self.made_at.isoformat()
+        return d
+
+    def to_json(self, indent: int = 2) -> str:
+        return json.dumps(self.to_dict(), indent=indent)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Decision":
+        return cls(
+            id=data["id"],
+            made_at=datetime.fromisoformat(data["made_at"]),
+            decision=data["decision"],
+            alternatives=data.get("alternatives", []),
+            expected_outcome=data.get("expected_outcome", ""),
+            result=data.get("result"),
+            variance=data.get("variance"),
+        )

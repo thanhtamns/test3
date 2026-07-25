@@ -1,0 +1,141 @@
+# Phase 1: Core Command Files
+
+**Priority:** P0 — nothing else works without this
+**Status:** pending
+**Estimated time:** 2-3 hours
+
+## Context
+- Stage0 checklist pattern: `commands/stage0-checklist.md` (133 lines, compact execution contract)
+- Stage0 full spec: `commands/stage0.md` (3200 lines, detailed spec)
+- Hunt needs BOTH: checklist (under 50 lines) + spec (under 500 lines)
+- Target repo: `D:\code\invesments\master_investments\.claude\commands\`
+
+## Requirements
+
+### hunt-checklist.md (~45 lines)
+Compact execution contract. Every step checked off mentally. If step fails → [DEGRADED] and continue (except BLOCKING gates).
+
+```
+# /hunt Compact Checklist (v1)
+
+RULE: Execute EVERY step. PROOF gate (Step 3) is BLOCKING — no skip.
+PURPOSE: Find SPECIFIC customer with VERIFIED pain, design offer, generate sales scripts.
+OUTPUT: prey_profile + pain_map + proof + offer + scripts in data/hunts/HUNT-<id>/
+
+## PRE-FLIGHT
+- [ ] Step 0: CWD validate — must be master_investments
+- [ ] Step 0.1: Load founder profile from kb/profiles/
+- [ ] Step 0.2: Parse args — /hunt [prey description] or /hunt (interactive)
+
+## STEP 1: PREY — Who is the target?
+- [ ] Step 1.1: If args provided → extract prey description. Else → AskUser 3 questions:
+      Q1: "Who can you reach WITHOUT advertising?" (relationships, position, language, industry)
+      Q2: "What problem do you understand that NORMAL PEOPLE don't?" (domain knowledge)
+      Q3: "Where is money flowing that YOU CAN OBSERVE?" (proximity to cash flow)
+- [ ] Step 1.2: Build prey_profile — who, count_estimate+source+confidence, where_they_gather (3+ specific places), how_founder_reaches_them, money_flow, founder_advantage
+- [ ] Step 1.3: GATE — count < 1000 → WARN (niche too small). reach = "advertising" → WARN (needs capital). advantage = empty → BLOCK, re-ask
+
+## STEP 2: PAIN — What specifically hurts?
+- [ ] Step 2.1: Forum mining — search where_they_gather for complaints. Keywords per language:
+      EN: "waste of time", "anyone know how", "so frustrating", "looking for tool"
+      VN: "chán quá", "mất thời gian", "ai biết cách", "có tool nào", "mệt mỏi"
+      Target: 5+ distinct complaints with frequency counts
+- [ ] Step 2.2: Money quantification — for each pain: time_cost × hourly_rate OR direct_cost_per_occurrence
+- [ ] Step 2.3: Solution landscape — for each pain: current_solution, existing_paid_tools (name+price), gap
+- [ ] Step 2.4: GATE — 0 forum mentions for ALL pains → KILL this prey group, return Step 1. money_cost < $10/occurrence → WARN (not painful enough to pay)
+- [ ] Step 2.5: Rank pains by (money_cost × frequency × forum_mentions). Pick top 1-2.
+
+## STEP 3: PROOF — Is the pain REAL? (BLOCKING — NO SKIP)
+- [ ] Step 3.1: Generate 3 outreach scripts (DM/email/comment, under 50 words each). Purpose: ASK, not sell.
+      Template: "[Name], I noticed you [context]. I'm researching [pain]. Do you experience this? How much time does it cost you?"
+- [ ] Step 3.2: Identify 20 specific people to contact (from where_they_gather). List names/handles.
+- [ ] Step 3.3: HUMAN ACTION REQUIRED — User sends 20 messages. /hunt PAUSES here.
+      Create ACTION file: data/actions/ACTION-HUNT-<id>-proof.json (due: 7 days)
+      Display: "Send these 20 messages. Come back with: replies count, confirmed pain count, 'do you have solution?' count. Run: /hunt continue <id>"
+- [ ] Step 3.4: On /hunt continue — collect results. proof_status:
+      >= 5 replies + >= 3 confirmed pain = PASSED
+      >= 5 replies + < 3 confirmed = WEAK (continue with warning)
+      < 5 replies = FAILED → return Step 1 or Step 2 (different prey/pain)
+- [ ] Step 3.5: WTP collection — for confirmed-pain people, ask: "If a tool solved this in 30 seconds instead of X hours, what would you pay per month?" Collect price anchors.
+
+## STEP 4: OFFER — What exactly to sell?
+- [ ] Step 4.1: Minimum Viable Offer — smallest thing that solves top pain. Must be buildable in ≤ 2 weeks.
+- [ ] Step 4.2: Price from WTP — median WTP × 0.7. Calculate: TAM × 1% conversion × price = MRR floor
+- [ ] Step 4.3: Delivery format — code/service/template based on founder skills
+- [ ] Step 4.4: Money flow position — which segment of existing flow does this sit in? What % captured?
+- [ ] Step 4.5: Delegation test — who replaces founder at $500-1K/mo? If nobody → it's a job, flag it.
+- [ ] Step 4.6: Kill criteria — < X sign-ups after 30 days → pivot pain or pivot group
+
+## STEP 5: SCRIPT — How to sell (copy-paste ready)
+- [ ] Step 5.1: Cold outreach script (3 variants: DM, email, forum comment)
+- [ ] Step 5.2: Landing page copy (under 200 words, problem→solution→price→CTA)
+- [ ] Step 5.3: Follow-up sequence (3 messages, days 2/5/10)
+- [ ] Step 5.4: Objection handling (top 5 objections + responses)
+- [ ] Step 5.5: First-week action plan — Day 1: send 10 outreach. Day 3: follow up. Day 7: evaluate.
+
+## PERSIST
+- [ ] Step 6.1: Save all outputs to data/hunts/HUNT-<date>-<prey_slug>/
+- [ ] Step 6.2: Create ACTION file for first outreach batch (due: 3 days)
+- [ ] Step 6.3: Display full output to user. STOP. No chaining.
+
+## QUALITY CHECK
+- [ ] Prey profile has count_estimate with source?
+- [ ] Pain has forum_mentions > 0 with URLs?
+- [ ] Proof gate ran (or ACTION created for human to run)?
+- [ ] Offer price derived from WTP, not from "industry standard"?
+- [ ] Scripts are under 50 words each (DM) / 200 words (landing page)?
+- [ ] Kill criteria specified with number + timeframe?
+- [ ] No Google "business model" searches anywhere in pipeline?
+- [ ] Total steps < 50? (target: ~35)
+```
+
+### hunt.md (~400 lines)
+Full spec with detailed instructions for each step. Structure mirrors stage0.md but 6-8x shorter.
+
+Key sections:
+1. PURPOSE & PHILOSOPHY — why /hunt exists, how it differs from /stage0
+2. INPUTS — args format, interactive mode
+3. STEP 1-5 DETAILED — agent prompts, search strategies, output schemas
+4. PERSISTENCE — data/hunts/ structure
+5. GATES — blocking vs non-blocking, thresholds
+6. BRIDGE TO STAGE0 — how /hunt uses stage0 verdicts (optional)
+7. BRIDGE TO BLUEPRINT — how /hunt feeds /blueprint
+
+## Architecture
+
+### No new Python scripts in Phase 1
+- Reuse `persist-verdict.py` pattern for saving hunt data (or simple file writes)
+- Reuse `founder-strength-detector.py` for profile loading
+- Forum mining uses WebSearch + WebFetch (existing tools)
+
+### Agent reuse
+- Step 1: `customer-obsession-researcher` agent (exists, designed for exactly this)
+- Step 2: `niche-archaeologist` + `reddit-twitter-demand-miner` agents (exist)
+- Step 4: `first-dollar-hunter` agent (exists)
+- Step 5: `outreach-synthesizer` + `chris-voss` agents (exist)
+
+### New agent prompts needed (Phase 2)
+- `hunt-lib/prey-profiler.md` — Step 1 structured output
+- `hunt-lib/pain-miner.md` — Step 2 forum mining + money quantification
+- `hunt-lib/proof-tracker.md` — Step 3 framework + script generation
+- `hunt-lib/offer-designer.md` — Step 4 offer synthesis
+- `hunt-lib/script-writer.md` — Step 5 sales scripts
+
+## Implementation Steps
+
+1. Write `hunt-checklist.md` — the compact execution contract (~45 lines)
+2. Write `hunt.md` — full spec with detailed step instructions (~400 lines)
+3. Test: run `/hunt kế toán thuế Việt Nam` and verify pipeline flows through Steps 1-2 (3-5 need human action)
+
+## Success Criteria
+- [ ] Checklist under 50 lines
+- [ ] Full spec under 500 lines
+- [ ] No reference to "business model scanning" or Google model searches
+- [ ] Step 3 PROOF is explicitly BLOCKING
+- [ ] Output schemas defined for all 5 steps
+- [ ] Relationship to /stage0, /blueprint, /exec documented
+
+## Risk Assessment
+- Risk: Agent prompts (Phase 2) might not be ready → hunt.md can inline agent instructions for v1
+- Risk: Forum mining might return garbage → mitigated by keyword lists per language
+- Risk: Users skip Step 3 → BLOCKING gate + ACTION file enforce it

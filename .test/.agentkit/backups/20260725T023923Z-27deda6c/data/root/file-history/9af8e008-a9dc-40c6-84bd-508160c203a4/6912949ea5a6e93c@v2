@@ -1,0 +1,100 @@
+---
+phase: 2
+title: "Brain 1 Price Delta Engine"
+status: pending
+priority: P1
+effort: "2-3d"
+dependencies: [1]
+---
+
+# Phase 2: Brain 1 — Price Delta Engine
+
+## Overview
+
+Build the Price Delta Engine that finds SPECIFIC price spreads >30% between markets. Not "coffee market is $450B" — but "Robusta grade 2 Buon Ma Thuot = 58K VND/kg, Rotterdam FOB = $4,200/ton, spread = $1,800/ton, bridge cost = $400/ton, net = $1,400/ton."
+
+## Requirements
+
+- Functional: search for real prices, extract structured price data via LLM, calculate cross-market spreads, estimate bridge costs, flag spreads >30%
+- Non-functional: deterministic search templates (not LLM-chosen queries), max 30 web calls, reproducible with same seeds
+
+## Architecture
+
+```
+PriceDeltaEngine
+  ├── scan(seed_products, markets) → list[PriceDelta]
+  │   ├── For each product × market pair:
+  │   │   ├── search_price(product, market) → raw results
+  │   │   ├── llm_extract_price(raw) → {price, currency, unit, source}
+  │   │   └── calc_spread(price_a, price_b) → spread_pct
+  │   ├── For spreads > 30%:
+  │   │   ├── search_bridge_cost(market_a, market_b, product)
+  │   │   └── llm_extract_bridge(raw) → {shipping, tariff, docs}
+  │   └── Output: PriceDelta with net_margin
+  └── Inputs: research_fn (DDG), llm_fn (parse), graph (MoneyFlowGraph)
+```
+
+Python controls WHAT to search. LLM only parses raw text → structured data.
+
+## Related Code Files
+
+- Create: `.claude/lib/intelligence/brains/price_delta_engine.py`
+- Create: `.claude/lib/intelligence/brains/tests/test_price_delta.py`
+- Create: `.claude/lib/intelligence/brains/tests/fixtures/price_search_results.json`
+- Read: `.claude/lib/intelligence/brains/models.py` (from Phase 1)
+
+## Implementation Steps
+
+1. Define search template constants:
+   ```python
+   PRICE_SEARCH_TEMPLATES = [
+       '"{product}" price per {unit} {market} 2025 2026',
+       '"{product}" wholesale price {market}',
+       '"{product}" export FOB price {market}',
+       '"{product}" import CIF price {market}',
+   ]
+   BRIDGE_COST_TEMPLATES = [
+       'shipping cost {market_a} to {market_b} {product}',
+       'import tariff {product} {market_b}',
+   ]
+   ```
+2. Implement `PriceDeltaEngine.__init__(research_fn, llm_fn, graph)` — takes callable dependencies
+3. Implement `PriceDeltaEngine.scan(seed_products, markets)`:
+   - Generate product × market pairs
+   - Budget allocation: 2 price searches + 2 bridge cost searches per pair, max 30 total calls
+   - For each pair: run search template, collect raw text
+   - LLM extraction prompt: "Extract from this text: product name, price (number), currency, unit (kg/ton/unit), source URL. Return JSON."
+   - Calculate spread_pct = (price_b - price_a) / price_a * 100
+   - Filter: keep only spread_pct > 30%
+   - For qualifying spreads: search bridge costs, calculate net margin
+   - Return list[PriceDelta]
+4. Implement seed product resolution:
+   - From topic/founder profile: extract product keywords
+   - From graph: entities already in MoneyFlowGraph
+   - Default seeds: top VN exports (coffee, pepper, cashew, shrimp, furniture, textiles)
+   - From DuckDB history: products from previous hunts
+5. Implement budget tracking: counter increments per web call, stops at 30
+6. Create test fixtures: sample search results for coffee/VN, electronics/CN→US
+7. Write tests:
+   - `test_spread_calculation`: known prices → correct spread_pct
+   - `test_bridge_cost_subtraction`: spread - bridge = net_margin
+   - `test_budget_enforcement`: stops at 30 calls
+   - `test_threshold_filter`: only >30% spreads returned
+   - `test_seed_resolution`: founder profile → product list
+   - `test_llm_extraction_prompt`: prompt format correctness
+
+## Success Criteria
+
+- [ ] Produces PriceDelta objects with real price numbers (not placeholder)
+- [ ] Spread calculation is mathematically correct
+- [ ] Bridge cost subtracted to get net_margin
+- [ ] Budget enforced at 30 web calls max
+- [ ] Only spreads >30% returned (configurable threshold)
+- [ ] LLM receives deterministic extraction prompts
+- [ ] Test fixtures enable offline testing
+- [ ] >=80% coverage
+
+## Risk Assessment
+
+- **Price data quality:** Web search may return inconsistent units (per kg vs per ton). Mitigation: LLM prompt explicitly asks for unit normalization; post-extraction validation rejects mismatched units.
+- **Currency conversion:** Prices in different currencies need conversion. Mitigation: use a simple conversion table for major currencies (USD, EUR, VND, CNY), update quarterly.

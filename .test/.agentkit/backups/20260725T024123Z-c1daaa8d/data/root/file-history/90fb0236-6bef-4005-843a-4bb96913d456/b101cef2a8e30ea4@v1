@@ -1,0 +1,256 @@
+#!/usr/bin/env python3
+"""Output Voice Enforcer — Step 7.05
+
+Detects LLM-format artifacts in verdict output and scores human-voice quality.
+Quality gate: operator voice must score ≥70, analyst ≥40.
+Output should read like private notes from an experienced mentor, not an AI report.
+
+Usage:
+  python output-voice-enforcer.py --verdict-text "text here" --voice operator
+  python output-voice-enforcer.py --verdict-file /tmp/verdict.md --voice analyst
+  echo "text" | python output-voice-enforcer.py --stdin --voice operator
+"""
+
+import argparse
+import json
+import re
+import sys
+from pathlib import Path
+
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8")
+
+LLM_ARTIFACTS = {
+    "markdown_headers": {
+        "patterns": [r"^#{1,4}\s", r"^---+$"],
+        "severity": 3,
+        "rewrite": "Remove header, start paragraph directly",
+    },
+    "bold_labels": {
+        "patterns": [r"\*\*[A-Z][^*]+:\*\*", r"\*\*Note:\*\*", r"\*\*Key insight:\*\*"],
+        "severity": 2,
+        "rewrite": "Embed the label naturally in prose",
+    },
+    "bullet_lists": {
+        "patterns": [r"^\s*[-*]\s+\S", r"^\s*\d+\.\s+\S"],
+        "severity": 3,
+        "rewrite": "Convert to narrative paragraph",
+    },
+    "table_formatting": {
+        "patterns": [r"\|.*\|.*\|"],
+        "severity": 3,
+        "rewrite": "Embed data in sentences: 'that's about $X if you...'",
+    },
+    "zone_tags": {
+        "patterns": [r"\[K\]", r"\[T\]", r"\[\?\]"],
+        "severity": 2,
+        "rewrite": "Remove — internal metadata only",
+    },
+    "framework_names": {
+        "patterns": [
+            r"\b(CENTS|Mountain Test|P10/P50/P90|SPIN|BATNA)\b",
+            r"\b(Wound Map|Compound Objective|Persona Matrix|Info Asymmetry)\b",
+            r"\b(framework|methodology|assessment|analysis protocol)\b",
+        ],
+        "severity": 2,
+        "rewrite": "Express the concept without naming the framework",
+    },
+    "meta_language": {
+        "patterns": [
+            r"(?i)(let me explain|I'll analyze|here's what I found|in summary)",
+            r"(?i)(as mentioned|it's worth noting|importantly|significantly)",
+            r"(?i)(in conclusion|to summarize|key takeaway|bottom line is)",
+        ],
+        "severity": 1,
+        "rewrite": "Just state it directly",
+    },
+    "enumerated_steps": {
+        "patterns": [r"(?i)^step\s+\d", r"(?i)^phase\s+\d", r"^First,.*Second,"],
+        "severity": 2,
+        "rewrite": "Describe sequence as narrative flow",
+    },
+    "technical_scores": {
+        "patterns": [
+            r"Score:\s*\d",
+            r"Rating:\s*\d",
+            r"Confidence:\s*\d",
+            r"\d+/\d+\s*(points?|score)",
+            r"Grade:\s*[A-F]",
+        ],
+        "severity": 2,
+        "rewrite": "Express quality in words: 'strong', 'weak', 'risky'",
+    },
+    "system_artifact_names": {
+        "patterns": [
+            r"(?i)(side.?door scanner|anti.?orthodox gate|voice enforcer)",
+            r"(?i)(stage0|step\s+\d+\.\d+|quality gate|pipeline)",
+            r"(?i)(agent\s+dispatch|wave\s+\d|blocking|mandatory)",
+        ],
+        "severity": 3,
+        "rewrite": "Never expose system internals to user",
+    },
+}
+
+HUMAN_SIGNALS = {
+    "dialogue_scripts": {
+        "patterns": [r'[Nn]ói:\s*["\']', r'[Ss]ay:\s*["\']', r'"[^"]{15,}"'],
+        "points": 5,
+    },
+    "vietnamese_terms": {
+        "patterns": [r"\b(ơn|mặt|tin|nhậu|anh|em|gã|thằng)\b", r"(?i)(coi chừng|đừng|nói thẳng)"],
+        "points": 3,
+    },
+    "specific_names": {
+        "patterns": [r"\b[A-Z][a-z]+\s+[A-Z][a-z]+\b", r"(CEO|CTO|VP|Director)\s+of\s+\w+"],
+        "points": 3,
+    },
+    "conversational_flow": {
+        "patterns": [r"(?i)(bạn|you)\s+(cần|need|should|nên)", r"(?i)(đó là|that's|here's the thing)"],
+        "points": 2,
+    },
+    "warning_language": {
+        "patterns": [r"(?i)(coi chừng|watch out|careful|đừng|don't|stop)", r"(?i)(risk|danger|trap|bẫy)"],
+        "points": 2,
+    },
+    "narrative_connectors": {
+        "patterns": [r"(?i)(sau đó|then|next|rồi|when.*happens)", r"(?i)(nếu.*thì|if.*then)"],
+        "points": 2,
+    },
+}
+
+THRESHOLDS = {"operator": 70, "analyst": 40}
+
+
+def detect_llm_artifacts(text: str) -> list[dict]:
+    found = []
+    lines = text.split("\n")
+    for artifact_type, cfg in LLM_ARTIFACTS.items():
+        for line_num, line in enumerate(lines, start=1):
+            for pattern in cfg["patterns"]:
+                m = re.search(pattern, line, re.MULTILINE | re.IGNORECASE if "(?i)" in pattern else re.MULTILINE)
+                if m:
+                    found.append({
+                        "line": line_num,
+                        "type": artifact_type,
+                        "match": m.group(0)[:80],
+                        "severity": cfg["severity"],
+                        "rewrite": cfg["rewrite"],
+                    })
+                    break  # one match per pattern group per line
+    return found
+
+
+def detect_human_signals(text: str) -> list[dict]:
+    found = []
+    for signal_type, cfg in HUMAN_SIGNALS.items():
+        count = 0
+        for pattern in cfg["patterns"]:
+            count += len(re.findall(pattern, text))
+        if count > 0:
+            found.append({
+                "type": signal_type,
+                "count": count,
+                "points": cfg["points"] * count,
+            })
+    return found
+
+
+def score_human_voice(text: str) -> dict:
+    artifacts = detect_llm_artifacts(text)
+    signals = detect_human_signals(text)
+
+    # Aggregate penalty by type to avoid double-counting per-line duplicates
+    penalty_by_type: dict[str, int] = {}
+    for a in artifacts:
+        penalty_by_type[a["type"]] = penalty_by_type.get(a["type"], 0) + a["severity"]
+
+    raw_penalty = sum(penalty_by_type.values())
+    raw_bonus = sum(s["points"] for s in signals)
+
+    penalty = min(raw_penalty, 50)
+    bonus = min(raw_bonus, 50)
+    score = max(0, min(100, 50 - penalty + bonus))
+
+    return {
+        "score": score,
+        "artifacts_found": len(artifacts),
+        "human_signals_found": len(signals),
+        "verdict": "PASS" if score >= THRESHOLDS["analyst"] else "FAIL",  # default; gate_check overrides
+    }
+
+
+def suggest_rewrites(artifacts: list[dict]) -> list[dict]:
+    grouped: dict[str, dict] = {}
+    for a in artifacts:
+        t = a["type"]
+        if t not in grouped:
+            grouped[t] = {"type": t, "rewrite": a["rewrite"], "occurrences": [], "severity": a["severity"]}
+        grouped[t]["occurrences"].append({"line": a["line"], "match": a["match"]})
+    return list(grouped.values())
+
+
+def gate_check(text: str, voice_mode: str = "analyst") -> dict:
+    voice_mode = voice_mode.lower()
+    if voice_mode not in THRESHOLDS:
+        voice_mode = "analyst"
+
+    threshold = THRESHOLDS[voice_mode]
+    artifacts = detect_llm_artifacts(text)
+    signals = detect_human_signals(text)
+
+    penalty_by_type: dict[str, int] = {}
+    for a in artifacts:
+        penalty_by_type[a["type"]] = penalty_by_type.get(a["type"], 0) + a["severity"]
+
+    raw_penalty = sum(penalty_by_type.values())
+    raw_bonus = sum(s["points"] for s in signals)
+
+    penalty = min(raw_penalty, 50)
+    bonus = min(raw_bonus, 50)
+    score = max(0, min(100, 50 - penalty + bonus))
+
+    return {
+        "voice_mode": voice_mode,
+        "score": score,
+        "verdict": "PASS" if score >= threshold else "FAIL",
+        "threshold": threshold,
+        "artifacts": artifacts,
+        "human_signals": signals,
+        "rewrite_suggestions": suggest_rewrites(artifacts),
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Output Voice Enforcer (Step 7.05)")
+    parser.add_argument("--verdict-text", default=None, help="Direct text to check")
+    parser.add_argument("--verdict-file", default=None, help="Path to verdict markdown")
+    parser.add_argument("--stdin", action="store_true", help="Read from stdin")
+    parser.add_argument(
+        "--voice",
+        default="analyst",
+        choices=["operator", "analyst"],
+        help="Voice mode: operator (threshold 70) or analyst (threshold 40)",
+    )
+    args = parser.parse_args()
+
+    text = ""
+    if args.verdict_text:
+        text = args.verdict_text
+    elif args.verdict_file:
+        path = Path(args.verdict_file)
+        if not path.exists():
+            print(json.dumps({"error": f"file not found: {args.verdict_file}"}))
+            sys.exit(1)
+        text = path.read_text(encoding="utf-8")
+    elif args.stdin:
+        text = sys.stdin.read()
+    else:
+        parser.print_help()
+        sys.exit(1)
+
+    result = gate_check(text, voice_mode=args.voice)
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

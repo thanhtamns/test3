@@ -1,0 +1,147 @@
+"""
+CausalRuleEngine — deterministic rule-based reasoning that detects
+cross-dimension patterns and adjusts scores. Zero LLM calls.
+"""
+
+from dataclasses import dataclass, field
+
+
+@dataclass
+class CausalResult:
+    adjusted_scores: dict[str, float] = field(default_factory=dict)
+    insights: list[str] = field(default_factory=list)
+    overrides: dict[str, str] = field(default_factory=dict)
+
+
+def _dim_score(dim_scores: dict, name: str) -> float:
+    ds = dim_scores.get(name)
+    if ds is None:
+        return 0.0
+    return ds.score if hasattr(ds, "score") else float(ds)
+
+
+def _fact_text_lower(facts: list) -> list[str]:
+    return [getattr(f, "fact", str(f)).lower() for f in facts]
+
+
+def _zone_counts(facts: list) -> dict[str, int]:
+    counts = {"K": 0, "T": 0, "?": 0}
+    for f in facts:
+        tag = getattr(f, "zone_tag", "?")
+        counts[tag if tag in counts else "?"] += 1
+    return counts
+
+
+class CausalRuleEngine:
+    def evaluate(self, dim_scores: dict, facts: list) -> CausalResult:
+        r = CausalResult()
+        texts = _fact_text_lower(facts)
+        zones = _zone_counts(facts)
+
+        self._cross_dimension_rules(dim_scores, texts, r)
+        self._pattern_detection_rules(dim_scores, texts, r)
+        self._override_rules(dim_scores, facts, zones, r)
+
+        return r
+
+    def _cross_dimension_rules(self, ds: dict, texts: list[str], r: CausalResult):
+        base = _dim_score(ds, "base_rates")
+        indirect = _dim_score(ds, "indirect_entry")
+        if base < 0.3 and indirect > 0.5:
+            r.adjusted_scores["base_rates"] = min(base + 0.2, 0.5)
+            r.insights.append(
+                "Low base rate applies to direct entry; indirect path has different statistics"
+            )
+
+        power = _dim_score(ds, "network_access")
+        econ = _dim_score(ds, "unit_economics")
+        if power > 0.5 and econ < 0.3:
+            r.insights.append(
+                "High-status position with poor economics = credibility arbitrage or extraction (title ≠ income)"
+            )
+
+        leverage = _dim_score(ds, "leverage_type")
+        capital = _dim_score(ds, "capital_requirements")
+        if leverage > 0.5 and capital > 0.7:
+            r.insights.append(
+                "Leverage path exists but requires capital the founder doesn't have — bootstrap impossible via standard path"
+            )
+
+        competitive = _dim_score(ds, "competitive_landscape")
+        shortcuts = _dim_score(ds, "execution_distance")
+        if competitive > 0.7 and shortcuts > 0.5:
+            r.insights.append(
+                "Crowded market but side doors exist — timing-critical"
+            )
+
+        failure = _dim_score(ds, "failure_patterns")
+        founder = _dim_score(ds, "founder_experience")
+        if failure > 0.7 and founder < 0.3:
+            r.insights.append(
+                "High failure rate + low founder match = structural mismatch, not fixable by effort"
+            )
+
+        timing = _dim_score(ds, "timing_windows")
+        if timing > 0.7 and competitive > 0.6:
+            r.insights.append(
+                "Timing window open in crowded market — first-mover advantage is the only edge"
+            )
+
+    def _pattern_detection_rules(self, ds: dict, texts: list[str], r: CausalResult):
+        has_title = any(w in t for t in texts for w in ("director", "ceo", "vp", "head of", "manager", "partner"))
+        has_low_income = any(w in t for t in texts for w in ("$1k", "$2k", "$3k", "$4k", "$5k", "<$5k", "low salary", "modest"))
+        if has_title and has_low_income:
+            r.insights.append(
+                "Credibility arbitrage detected: impressive title masks modest actual income"
+            )
+
+        claim_words = ("claims", "claimed", "reportedly", "said to")
+        actual_words = ("actual", "verified", "confirmed", "records show")
+        has_claims = any(w in t for t in texts for w in claim_words)
+        has_actuals = any(w in t for t in texts for w in actual_words)
+        if has_claims and has_actuals:
+            contradictions = sum(1 for t in texts if any(w in t for w in claim_words))
+            if contradictions >= 2:
+                r.insights.append("Narrative inflation detected: multiple claimed vs actual discrepancies")
+
+        value_chain_nodes = set()
+        for t in texts:
+            for node in ("supplier", "manufacturer", "distributor", "retailer", "platform", "affiliate", "broker", "agent"):
+                if node in t:
+                    value_chain_nodes.add(node)
+        if len(value_chain_nodes) >= 5:
+            founder_touches = sum(1 for n in value_chain_nodes if any(n in t for t in texts[:3]))
+            if founder_touches <= 1:
+                r.insights.append(
+                    f"Narrow insertion risk: ecosystem has {len(value_chain_nodes)} nodes but founder touches only 1"
+                )
+
+        moat = _dim_score(ds, "moat_patterns")
+        compounding = _dim_score(ds, "compounding_mechanisms")
+        if moat < 0.3 and compounding < 0.3:
+            r.insights.append("No moat + no compounding = commodity position, race to bottom")
+
+        deal = _dim_score(ds, "deal_skills")
+        career = _dim_score(ds, "career_path")
+        if deal > 0.6 and career < 0.3:
+            r.insights.append("Deal skills high but career path unclear — middleman risk without institutional backing")
+
+    def _override_rules(self, ds: dict, facts: list, zones: dict[str, int], r: CausalResult):
+        for dim_name, dim_score_obj in ds.items():
+            dim_facts = [f for f in facts if getattr(f, "dimension", "") == dim_name]
+            if dim_facts and all(getattr(f, "zone_tag", "?") == "?" for f in dim_facts):
+                score = _dim_score(ds, dim_name)
+                r.adjusted_scores[dim_name] = 0.0
+                r.overrides[dim_name] = "all facts are [?] — score zeroed"
+
+        contradiction_count = sum(1 for f in facts if getattr(f, "zone_tag", "") == "?")
+        if contradiction_count > 3:
+            r.overrides["_overall_cap"] = "0.5"
+            r.insights.append(f"Overall capped at 0.5: {contradiction_count} uncertain/contradicted facts")
+
+        if zones.get("K", 0) == 0:
+            r.overrides["_overall_cap"] = str(min(float(r.overrides.get("_overall_cap", "0.3")), 0.3))
+            r.insights.append("Overall capped at 0.3: zero [K] verified facts — insufficient evidence")
+
+        if zones.get("K", 0) >= 5 and zones.get("?", 0) <= 1:
+            r.insights.append("Strong evidence base: ≥5 verified facts with minimal uncertainty")

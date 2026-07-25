@@ -1,0 +1,98 @@
+---
+phase: 3
+title: Mini Stage0 Runner
+status: completed
+priority: P1
+effort: 3h
+dependencies:
+  - 2
+---
+
+# Phase 3: Mini Stage0 Runner
+
+## Overview
+
+Lightweight stage0 runner that takes hypothesis list from Phase 2 and produces Top 3 niches with GO/KILL verdict + Day 1 action. Uses LLM (Claude agent) for analysis but with budget caps. Outputs `auto-hunt-report-YYMMDD.md`.
+
+## Requirements
+
+- Functional: Run mountain test v22 per hypothesis. Anti-confirmation queries. Persist new cases to KB. Generate concise report.
+- Non-functional: Adaptive budget (STRONG=100K tokens, MEDIUM=30K, WEAK=skip). Max 3 full hunts per run.
+
+## Architecture
+
+```
+novel_hypotheses[] (from Phase 2)
+  │
+  ▼
+auto-hunt-mini-stage0.py
+  ├── classify_signal_strength()    → STRONG/MEDIUM/WEAK per hypothesis
+  ├── build_stage0_prompt()         → construct mini-stage0 prompt per hypothesis
+  ├── format_report()               → markdown report with top 3
+  ├── persist_cases()               → call kb-add.py for each new case
+  └── output: auto-hunt-report-YYMMDD.md
+```
+
+Key difference from full stage0: this script builds the PROMPT for Claude agent to execute. It does NOT call LLM directly — it outputs a structured prompt that the SessionStart hook will inject into Claude's context.
+
+## Related Code Files
+
+- Create: `D:\code\invesments\master_investments\.claude\skills\business\transaction-layer\nui-hunter\scripts\auto-hunt-mini-stage0.py`
+- Create: `D:\code\invesments\master_investments\.claude\skills\business\transaction-layer\nui-hunter\scripts\auto-hunt-prompt-template.md`
+- Read: `nui-hunter/README.md` (mountain test v22 spec)
+- Read: `nui-hunter/scripts/kb-add.py` (case persistence)
+- Reference: `stage0-local-orchestrator.py` (routing_context pattern)
+
+## Implementation Steps
+
+1. Create `auto-hunt-mini-stage0.py` with CLI (`--hypotheses-json`, `--output-dir`, `--max-hunts 3`)
+2. Implement `classify_signal_strength()`:
+   - STRONG: total_score ≥ 70 (from Phase 1 scoring) → full hunt
+   - MEDIUM: total_score 40-69 → quick validation (2 anti-confirmation queries only)
+   - WEAK: total_score < 40 → skip with log
+3. Create `auto-hunt-prompt-template.md` — the agent prompt template:
+   ```
+   You are running a mini stage0 analysis on: {hypothesis_statement}
+   
+   Founder profile: {profile_summary}
+   Signal evidence: {source_evidence}
+   
+   Execute these steps:
+   1. WebSearch: "{domain} failure rate" + "{domain} free alternative"
+   2. WebSearch: "{domain} Vietnam founder success" + "{domain} $0 capital entry"
+   3. Mountain Test v22:
+      - Q1: Can this reach $10K/mo? (cite evidence URL)
+      - Q2: What unfair advantage does founder have? 
+      - Q3: Compounding asset?
+   4. Verdict: GO / KILL / CONDITIONAL
+   5. If GO/CONDITIONAL: Day 1 action (copy-paste ready, <50 words)
+   6. Kill criteria (3 specific thresholds)
+   
+   Output as JSON: {verdict, confidence, mechanism, day1_action, kill_criteria[]}
+   ```
+4. Implement `build_stage0_prompt()` — fill template with hypothesis data
+5. Implement `format_report()`:
+   - Header: date, founder profile summary, signal scan summary
+   - Top 3 niches table: `| Rank | Niche | Verdict | WHY | Day 1 Action |`
+   - Per-niche detail section (5-10 lines each)
+   - Kill criteria per niche
+   - Footer: cases persisted, KB growth stats
+6. Implement `persist_cases()`:
+   - For each hypothesis with verdict → create case JSON
+   - Call kb-add.py to validate + persist
+   - Log: "Added {n} new cases to KB"
+7. Output report to `plans/reports/auto-hunt-report-YYMMDD.md`
+
+## Success Criteria
+
+- [ ] Generates valid prompt template for each hypothesis
+- [ ] Budget classification correct: STRONG gets full prompt, WEAK gets skipped
+- [ ] Report format matches spec: Top 3 table + detail + kill criteria
+- [ ] New cases persisted via kb-add.py (validated JSON schema)
+- [ ] Max 3 hunts enforced even with >3 STRONG candidates
+
+## Risk Assessment
+
+- LLM prompt output not parseable → mitigation: structured JSON output requirement + retry once
+- kb-add.py rejects case (missing fields) → mitigation: pre-validate against schema before calling
+- Report too long → mitigation: per-niche detail capped at 10 lines, total report <150 lines

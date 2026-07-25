@@ -1,0 +1,70 @@
+package api
+
+import (
+	"encoding/json"
+	"net/http"
+	"strconv"
+)
+
+func (h *handler) handleProvenance(w http.ResponseWriter, r *http.Request) {
+	tenantID := tenantFromCtx(r)
+	project := r.URL.Query().Get("project")
+	days := parseDays(r.URL.Query().Get("days"), 90)
+
+	rows, err := h.store.QueryProvenance(r.Context(), tenantID, project, days)
+	if err != nil {
+		h.logger.Error("provenance query failed", "error", err)
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+
+	type record struct {
+		Timestamp       int64  `json:"timestamp_ms"`
+		SessionID       string `json:"session_id"`
+		ProjectDir      string `json:"project_dir"`
+		FilePath        string `json:"file_path"`
+		CodeHash        string `json:"code_hash"`
+		ModelID         string `json:"model_id"`
+		ModelVersion    string `json:"model_version"`
+		ContributorType string `json:"contributor_type"`
+		StartLine       uint32 `json:"start_line"`
+		EndLine         uint32 `json:"end_line"`
+		AttestationSig  string `json:"attestation_sig"`
+		DeveloperID     string `json:"developer_id"`
+	}
+
+	result := make([]record, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, record{
+			Timestamp:       row.Timestamp.UnixMilli(),
+			SessionID:       row.SessionID,
+			ProjectDir:      row.ProjectDir,
+			FilePath:        row.FilePath,
+			CodeHash:        row.CodeHash,
+			ModelID:         row.ModelID,
+			ModelVersion:    row.ModelVersion,
+			ContributorType: row.ContributorType,
+			StartLine:       row.StartLine,
+			EndLine:         row.EndLine,
+			AttestationSig:  row.AttestationSig,
+			DeveloperID:     row.DeveloperID,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"records": result,
+		"count":   len(result),
+	})
+}
+
+func parseDays(s string, fallback int) int {
+	if s == "" {
+		return fallback
+	}
+	d, err := strconv.Atoi(s)
+	if err != nil || d <= 0 {
+		return fallback
+	}
+	return d
+}

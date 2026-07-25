@@ -1,0 +1,544 @@
+#!/usr/bin/env python3
+"""
+Naval Ravikant leverage classifier and upgrade path designer.
+
+4 leverage types (ranked by compound potential):
+1. Code (software, zero marginal cost)
+2. Media (audience, content, distribution)
+3. Capital (money working for you)
+4. Labor (people working for you - lowest leverage)
+
+Usage:
+    python -m money_mechanisms.leverage --sources '[{"type": "saas", "revenue": 5000}]'
+"""
+
+import argparse
+import json
+import sys
+import re
+from typing import List, Dict, Tuple, Optional
+
+
+class LeverageMechanism:
+    """Classifier and path designer for Naval's leverage framework."""
+
+    LEVERAGE_HIERARCHY = {
+        "code": 4,
+        "media": 3,
+        "capital": 2,
+        "labor": 1
+    }
+
+    LEVERAGE_KEYWORDS = {
+        "code": [
+            "saas", "software", "app", "api", "platform", "tool", "automation",
+            "plugin", "extension", "bot", "ai", "algorithm"
+        ],
+        "media": [
+            "content", "course", "ebook", "newsletter", "podcast", "youtube",
+            "blog", "audience", "followers", "subscribers", "community",
+            "influencer", "creator", "affiliate"
+        ],
+        "capital": [
+            "investment", "rental", "royalty", "licensing", "franchise",
+            "portfolio", "dividend", "interest", "equity", "stake"
+        ],
+        "labor": [
+            "freelance", "consulting", "service", "agency", "hourly",
+            "coaching", "training", "done-for-you", "manual", "trading time"
+        ]
+    }
+
+    UPGRADE_PATHS = {
+        ("labor", "capital"): {
+            "description": "Scale via team/systems",
+            "typical_timeline_months": 6,
+            "capital_required": "$2K-$10K",
+            "key_skill": "Operations management",
+            "examples": [
+                "Solo freelancer → VA team operation",
+                "Consultant → consulting agency",
+                "Service provider → managed service"
+            ]
+        },
+        ("labor", "media"): {
+            "description": "Package expertise as content",
+            "typical_timeline_months": 9,
+            "capital_required": "$500-$2K",
+            "key_skill": "Content creation",
+            "examples": [
+                "Consultant → course creator",
+                "Expert → author/speaker",
+                "Practitioner → YouTuber/podcaster"
+            ]
+        },
+        ("labor", "code"): {
+            "description": "Productize service into software",
+            "typical_timeline_months": 12,
+            "capital_required": "$5K-$50K",
+            "key_skill": "Product development",
+            "examples": [
+                "Agency → SaaS tool",
+                "Consultant → automated solution",
+                "Service → self-serve platform"
+            ]
+        },
+        ("capital", "media"): {
+            "description": "Build audience for deal flow",
+            "typical_timeline_months": 12,
+            "capital_required": "$1K-$5K",
+            "key_skill": "Personal branding",
+            "examples": [
+                "Investor → investment newsletter",
+                "Fund manager → thought leader",
+                "Angel → podcast host"
+            ]
+        },
+        ("capital", "code"): {
+            "description": "Invest in/build software",
+            "typical_timeline_months": 18,
+            "capital_required": "$10K-$100K",
+            "key_skill": "Technical evaluation",
+            "examples": [
+                "Investor → SaaS acquirer",
+                "Capital allocator → fintech builder",
+                "Fund → automated trading system"
+            ]
+        },
+        ("media", "code"): {
+            "description": "Build software for audience",
+            "typical_timeline_months": 6,
+            "capital_required": "$2K-$20K",
+            "key_skill": "Product-market fit",
+            "examples": [
+                "Creator → creator tools",
+                "Newsletter → SaaS for subscribers",
+                "Community → platform"
+            ]
+        }
+    }
+
+    @classmethod
+    def classify_revenue_source(cls, revenue_description: str) -> Tuple[str, int]:
+        """
+        Classify a revenue source into leverage type.
+
+        Returns:
+            Tuple of (leverage_type, score)
+        """
+        description = revenue_description.lower()
+
+        scores = {}
+        for leverage_type, keywords in cls.LEVERAGE_KEYWORDS.items():
+            score = sum(1 for kw in keywords if kw in description)
+            scores[leverage_type] = score
+
+        # Find best match
+        if max(scores.values()) == 0:
+            # Default to labor if no keywords match
+            return ("labor", 1)
+
+        best_type = max(scores, key=scores.get)
+        return (best_type, cls.LEVERAGE_HIERARCHY[best_type])
+
+    @classmethod
+    def calculate_current_leverage_score(
+        cls,
+        revenue_sources: List[Dict]
+    ) -> Dict:
+        """
+        Calculate weighted average leverage score of current revenue.
+
+        Args:
+            revenue_sources: List of {"type": str, "revenue": float}
+
+        Returns:
+            Dict with leverage analysis
+        """
+        if not revenue_sources:
+            return {"score": 0, "type": "none", "breakdown": []}
+
+        total_revenue = sum(s.get("revenue", 0) for s in revenue_sources)
+        if total_revenue == 0:
+            return {"score": 0, "type": "none", "breakdown": []}
+
+        weighted_score = 0
+        breakdown = []
+
+        for source in revenue_sources:
+            source_type = source.get("type", "")
+            revenue = source.get("revenue", 0)
+            weight = revenue / total_revenue
+
+            leverage_type, score = cls.classify_revenue_source(source_type)
+
+            weighted_score += score * weight
+            breakdown.append({
+                "source": source_type,
+                "revenue": revenue,
+                "weight_pct": round(weight * 100, 1),
+                "leverage_type": leverage_type,
+                "leverage_score": score
+            })
+
+        # Determine dominant type
+        dominant = max(breakdown, key=lambda x: x["weight_pct"])
+
+        return {
+            "weighted_score": round(weighted_score, 2),
+            "dominant_type": dominant["leverage_type"],
+            "dominant_score": dominant["leverage_score"],
+            "total_revenue": total_revenue,
+            "breakdown": breakdown,
+            "interpretation": cls._interpret_score(weighted_score)
+        }
+
+    @staticmethod
+    def _interpret_score(score: float) -> str:
+        if score >= 3.5:
+            return "high_leverage"
+        elif score >= 2.5:
+            return "moderate_leverage"
+        elif score >= 1.5:
+            return "low_leverage"
+        else:
+            return "minimal_leverage"
+
+    @classmethod
+    def design_leverage_upgrade_path(
+        cls,
+        current_sources: List[Dict],
+        target_leverage_score: int,
+        timeline_months: int,
+        available_capital: float
+    ) -> List[Dict]:
+        """
+        Design step-by-step leverage upgrade path.
+
+        Returns:
+            List of upgrade steps with timelines and requirements
+        """
+        current = cls.calculate_current_leverage_score(current_sources)
+        current_type = current.get("dominant_type", "labor")
+        current_score = current.get("weighted_score", 1)
+
+        if current_score >= target_leverage_score:
+            return [{
+                "step": 0,
+                "action": "Already at target leverage",
+                "current_score": current_score,
+                "target_score": target_leverage_score
+            }]
+
+        steps = []
+        step_num = 1
+
+        # Find path from current to target
+        target_type = [k for k, v in cls.LEVERAGE_HIERARCHY.items() if v == target_leverage_score]
+        if not target_type:
+            target_type = ["code"]  # Default to highest
+        target_type = target_type[0]
+
+        # Build upgrade path
+        path_key = (current_type, target_type)
+        if path_key in cls.UPGRADE_PATHS:
+            path = cls.UPGRADE_PATHS[path_key]
+            steps.append({
+                "step": step_num,
+                "from_type": current_type,
+                "to_type": target_type,
+                "action": path["description"],
+                "target_month": min(path["typical_timeline_months"], timeline_months),
+                "capital_required": path["capital_required"],
+                "key_skill": path["key_skill"],
+                "examples": path["examples"][:2],
+                "feasibility": "high" if available_capital >= 5000 else "medium"
+            })
+        else:
+            # Multi-step path needed
+            # Labor → Capital → Code (for example)
+            intermediate = "capital" if current_type == "labor" else "media"
+
+            for next_type in [intermediate, target_type]:
+                path_key = (current_type, next_type)
+                if path_key in cls.UPGRADE_PATHS:
+                    path = cls.UPGRADE_PATHS[path_key]
+                    steps.append({
+                        "step": step_num,
+                        "from_type": current_type,
+                        "to_type": next_type,
+                        "action": path["description"],
+                        "target_month": min(path["typical_timeline_months"], timeline_months // 2),
+                        "capital_required": path["capital_required"],
+                        "key_skill": path["key_skill"],
+                        "feasibility": "medium"
+                    })
+                    current_type = next_type
+                    step_num += 1
+
+        return steps
+
+    @classmethod
+    def find_leverage_blockers(
+        cls,
+        current_score: float,
+        founder_profile: Dict
+    ) -> List[Dict]:
+        """Identify what's blocking leverage upgrade."""
+        blockers = []
+
+        skills = founder_profile.get("skills", [])
+        capital = founder_profile.get("capital", 0)
+        time_hours_weekly = founder_profile.get("time_available_hours", 40)
+
+        # Technical blocker
+        tech_skills = ["coding", "software", "development", "programming", "tech"]
+        if not any(s.lower() in str(skills).lower() for s in tech_skills):
+            blockers.append({
+                "type": "skill_gap",
+                "blocker": "No technical skills",
+                "impact": "Cannot build code leverage directly",
+                "mitigation": "Partner with technical co-founder, hire developer, or use no-code"
+            })
+
+        # Capital blocker
+        if capital < 5000:
+            blockers.append({
+                "type": "capital_constraint",
+                "blocker": f"Limited capital (${capital})",
+                "impact": "Cannot fund development or team",
+                "mitigation": "Bootstrap via services first, or seek angel funding"
+            })
+
+        # Time blocker
+        if time_hours_weekly < 20:
+            blockers.append({
+                "type": "time_constraint",
+                "blocker": f"Limited time ({time_hours_weekly}h/week)",
+                "impact": "Cannot execute leverage upgrade while maintaining income",
+                "mitigation": "Build gradually, automate current work, or go full-time"
+            })
+
+        # Audience blocker for media
+        audience = founder_profile.get("audience_size", 0)
+        if audience < 1000:
+            blockers.append({
+                "type": "audience_gap",
+                "blocker": f"Small audience ({audience})",
+                "impact": "Media leverage requires distribution",
+                "mitigation": "Build audience via content, or partner with existing creator"
+            })
+
+        return blockers
+
+    LEVERAGE_ACCESS_THRESHOLDS = {
+        "CASHFLOW_SEED": (0, 3),
+        "LEVERAGE_ENTRY": (4, 6),
+        "LEVERAGE_SPRINT": (7, 10),
+    }
+
+    CODE_SKILL_KEYWORDS = [
+        "software_development", "ai_ml", "web_development", "automation",
+        "programming", "coding", "engineering", "devops", "data_science",
+        "machine_learning", "full_stack",
+    ]
+
+    DOMAIN_SKILL_KEYWORDS = [
+        "commodity_trading", "sourcing", "export_logistics", "finance",
+        "real_estate", "healthcare", "legal", "consulting", "supply_chain",
+        "manufacturing", "agriculture",
+    ]
+
+    @classmethod
+    def assess_founder_leverage_access(cls, profile: dict) -> dict:
+        """Score founder's ABILITY to use leverage (0-10), not current revenue leverage.
+
+        4 dimensions:
+        - code_access (0-3): Can ship product? AI-assisted=2, native dev=3
+        - domain_knowledge (0-3): Specific knowledge AI can't replicate
+        - audience_seed (0-2): Existing distribution
+        - data_advantage (0-2): Info asymmetry from location/experience
+        """
+        code = cls._score_code_access(profile)
+        domain = cls._score_domain_knowledge(profile)
+        audience = cls._score_audience_seed(profile)
+        data = cls._score_data_advantage(profile)
+
+        total = code["score"] + domain["score"] + audience["score"] + data["score"]
+
+        track = "CASHFLOW_SEED"
+        for track_name, (low, high) in cls.LEVERAGE_ACCESS_THRESHOLDS.items():
+            if low <= total <= high:
+                track = track_name
+                break
+
+        return {
+            "leverage_access_score": total,
+            "dimensions": {
+                "code_access": code,
+                "domain_knowledge": domain,
+                "audience_seed": audience,
+                "data_advantage": data,
+            },
+            "track_recommendation": track,
+            "track_thresholds": {k: list(v) for k, v in cls.LEVERAGE_ACCESS_THRESHOLDS.items()},
+        }
+
+    @classmethod
+    def _score_code_access(cls, profile: dict) -> dict:
+        skills_primary = profile.get("skills", {}).get("primary", [])
+        tech_skills = profile.get("advantages", {}).get("technical_skills", {})
+        leverage_profile = profile.get("leverage_profile", {})
+
+        has_code_skill = any(
+            s in cls.CODE_SKILL_KEYWORDS
+            for s in (skills_primary if isinstance(skills_primary, list) else [])
+        )
+
+        years = tech_skills.get("years", 0) if isinstance(tech_skills, dict) else 0
+        shipping_history = leverage_profile.get("shipping_history", [])
+        can_ship = leverage_profile.get("can_ship_code", False)
+        ai_dev = leverage_profile.get("ai_assisted_dev", False)
+
+        if has_code_skill and years >= 5:
+            return {"score": 3, "reason": f"Professional developer, {years}y experience"}
+        if has_code_skill or can_ship:
+            return {"score": 2, "reason": "Can write and ship code (native or AI-assisted)"}
+        if ai_dev:
+            return {"score": 2, "reason": "AI-assisted development capability"}
+        return {"score": 0, "reason": "No code shipping capability detected"}
+
+    @classmethod
+    def _score_domain_knowledge(cls, profile: dict) -> dict:
+        skills_secondary = profile.get("skills", {}).get("secondary", [])
+        physical_networks = profile.get("existing_assets", {}).get("physical_networks", [])
+        relationship_capital = profile.get("existing_assets", {}).get("relationship_capital", [])
+        knowledge_domains = profile.get("advantages", {}).get("knowledge_domains", {})
+
+        has_domain = any(
+            s in cls.DOMAIN_SKILL_KEYWORDS
+            for s in (skills_secondary if isinstance(skills_secondary, list) else [])
+        )
+        network_count = len(physical_networks) if isinstance(physical_networks, list) else 0
+        relationship_count = len(relationship_capital) if isinstance(relationship_capital, list) else 0
+
+        deep_domain = any(
+            d.get("depth") in ("expert", "advanced") and d.get("years", 0) >= 3
+            for d in (knowledge_domains.values() if isinstance(knowledge_domains, dict) else [])
+            if isinstance(d, dict)
+        )
+
+        if has_domain and deep_domain and (network_count + relationship_count) >= 3:
+            return {"score": 3, "reason": "Expert domain knowledge + active relationship network"}
+        if has_domain and (network_count + relationship_count) >= 2:
+            return {"score": 2, "reason": "Domain knowledge with physical networks"}
+        if has_domain or network_count >= 1:
+            return {"score": 1, "reason": "General domain knowledge or single network"}
+        return {"score": 0, "reason": "No specific domain knowledge detected"}
+
+    @classmethod
+    def _score_audience_seed(cls, profile: dict) -> dict:
+        assets = profile.get("existing_assets", {})
+        email = assets.get("email_list", 0) if isinstance(assets, dict) else 0
+        social = assets.get("social_following", 0) if isinstance(assets, dict) else 0
+        community = assets.get("community_members", 0) if isinstance(assets, dict) else 0
+
+        total_audience = email + social + community
+
+        if total_audience >= 1000:
+            return {"score": 2, "reason": f"Meaningful audience ({total_audience} total)"}
+        if total_audience >= 100:
+            return {"score": 1, "reason": f"Small audience seed ({total_audience} total)"}
+        return {"score": 0, "reason": "No existing audience"}
+
+    @classmethod
+    def _score_data_advantage(cls, profile: dict) -> dict:
+        advantages = profile.get("advantages", {})
+        geo = advantages.get("geographic_position", {})
+        cost_arb = advantages.get("cost_arbitrage", {})
+        info_advantages = profile.get("leverage_profile", {}).get("information_advantages", [])
+
+        geo_enabled = geo.get("enabled", False) if isinstance(geo, dict) else False
+        cost_enabled = cost_arb.get("enabled", False) if isinstance(cost_arb, dict) else False
+        has_info = len(info_advantages) >= 2 if isinstance(info_advantages, list) else False
+
+        if (geo_enabled or cost_enabled) and has_info:
+            return {"score": 2, "reason": "Geographic position + proprietary information access"}
+        if geo_enabled or cost_enabled:
+            return {"score": 1, "reason": "Geographic or cost arbitrage advantage"}
+        if has_info:
+            return {"score": 1, "reason": "Information advantages from experience"}
+        return {"score": 0, "reason": "No information asymmetry detected"}
+
+    @classmethod
+    def full_analysis(
+        cls,
+        revenue_sources: List[Dict],
+        target_score: int = 4,
+        timeline_months: int = 12,
+        available_capital: float = 10000,
+        founder_profile: Optional[Dict] = None
+    ) -> Dict:
+        """Complete leverage analysis."""
+        current = cls.calculate_current_leverage_score(revenue_sources)
+
+        upgrade_path = cls.design_leverage_upgrade_path(
+            revenue_sources, target_score, timeline_months, available_capital
+        )
+
+        result = {
+            "current_leverage": current,
+            "target_score": target_score,
+            "upgrade_path": upgrade_path,
+            "gap": target_score - current.get("weighted_score", 0)
+        }
+
+        if founder_profile:
+            blockers = cls.find_leverage_blockers(
+                current.get("weighted_score", 0),
+                founder_profile
+            )
+            result["blockers"] = blockers
+
+        return result
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Leverage Calculator")
+    parser.add_argument("--sources", type=str, default=None,
+                       help='JSON array of revenue sources')
+    parser.add_argument("--target", type=int, default=4, help="Target score (1-4)")
+    parser.add_argument("--timeline", type=int, default=12, help="Timeline months")
+    parser.add_argument("--capital", type=float, default=10000, help="Available capital")
+    parser.add_argument("--profile", type=str, default=None,
+                       help='JSON string of founder profile for leverage access scoring')
+    parser.add_argument("--profile-file", type=str, default=None,
+                       help='Path to founder profile JSON file')
+
+    args = parser.parse_args()
+
+    if args.profile or args.profile_file:
+        if args.profile_file:
+            with open(args.profile_file, "r", encoding="utf-8") as f:
+                profile = json.load(f)
+        else:
+            profile = json.loads(args.profile)
+        result = LeverageMechanism.assess_founder_leverage_access(profile)
+    elif args.sources:
+        sources = json.loads(args.sources)
+        result = LeverageMechanism.full_analysis(
+            revenue_sources=sources,
+            target_score=args.target,
+            timeline_months=args.timeline,
+            available_capital=args.capital
+        )
+    else:
+        parser.error("Either --sources or --profile/--profile-file is required")
+        return 1
+
+    print(json.dumps(result, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

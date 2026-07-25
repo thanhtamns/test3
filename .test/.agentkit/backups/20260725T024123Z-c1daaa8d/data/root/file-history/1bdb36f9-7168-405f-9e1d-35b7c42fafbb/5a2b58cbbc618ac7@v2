@@ -1,0 +1,177 @@
+---
+phase: 1
+title: "LLM Provider Abstraction + Anti-Hallucination"
+status: complete
+priority: P1
+effort: "3-4d"
+dependencies: [KDE-P1, KDE-P2]
+---
+
+# Phase 1: LLM Provider Abstraction + Anti-Hallucination
+
+## Overview
+
+Eliminate all direct Anthropic SDK calls. Route everything through existing `LLMProvider` interface. Add anti-hallucination layer that forces structured extraction, fact verification, and provenance tagging on every LLM call.
+
+## Requirements
+
+- Functional: All LLM calls go through provider interface. Every LLM output is structured JSON. Every fact gets provenance tag. Cross-query validation for high-stakes facts.
+- Non-functional: Zero performance regression. Provider swap = config change only. No new pip dependencies.
+
+## Architecture
+
+```
+Caller (any script)
+  │
+  ▼
+StructuredQueryBuilder  ← NEW: converts open questions → JSON-schema-constrained prompts
+  │
+  ▼
+AntiHallucinationFilter ← NEW: cross-query, confidence decomposition, URL verification
+  │
+  ▼
+LLMProvider interface   ← EXISTS: .claude/lib/llm/provider_interface.py
+  │
+  ▼
+ClaudeProvider / GeminiProvider / OpenAIProvider / OllamaProvider  ← EXISTS
+  │
+  ▼
+ProvenanceLogger        ← NEW: tags every fact with source_llm, query, date, verified_by
+```
+
+## Related Code Files
+
+**Modify:**
+- `.claude/skills/business/deep-intelligence/llm_query_executor.py` — replace `anthropic.Anthropic()` with provider interface
+- `.claude/skills/business/knowledge-extraction/scripts/run-extraction.py` — replace direct anthropic import
+- `.claude/skills/business/knowledge-extraction/config/llm_clients.py` — replace AsyncAnthropic
+- `.claude/skills/business/intelligence_feed/signal_detector.py` — replace direct anthropic import
+- `.claude/skills/mcp-builder/scripts/evaluation.py` — replace direct Anthropic + tool_use format
+- `.claude/skills/skill-creator/scripts/improve_description.py` — replace extended thinking dependency
+
+**Create:**
+- `.claude/lib/llm/structured-query-builder.py` — JSON-schema prompt construction
+- `.claude/lib/llm/anti-hallucination-filter.py` — verification pipeline
+- `.claude/lib/llm/provenance-logger.py` — fact provenance tracking
+- `.claude/data/provenance/facts.db` — SQLite store for provenance records
+
+## Implementation Steps
+
+### Step 1: Structured Query Builder (~0.5d)
+
+Build `StructuredQueryBuilder` class:
+
+```python
+class StructuredQueryBuilder:
+    def build(self, question: str, schema: dict) -> str:
+        """Convert open question → prompt that forces JSON output matching schema."""
+        # 1. Wrap question in structured extraction prompt
+        # 2. Include JSON schema as constraint
+        # 3. Add instruction: "Return ONLY valid JSON. No explanation."
+        # 4. Add confidence_per_claim field (1-10) in schema
+```
+
+Schema examples:
+```python
+COMPETITOR_SCHEMA = {
+    "competitors": [{"name": str, "url": str, "pricing": str, "users_estimate": int, "confidence": int}]
+}
+MARKET_SIZE_SCHEMA = {
+    "tam": {"value_usd": int, "source": str, "year": int, "confidence": int}
+}
+```
+
+### Step 2: Anti-Hallucination Filter (~1d)
+
+```python
+class AntiHallucinationFilter:
+    def verify(self, llm_result: dict, schema: dict) -> VerifiedResult:
+        # 1. Parse JSON (reject if invalid)
+        # 2. Discount claims with confidence < 7
+        # 3. For high-stakes fields: cross-query validation
+        #    - Re-query same fact with different wording
+        #    - Keep only claims consistent across both queries
+        # 4. URL verification: WebFetch URLs in result, mark dead ones
+        # 5. Return VerifiedResult with per-claim status
+```
+
+Cross-query example:
+```
+Query 1: "What is the TAM for browser extensions in 2025?"
+Query 2: "How large is the browser extension market globally?"
+→ If TAM differs by >50% → mark as [?], don't trust
+```
+
+### Step 3: Provenance Logger (~0.5d)
+
+SQLite table:
+```sql
+CREATE TABLE fact_provenance (
+    id INTEGER PRIMARY KEY,
+    fact_text TEXT NOT NULL,
+    source_llm TEXT,           -- claude/gemini/openai
+    source_model TEXT,         -- claude-sonnet-4-6
+    source_query TEXT,         -- original prompt
+    source_date TEXT,          -- ISO timestamp
+    verified_by TEXT,          -- cross_query/url_check/manual/none
+    confidence REAL,           -- 0.0-1.0
+    domain TEXT,               -- opportunity domain
+    expires_at TEXT,           -- when this fact becomes stale
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### Step 4: Migrate 6 Direct SDK Callers (~1.5d)
+
+For each file with `import anthropic`:
+
+1. Replace `anthropic.Anthropic()` → `LLMProviderFactory.get_provider()`
+2. Replace `client.messages.create()` → `provider.complete()`
+3. Replace Claude-specific response parsing → use `CompletionResult`
+4. For extended thinking (improve_description.py): extract thinking to separate prompt call
+5. For tool_use (evaluation.py): use provider-agnostic tool format
+
+Priority order:
+1. `llm_query_executor.py` — most critical, used by deep-intelligence pipeline
+2. `signal_detector.py` — used by intelligence feed
+3. `run-extraction.py` + `llm_clients.py` — knowledge extraction
+4. `evaluation.py` — MCP evaluation (lower priority)
+5. `improve_description.py` — skill optimization (lowest priority)
+
+### Step 5: Integration Wire (~0.5d)
+
+Wire all components:
+```python
+# New unified LLM interface for all callers
+class IntelligenceLLM:
+    def __init__(self):
+        self.provider = LLMProviderFactory.get_provider()
+        self.query_builder = StructuredQueryBuilder()
+        self.filter = AntiHallucinationFilter()
+        self.provenance = ProvenanceLogger()
+
+    def query(self, question: str, schema: dict, domain: str) -> VerifiedResult:
+        prompt = self.query_builder.build(question, schema)
+        raw = self.provider.complete(prompt)
+        verified = self.filter.verify(raw, schema)
+        self.provenance.log(verified, domain)
+        return verified
+```
+
+## Success Criteria
+
+- [ ] Zero files with `import anthropic` outside `.claude/lib/llm/providers/`
+- [ ] All LLM calls return structured JSON (not free-text)
+- [ ] Every fact in provenance DB has source_llm + source_query + confidence
+- [ ] Cross-query validation active for confidence > 0.8 claims
+- [ ] Provider swap test: change `llm-config.json` default → system still works
+- [ ] Unit tests for StructuredQueryBuilder, AntiHallucinationFilter, ProvenanceLogger
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|---|---|
+| Structured output reduces LLM quality | Allow fallback to free-text with parser for edge cases |
+| Cross-query doubles cost | Only for high-stakes fields (TAM, pricing, user counts) |
+| Some scripts need Claude-specific features | Abstract as capability flags in provider interface |
+| Extended thinking removal reduces quality | Test quality before/after on 10 sample cases |

@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "youtube-transcript": {
+      "command": "npx",
+      "args": ["mcp-remote", "https://youtube-transcript-mcp.ergut.workers.dev/sse"]
+    },
+    "agentmemory": {
+      "command": "npx",
+      "args": ["-y", "@agentmemory/mcp"],
+      "env": {
+        "AGENTMEMORY_URL": "http://localhost:3111",
+        "AGENTMEMORY_TOOLS": "all",
+        "EMBEDDING_PROVIDER": "local",
+        "CONSOLIDATION_ENABLED": "true",
+        "LESSON_DECAY_ENABLED": "true"
+      }
+    }
+  }
+}

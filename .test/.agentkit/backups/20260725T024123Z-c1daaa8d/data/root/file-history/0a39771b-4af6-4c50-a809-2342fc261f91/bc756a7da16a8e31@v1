@@ -1,0 +1,145 @@
+"""
+T07 Constraint Propagation — Check structural feasibility for founder.
+V8 rule: NEVER kill on capital or time alone. Only structural barriers kill.
+"""
+
+from __future__ import annotations
+
+from .base import TechniqueInput, TechniqueResult
+
+_STRUCTURAL_KILL_DIMENSIONS = {"regulatory_risks"}
+_STRUCTURAL_KILL_KEYWORDS = {
+    "license required", "licensed only", "government permit", "physical presence required",
+    "citizenship required", "banned", "illegal", "prohibited", "accreditation required",
+    "visa required", "local entity required",
+}
+
+
+def _extract_required_skills(facts: list) -> list[str]:
+    """Pull skill requirements from facts mentioning 'requires' or 'need'."""
+    required = []
+    for f in facts:
+        text = f.fact.lower()
+        if ("require" in text or "must have" in text or "needs" in text) and "skill" in text:
+            required.append(f.fact)
+    return required
+
+
+def constraint_propagation(input: TechniqueInput) -> TechniqueResult:
+    """
+    Propagate founder constraints through opportunity requirements.
+
+    KILL only on structural barriers (regulatory, physical, legal).
+    Capital and time gaps produce CAUTION with bootstrap timeline, never KILL.
+    """
+    capital = float(input.founder_context.get("capital_usd", 0))
+    hours_per_day = float(input.founder_context.get("hours_per_day", 4))
+    founder_skills = input.founder_context.get("skills", [])
+    if isinstance(founder_skills, str):
+        founder_skills = [s.strip() for s in founder_skills.split(",")]
+
+    reasoning: list[str] = []
+    needs_data: list[str] = []
+    viable_approaches = 0
+    total_approaches = 3  # capital path, time path, skill path
+
+    # --- 1. Structural barrier check (KILL-eligible) ---
+    structural_kills: list[str] = []
+
+    for f in input.facts:
+        if f.dimension in _STRUCTURAL_KILL_DIMENSIONS and f.confidence >= 0.6:
+            fact_lower = f.fact.lower()
+            for kw in _STRUCTURAL_KILL_KEYWORDS:
+                if kw in fact_lower:
+                    structural_kills.append(f.fact)
+                    break
+
+    for sig in input.kill_signals:
+        signal_type = sig.get("type", "").lower()
+        if "regulatory" in signal_type or "structural" in signal_type or "legal" in signal_type:
+            structural_kills.append(sig.get("reason", str(sig)))
+
+    if structural_kills:
+        reasoning.append(f"STRUCTURAL BARRIER detected: {structural_kills[0][:100]}")
+        return TechniqueResult(
+            technique_id="T07_constraint_propagation",
+            score=0.1,
+            confidence=0.8,
+            verdict="KILL",
+            reasoning_chain=reasoning,
+            zone_tag="K",
+            metadata={"kill_reason": "structural_barrier", "barriers": structural_kills[:3]},
+        )
+
+    # --- 2. Capital gap check (CAUTION, never KILL per V8) ---
+    capital_gap_facts = [
+        f for f in input.facts
+        if f.dimension == "unit_economics" and f.value is not None and f.value > capital
+    ]
+
+    if capital_gap_facts:
+        required_capital = max(f.value for f in capital_gap_facts)
+        gap = required_capital - capital
+        bootstrap_months = max(1, int(gap / max(capital * 0.3, 100)))
+        reasoning.append(
+            f"Capital gap: need ${required_capital:,.0f}, have ${capital:,.0f} "
+            f"(gap ${gap:,.0f} — bootstrap est. {bootstrap_months}mo)"
+        )
+        # V8 rule: capital gap → staircase path, never KILL
+    else:
+        viable_approaches += 1
+        reasoning.append(f"Capital: ${capital:,.0f} — no gap detected in facts")
+
+    # --- 3. Time constraint check (CAUTION, never KILL) ---
+    if hours_per_day >= 2:
+        viable_approaches += 1
+        reasoning.append(f"Time: {hours_per_day}h/day — sufficient for side-hustle entry")
+    else:
+        reasoning.append(f"Time: {hours_per_day}h/day — tight but not structural kill")
+        viable_approaches += 0  # partial credit excluded; not a kill
+
+    # --- 4. Skill gap check ---
+    required_skills_facts = _extract_required_skills(input.facts)
+    if required_skills_facts and founder_skills:
+        skill_text = " ".join(required_skills_facts).lower()
+        unmet = [s for s in founder_skills if s.lower() not in skill_text]
+        if len(unmet) < len(founder_skills) * 0.5:
+            viable_approaches += 1
+            reasoning.append(f"Skills: majority matched ({len(founder_skills) - len(unmet)}/{len(founder_skills)})")
+        else:
+            needs_data.append("skill_gap_timeline")
+            reasoning.append(f"Skill gap: {len(unmet)} skills potentially unmet — learning timeline needed")
+    else:
+        viable_approaches += 1
+        reasoning.append("Skill gap: insufficient data to assess — assuming viable")
+        if not required_skills_facts:
+            needs_data.append("required_skills")
+
+    score = viable_approaches / total_approaches
+
+    if score >= 0.8:
+        verdict = "GO"
+        zone = "T"
+    elif score >= 0.5:
+        verdict = "CAUTION"
+        zone = "T"
+    else:
+        verdict = "CAUTION"
+        zone = "T"
+        reasoning.append("Multiple gaps found — staircase path recommended")
+
+    return TechniqueResult(
+        technique_id="T07_constraint_propagation",
+        score=round(score, 3),
+        confidence=0.6,
+        verdict=verdict,
+        reasoning_chain=reasoning,
+        zone_tag=zone,
+        needs_data=needs_data,
+        metadata={
+            "viable_approaches": viable_approaches,
+            "total_approaches": total_approaches,
+            "capital_usd": capital,
+            "hours_per_day": hours_per_day,
+        },
+    )

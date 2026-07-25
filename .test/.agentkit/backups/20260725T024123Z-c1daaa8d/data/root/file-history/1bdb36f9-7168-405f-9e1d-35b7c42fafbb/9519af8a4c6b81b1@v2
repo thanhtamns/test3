@@ -1,0 +1,127 @@
+"""
+GapDetector — identifies specific knowledge gaps for a query domain.
+Produces targeted gaps that can be filled via LLM research.
+"""
+
+import json
+from dataclasses import dataclass, field
+from typing import Optional
+
+from .tracker import CoverageResult
+
+
+@dataclass
+class Gap:
+    gap_type: str
+    domain: str
+    specifics: str
+    priority: int
+    suggested_query: str
+
+    def to_dict(self) -> dict:
+        return {
+            "gap_type": self.gap_type,
+            "domain": self.domain,
+            "specifics": self.specifics,
+            "priority": self.priority,
+            "suggested_query": self.suggested_query,
+        }
+
+
+class GapDetector:
+    GAP_TEMPLATES = {
+        "competitor": {
+            "priority": 1,
+            "query": "List the top 10 competitors for {domain} with URL, pricing, estimated users, and year founded. Include free alternatives.",
+        },
+        "failure": {
+            "priority": 1,
+            "query": "What are the top 10 failure patterns for {domain} businesses? Include specific examples with dates, amounts, and root causes.",
+        },
+        "pricing": {
+            "priority": 2,
+            "query": "What is the typical pricing range for {domain}? Include free tiers, average subscription price, and willingness-to-pay data.",
+        },
+        "market_size": {
+            "priority": 2,
+            "query": "What is the TAM/SAM/SOM for {domain}? Include source, year, and growth rate.",
+        },
+        "regulatory": {
+            "priority": 3,
+            "query": "What regulatory barriers exist for {domain}? Include jurisdiction-specific requirements.",
+        },
+        "success_pattern": {
+            "priority": 2,
+            "query": "What are the top 5 success patterns for {domain}? Include specific companies, their paths, and key differentiators.",
+        },
+    }
+
+    def identify_gaps(self, query_features: dict, coverage: CoverageResult) -> list[Gap]:
+        gaps = []
+        domain = coverage.domain
+
+        if coverage.vector_count < 5:
+            gaps.append(Gap(
+                gap_type="competitor",
+                domain=domain,
+                specifics=f"Only {coverage.vector_count} vectors for {domain}",
+                priority=1,
+                suggested_query=self.GAP_TEMPLATES["competitor"]["query"].format(domain=domain),
+            ))
+
+        details = coverage.details
+        if details.get("industry_vectors", 0) < 3:
+            industry = query_features.get("industry", "unknown")
+            gaps.append(Gap(
+                gap_type="failure",
+                domain=domain,
+                specifics=f"No failure patterns for industry={industry}",
+                priority=1,
+                suggested_query=self.GAP_TEMPLATES["failure"]["query"].format(domain=industry),
+            ))
+
+        if coverage.signal_count < 2:
+            gaps.append(Gap(
+                gap_type="failure",
+                domain=domain,
+                specifics=f"Only {coverage.signal_count} kill signals for {domain}",
+                priority=1,
+                suggested_query=self.GAP_TEMPLATES["failure"]["query"].format(domain=domain),
+            ))
+
+        if coverage.score < 0.7:
+            gaps.append(Gap(
+                gap_type="market_size",
+                domain=domain,
+                specifics=f"No market size data for {domain}",
+                priority=2,
+                suggested_query=self.GAP_TEMPLATES["market_size"]["query"].format(domain=domain),
+            ))
+
+            gaps.append(Gap(
+                gap_type="pricing",
+                domain=domain,
+                specifics=f"No pricing intelligence for {domain}",
+                priority=2,
+                suggested_query=self.GAP_TEMPLATES["pricing"]["query"].format(domain=domain),
+            ))
+
+        if coverage.score < 0.4:
+            gaps.append(Gap(
+                gap_type="success_pattern",
+                domain=domain,
+                specifics=f"Novel domain {domain}, no success patterns",
+                priority=2,
+                suggested_query=self.GAP_TEMPLATES["success_pattern"]["query"].format(domain=domain),
+            ))
+
+        if coverage.freshness_penalty > 0.05:
+            gaps.append(Gap(
+                gap_type="staleness",
+                domain=domain,
+                specifics=f"Freshness penalty {coverage.freshness_penalty:.2f} — stale facts",
+                priority=3,
+                suggested_query=f"What has changed in {domain} in the last 90 days? New entrants, policy changes, market shifts.",
+            ))
+
+        return sorted(gaps, key=lambda g: g.priority)

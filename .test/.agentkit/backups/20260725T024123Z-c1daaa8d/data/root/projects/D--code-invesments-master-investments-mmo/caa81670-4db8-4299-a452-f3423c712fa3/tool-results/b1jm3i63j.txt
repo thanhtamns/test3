@@ -1,0 +1,897 @@
+[THINK] [WIRE] Iterative deepener loaded
+[THINK] [WIRE] Ladder bridge loaded
+[THINK] Decomposed: 8 micro-queries across 2 dimensions
+[THINK] Researching: 8 queries (0 cached)
+[THINK] Assembled: 8 new facts, 0 duplicates
+[THINK] Iterative deepening: +6 facts
+[THINK] Synthesized: score=0.30, 14 facts used
+[THINK] SBE: verdict=NEEDS_DEEPER_ANALYSIS, confidence=0.40
+[THINK] Mental models: 6 active (MM-18, MM-02, MM-04, MM-06, MM-09)
+[THINK] Techniques: consensus=SPLIT, strategy_weeks=137
+[THINK] Local verdict skipped: AtomicQuestion.__init__() got an unexpected keyword argument 'dimension'
+[THINK] Strategic reasoning: 1 LLM calls, verdict=
+[THINK] Execution bridge: 6 scripts generated
+[THINK] Evolution: 23 dimension weights updated
+[THINK] Techniques: already present (consensus=SPLIT)
+{
+  "query": "10 best business models that create strong durable cashflow for solo founder lasting 10+ years, considering AI disruption resistance, compound asset building, solo execution ceiling, channel durability, and cash flow mechanics",
+  "query_type": "custom",
+  "overall_score": 0.3,
+  "dimension_scores": {
+    "moat_patterns": {
+      "dimension": "moat_patterns",
+      "score": 0.424,
+      "fact_count": 7,
+      "avg_confidence": 0.471,
+      "contradictions": 4,
+      "zone_tag": "?"
+    },
+    "reverse_leverage": {
+      "dimension": "reverse_leverage",
+      "score": 0.509,
+      "fact_count": 7,
+      "avg_confidence": 0.54,
+      "contradictions": 2,
+      "zone_tag": "T"
+    }
+  },
+  "gaps": [
+    {
+      "dimension": "moat_patterns",
+      "score": 0.424,
+      "missing_queries": [
+        "What moat type works for artificial intelligence?",
+        "Switching cost for customers in artificial intelligence?",
+        "Network effects present in artificial intelligence?",
+        "Data moat feasibility for artificial intelligence?"
+      ],
+      "priority": 0.568,
+      "suggested_action": "Identify defensibility: switching costs, network effects, data moats"
+    },
+    {
+      "dimension": "reverse_leverage",
+      "score": 0.509,
+      "missing_queries": [
+        "people who became artificial intelligence partner by bringing LP money deal flow first?",
+        "artificial intelligence scout program how to join without experience examples?",
+        "started own artificial intelligence fund without working at fund first examples success?",
+        "freelance artificial intelligence advisor consultant who became indispensable examples?"
+      ],
+      "priority": 0.307,
+      "suggested_action": "Research reverse_leverage for this domain"
+    }
+  ],
+  "path": [
+    {
+      "step_number": 1,
+      "action": "Check failure rates for artificial intelligence deals",
+      "rationale": "Based on: failure_patterns=N/A[?], base_rates=N/A[?]",
+      "confidence": 0.0,
+      "dependencies": [],
+      "zone_tag": "?"
+    },
+    {
+      "step_number": 2,
+      "action": "Analyze competitive landscape and free alternatives",
+      "rationale": "Based on: competitive_landscape=N/A[?]",
+      "confidence": 0.0,
+      "dependencies": [],
+      "zone_tag": "?"
+    },
+    {
+      "step_number": 5,
+      "action": "Check timing windows and regulatory risks",
+      "rationale": "Based on: timing_windows=N/A[?], regulatory_risks=N/A[?]",
+      "confidence": 0.0,
+      "dependencies": [],
+      "zone_tag": "?"
+    },
+    {
+      "step_number": 4,
+      "action": "Assess moat defensibility",
+      "rationale": "Based on: moat_patterns=0.42[?]",
+      "confidence": 0.424,
+      "dependencies": [
+        "competitive_landscape"
+      ],
+      "zone_tag": "?"
+    },
+    {
+      "step_number": 3,
+      "action": "Validate unit economics: CAC, LTV, margins",
+      "rationale": "Based on: unit_economics=N/A[?]",
+      "confidence": 0.0,
+      "dependencies": [
+        "competitive_landscape"
+      ],
+      "zone_tag": "?"
+    },
+    {
+      "step_number": 6,
+      "action": "Calculate required capital and break-even",
+      "rationale": "Based on: capital_requirements=N/A[?]",
+      "confidence": 0.0,
+      "dependencies": [
+        "unit_economics"
+      ],
+      "zone_tag": "?"
+    }
+  ],
+  "facts_used": 14,
+  "facts_by_zone": {
+    "K": 0,
+    "T": 8,
+    "?": 6
+  },
+  "llm_calls_made": 0,
+  "recommendations": [
+    "Contradictions found in: moat_patterns, reverse_leverage — resolve before deciding"
+  ],
+  "causal_insights": [
+    "Overall capped at 0.5: 6 uncertain/contradicted facts",
+    "Overall capped at 0.3: zero [K] verified facts — insufficient evidence"
+  ],
+  "technique_results": {
+    "results": {
+      "T00_gold_rush_law": {
+        "technique_id": "T00_gold_rush_law",
+        "score": 0.0,
+        "confidence": 0.0,
+        "verdict": "NEEDS_DATA",
+        "reasoning_chain": [
+          "No players in ecosystem_map — cannot classify crowd vs servers"
+        ],
+        "zone_tag": "?",
+        "data_used": [],
+        "needs_data": [
+          "ecosystem_players"
+        ],
+        "metadata": {}
+      },
+      "T01_tree_of_thoughts": {
+        "technique_id": "T01_tree_of_thoughts",
+        "score": 0.0,
+        "confidence": 0.9,
+        "verdict": "INVESTIGATE",
+        "reasoning_chain": [
+          "Path A (Optimistic, conf>=0.7 in positive dims): 0 facts, score=0.000",
+          "Path B (Pessimistic, risk dims + competitive signals): 0 facts, score=0.000",
+          "Path C (Unexpected, low-conf high-value + indirect): 0 facts, score=0.000",
+          "Best path: optimistic with raw score 0.000",
+          "Normalized score: 0.000 → verdict: INVESTIGATE"
+        ],
+        "zone_tag": "K",
+        "data_used": [
+          "total_facts:29"
+        ],
+        "needs_data": [],
+        "metadata": {
+          "path_a_score": 0.0,
+          "path_b_score": 0.0,
+          "path_c_score": 0.0,
+          "best_path": "optimistic",
+          "best_fact_count": 0
+        }
+      },
+      "T02_reflexion": {
+        "technique_id": "T02_reflexion",
+        "score": 0.4,
+        "confidence": 0.9,
+        "verdict": "INVESTIGATE",
+        "reasoning_chain": [
+          "source_bias: OK — 21 distinct domains",
+          "optimism_bias DETECTED: no facts in failure_patterns or base_rates dimensions",
+          "blind_spot DETECTED: no competitive_landscape facts",
+          "reality_gap: OK — no explicit capital contradiction found",
+          "verification_gap DETECTED: zero facts with zone_tag 'K' (all unverified)",
+          "Moderate bias (3/5): ['optimism_bias', 'blind_spot', 'verification_gap'] — re-research needed"
+        ],
+        "zone_tag": "K",
+        "data_used": [
+          "facts_checked:29"
+        ],
+        "needs_data": [],
+        "metadata": {
+          "bias_count": 3,
+          "biases_detected": [
+            "optimism_bias",
+            "blind_spot",
+            "verification_gap"
+          ]
+        }
+      },
+      "T03_adversarial_debate": {
+        "technique_id": "T03_adversarial_debate",
+        "score": 0.0,
+        "confidence": 0.3,
+        "verdict": "INVESTIGATE",
+        "reasoning_chain": [
+          "BULL: 0 verified [K] positive facts, score=0.000",
+          "BEAR: 0 verified [K] negative facts, score=0.000",
+          "BEAR after kill_signal boost (+0.0): 0.000",
+          "BEAR classification factors: structural_kw=0, competitive_kw=0, kill_hits=0.0",
+          "BEAR classification: EXECUTION, capped score: 0.000",
+          "Tie/no evidence: bull=0.000, bear=0.000 → INVESTIGATE"
+        ],
+        "zone_tag": "T",
+        "data_used": [
+          "bull_facts:0",
+          "bear_facts:0"
+        ],
+        "needs_data": [],
+        "metadata": {
+          "bull_score": 0.0,
+          "bear_score": 0.0,
+          "bear_raw_score": 0.0,
+          "kill_signal_hits": 0.0,
+          "winner": "TIE",
+          "bear_classification": "EXECUTION"
+        }
+      },
+      "T04_second_order": {
+        "technique_id": "T04_second_order",
+        "score": 0.05,
+        "confidence": 0.9,
+        "verdict": "INVESTIGATE",
+        "reasoning_chain": [
+          "L0 (description): missing",
+          "L1 (compounding_mechanisms): 0 facts, score=0.000",
+          "L2 (moat_patterns): 7 facts, score=0.471",
+          "L3 (competitive_landscape): 0 facts, 0 saturation signals, saturation_score=0.000",
+          "Levels with data: 1/4, base_score=0.250",
+          "L4: PLATEAU (no compounding or moat) → -0.2",
+          "Final score: 0.250 + -0.2 = 0.05"
+        ],
+        "zone_tag": "K",
+        "data_used": [
+          "l1_facts:0",
+          "l2_facts:7",
+          "l3_facts:0"
+        ],
+        "needs_data": [],
+        "metadata": {
+          "classification": "PLATEAU",
+          "levels_with_data": 1,
+          "l1_score": 0.0,
+          "l2_score": 0.471,
+          "saturation_risk": 0.0,
+          "competitor_count": 0,
+          "adjustment": -0.2
+        }
+      },
+      "T05_moat_tester": {
+        "technique_id": "T05_moat_tester",
+        "score": 0.3,
+        "confidence": 0.5,
+        "verdict": "INVESTIGATE",
+        "reasoning_chain": [
+          "No moat types claimed in context"
+        ],
+        "zone_tag": "T",
+        "data_used": [],
+        "needs_data": [
+          "moat_type"
+        ],
+        "metadata": {}
+      },
+      "T06_analogical": {
+        "technique_id": "T06_analogical",
+        "score": 0.0,
+        "confidence": 0.0,
+        "verdict": "NEEDS_DATA",
+        "reasoning_chain": [
+          "Only 0 analogy fact(s) found — need ≥2 for pattern matching"
+        ],
+        "zone_tag": "?",
+        "data_used": [],
+        "needs_data": [
+          "analogical_cases"
+        ],
+        "metadata": {}
+      },
+      "T07_constraint_propagation": {
+        "technique_id": "T07_constraint_propagation",
+        "score": 1.0,
+        "confidence": 0.6,
+        "verdict": "GO",
+        "reasoning_chain": [
+          "Capital: $1,000 — no gap detected in facts",
+          "Time: 4.0h/day — sufficient for side-hustle entry",
+          "Skill gap: insufficient data to assess — assuming viable"
+        ],
+        "zone_tag": "T",
+        "data_used": [],
+        "needs_data": [
+          "required_skills"
+        ],
+        "metadata": {
+          "viable_approaches": 3,
+          "total_approaches": 3,
+          "capital_usd": 1000.0,
+          "hours_per_day": 4.0
+        }
+      },
+      "T08_staircase": {
+        "technique_id": "T08_staircase",
+        "score": 0.65,
+        "confidence": 0.45,
+        "verdict": "STAIRCASE_POSSIBLE",
+        "reasoning_chain": [
+          "Stage detector unavailable — estimating from capital=$1,000",
+          "No revenue target in facts — defaulting to $1,000/mo",
+          "Estimated path: ~52 weeks based on capital tier (no path data)",
+          "Total path: 12.0 months to reach scale target"
+        ],
+        "zone_tag": "T",
+        "data_used": [],
+        "needs_data": [],
+        "metadata": {
+          "total_months": 12.0,
+          "total_weeks": 52,
+          "path_steps_count": 0,
+          "path_confidence": "low",
+          "current_stage_id": "stage_1_side_hustle",
+          "revenue_target": 1000.0
+        }
+      },
+      "T09_durability": {
+        "technique_id": "T09_durability",
+        "score": 0.9,
+        "confidence": 0.7,
+        "verdict": "GO",
+        "reasoning_chain": [
+          "Owned assets detected: 8 (brand, content, data, database, ip)",
+          "Single-platform dependency: False",
+          "Antifragile signals: True",
+          "ANTIFRAGILE: compounding mechanism detected — disruption strengthens position"
+        ],
+        "zone_tag": "K",
+        "data_used": [
+          "owned_assets:8",
+          "single_platform:False"
+        ],
+        "needs_data": [],
+        "metadata": {
+          "classification": "ANTIFRAGILE",
+          "owned_assets": [
+            "brand",
+            "content",
+            "data",
+            "database",
+            "ip",
+            "network",
+            "product",
+            "subscriber"
+          ],
+          "owned_count": 8,
+          "single_platform": false,
+          "antifragile": true
+        }
+      },
+      "T10_value_chain": {
+        "technique_id": "T10_value_chain",
+        "score": 0.0,
+        "confidence": 0.2,
+        "verdict": "NEEDS_DATA",
+        "reasoning_chain": [
+          "No value_chain data in ecosystem_map"
+        ],
+        "zone_tag": "?",
+        "data_used": [],
+        "needs_data": [
+          "value_chain_steps"
+        ],
+        "metadata": {}
+      },
+      "T11_speed_test": {
+        "technique_id": "T11_speed_test",
+        "score": 0.3,
+        "confidence": 0.2,
+        "verdict": "NEEDS_DATA",
+        "reasoning_chain": [
+          "No business_model in context"
+        ],
+        "zone_tag": "?",
+        "data_used": [],
+        "needs_data": [
+          "business_model"
+        ],
+        "metadata": {}
+      },
+      "T12_simulation": {
+        "technique_id": "T12_simulation",
+        "score": 0.306,
+        "confidence": 0.4,
+        "verdict": "INVESTIGATE",
+        "reasoning_chain": [
+          "Execution distance: 4 skill gaps vs 4 required",
+          "No price fact found — using default $100",
+          "Projected month-12 MRR: $973 (target: $5,000)",
+          "Churn rate: 5.0%, monthly new customers: 1.0",
+          "Highly executable bonus: distance 4 <= 8"
+        ],
+        "zone_tag": "?",
+        "data_used": [],
+        "needs_data": [
+          "price_per_unit"
+        ],
+        "metadata": {
+          "month12_mrr": 973.32,
+          "mrr_target": 5000.0,
+          "mrr_series": [
+            195.0,
+            285.25,
+            370.99,
+            452.44,
+            529.82,
+            603.33,
+            673.16,
+            739.5,
+            802.53,
+            862.4,
+            919.28,
+            973.32
+          ],
+          "execution_distance": 4,
+          "highly_executable": true,
+          "compound_gate_pass": true,
+          "price": 100.0,
+          "churn_rate": 0.05
+        }
+      },
+      "T13_observation": {
+        "technique_id": "T13_observation",
+        "score": 0.4,
+        "confidence": 0.65,
+        "verdict": "INVESTIGATE",
+        "reasoning_chain": [
+          "No high-confidence ad signals detected in facts",
+          "No arbitrage signals detected",
+          "Market timing signal: calm (indicators: ['regulatory_scrutiny'])",
+          "Score components: base=0.3, +0.1 calm → 0.40"
+        ],
+        "zone_tag": "T",
+        "data_used": [
+          "cycle_fallback:tc=0,hc=1"
+        ],
+        "needs_data": [],
+        "metadata": {
+          "ad_validated": false,
+          "arbitrage_found": false,
+          "timing_signal": "calm",
+          "indicators_extracted": [
+            "regulatory_scrutiny"
+          ]
+        }
+      },
+      "T14_compound_intelligence": {
+        "technique_id": "T14_compound_intelligence",
+        "score": 0.433,
+        "confidence": 0.9,
+        "verdict": "CAUTION",
+        "reasoning_chain": [
+          "data_moat: 6.5/10 (3 facts)",
+          "network_effect: 2.0/10 (1 facts)",
+          "content_library: 10.0/10 (4 facts)",
+          "customer_relationships: 1.8/10 (1 facts)",
+          "brand_authority: 2.0/10 (1 facts)",
+          "process_ip: 3.8/10 (2 facts)",
+          "Total compound score: 26.0 (STRONG>35, MODERATE>18)",
+          "Classification: MODERATE"
+        ],
+        "zone_tag": "T",
+        "data_used": [
+          "data_moat:Is Data the New Moat with Generative AI? – louis d",
+          "data_moat:trackerdb/db/patterns/moat.eno at main · ghostery/",
+          "data_moat:ETF Leverage Reversal: Data has been delayed by 48",
+          "network_effect:Think you understand network effects? You don’t. |",
+          "content_library:Build Content Moat: 70% Page 1 in 90 Days with 5 A",
+          "content_library:The Enterprise AI Scalability Gap: Common Failure ",
+          "content_library:The Enterprise AI Scalability Gap: Common Failure ",
+          "content_library:Artificial Intelligence Automatically Generates Co",
+          "customer_relationships:Why International Leverage Has Failed With the Tal",
+          "brand_authority:Think you understand network effects? You don’t. |",
+          "process_ip:Think you understand network effects? You don’t. |",
+          "process_ip:Why International Leverage Has Failed With the Tal"
+        ],
+        "needs_data": [],
+        "metadata": {
+          "mechanism_scores": {
+            "data_moat": 6.5,
+            "network_effect": 2.0,
+            "content_library": 10.0,
+            "customer_relationships": 1.75,
+            "brand_authority": 2.0,
+            "process_ip": 3.75
+          },
+          "total_compound_score": 26.0,
+          "classification": "MODERATE",
+          "compound_multiplier": false,
+          "weak_blocked": false
+        }
+      }
+    },
+    "overall_score": 0.365,
+    "consensus": "SPLIT",
+    "techniques_agreeing_go": 2,
+    "techniques_agreeing_kill": 0,
+    "needs_data_dimensions": [
+      "value_chain_steps",
+      "moat_type",
+      "ecosystem_players",
+      "analogical_cases",
+      "price_per_unit",
+      "business_model",
+      "required_skills"
+    ],
+    "reasoning_summary": "No consensus: 2 GO, 0 KILL",
+    "staircase_override": false,
+    "fragile_block": false
+  },
+  "strategy": {
+    "total_timeline_weeks": 137,
+    "highest_leverage_dimension": "network_access",
+    "critical_path": [
+      "founder_experience",
+      "network_access",
+      "competitive_landscape",
+      "unit_economics",
+      "base_rates",
+      "timing_windows"
+    ],
+    "confidence": 0.0909,
+    "steps": [
+      {
+        "dimension": "founder_experience",
+        "action": "Build relevant experience: complete 1 domain project, document learnings",
+        "prerequisites": [],
+        "priority": 1,
+        "estimated_weeks": 18,
+        "confidence": "medium",
+        "milestone": {
+          "description": "Build portfolio of 3+ relevant wins",
+          "metric": "relevant_projects",
+          "target_value": "3",
+          "gap_size": 1.0
+        }
+      },
+      {
+        "dimension": "network_access",
+        "action": "Build targeted network: attend 3+ industry events, secure warm intros",
+        "prerequisites": [],
+        "priority": 2,
+        "estimated_weeks": 12,
+        "confidence": "medium",
+        "milestone": {
+          "description": "Attend 5 industry events, secure 10 connections",
+          "metric": "verified_connections",
+          "target_value": "10",
+          "gap_size": 1.0
+        }
+      },
+      {
+        "dimension": "competitive_landscape",
+        "action": "Map competitive terrain: profile top 5 competitors with pricing + users",
+        "prerequisites": [],
+        "priority": 3,
+        "estimated_weeks": 3,
+        "confidence": "medium",
+        "milestone": {
+          "description": "Deep-profile 10 competitors with pricing",
+          "metric": "competitors_profiled",
+          "target_value": "10",
+          "gap_size": 1.0
+        }
+      },
+      {
+        "dimension": "unit_economics",
+        "action": "Validate economics: calculate CAC, LTV, margins, break-even timeline",
+        "prerequisites": [],
+        "priority": 4,
+        "estimated_weeks": 6,
+        "confidence": "medium",
+        "milestone": {
+          "description": "Achieve positive unit economics for 30 days",
+          "metric": "positive_unit_econ_days",
+          "target_value": "30",
+          "gap_size": 1.0
+        }
+      },
+      {
+        "dimension": "base_rates",
+        "action": "Anchor expectations: research failure rates and survival statistics for domain",
+        "prerequisites": [],
+        "priority": 5,
+        "estimated_weeks": 2,
+        "confidence": "medium",
+        "milestone": {
+          "description": "Collect base rates from 5+ sources, calibrate expectations",
+          "metric": "base_rate_sources",
+          "target_value": "5",
+          "gap_size": 1.0
+        }
+      },
+      {
+        "dimension": "timing_windows",
+        "action": "Monitor and position for timing: track 3 cycle signals monthly",
+        "prerequisites": [],
+        "priority": 6,
+        "estimated_weeks": 6,
+        "confidence": "medium",
+        "milestone": {
+          "description": "Position for next cycle window",
+          "metric": "cycle_position_score",
+          "target_value": "positioned",
+          "gap_size": 1.0
+        }
+      },
+      {
+        "dimension": "deal_skills",
+        "action": "Develop deal competency: study structures, run 1 micro-transaction",
+        "prerequisites": [
+          "network_access"
+        ],
+        "priority": 7,
+        "estimated_weeks": 18,
+        "confidence": "medium",
+        "milestone": {
+          "description": "Complete 3 deals, document process",
+          "metric": "deals_closed",
+          "target_value": "3",
+          "gap_size": 1.0
+        }
+      },
+      {
+        "dimension": "moat_patterns",
+        "action": "Identify defensible advantages: find switching costs, data moats, network effects",
+        "prerequisites": [
+          "competitive_landscape"
+        ],
+        "priority": 8,
+        "estimated_weeks": 15,
+        "confidence": "high",
+        "milestone": {
+          "description": "Build 2+ compounding assets",
+          "metric": "compound_assets_active",
+          "target_value": "2",
+          "gap_size": 0.5757
+        }
+      },
+      {
+        "dimension": "execution_distance",
+        "action": "Close skill/resource gaps: map exact steps from current state to target",
+        "prerequisites": [
+          "deal_skills"
+        ],
+        "priority": 9,
+        "estimated_weeks": 9,
+        "confidence": "medium",
+        "milestone": {
+          "description": "Complete 3-month skill acquisition plan",
+          "metric": "skill_plan_weeks_complete",
+          "target_value": "12",
+          "gap_size": 1.0
+        }
+      },
+      {
+        "dimension": "capital_requirements",
+        "action": "Secure required capital: validate revenue model, accumulate through staircase",
+        "prerequisites": [
+          "network_access",
+          "deal_skills"
+        ],
+        "priority": 10,
+        "estimated_weeks": 24,
+        "confidence": "medium",
+        "milestone": {
+          "description": "Generate $5K revenue from staircase step 1",
+          "metric": "capital_usd",
+          "target_value": "5000",
+          "gap_size": 1.0
+        }
+      },
+      {
+        "dimension": "compounding_mechanisms",
+        "action": "Activate compounding loops: instrument 1 flywheel, measure weekly",
+        "prerequisites": [
+          "moat_patterns"
+        ],
+        "priority": 11,
+        "estimated_weeks": 24,
+        "confidence": "medium",
+        "milestone": {
+          "description": "3 compound loops active and measured",
+          "metric": "active_compound_loops",
+          "target_value": "3",
+          "gap_size": 1.0
+        }
+      }
+    ],
+    "compound_map": {
+      "connections": [
+        {
+          "from": "founder_experience",
+          "to": "network_access",
+          "asset": "track record opens doors"
+        },
+        {
+          "from": "founder_experience",
+          "to": "moat_patterns",
+          "asset": "experience reveals defensible patterns"
+        },
+        {
+          "from": "network_access",
+          "to": "deal_skills",
+          "asset": "warm intros accelerate deal sourcing"
+        },
+        {
+          "from": "network_access",
+          "to": "founder_experience",
+          "asset": "network validates and amplifies experience"
+        },
+        {
+          "from": "unit_economics",
+          "to": "capital_requirements",
+          "asset": "positive economics reduces capital pressure"
+        },
+        {
+          "from": "deal_skills",
+          "to": "capital_requirements",
+          "asset": "deal flow generates capital"
+        },
+        {
+          "from": "deal_skills",
+          "to": "network_access",
+          "asset": "closed deals expand network credibility"
+        },
+        {
+          "from": "moat_patterns",
+          "to": "compounding_mechanisms",
+          "asset": "moat activates compounding loop"
+        },
+        {
+          "from": "moat_patterns",
+          "to": "unit_economics",
+          "asset": "moat improves margin structure"
+        },
+        {
+          "from": "compounding_mechanisms",
+          "to": "moat_patterns",
+          "asset": "compounding deepens moat"
+        },
+        {
+          "from": "compounding_mechanisms",
+          "to": "capital_requirements",
+          "asset": "compounding reduces capital needs"
+        }
+      ],
+      "compound_density": 0.5455,
+      "terminal_steps": [
+        "competitive_landscape",
+        "base_rates",
+        "timing_windows",
+        "execution_distance",
+        "capital_requirements"
+      ],
+      "flywheel_loops": [
+        [
+          "compounding_mechanisms",
+          "moat_patterns",
+          "compounding_mechanisms"
+        ],
+        [
+          "deal_skills",
+          "network_access",
+          "deal_skills"
+        ],
+        [
+          "founder_experience",
+          "network_access",
+          "founder_experience"
+        ]
+      ]
+    }
+  },
+  "strategic_insight": {
+    "causal_chain": "[error]",
+    "contradictions": [],
+    "inferred_gaps": [],
+    "asymmetric_play": "",
+    "compound_trap": "",
+    "kill_go_reasoning": "",
+    "verdict": "",
+    "kill_conditions": [],
+    "proceed_conditions": [],
+    "fact_references": [
+      "What is Artificial Intelligence (AI)?: Discover what Artificial Intelligence is—",
+      "Artificial intelligence customer service: Complete 2026 Guide: With integrated a",
+      "Think you understand network effects? You don’t. | by Matt Ward: Acquisition moa",
+      "Is Data the New Moat with Generative AI? – louis david: In the realm of artifici",
+      "Europe's syndicated and direct lenders compete on deal: Follow capital flows acr",
+      "How AI is changing football scouting: 3 real-world examples -: ... and technolog",
+      "Should Your Nonprofit Jump on the Artificial Intelligence: ... Fundraising and A",
+      "The Top 25 Artificial Intelligence Consultants and Leaders of ...: Jul 1, 2025 ·",
+      "trackerdb/db/patterns/moat.eno at main · ghostery/trackerdb · GitHub: Ghostery T",
+      "Build Content Moat: 70% Page 1 in 90 Days with 5 Agents: Scrapes Reddit, Quora, ",
+      "Why Digital Transformation Often Fails To Build Competitive Moats: Mar 20, 2026 ",
+      "ETF Leverage Reversal: Data has been delayed by 48 hours for non-subscribers ...",
+      "EXTREMELY Confused about Lot Sizes, Leverage, Everything!: Yes, the answer is le",
+      "Why International Leverage Has Failed With the Taliban | Lawfare: ... to provide"
+    ],
+    "llm_calls_made": 1,
+    "total_latency_ms": 0,
+    "founder_constraint_map": {},
+    "compound_asset_blueprint": {},
+    "side_doors": [],
+    "mental_models_applied": []
+  },
+  "sbe_evaluation": {
+    "sbe_verdict": "NEEDS_DEEPER_ANALYSIS",
+    "sbe_confidence": 0.4,
+    "kill_signals": [],
+    "enriched_features": {},
+    "short_circuited": false
+  },
+  "execution_scripts": [
+    {
+      "action": "Check failure rates for artificial intelligence deals",
+      "script": "Step 1: List 3 specific data points you need (not 'understand the market').\nStep 2: For each, identify the EXACT source (URL, database, person).\nStep 3: Set a 2-hour timebox. Extract data. Stop.\nStep 4: Write a 1-paragraph summary of what you found vs. what you expected.",
+      "psych": "Research is the most common procrastination disguise. The 2-hour timebox prevents infinite research loops.",
+      "timing": "First thing in the morning when focus is highest. Never after lunch.",
+      "fallback": "If data unavailable after 2 hours: the question is too broad. Narrow to 1 specific metric.",
+      "sixty_sec": true,
+      "persona": "default",
+      "difficulty": "novice"
+    },
+    {
+      "action": "Analyze competitive landscape and free alternatives",
+      "script": "Step 1: List 3 specific data points you need (not 'understand the market').\nStep 2: For each, identify the EXACT source (URL, database, person).\nStep 3: Set a 2-hour timebox. Extract data. Stop.\nStep 4: Write a 1-paragraph summary of what you found vs. what you expected.",
+      "psych": "Research is the most common procrastination disguise. The 2-hour timebox prevents infinite research loops.",
+      "timing": "First thing in the morning when focus is highest. Never after lunch.",
+      "fallback": "If data unavailable after 2 hours: the question is too broad. Narrow to 1 specific metric.",
+      "sixty_sec": true,
+      "persona": "default",
+      "difficulty": "novice"
+    },
+    {
+      "action": "Check timing windows and regulatory risks",
+      "script": "Step 1: List 3 specific data points you need (not 'understand the market').\nStep 2: For each, identify the EXACT source (URL, database, person).\nStep 3: Set a 2-hour timebox. Extract data. Stop.\nStep 4: Write a 1-paragraph summary of what you found vs. what you expected.",
+      "psych": "Research is the most common procrastination disguise. The 2-hour timebox prevents infinite research loops.",
+      "timing": "First thing in the morning when focus is highest. Never after lunch.",
+      "fallback": "If data unavailable after 2 hours: the question is too broad. Narrow to 1 specific metric.",
+      "sixty_sec": true,
+      "persona": "default",
+      "difficulty": "novice"
+    },
+    {
+      "action": "Assess moat defensibility",
+      "script": "Step 1: List 3 specific data points you need (not 'understand the market').\nStep 2: For each, identify the EXACT source (URL, database, person).\nStep 3: Set a 2-hour timebox. Extract data. Stop.\nStep 4: Write a 1-paragraph summary of what you found vs. what you expected.",
+      "psych": "Research is the most common procrastination disguise. The 2-hour timebox prevents infinite research loops.",
+      "timing": "First thing in the morning when focus is highest. Never after lunch.",
+      "fallback": "If data unavailable after 2 hours: the question is too broad. Narrow to 1 specific metric.",
+      "sixty_sec": true,
+      "persona": "default",
+      "difficulty": "novice"
+    },
+    {
+      "action": "Validate unit economics: CAC, LTV, margins",
+      "script": "Step 1: List 3 specific data points you need (not 'understand the market').\nStep 2: For each, identify the EXACT source (URL, database, person).\nStep 3: Set a 2-hour timebox. Extract data. Stop.\nStep 4: Write a 1-paragraph summary of what you found vs. what you expected.",
+      "psych": "Research is the most common procrastination disguise. The 2-hour timebox prevents infinite research loops.",
+      "timing": "First thing in the morning when focus is highest. Never after lunch.",
+      "fallback": "If data unavailable after 2 hours: the question is too broad. Narrow to 1 specific metric.",
+      "sixty_sec": true,
+      "persona": "default",
+      "difficulty": "novice"
+    },
+    {
+      "action": "Calculate required capital and break-even",
+      "script": "Specific first step: identify the SINGLE person who can say yes to this and find their contact. Write them a 3-sentence message explaining what you want and why it benefits THEM.",
+      "psych": "Most actions stall because the first step isn't specific enough. 'Who can say yes?' collapses complexity into one search.",
+      "timing": "Today. Not tomorrow. Not 'this week.' Now.",
+      "fallback": "If blocked: the action isn't specific enough. Break it into 3 smaller actions, each with a named target.",
+      "sixty_sec": true,
+      "persona": "default",
+      "difficulty": "novice"
+    }
+  ]
+}

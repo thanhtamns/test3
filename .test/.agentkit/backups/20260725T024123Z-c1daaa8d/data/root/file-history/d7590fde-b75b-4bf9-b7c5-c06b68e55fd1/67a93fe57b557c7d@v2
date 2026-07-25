@@ -1,0 +1,123 @@
+# Brainstorm: Stage0 Capital Deployment Paradigm Shift
+
+**Date:** 2026-05-18
+**Status:** Approved
+**Trigger:** User identified fundamental flaw — stage0 thinks in LABOR, not CAPITAL
+
+## Problem Statement
+
+Stage0's 3-layer architecture is locked into labor-first thinking:
+1. `capital-path-classifier.py` — TIER_0 ($0-1K) hardcodes `no_product_dev: True`, `cash_first: True`
+2. Wave 1 agents search "zero capital business" → Google returns freelance job lists
+3. Leverage scoring (just shipped) measures IF analysis MENTIONS leverage, not IF models ARE leverage
+
+Result: 12 labor models with "staircase" labels. System confirms "you're poor, go freelance" with 25 steps, 5 agents, 12 WebSearches. Staircase is a promise, not a mechanism.
+
+## Root Cause
+
+System asks: "What should founder DO to earn money?" (labor thinking)
+Should ask: "Where should $X be DEPLOYED to multiply without founder time?" (capital thinking)
+
+Key evidence:
+- `TIER_0` constraint `no_product_dev: True` — bans product creation at $0-500
+- DQ generator asks `FIRST_500`, `TIME_TO_CASH` — labor questions
+- Mountain target $10K/mo but TIER_0 target $(500-2000) — system knows TIER_0 can't reach Mountain
+- 12-model output: 0 models invest $500 into assets, all require founder hours
+
+## Design: Capital Deployment Engine (v25.5)
+
+### Core Paradigm Shift
+
+| Old (labor) | New (capital) |
+|---|---|
+| "Lam gi de kiem tien?" | "$X dat o dau de tu nhan?" |
+| Input: founder time | Input: deployable capital |
+| Output: job list + staircase | Output: micro-asset portfolio + ROI |
+| Metric: $/month (needs hours) | Metric: ROI% (no founder time after setup) |
+| Scale: add hours (limited) | Scale: add capital (unlimited) |
+
+### 5 Design Principles
+
+1. **Every dollar is a soldier** — deployed, not spent. $500 = budget for 3-5 micro-assets
+2. **Sleep Test is FIRST FILTER** — only find models that pass. Don't score after the fact
+3. **ROI per dollar, not $/month** — $500→$200/mo passive = 40% monthly ROI > any hedge fund
+4. **Micro-asset portfolio** — 5×$100 bets. Some die (expected). Survivors get re-allocated capital
+5. **Agents find ASSETS, not JOBS** — search "bought for $X sold for $Y", "passive income $500 invested", "micro SaaS sold acquire.com"
+
+### New Pipeline Architecture
+
+```
+Phase 0: Deployable Capital
+  → "How much can you LOSE without affecting life?" = deployment budget
+  → NOT income, NOT savings — risk capital only
+
+Phase 1: Asset Scanner (Sleep-First Filter)
+  → ONLY models where: capital in → system runs → money out, NO founder needed
+  → New agent: asset-scanner replaces business-finder
+  → Kill any model requiring >2h/week founder time post-setup
+
+Phase 2: ROI Calculation Engine
+  → Per asset: deploy_cost × success_probability × payback_period
+  → P10/P50/P90 for ROI, NOT revenue
+  → Expected Value = ROI × probability × (1 - founder_time_cost)
+
+Phase 3: Portfolio Construction
+  → $500: split into 3-5 micro-assets ($100-200 each)
+  → Each asset: 30-day kill criterion
+  → Death = lose $100 (acceptable). Survival = reallocate from dead assets
+
+Phase 4: Deploy & Measure
+  → Action = "deploy capital" not "go work"
+  → Metric: ROI at 30/90 days
+  → Re-allocate: pull from weak → pump into strong
+```
+
+### New Mountain Test (v25)
+
+- Q1: After deploy, does asset generate revenue WITHOUT founder? (Sleep)
+- Q2: Is ROI > opportunity cost of founder time? (Efficiency)
+- Q3: Can asset be TRANSFERRED to someone else? (Transferability)
+- Q4: Can profits be reinvested to accelerate? (Compound)
+
+### Files to Change
+
+- `capital-path-classifier.py` — remove `no_product_dev`, add `deploy_allocation` logic, new TIER_0 subtracks
+- `tier-adjusted-dq-generator.py` — replace "earn money" questions with "deploy capital" questions
+- `stage0.md` — new phases (Asset Scanner → ROI Calc → Portfolio → Deploy)
+- `stage0-checklist.md` — align with new phases
+- `stage0-quality-score.py` — measure ROI calculation quality, not "mentions leverage"
+- New Wave 1 agents: asset-scanner, roi-calculator, portfolio-constructor
+- Mountain Test v24→v25: ROI-based questions
+
+### Example: Same Founder, $500
+
+Old output: 12 labor models, "staircase" labels
+New output: 5 micro-asset deployments:
+1. $12 domain + AI code = micro-SaaS tool (recurring)
+2. $0 Beehiiv newsletter (audience = asset)
+3. $5 Etsy template pack (catalog = asset)
+4. $200 expired domain with traffic (redirect = passive)
+5. $283 paid ad test for digital product (data = asset)
+
+30 days: 3/5 die. 2 survive. Reallocate dead capital to survivors.
+12 months: Portfolio of 3 assets, $2K/mo passive, 0h/week.
+
+### Risks
+
+1. $500 can be lost in 30 days — 3/5 micro-assets will die (normal but painful)
+2. Slower initial income — labor earns $800 month 1, assets earn $50-100
+3. Requires kill discipline — don't throw more money at dying assets
+4. Research agents must search DIFFERENTLY — "assets to buy" not "jobs to do"
+5. Paradigm shift in 2500-line stage0.md — high implementation risk
+
+### Success Criteria
+
+1. `/stage0 "$500 deploy"` → 0 labor models in output, only asset deployments
+2. Every model has ROI% metric, not just $/month
+3. Sleep Test is Phase 1 filter, not Phase 6 measurement
+4. Portfolio construction with kill criteria per asset
+5. No model requires >2h/week founder time after initial setup
+
+## Decision
+
+User approved: full paradigm rewrite from labor-thinking to capital-thinking.

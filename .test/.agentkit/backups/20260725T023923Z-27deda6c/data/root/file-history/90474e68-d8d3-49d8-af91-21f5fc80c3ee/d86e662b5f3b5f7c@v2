@@ -1,0 +1,196 @@
+package main
+
+import (
+	"context"
+	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/codeflow-dev/codeflow/cloud/internal/clickhouse"
+	"github.com/codeflow-dev/codeflow/cloud/internal/natsutil"
+	pb "github.com/codeflow-dev/codeflow/cloud/proto"
+	"github.com/nats-io/nats.go/jetstream"
+	"google.golang.org/protobuf/proto"
+)
+
+const (
+	batchSize  = 1000
+	flushEvery = 5 * time.Second
+	consumer   = "analytics-writer"
+)
+
+func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
+
+	chDSN := envOr("CLICKHOUSE_DSN", "clickhouse://localhost:9000/codeflow")
+	natsURL := envOr("NATS_URL", "nats://localhost:4222")
+
+	ch, err := clickhouse.New(chDSN)
+	if err != nil {
+		slog.Error("clickhouse connect failed", "error", err)
+		os.Exit(1)
+	}
+	defer ch.Close()
+
+	pub, err := natsutil.NewPublisher(natsURL)
+	if err != nil {
+		slog.Error("nats connect failed", "error", err)
+		os.Exit(1)
+	}
+	defer pub.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := pub.EnsureStream(ctx); err != nil {
+		slog.Error("ensure stream failed", "error", err)
+		os.Exit(1)
+	}
+
+	js := pub.JetStream()
+	cons, err := js.CreateOrUpdateConsumer(ctx, natsutil.StreamName, jetstream.ConsumerConfig{
+		Durable:       consumer,
+		AckPolicy:     jetstream.AckExplicitPolicy,
+		MaxDeliver:    10,
+		AckWait:       30 * time.Second,
+		FilterSubject: natsutil.SubjectPrefix + ".*",
+	})
+	if err != nil {
+		slog.Error("create consumer failed", "error", err)
+		os.Exit(1)
+	}
+
+	slog.Info("analytics writer started", "consumer", consumer)
+
+	var batch []clickhouse.EventRow
+	ticker := time.NewTicker(flushEvery)
+	defer ticker.Stop()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	for {
+		select {
+		case <-quit:
+			slog.Info("shutting down, flushing remaining batch", "size", len(batch))
+			if len(batch) > 0 {
+				flush(ctx, ch, &batch)
+			}
+			return
+
+		case <-ticker.C:
+			if len(batch) > 0 {
+				flush(ctx, ch, &batch)
+			}
+
+		default:
+			msgBatch, err := cons.Fetch(10, jetstream.FetchMaxWait(flushEvery))
+			if err != nil {
+				continue
+			}
+
+			for msg := range msgBatch.Messages() {
+				rows, err := decodeMessage(msg)
+				if err != nil {
+					slog.Error("decode failed, nak-ing", "error", err)
+					msg.Nak()
+					continue
+				}
+
+				batch = append(batch, rows...)
+				msg.Ack()
+			}
+
+			if len(batch) >= batchSize {
+				flush(ctx, ch, &batch)
+			}
+		}
+	}
+}
+
+func decodeMessage(msg jetstream.Msg) ([]clickhouse.EventRow, error) {
+	var batch pb.EventBatch
+	if err := proto.Unmarshal(msg.Data(), &batch); err != nil {
+		return nil, err
+	}
+
+	subject := msg.Subject()
+	tenantID := "default"
+	if parts := splitSubject(subject); len(parts) > 1 {
+		tenantID = parts[1]
+	}
+
+	rows := make([]clickhouse.EventRow, 0, len(batch.Events))
+	for _, ev := range batch.Events {
+		row := clickhouse.EventRow{
+			EventID:    ev.Id,
+			TenantID:   tenantID,
+			Timestamp:  time.UnixMilli(ev.TimestampMs),
+			SessionID:  ev.SessionId,
+			ProjectDir: ev.ProjectDir,
+			Command:    ev.Command,
+			CLIVersion: batch.CliVersion,
+			MachineID:  batch.MachineId,
+		}
+
+		if ev.Compression != nil {
+			row.EventType = "compression"
+			row.InputBytes = ev.Compression.InputBytes
+			row.OutputBytes = ev.Compression.OutputBytes
+			row.InputTokens = ev.Compression.InputTokens
+			row.OutputTokens = ev.Compression.OutputTokens
+			row.TokensSaved = ev.Compression.TokensSaved
+			row.FilterName = ev.Compression.FilterName
+			row.CompressionLevel = ev.Compression.CompressionLevel
+			row.LatencyMs = ev.Compression.LatencyMs
+		}
+
+		if ev.Dedup != nil {
+			row.EventType = "dedup"
+			row.ContentHash = ev.Dedup.ContentHash
+			row.CacheHit = ev.Dedup.CacheHit
+			row.TokensSaved = ev.Dedup.TokensSaved
+			row.LatencyMs = ev.Dedup.LatencyMs
+		}
+
+		rows = append(rows, row)
+	}
+	return rows, nil
+}
+
+func flush(ctx context.Context, ch *clickhouse.Client, batch *[]clickhouse.EventRow) {
+	if len(*batch) == 0 {
+		return
+	}
+
+	if err := ch.InsertEvents(ctx, *batch); err != nil {
+		slog.Error("flush to clickhouse failed", "error", err, "rows", len(*batch))
+		return
+	}
+
+	slog.Info("flushed to clickhouse", "rows", len(*batch))
+	*batch = (*batch)[:0]
+}
+
+func splitSubject(s string) []string {
+	var parts []string
+	start := 0
+	for i := range s {
+		if s[i] == '.' {
+			parts = append(parts, s[start:i])
+			start = i + 1
+		}
+	}
+	parts = append(parts, s[start:])
+	return parts
+}
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}

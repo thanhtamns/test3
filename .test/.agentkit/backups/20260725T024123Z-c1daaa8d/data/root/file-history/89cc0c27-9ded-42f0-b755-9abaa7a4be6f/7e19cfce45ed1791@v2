@@ -1,0 +1,63 @@
+use anyhow::{bail, Result};
+use std::fs;
+use std::path::PathBuf;
+
+use codeflow_core::compliance::{ComplianceEngine, ExportFormat};
+
+pub fn audit(format_str: String, range_days: u32, output: Option<String>, json: bool) -> Result<()> {
+    let format = ExportFormat::parse(&format_str);
+    let format = match format {
+        Some(f) => f,
+        None => bail!("Unknown format '{}'. Use: slsa, cyclonedx, soc2", format_str),
+    };
+
+    let db_path = super::paths::db_path();
+    let engine = ComplianceEngine::open(&db_path)?;
+    let result = engine.generate(format, range_days)?;
+
+    if json && matches!(format, ExportFormat::Slsa | ExportFormat::CycloneDx) {
+        println!("{}", result.content);
+        return Ok(());
+    }
+
+    let out_dir = match output {
+        Some(p) => PathBuf::from(p),
+        None => {
+            let ts = chrono::Utc::now().format("%Y%m%d-%H%M%S");
+            PathBuf::from(format!("./codeflow-audit/{}", ts))
+        }
+    };
+
+    fs::create_dir_all(&out_dir)?;
+
+    let filename = format!("{}.{}", format, format.file_extension());
+    let out_path = out_dir.join(&filename);
+    fs::write(&out_path, &result.content)?;
+
+    println!("  CODEFLOW Audit Export\n");
+    println!("  Format:  {}", format);
+    println!("  Range:   {} days", range_days);
+    println!("  Records: {}", result.record_count);
+    println!("  Output:  {}\n", out_path.display());
+
+    Ok(())
+}
+
+pub fn purge(retention_days: u32, yes: bool) -> Result<()> {
+    if !yes {
+        println!(
+            "This will delete all records older than {} days. Use --yes to confirm.",
+            retention_days
+        );
+        return Ok(());
+    }
+
+    let db_path = super::paths::db_path();
+    let engine = ComplianceEngine::open(&db_path)?;
+    let (prov, cost) = engine.purge(retention_days as i64)?;
+
+    println!("  Purged {} provenance + {} cost records (>{} days old)",
+        prov, cost, retention_days);
+
+    Ok(())
+}

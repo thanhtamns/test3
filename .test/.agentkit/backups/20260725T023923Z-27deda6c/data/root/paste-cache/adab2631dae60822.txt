@@ -1,0 +1,334 @@
+/stage0 10-20 mô hình kinh doanh $0-500 vốn, bền vững 10 năm, dòng tiền thực sự lớn, không giới hạn ngách nhưng hãy tập trung vào ngách nhỏ với tư duy tính toán tinh hoa
+
+Loading the stage0 checklist and starting execution.
+
+  Read 1 file, listed 1 directory, ran 1 shell command
+
+Loading profile, runtime assertions, and running initial classification scripts in parallel.
+
+  Read 1 file, listed 1 directory
+
+Profile loaded (TIER_0, $0-1K, Vietnam). No pending actions. Assertions loaded. Now running query-mode detection, intent classification, and mechanism knobs in parallel.
+
+  Ran 3 shell commands
+
+Query mode: EXPLORATION (confidence low at 0.3). Intent: cash_flow_operations. The query asks for 10-20 models — this is a breadth scan. But the query also says "tư duy tính toán tinh hoa" (elite calculation thinking) and specifies founder constraints ($0-500) which makes it FOUNDER_SPECIFIC.
+
+Given the ambiguity (EXPLORATION confidence 0.3, both scores 0.0), and the query explicitly mentions founder capital ($0-500) + mindset preferences, I'll treat this as FOUNDER_SPECIFIC + --breadth mode: 10-12 category-level models filtered by founder profile, NO instance research.
+
+Running Step 2.45 (Premise Challenge) and Steps 3.4d/3.4e/3.4f intelligence engines in parallel, plus the capital-path routing.
+
+  Ran 4 shell commands
+
+Intelligence engines loaded. Experience brain failed (non-blocking). Now I'll interpret the query and proceed. This is a --breadth mode request: 10-20 models, $0-500, broad scan. Let me run the core research agents.
+
+  Ran 1 shell command
+
+Experience Brain has a data issue — tagging [EXPERIENCE_BRAIN_DEGRADED]. Proceeding with research. Now spawning Wave 1 research agents for the breadth scan.
+
+Now spawning Wave 1 research agents in parallel. Breadth mode — finding 10-12 category-level models with real cash flow math for TIER_0 ($0-500) founder.
+
+● 5 background agents launched (↓ to manage)
+failure-archaeologist (Wave 1: Failure archaeology + base rates)
+market-reality-checker (Wave 1: Market reality + niche cash flows)
+contrarian-research-agent (Wave 1: Contrarian + hidden niches)
+zero-to-cash-architect (Wave 1: Zero-capital operator models)
+deep-comment-miner (Wave 1: VN forum + operator intelligence)
+
+5 Wave 1 agents dispatched and running. While waiting, I'll run additional parallel intelligence gathering — calc-dispatcher for power-law sizing and direct research on specific high-signal niches.
+
+  Ran 1 shell command
+
+● Web Search("micro niche business $0 capital $10000 month specific examples 2025 2026")
+Did 1 search in 43s
+
+● Web Search(""started with $500" OR "started with $0" business "$5000 month" OR "$10000 month" niche 2025")
+Did 2 searches in 35s
+
+Good initial research. Power-law calc shows extreme distribution — P50 is $19/mo in generic models. Now running deeper searches for Vietnam-specific and calculation-intensive models.
+
+● Web Search("Vietnam cross-border trade arbitrage small capital business specific examples profit margin 2025")
+Did 3 searches in 49s
+
+● Web Search(""boring business" high margin low capital recurring revenue sweaty startup examples 2025 2026")
+Did 2 searches in 43s
+
+● Web Search("information arbitrage business model middleman broker zero capital high margin specific niche examples")
+Did 1 search in 45s
+
+Strong signal data collected. Running final searches for Vietnam-specific calculation-intensive models while agents complete.
+
+● Web Search("service arbitrage Vietnam freelancer sell to US clients profit margin specific examples upwork fiverr")
+Did 2 searches in 39s
+
+● Web Search(""lead generation" business zero capital "$5000 month" OR "$10000 month" specific niche how started 2025")
+Did 3 searches in 50s
+Read .claude\rules\development-rules.md (7 lines)
+Read .claude\rules\documentation-management.md (7 lines)
+Read .claude\rules\learned-rules-proposals.md (10 lines)
+Read .claude\rules\learned-rules.md (72 lines)
+Read .claude\rules\multi-source-search-routing.md (59 lines)
+
+● Task "Wave 1: Market reality + niche cash flows" still running in background
+
+● Task "Wave 1: Contrarian + hidden niches" still running in background
+
+● Task "Wave 1: Zero-capital operator models" still running in background
+
+● Task "Wave 1: VN forum + operator intelligence" still running in background
+Skills restored (stage0)
+
+Let me check the status of the 5 background agents.
+
+● Agent "Wave 1: Failure archaeology + base rates" completed
+
+Failure archaeology agent returned. Checking remaining 4 agents.
+
+● Task Output(non-blocking) a8964c6d9bc10e29a
+Task is still running…
+
+● Task Output(non-blocking) a6ea13cb7d1a2fa60
+Task is still running…
+
+● Task Output(non-blocking) a24f7ba96d02813f6
+Task is still running…
+
+● Task Output(non-blocking) a8bbcbd0f1061b6ca
+Task is still running…
+
+4 agents still running (market-reality, contrarian, zero-to-cash, forum-miner). I'll proceed with additional research while waiting — specifically the Wave 2 agents that can start with what we already have.
+
+Let me run targeted searches for the breadth-mode model synthesis while waiting.
+
+Running targeted searches for models that fit TIER_0 constraints while agents finish.
+
+● Web Search("zero capital middleman broker business model $10K month 2025 2026 examples")
+Did 1 search in 38s
+
+● Web Search(""made $10000 per month" "no capital" OR "zero investment" service business reddit 2025")
+Did 1 search in 10s
+
+● Web Search("Vietnam cross-border trade broker small niche high margin 2025 2026")
+Did 1 search in 34s
+
+● Agent "Wave 1: Contrarian + hidden niches" completed
+
+● Agent "Wave 1: VN forum + operator intelligence" completed
+
+Contrarian agent and VN forum agent both returned. 2 agents still running (market-reality, zero-to-cash). Let me check those and run final searches.
+
+● Task Output(non-blocking) a8964c6d9bc10e29a
+Task is still running…
+
+● Task Output(non-blocking) a24f7ba96d02813f6
+Task is still running…
+
+● Web Search("bootstrapped $10K month solo operator boring business 2025 2026 case study niche")
+Did 1 search in 43s
+
+● Agent "Wave 1: Market reality + niche cash flows" completed
+
+Market-reality agent just returned. 4 of 5 agents now complete. Let me check zero-to-cash (the last one) and start synthesizing.
+
+● Task Output a24f7ba96d02813f6
+Read output (ctrl+o to expand)
+
+● Agent "Wave 1: Zero-capital operator models" completed
+
+All 5 Wave 1 agents complete. Now synthesizing into the final breadth-mode verdict. Let me run the Mountain Test and persist the case.
+
+  Ran 1 shell command
+
+Now building the synthesized verdict. All 5 agents returned rich data — I'll distill into the breadth-mode 12-model format with Mountain Test scoring.
+
+  Ran 3 shell commands
+
+Now persisting the verdict case file.
+
+● Write(data\cases\stage0-260518-zero-capital-breadth.json)
+Wrote 225 lines to data\cases\stage0-260518-zero-capital-breadth.json
+{
+  "case_id": "stage0-260518-zero-capital-breadth",
+  "timestamp": "2026-05-18T14:00:00+07:00",
+  "topic": "10-20 mô hình kinh doanh $0-500 vốn, bền vững 10 năm, dòng tiền thực sự lớn",
+  "mode": "breadth",
+  "query_mode": "FOUNDER_SPECIFIC",
+  "intent_class": "cash_flow_operations",
+  "profile_id": "phamt-260507",
+  "capital_tier": "TIER_0",
+  "capital_range_usd": [0, 500],
+… +215 lines
+
+  Searched for 1 pattern, ran 5 shell commands
+
+Verdict persisted. Now running persist-knowledge and verify-persistence.
+
+  Searched for 2 patterns, ran 2 shell commands
+
+All persistence checks PASS (6/6). Now delivering the verdict.
+
+---
+/stage0 BREADTH VERDICT — $0-500 Capital, 10-Year Sustainable Cash Flow
+
+Case: stage0-260518-zero-capital-breadth
+Mode: --breadth (category-level, no instance research)
+Verdict: SIDE_HUSTLE_WITH_STAIRCASE | Confidence: 0.62
+Profile: TIER_0, $0-500, Vietnam-based, zero network, market-driven
+
+---
+BASE RATE REALITY (read first)
+
+┌───────────────────────────────────┬─────────────────────────────┬───────────────────────┐
+│              Metric               │            Value            │        Source         │
+├───────────────────────────────────┼─────────────────────────────┼───────────────────────┤
+│ All businesses surviving 10 years │ 34.7%                       │ BLS 2024              │
+├───────────────────────────────────┼─────────────────────────────┼───────────────────────┤
+│ Cash flow as #1 death cause       │ 82%                         │ SCORE                 │
+├───────────────────────────────────┼─────────────────────────────┼───────────────────────┤
+│ Year 1 failure (sole proprietor)  │ 22.1%                       │ BLS BED 2025          │
+├───────────────────────────────────┼─────────────────────────────┼───────────────────────┤
+│ Dropshipping year 1 death         │ 80-90%                      │ Industry aggregators  │
+├───────────────────────────────────┼─────────────────────────────┼───────────────────────┤
+│ Affiliate earners <$10K/yr        │ 57.6%                       │ Authority Hacker 2024 │
+├───────────────────────────────────┼─────────────────────────────┼───────────────────────┤
+│ Power-law P50 (generic zero-cap)  │ $19/mo                      │ Calculated            │
+├───────────────────────────────────┼─────────────────────────────┼───────────────────────┤
+│ VN operators on public methods    │ "đã nát hết" (already dead) │ voz.vn                │
+└───────────────────────────────────┴─────────────────────────────┴───────────────────────┘
+
+The claim "zero capital + large cash flow + 10 years" conflicts with base rates. Only 34.7% of businesses with ANY capital survive 10 years. Zero-capital subset is structurally worse. The staircase below is the only path that works: start labor → build asset → compound leverage.
+
+---
+12 MODELS RANKED BY FOUNDER FIT
+
+Ranking criteria: Vietnam edge × Lindy × compound potential × capital fit × time-to-cash
+
+┌─────┬──────────────────────────────────────┬──────────┬───────────┬───────────┬────────┬─────────┬─────────┬────────────────────┐
+│  #  │                Model                 │ Capital  │   Mo 3    │   Mo 12   │ Lindy  │ VN Edge │  Sleep  │   Leverage Path    │
+├─────┼──────────────────────────────────────┼──────────┼───────────┼───────────┼────────┼─────────┼─────────┼────────────────────┤
+│ 1   │ Industrial Consumable Micro-Dist     │ $100-200 │ $1-1.5K   │ $3-8K     │ HIGH   │ ★★★     │ PARTIAL │ labor→system       │
+├─────┼──────────────────────────────────────┼──────────┼───────────┼───────────┼────────┼─────────┼─────────┼────────────────────┤
+│ 2   │ VN-EN Legal Translation Agency       │ $0       │ $0.8-1.6K │ $4-8K     │ V.HIGH │ ★★★     │ PARTIAL │ labor→agency       │
+├─────┼──────────────────────────────────────┼──────────┼───────────┼───────────┼────────┼─────────┼─────────┼────────────────────┤
+│ 3   │ EUDR Due Diligence Prep              │ $0       │ $0.6-1.2K │ $5-8K     │ NEW    │ ★★★     │ PARTIAL │ knowledge→template │
+├─────┼──────────────────────────────────────┼──────────┼───────────┼───────────┼────────┼─────────┼─────────┼────────────────────┤
+│ 4   │ Micro-Sourcing Agent (Handicraft)    │ $0-50    │ $0.5-1.5K │ $5-15K    │ V.HIGH │ ★★★     │ PARTIAL │ labor→platform     │
+├─────┼──────────────────────────────────────┼──────────┼───────────┼───────────┼────────┼─────────┼─────────┼────────────────────┤
+│ 5   │ Shopee/TikTok Shop VN Domestic       │ $50-200  │ $0.2-1.5K │ $2-5K     │ HIGH   │ ★★★     │ PARTIAL │ labor→brand        │
+├─────┼──────────────────────────────────────┼──────────┼───────────┼───────────┼────────┼─────────┼─────────┼────────────────────┤
+│ 6   │ B2B Trade Intelligence Newsletter    │ $0       │ $0.5-0.8K │ $5-8K     │ HIGH   │ ★★      │ PARTIAL │ labor→media        │
+├─────┼──────────────────────────────────────┼──────────┼───────────┼───────────┼────────┼─────────┼─────────┼────────────────────┤
+│ 7   │ Cold Email Infra Setup               │ $0       │ $1.5-3K   │ $4-8K     │ HIGH   │ ★★      │ PARTIAL │ labor→retainer     │
+├─────┼──────────────────────────────────────┼──────────┼───────────┼───────────┼────────┼─────────┼─────────┼────────────────────┤
+│ 8   │ n8n/Zapier Automation Consulting     │ $0       │ $2-4K     │ $5-8K     │ MOD    │ ★★      │ PARTIAL │ labor→template     │
+├─────┼──────────────────────────────────────┼──────────┼───────────┼───────────┼────────┼─────────┼─────────┼────────────────────┤
+│ 9   │ Etsy Digital Templates (Bilingual)   │ $0-5     │ $0.1-0.3K │ $2-5K     │ HIGH   │ ★★      │ PASS    │ labor→catalog      │
+├─────┼──────────────────────────────────────┼──────────┼───────────┼───────────┼────────┼─────────┼─────────┼────────────────────┤
+│ 10  │ CE/Regulatory Compliance Broker      │ $0-100   │ $0.8-1.2K │ $2.4-3.6K │ HIGH   │ ★★      │ PARTIAL │ knowledge→license  │
+├─────┼──────────────────────────────────────┼──────────┼───────────┼───────────┼────────┼─────────┼─────────┼────────────────────┤
+│ 11  │ Seasonal Agri Micro-Lot Arbitrage    │ $200-500 │ $0.5-0.8K │ $2-3K     │ V.HIGH │ ★★★     │ FAIL    │ capital_turns      │
+├─────┼──────────────────────────────────────┼──────────┼───────────┼───────────┼────────┼─────────┼─────────┼────────────────────┤
+│ 12  │ B2B Data/Research Reports (VN Intel) │ $0-200   │ $0.5-1K   │ $2-5K     │ HIGH   │ ★★      │ PARTIAL │ labor→subscription │
+└─────┴──────────────────────────────────────┴──────────┴───────────┴───────────┴────────┴─────────┴─────────┴────────────────────┘
+
+---
+MOUNTAIN TEST RESULTS (Q3-Q5)
+
+┌────────────────────┬───────────────────────────┬──────────────────────────────┬─────────────────────┬──────────────────┐
+│       Model        │     Q3-LINDY (≥50yr)      │     Q4-SLEEP (passive?)      │ Q5-LEVERAGE (Naval) │    Mountain?     │
+├────────────────────┼───────────────────────────┼──────────────────────────────┼─────────────────────┼──────────────────┤
+│ Industrial Dist    │ YES (trade=centuries)     │ NO (active mgmt)             │ Labor→System        │ NO — SIDE_HUSTLE │
+├────────────────────┼───────────────────────────┼──────────────────────────────┼─────────────────────┼──────────────────┤
+│ Translation Agency │ YES (2000+ years)         │ PARTIAL (subcontractors)     │ Labor→Agency        │ CONDITIONAL      │
+├────────────────────┼───────────────────────────┼──────────────────────────────┼─────────────────────┼──────────────────┤
+│ EUDR DDS           │ NO (regulation=2023)      │ PARTIAL (repeat clients)     │ Knowledge→Template  │ NO — TIME WINDOW │
+├────────────────────┼───────────────────────────┼──────────────────────────────┼─────────────────────┼──────────────────┤
+│ Micro-Sourcing     │ YES (200+ years)          │ PARTIAL (seasonal)           │ Labor→Platform      │ CONDITIONAL      │
+├────────────────────┼───────────────────────────┼──────────────────────────────┼─────────────────────┼──────────────────┤
+│ TikTok/Shopee      │ YES (trade=centuries)     │ NO (content required)        │ Labor→Brand         │ NO — SIDE_HUSTLE │
+├────────────────────┼───────────────────────────┼──────────────────────────────┼─────────────────────┼──────────────────┤
+│ Newsletter         │ YES (50+ years)           │ PARTIAL (needs weekly issue) │ Media→Platform      │ CONDITIONAL      │
+├────────────────────┼───────────────────────────┼──────────────────────────────┼─────────────────────┼──────────────────┤
+│ Cold Email Setup   │ YES (email=30yr)          │ PARTIAL (retainers)          │ Labor→Retainer      │ NO — SIDE_HUSTLE │
+├────────────────────┼───────────────────────────┼──────────────────────────────┼─────────────────────┼──────────────────┤
+│ Automation Consult │ NO (no-code=5yr)          │ PARTIAL (retainers)          │ Labor→Template      │ NO — SIDE_HUSTLE │
+├────────────────────┼───────────────────────────┼──────────────────────────────┼─────────────────────┼──────────────────┤
+│ Etsy Templates     │ YES (20+ years)           │ YES (auto-delivery)          │ Catalog→Passive     │ BEST SLEEP SCORE │
+├────────────────────┼───────────────────────────┼──────────────────────────────┼─────────────────────┼──────────────────┤
+│ CE Broker          │ YES (regulations=decades) │ PARTIAL (repeat)             │ Knowledge→License   │ CONDITIONAL      │
+├────────────────────┼───────────────────────────┼──────────────────────────────┼─────────────────────┼──────────────────┤
+│ Agri Arbitrage     │ YES (centuries)           │ NO (seasonal labor)          │ Capital Turns       │ NO — SIDE_HUSTLE │
+├────────────────────┼───────────────────────────┼──────────────────────────────┼─────────────────────┼──────────────────┤
+│ B2B Data Reports   │ YES (decades)             │ PARTIAL (subscription)       │ Labor→Subscription  │ CONDITIONAL      │
+└────────────────────┴───────────────────────────┴──────────────────────────────┴─────────────────────┴──────────────────┘
+
+No single model passes Mountain ($10K/mo NET in ≤12mo) at $0-500 capital. The staircase approach — stacking 2-3 models — is the only viable path to $10K+.
+
+---
+THE STAIRCASE (recommended sequence)
+
+Phase 1 — CASH SEED (Day 1-30): Pick ONE
+
+Fastest cash: Model 7 (Cold Email Setup) or Model 8 (Automation Consulting) — first $500-1,000 within 14-21 days via Upwork. Pure labor, high probability.
+
+Strongest VN edge: Model 5 (TikTok/Shopee domestic) — first VND within 7-14 days. Lowest friction for Vietnamese founder.
+
+Phase 2 — COMPOUND ASSET (Day 31-90): Add ONE passive builder
+
+Model 9 (Etsy Templates) — only model that PASSES sleep test. 1 hour/day alongside Phase 1. Revenue starts month 3-6 but becomes permanent.
+
+OR Model 6 (Newsletter) — slower start but highest long-term value. 41 paid subscribers at $49 = $2K/mo. Audience is permanently yours.
+
+Phase 3 — LOCATION MOAT (Month 4-12): Add ONE Vietnam-specific
+
+Model 2 (Translation Agency) — Lindy 2000+ years. AI cannot replace legal/notarized documents. Structurally impossible for non-Vietnamese competitor.
+
+Model 3 (EUDR DDS Prep) — 2-4 year first-mover window. Regulatory demand is CREATED, not discovered. Once you're known, referral flywheel spins.
+
+Model 4 (Micro-Sourcing Agent) — highest ceiling ($5-15K/mo at 12mo). Requires physical factory visits = non-replicable from overseas.
+
+End State (Month 12, realistic):
+
+- Phase 1 model: $3-5K/mo (active, retainer-ized)
+- Phase 2 model: $1-2K/mo (semi-passive)
+- Phase 3 model: $2-5K/mo (location-moated)
+- Total: $6-12K/mo from 3 stacked models
+
+---
+KILL CRITERIA (monitor monthly)
+
+┌────────────────────────┬──────────────────────────────────────────┬────────────────────────────────────────────────┐
+│         Signal         │                 Trigger                  │                     Action                     │
+├────────────────────────┼──────────────────────────────────────────┼────────────────────────────────────────────────┤
+│ Cash flow gap          │ Revenue < 3× monthly expenses at month 6 │ KILL weakest model, double down on strongest   │
+├────────────────────────┼──────────────────────────────────────────┼────────────────────────────────────────────────┤
+│ Platform dependency    │ >60% revenue from 1 platform             │ Diversify within 30 days                       │
+├────────────────────────┼──────────────────────────────────────────┼────────────────────────────────────────────────┤
+│ AI commoditization     │ AI tool replaces >70% of your service    │ Pivot upmarket to strategy/QA layer            │
+├────────────────────────┼──────────────────────────────────────────┼────────────────────────────────────────────────┤
+│ EUDR enforcement delay │ EU pushes beyond 2027                    │ KILL Model 3, reallocate to Model 2/4          │
+├────────────────────────┼──────────────────────────────────────────┼────────────────────────────────────────────────┤
+│ Etsy algo change       │ <10 sales after 6 months + 50 listings   │ KILL Etsy, pivot to Gumroad direct             │
+├────────────────────────┼──────────────────────────────────────────┼────────────────────────────────────────────────┤
+│ Factory direct selling │ Key suppliers adopt Alibaba Gold         │ KILL Model 4 for that supplier, find new niche │
+└────────────────────────┴──────────────────────────────────────────┴────────────────────────────────────────────────┘
+
+---
+CONTRARIAN SIGNALS (from VN forums)
+
+- "99% mmo là cần vốn" (BaoChuong, voz.vn) — most online money methods require capital despite claims. Models 1-4 and 6-9 above genuinely require $0-200.
+- "cái gì public ra thì đã nát hết" (itachi247, voz.vn) — anything publicly shared is already saturated. This is why location-moated models (Translation, Sourcing, EUDR) outperform generic internet models — they require physical Vietnam presence, not just a tutorial.
+- Consulting→product bridge validated across IH and VOZ: use service revenue to fund compound asset. This IS the staircase.
+- Affiliate outlier (Afamily case): expected 10-15M VND/mo, hit 35M VND month 1, 110M VND peak — but P50 is near $0. Power law is brutal.
+
+---
+WHAT THIS VERDICT IS NOT
+
+This is not Mountain. No $0-500 capital model reaches $10K/mo NET within 12 months with high probability. Anyone claiming otherwise is selling a course.
+
+This IS a staircase from $0 to $6-12K/mo in 12 months via 3 stacked models with progressive leverage upgrades. The compound effect kicks in at month 6-9 when Phase 2 assets start generating passive revenue and Phase 3 location moats make you non-replaceable.
+
+---
+Agents fired: 5 Wave 1 (failure-archaeologist, market-reality-checker, contrarian-research-agent, zero-to-cash-architect, deep-comment-miner) + 12 WebSearches
+Persistence: PASS 6/6 (case, verdict, memory, KG entities, KG index, consolidation log)
+Next: Pick Phase 1 model → run /stage0 <specific model> for instance-level deep dive with named buyers/suppliers/prices

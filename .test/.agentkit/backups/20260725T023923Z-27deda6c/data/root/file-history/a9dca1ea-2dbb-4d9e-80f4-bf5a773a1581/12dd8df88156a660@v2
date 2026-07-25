@@ -1,0 +1,229 @@
+"""
+knob_registry.py — Read/write/validate mechanism knobs.
+
+The KnobRegistry is the single interface for all mechanism knob operations.
+Meta-edit controller modifies knobs through this class (with safety validation).
+Stage0 reads knobs through this class at Step 0.5.
+
+Usage:
+    registry = KnobRegistry()
+    threshold = registry.get("mountain_threshold_monthly")
+    registry.set("mountain_threshold_monthly", 8000,
+                 reason="meta-edit: 4 errors attributed", source="meta_edit_controller")
+    snapshot = registry.snapshot()  # for prompt injection
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
+
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+_DEFAULT_KNOBS_PATH = _REPO_ROOT / "data" / "config" / "mechanism-knobs.json"
+_DEFAULT_HISTORY_PATH = _REPO_ROOT / "data" / "config" / "mechanism-knobs-history.jsonl"
+
+
+class KnobValidationError(Exception):
+    pass
+
+
+class SafetyViolationError(Exception):
+    def __init__(self, violations: list):
+        self.violations = violations
+        super().__init__(f"Safety violation: {[v['type'] for v in violations]}")
+
+
+class KnobRegistry:
+    def __init__(
+        self,
+        knobs_path: Optional[Path] = None,
+        history_path: Optional[Path] = None,
+    ):
+        self.knobs_path = Path(knobs_path or _DEFAULT_KNOBS_PATH)
+        self.history_path = Path(history_path or _DEFAULT_HISTORY_PATH)
+        self._data = self._load()
+        self._defaults = self._extract_defaults()
+
+    def get(self, knob_id: str, fallback: Any = None) -> Any:
+        """Get current knob value. Falls back to default if knob missing."""
+        knob = self._data.get("knobs", {}).get(knob_id)
+        if knob is None:
+            if fallback is not None:
+                return fallback
+            default = self._defaults.get(knob_id)
+            if default is not None:
+                return default
+            raise KeyError(f"Unknown knob: {knob_id}")
+        return knob["value"]
+
+    def get_meta(self, knob_id: str) -> dict:
+        """Get full knob metadata (value, type, range, category, etc.)."""
+        knob = self._data.get("knobs", {}).get(knob_id)
+        if knob is None:
+            raise KeyError(f"Unknown knob: {knob_id}")
+        return knob.copy()
+
+    def get_range(self, knob_id: str) -> tuple:
+        """Get (min, max) range for a knob."""
+        meta = self.get_meta(knob_id)
+        r = meta.get("range", [None, None])
+        return (r[0], r[1])
+
+    def set(
+        self,
+        knob_id: str,
+        value: Any,
+        reason: str,
+        source: str = "manual",
+    ) -> dict:
+        """
+        Set knob value with validation and audit trail.
+
+        Args:
+            knob_id: Knob identifier
+            value: New value
+            reason: Human-readable reason for change
+            source: Who made the change (meta_edit_controller, manual, etc.)
+
+        Returns:
+            dict with old_value, new_value, timestamp
+
+        Raises:
+            KnobValidationError: if value fails type/range check
+            SafetyViolationError: if safety harness blocks the edit
+        """
+        if knob_id not in self._data.get("knobs", {}):
+            raise KeyError(f"Unknown knob: {knob_id}")
+
+        old_value = self._data["knobs"][knob_id]["value"]
+
+        if not self.validate(knob_id, value):
+            raise KnobValidationError(
+                f"Invalid value {value} for {knob_id} "
+                f"(type={self._data['knobs'][knob_id]['type']}, "
+                f"range={self._data['knobs'][knob_id]['range']})"
+            )
+
+        self._data["knobs"][knob_id]["value"] = value
+        self._save()
+
+        record = {
+            "knob_id": knob_id,
+            "old_value": old_value,
+            "new_value": value,
+            "reason": reason,
+            "source": source,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        self._append_history(record)
+
+        logger.info("Knob %s: %s → %s (source=%s)", knob_id, old_value, value, source)
+        return record
+
+    def validate(self, knob_id: str, value: Any) -> bool:
+        """Check value against type and range constraints."""
+        knob = self._data.get("knobs", {}).get(knob_id)
+        if knob is None:
+            return False
+
+        knob_type = knob.get("type", "float")
+        knob_range = knob.get("range")
+
+        if knob_type == "int":
+            if not isinstance(value, int):
+                try:
+                    value = int(value)
+                except (ValueError, TypeError):
+                    return False
+        elif knob_type == "float":
+            if not isinstance(value, (int, float)):
+                try:
+                    value = float(value)
+                except (ValueError, TypeError):
+                    return False
+
+        if knob_range and len(knob_range) == 2:
+            min_val, max_val = knob_range
+            if min_val is not None and value < min_val:
+                return False
+            if max_val is not None and value > max_val:
+                return False
+
+        return True
+
+    def history(self, knob_id: Optional[str] = None, n: int = 10) -> list[dict]:
+        """Get last N changes. Filter by knob_id if provided."""
+        if not self.history_path.exists():
+            return []
+
+        records = []
+        for line in self.history_path.read_text(encoding="utf-8").strip().split("\n"):
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+                if knob_id is None or record.get("knob_id") == knob_id:
+                    records.append(record)
+            except json.JSONDecodeError:
+                continue
+
+        return records[-n:]
+
+    def snapshot(self) -> dict:
+        """Full knob state for injection into agent prompts."""
+        result = {}
+        for knob_id, meta in self._data.get("knobs", {}).items():
+            result[knob_id] = meta["value"]
+        return result
+
+    def snapshot_markdown(self) -> str:
+        """Markdown-formatted knob state for prompt injection."""
+        lines = ["## MECHANISM_KNOBS (auto-loaded, meta-editable)"]
+        for knob_id, meta in self._data.get("knobs", {}).items():
+            lines.append(f"- {knob_id}: {meta['value']} ({meta.get('unit', '')})")
+        return "\n".join(lines)
+
+    def list_knobs(self, category: Optional[str] = None) -> list[str]:
+        """List all knob IDs, optionally filtered by category."""
+        knobs = self._data.get("knobs", {})
+        if category:
+            return [k for k, v in knobs.items() if v.get("category") == category]
+        return list(knobs.keys())
+
+    def version(self) -> int:
+        """Get knobs file version."""
+        return self._data.get("version", 0)
+
+    def _load(self) -> dict:
+        """Load knobs from JSON file. Returns defaults on missing/corrupt file."""
+        if not self.knobs_path.exists():
+            logger.warning("Knobs file not found at %s, using empty defaults", self.knobs_path)
+            return {"version": 0, "knobs": {}}
+        try:
+            with open(self.knobs_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return data
+        except (json.JSONDecodeError, OSError) as e:
+            logger.error("Failed to load knobs: %s", e)
+            return {"version": 0, "knobs": {}}
+
+    def _save(self):
+        """Write knobs to JSON file."""
+        self.knobs_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.knobs_path, "w", encoding="utf-8") as f:
+            json.dump(self._data, f, indent=2, ensure_ascii=False)
+
+    def _append_history(self, record: dict):
+        """Append change record to history JSONL."""
+        self.history_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.history_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    def _extract_defaults(self) -> dict:
+        """Extract default values from loaded knobs (snapshot at load time)."""
+        return {k: v["value"] for k, v in self._data.get("knobs", {}).items()}

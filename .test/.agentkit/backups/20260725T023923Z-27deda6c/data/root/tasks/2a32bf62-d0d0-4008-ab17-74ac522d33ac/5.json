@@ -1,0 +1,19 @@
+{
+  "id": "5",
+  "subject": "Phase 5: Compliance Export Engine",
+  "description": "Generate SLSA attestation, CycloneDX AI-BOM, SOC 2 evidence, EU AI Act transparency reports. `codeflow audit` CLI. Target: 1.5 weeks.",
+  "status": "pending",
+  "blocks": [
+    "6"
+  ],
+  "blockedBy": [
+    "3",
+    "4"
+  ],
+  "metadata": {
+    "phase": 5,
+    "effort": "1.5w",
+    "planDir": "plans/260603-codeflow-ai-cost-intelligence-engine",
+    "phaseFile": "phase-05-compliance-export-engine.md"
+  }
+}

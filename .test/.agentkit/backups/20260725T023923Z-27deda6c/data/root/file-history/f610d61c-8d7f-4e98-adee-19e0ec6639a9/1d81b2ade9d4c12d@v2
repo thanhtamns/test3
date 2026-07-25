@@ -1,0 +1,100 @@
+# Cognitive System Architecture
+
+**Status:** Phase 6 integrated — parallel-run with legacy `data/training/` (2026-04-11 → 2026-04-25 cutover window).
+
+Brain-inspired 7-layer knowledge system replacing flat markdown retrieval. Built on Cognee (Kuzu graph + LanceDB vectors) with custom Bayesian + Hebbian layers.
+
+## 7-Layer Stack
+
+| Layer | Role | Store | Script dir |
+|-------|------|-------|------------|
+| L1 Ingest | .md/.json → chunked nodes | `custom/chunks.db`, `custom/ingest_manifest.jsonl` | `scripts/ingest/` |
+| L2 Cognee Store | Graph + vector indexing | `cognee_store/system/databases/` | (Cognee) |
+| L3 Bayesian | Beta(α,β) confidence per node | `custom/bayesian.db` | `scripts/primitives/bayesian_confidence.py` |
+| L4 Hebbian | Edge co-activation boost | `custom/hebbian-edges.db`, `custom/boost-log.db` | `scripts/primitives/hebbian_coactivation.py` |
+| L4b Inhibition | Lateral inhibition (winner-takes-all) | (in-memory, post-retrieval) | `scripts/primitives/lateral_inhibition.py` |
+| L4c Salience | Emotional/financial magnitude weighting | (computed per-event) | `scripts/primitives/salience_weighter.py` |
+| L4d Surprise | Prediction-error-driven exploration | `custom/surprise-explorations.db` | `scripts/primitives/surprise_exploration.py` |
+| L5 Retrieve | System1 reflex + System2 spread | (in-memory caches + stores above) | `scripts/retrieve/` |
+| L6 HITL | Pending queue → approve/reject | `custom/pending-queue.jsonl`, `custom/approved-log.jsonl`, `custom/rejected-log.jsonl` | `scripts/hitl/` |
+| L7 Metacognition | Consolidation, gap detection, curiosity | `custom/gap-map.json`, `custom/consolidation-log.jsonl`, `custom/merge-groups.db` | `scripts/metacognition/`, `scripts/consolidate/` |
+
+## Data Flow — stage0 Runtime
+
+```
+Session start
+  └─ cognitive-session-init.cjs  → validates stores, warms reflex cache
+  └─ cognitive-consolidation-cron.cjs  → 12h / 50-item gate check
+
+/stage0 analyze @subject
+  ├─ Step 3.5.0
+  │    ├─ cognitive_retrieve.py (PRIMARY) → /tmp/cognitive-context-<case_id>.json
+  │    └─ legacy corpus cat (FALLBACK)    → context chunks
+  ├─ Steps 4-6 use retrieved rules/models/archetypes as priors
+  ├─ Step 7 verdict cites fired nodes from cognitive context
+  ├─ Step 9.5
+  │    ├─ schema-accumulator → data/schemas/registry.json
+  │    ├─ knowledge-graph-curator → data/knowledge-graph/
+  │    └─ inference-capture.py → pending-queue.jsonl
+  └─ Session end
+       └─ cognitive-review-pending.py --interactive (async, user-driven)
+            ├─ approve → approval-workflow.py → Cognee node + Beta(2,1) prior
+            └─ reject  → rejected-log.jsonl → rejected-meta-learner.py
+```
+
+## Retrieval — Dual-Process Model
+
+- **System 1 (reflex):** `system1_cache.py` + `reflex_cache.py` — cached top-N results for recurring queries. Sub-millisecond return.
+- **System 2 (spreading activation):** `spreading_activation.py` — graph traversal with Hebbian edge weights + Bayesian confidence rerank.
+- **Router:** `dual_process_router.py` chooses mode=auto based on query novelty + cache hit. Manual override: `--mode system1|system2`.
+- **Rerank:** `confidence_reranker.py` applies Beta posterior + hebbian_boost to candidate set.
+
+## Anti-Forget Guarantees
+
+1. **Dual storage:** `data/training/*.md` preserved forever as human-readable source of truth. `data/cognitive/` is the indexed retrieval layer.
+2. **Anti-forget policy:** `anti_forget_policy.py` prevents consolidation from merging nodes below `evidence_count < 3` or `age_days < 7`.
+3. **Archive-only deletion:** `archive-log.jsonl` + `archive-index.db` — nodes move to archive; no true delete.
+4. **Error magnitude learning:** `error_magnitude_learning.py` — Bayesian updates weighted by prediction error size, not just binary correct/wrong.
+
+## HITL Loop
+
+1. `inference-capture.py --stdin-batch` — enqueue new inferences from stage0 analysis
+2. `pending-store.py` — backing store (JSONL append)
+3. `cognitive-review-pending.py --interactive` — user triage CLI (approve/reject/skip/defer)
+4. `approval-workflow.py` — approved → Cognee node write + Beta(2,1) initialization + Hebbian edge bootstrap
+5. `rejected-meta-learner.py` — pattern-mines rejection reasons → feeds gap-map
+
+## Metacognition
+
+- **Gap map** (`gap-map.py`): identifies underrepresented domains, triggers curiosity queries
+- **Confidence audit** (`confidence-audit.py`): flags over/underconfident nodes for review
+- **Curiosity trigger** (`curiosity-trigger.py`): surfaces questions the system can't yet answer
+
+## Consolidation
+
+Fired on: (a) 12h elapsed since last run, OR (b) 50+ new items ingested, OR (c) manual force.
+
+Pipeline:
+1. `chunking-engine.py` — rechunk updated sources
+2. `merge-duplicates.py` — cosine ≥ 0.85 + same domain → merge into existing node, bump evidence_count
+3. `strengthen-reinforced.py` — boost Beta α for high-hit nodes, decay α-β for stale
+4. `cognitive-consolidate.py` — orchestrator (called by cron hook)
+
+## Operational Metrics
+
+Tracked in `docs/latency-profile.json` + `docs/phase3-benchmark.json`:
+- Retrieve p50/p95/p99 (system1 + system2)
+- Cache hit ratio
+- HITL throughput (approve/reject/skip rates)
+- Consolidation run duration + merges per run
+
+## Key Files
+
+- Index: `data/cognitive/INDEX.json`
+- Migration runbook: `data/cognitive/docs/migration.md`
+- API reference: `data/cognitive/docs/api-reference.md`
+- Phase reports: `data/cognitive/docs/phase0-*`, `phase1-*`, `phase3-*`
+
+## Replaces
+
+`data/training/INDEX.json` + ad-hoc `cat` loads in stage0 Step 3.5.0. Legacy files kept in parallel-run fallback role until cutover criteria met (retrieval precision ≥ 0.80, parallel overlap ≥ 0.90, 5+ HITL round-trips, user approval).

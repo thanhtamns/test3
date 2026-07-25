@@ -1,0 +1,130 @@
+---
+phase: 5
+title: "Iterate & Data Compound"
+status: pending
+priority: P2
+effort: "15h (Week 6-8)"
+dependencies: [4]
+---
+
+# Phase 5: Iterate & Data Compound
+
+## Overview
+
+Post-launch iteration based on real user feedback + start building data compound advantage. Every analysis the tool performs generates data that makes the tool smarter. This is where infrastructure×code transitions toward data_intelligence×data.
+
+## Requirements
+
+- Functional: Improve matching quality based on user feedback. Start tracking which recommendations ACTUALLY work.
+- Non-functional: Data pipeline automated. No manual data entry.
+
+## Implementation Steps
+
+### Week 6: Feedback-Driven Iteration (5h)
+
+1. **Categorize user feedback:**
+   - Feature requests → prioritize by frequency
+   - Bug reports → fix immediately
+   - "It recommended wrong channel" → improve matching
+
+2. **Top iteration priorities (from case studies):**
+
+   | Likely feedback | Fix |
+   |----------------|-----|
+   | "Channels too generic" | Add niche-specific channels (50 per user-requested niche) |
+   | "Scripts sound AI-generated" | Improve prompts with real successful post examples |
+   | "I tried the channel, didn't work" | Add OUTCOME TRACKING (see Step 4) |
+   | "Need more channels per category" | Expand DB from 500 → 1000 entries |
+   | "Can I save/export results?" | Add PDF export + email delivery |
+
+3. **Implement top 3 fixes** (based on actual feedback, not assumed)
+
+### Week 7: Outcome Tracking — THE COMPOUND ENGINE (5h)
+
+4. **Add outcome feedback loop:**
+   ```
+   After user gets distribution plan:
+   → 7 days later: email "Did you try any channels? How did it go?"
+   → User reports: "Posted on r/SideProject → 50 clicks, 3 signups"
+   → We store: channel × product_category × outcome
+   → Next user with similar product → smarter recommendations
+   ```
+
+5. **Database schema for outcomes:**
+   ```sql
+   CREATE TABLE outcomes (
+     id TEXT PRIMARY KEY,
+     analysis_id TEXT REFERENCES analyses(id),
+     channel_id TEXT,
+     action_taken BOOLEAN,
+     impressions INTEGER,
+     clicks INTEGER,
+     signups INTEGER,
+     revenue_attributed DECIMAL,
+     user_rating INTEGER, -- 1-5
+     notes TEXT,
+     reported_at DATETIME
+   );
+   ```
+
+6. **Feedback email automation (Resend):**
+   - Trigger: 7 days after analysis
+   - Template: "Quick check — did any of our recommendations work?"
+   - Include: list of channels recommended, 1-click rating per channel
+   - Store responses automatically
+
+### Week 8: Data Intelligence Layer (5h)
+
+7. **Build internal analytics dashboard:**
+   - Which channels convert best for which product types?
+   - Average click-through by platform × category
+   - Best posting times (from outcome data)
+   - "Rising" channels (new communities gaining traction)
+
+8. **Use data to improve matching:**
+   ```
+   V1: keyword matching (Phase 2)
+   V2: AI-powered matching (Phase 3)
+   V3: DATA-DRIVEN matching (Phase 5) ← HERE
+   
+   Score = (AI_relevance × 0.3) + (historical_conversion × 0.5) + (commercial_tolerance × 0.2)
+   ```
+   When historical_conversion data exists, it outweighs AI guessing.
+
+9. **Compound flywheel:**
+   ```
+   More users → more analyses → more outcome data
+     → better recommendations → higher conversion
+     → more word-of-mouth → more users
+     → REPEAT (this is the antifragile loop)
+   ```
+
+## Metrics Dashboard
+
+| Metric | Week 6 Target | Week 8 Target |
+|--------|---------------|---------------|
+| Active users | 20+ | 50+ |
+| Paid users | 5+ | 10+ |
+| MRR | $50-100 | $100-200 |
+| Analyses performed | 100+ | 300+ |
+| Outcome reports received | 10+ | 30+ |
+| Channel DB size | 500 → 750 | 750 → 1000 |
+| Matching accuracy (user rating) | 6/10 | 7.5/10 |
+
+## Success Criteria
+
+- [ ] Top 3 user-requested improvements shipped
+- [ ] Outcome tracking email automation live
+- [ ] 10+ outcome data points collected
+- [ ] Matching algorithm upgraded to V3 (data-driven)
+- [ ] Internal analytics dashboard functional
+- [ ] MRR >$100
+- [ ] Channel DB expanded to 750+ entries
+
+## Risk Assessment
+
+| Risk | Probability | Mitigation |
+|------|-------------|------------|
+| Users don't respond to outcome emails | 40% | Make it 1-click (emoji rating); offer extended free trial for feedback |
+| Not enough data for V3 matching | 35% | Keep V2 as fallback; V3 activates per-channel when n>10 outcomes |
+| Growth stalls at <$200 MRR | 30% | This is normal for Month 2. Focus on quality, not growth |

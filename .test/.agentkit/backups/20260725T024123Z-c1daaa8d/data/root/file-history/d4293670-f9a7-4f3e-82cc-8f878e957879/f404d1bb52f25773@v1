@@ -1,0 +1,132 @@
+---
+phase: 3
+title: "Budget Governance + Policy Engine"
+status: pending
+priority: P2
+effort: "1.5w"
+dependencies: [2]
+---
+
+# Phase 3: Budget Governance + Policy Engine
+
+## Overview
+
+Real-time budget enforcement in PreToolUse hooks. Policy engine evaluates per-dev, per-project, per-team spending limits and can warn or block tool calls that exceed budget. Model downgrade is NOT supported (hook protocol has no model_id in response).
+
+## Requirements
+
+- Functional: TOML-based policy definitions (per-dev, per-project, per-team limits); PreToolUse budget check (warn/block only — no downgrade); alert webhooks on threshold breach; `codeflow budget` CLI for status/policy management
+- Non-functional: policy evaluation <2ms; fail-open if policy engine errors; policies hot-reloadable without restart
+
+## Architecture
+
+**Critical constraints (from red-team):**
+1. Hooks are opt-in — developer can remove hook from settings → budget enforcement disappears. This is an inherent local-first limitation. Real enforcement requires API key proxy (future cloud phase).
+2. Hook protocol does NOT support model_id in response — Downgrade verdict is impossible. Verdicts are Warn or Block only.
+
+```
+PreToolUse hook → read accumulated cost for {dev, project} from tracking.db
+    ↓
+PolicyEngine.evaluate(context) → Verdict { Allow | Warn(msg) | Block(reason) }
+    ↓
+If Block → return error JSON to agent (tool call rejected)
+If Warn → log warning to stderr, allow tool call
+    ↓
+GovernanceEvent { policy_id, action, reason, budget_remaining, developer_id }
+    ↓
+Protobuf EVENT_TYPE_GOVERNANCE → queued for export
+```
+
+## Related Code Files
+
+- Modify: `src/hooks/hook_cmd.rs` — add budget check in PreToolUse before command rewrite
+- Modify: `src/core/tracking.rs` — add query for accumulated cost by dev/project/team/period
+- Modify: `src/main.rs` — add `budget` subcommand
+- Create: `src/core/budget_policy.rs` — policy engine: load, evaluate, verdicts
+- Create: `src/cmds/budget_cmd.rs` — `codeflow budget` CLI
+- Create: `data/budget-policy-example.toml` — example policy file
+
+## Implementation Steps
+
+1. **Define policy schema in `data/budget-policy-example.toml`**
+   ```toml
+   [global]
+   period = "monthly"
+   warn_at_pct = 75
+   block_at_pct = 100
+
+   [[limits]]
+   scope = "developer"
+   id = "*"
+   max_usd = 500.0
+   action_on_exceed = "warn"
+
+   [[limits]]
+   scope = "project"
+   id = "frontend-app"
+   max_usd = 2000.0
+   action_on_exceed = "warn"
+
+   [[limits]]
+   scope = "team"
+   id = "platform"
+   max_usd = 10000.0
+   action_on_exceed = "block"
+   ```
+
+2. **Create `src/core/budget_policy.rs`**
+   - `struct PolicyConfig` — deserialized from TOML
+   - `struct PolicyEngine` — loads config, caches accumulated costs
+   - `enum Verdict { Allow, Warn(String), Block(String) }` — NO Downgrade (hook protocol doesn't support model_id in response)
+   - `fn evaluate(&self, dev_id: &str, project: &str, team: &str) -> Verdict`
+   - Load policy from: project `.codeflow/budget.toml` → user `~/.config/rtk/budget.toml` → bundled default
+   - Accumulated cost query: sum cost_records WHERE scope AND period
+
+3. **Extend PreToolUse in `src/hooks/hook_cmd.rs`**
+   - Before command rewrite: run PolicyEngine.evaluate()
+   - If Block: return JSON error `{"error": "budget_exceeded", ...}`
+   - If Warn: write warning to stderr, continue
+   - Fail-open on any error
+   - **NOTE:** each hook invocation is a separate OS process — PolicyEngine must load config + query DB fresh each time. Keep fast (<2ms budget).
+
+4. **Extend `src/core/tracking.rs`**
+   - `fn accumulated_cost(&self, scope: Scope, id: &str, period: Period) -> f64`
+   - Index on (scope, period_start) for performance
+
+5. **Create `src/cmds/budget_cmd.rs`**
+   - `codeflow budget status` — current spend vs limits for all scopes
+   - `codeflow budget set --scope dev --id alice --max 500` — quick policy update
+   - `codeflow budget history` — spending trend with budget overlay
+   - `codeflow budget alert --webhook <url>` — configure alert endpoint
+
+6. **Alert system**
+   - On threshold breach: POST to webhook URL with JSON payload
+   - Use `ureq` (already in deps) for HTTP POST
+   - Fire-and-forget: don't block hook on webhook delivery
+
+7. **Wire into main.rs** — add `Budget` variant to Commands enum
+
+8. **Tests**
+   - Unit: policy parsing (valid/invalid TOML), verdict evaluation (under/warn/over)
+   - Integration: mock PreToolUse with accumulated cost → verify block/downgrade/warn
+   - CLI: `codeflow budget status` with fixture policies
+   - 10+ new tests
+
+## Success Criteria
+
+- [ ] Policy TOML parsed correctly with per-dev, per-project, per-team limits
+- [ ] PreToolUse blocks tool call when budget exceeded (block action)
+- [ ] ~~PreToolUse downgrades model~~ REMOVED — hook protocol doesn't support model_id in response
+- [ ] `codeflow budget status` shows current spend vs limits
+- [ ] Webhook alerts fire on threshold breach
+- [ ] Fail-open: policy engine error → tool call proceeds with warning
+- [ ] 10+ new tests
+
+## Risk Assessment
+
+| Risk | Severity | Mitigation |
+|------|----------|------------|
+| Blocking tool calls frustrates developers | HIGH | Default to warn-only; block requires explicit opt-in |
+| Model downgrade impossible | N/A | REMOVED — hook protocol has no model_id field in response |
+| Budget enforcement bypassable (hooks are opt-in) | HIGH | Document as local-first limitation; real enforcement needs API key proxy (future cloud) |
+| Cost accumulation query slow with large DB | LOW | Index on (scope, period_start) |

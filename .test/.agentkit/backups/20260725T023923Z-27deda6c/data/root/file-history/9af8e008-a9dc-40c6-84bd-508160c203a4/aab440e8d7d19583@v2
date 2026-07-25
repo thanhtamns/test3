@@ -1,0 +1,86 @@
+---
+phase: 5
+title: "Graph Engine Integration"
+status: pending
+priority: P2
+effort: "1-2d"
+dependencies: [1, 2, 3]
+---
+
+# Phase 5: Graph Engine Integration
+
+## Overview
+
+Modify the existing IntelligenceController + MoneyFlowGraph to support anomaly nodes and edges. Brain 1+2 outputs feed into the graph as special node types. HypothesisGenerator uses Brain outputs to create targeted hypotheses.
+
+## Requirements
+
+- Functional: anomaly node types in graph, anomaly edge types, hypothesis generation from Brain 1+2 outputs
+- Non-functional: existing 20/20 tests MUST still pass, graph serialization handles new node types
+
+## Architecture
+
+```
+MoneyFlowGraph (modified)
+  ├── Existing: GraphNode (PAYER|PROVIDER|BROKER|PLATFORM|REGULATOR|INTERMEDIARY)
+  ├── New node types: PRICE_DELTA | FORCED_FLOW | INTERSECTION
+  ├── Existing: GraphEdge (PAYS|REFERS|REGULATES|COMPETES|SUPPLIES)
+  ├── New edge types: CREATES_DEMAND | ENABLES_ARBITRAGE | FOUNDER_ACCESS
+  └── New: add_anomaly_node(), get_anomaly_nodes(), overlay export
+
+IntelligenceController (modified)
+  ├── New: accept Brain 1+2 outputs as seed data
+  ├── Modified: Seeder can be pre-seeded with anomaly entities
+  └── Modified: HypothesisGenerator generates from anomaly gaps
+```
+
+## Related Code Files
+
+- Modify: `.claude/lib/intelligence/controller/money_flow_graph.py` — add anomaly node/edge types
+- Modify: `.claude/lib/intelligence/controller/hypothesis_generator.py` — generate from Brain 1+2
+- Modify: `.claude/lib/intelligence/controller/seeder.py` — accept pre-seed data
+- Modify: `.claude/lib/intelligence/controller/intelligence_controller.py` — accept brain outputs
+- Modify: `.claude/lib/intelligence/controller/tests/test_intelligence_controller.py` — add new tests, keep existing passing
+
+## Implementation Steps
+
+1. Modify `money_flow_graph.py`:
+   - Add to `GraphNode.entity_type` valid values: `PRICE_DELTA`, `FORCED_FLOW`, `INTERSECTION`
+   - Add to `GraphEdge.flow_type` valid values: `CREATES_DEMAND`, `ENABLES_ARBITRAGE`, `FOUNDER_ACCESS`
+   - Add `add_anomaly_overlay(deltas: list[PriceDelta], flows: list[ForcedFlow])` method:
+     - Create nodes for each delta (product as entity, markets as connected nodes)
+     - Create nodes for each flow (regulation as entity, affected entities as connected)
+     - Create edges connecting deltas and flows where same market/industry
+   - Add `get_anomaly_nodes() -> list[GraphNode]` — filter by anomaly types
+   - Ensure `to_dict()` / `from_dict()` handles new types
+2. Modify `hypothesis_generator.py`:
+   - Add `_generate_from_anomalies(anomaly_nodes)` method
+   - For PRICE_DELTA nodes: generate hypotheses about bridge costs, middlemen, tariff changes
+   - For FORCED_FLOW nodes: generate hypotheses about provider capacity, compliance timelines
+3. Modify `seeder.py`:
+   - Add `pre_seed(entities: list[dict])` method to inject known entities before web search
+   - Brain 1+2 entities become seed data for the graph
+4. Modify `intelligence_controller.py`:
+   - Add `run_with_brains(brain1_output, brain2_output, ...)` method
+   - Pre-seed graph with brain outputs
+   - Run normal hypothesis loop but with enriched starting knowledge
+5. Run existing test suite — all 20 tests MUST pass
+6. Add new tests:
+   - `test_anomaly_node_creation`: delta → node with correct type
+   - `test_anomaly_edge_creation`: delta + flow in same market → CREATES_DEMAND edge
+   - `test_preseed`: pre-seeded entities appear in graph before first cycle
+   - `test_hypothesis_from_anomaly`: PRICE_DELTA node → bridge cost hypothesis
+   - `test_backward_compatibility`: existing graph operations unchanged
+
+## Success Criteria
+
+- [ ] Existing 20/20 IntelligenceController tests still pass
+- [ ] Anomaly nodes added to graph from Brain 1+2 outputs
+- [ ] Anomaly edges connect related deltas and flows
+- [ ] HypothesisGenerator creates targeted hypotheses from anomaly nodes
+- [ ] Graph serialization handles new types (to_dict/from_dict)
+- [ ] Pre-seeding doesn't break normal seeder flow
+
+## Risk Assessment
+
+- **Breaking existing tests:** Modifying core graph types could break serialization. Mitigation: add types as extensions (new valid values), not replacements. Run tests after each change.

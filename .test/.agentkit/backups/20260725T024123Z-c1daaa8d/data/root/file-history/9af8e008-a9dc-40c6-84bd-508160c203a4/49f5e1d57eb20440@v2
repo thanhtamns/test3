@@ -1,0 +1,299 @@
+"""E2E integration test: full /hunt v5 pipeline.
+Brain 1 → Brain 2 → Graph → Brain 3 → Store → compound run.
+Uses mock research/llm functions — no real web calls.
+"""
+
+import json
+import os
+import tempfile
+import pytest
+
+from intelligence.brains.models import PriceDelta, ForcedFlow, AnomalyCard, FounderProfile
+from intelligence.brains.price_delta_engine import PriceDeltaEngine
+from intelligence.brains.forced_flow_engine import ForcedFlowEngine
+from intelligence.brains.anomaly_crossref import AnomalyCrossReferencer
+from intelligence.controller.money_flow_graph import MoneyFlowGraph
+from intelligence.store.anomaly_store import AnomalyStore
+
+
+FOUNDER = FounderProfile(
+    industries=["coffee export", "agriculture"],
+    languages=["Vietnamese", "English"],
+    location="Dak Lak, Vietnam",
+    domain_expertise=["commodity trading", "export logistics"],
+    capital_range="$5K-$20K",
+)
+
+
+def _coffee_research(query: str) -> str:
+    q = query.lower()
+    if "vietnam" in q and "coffee" in q:
+        return "Vietnam Robusta coffee wholesale $2.50/kg FOB Ho Chi Minh 2026 grade 2 screen 13"
+    if "eu" in q and "coffee" in q:
+        return "EU Robusta coffee import CIF Rotterdam $4.20/kg 2026 certified sustainable"
+    if "japan" in q and "coffee" in q:
+        return "Japan coffee import $5.00/kg CIF Yokohama 2026 JAS organic premium"
+    if "pepper" in q and "vietnam" in q:
+        return "Vietnam black pepper $4.00/kg FOB 2026 ASTA grade"
+    if "pepper" in q and ("eu" in q or "us" in q):
+        return "Black pepper import EU $6.50/kg CIF 2026"
+    if "shipping" in q or "freight" in q or "bridge" in q:
+        return "Container shipping VN to EU ~$0.30/kg, tariff 7.5%, phyto cert $200/container"
+    if "regulation" in q and "eu" in q:
+        return "EU Deforestation Regulation (EUDR) effective 2025-12-30 all coffee importers must provide geolocation traceability"
+    if "regulation" in q and "japan" in q:
+        return "Japan Food Sanitation Act revision 2026 stricter pesticide residue limits for imported coffee beans"
+    if "compliance" in q and "eudr" in q:
+        return "EUDR compliance: traceability platforms Meridia, Farmer Connect cost $3000-8000/year. Gap: no VN-specific provider under $2000."
+    if "compliance" in q and "japan" in q:
+        return "JAS certification providers: SGS, Bureau Veritas. Gap: limited Vietnamese-speaking certification support."
+    return "No relevant data found."
+
+
+def _coffee_llm(prompt: str) -> str:
+    p = prompt.lower()
+    if "$2.50" in prompt:
+        return json.dumps({"product": "coffee", "price": 2.5, "currency": "USD", "unit": "kg", "source_url": "http://vn.example"})
+    if "$4.20" in prompt:
+        return json.dumps({"product": "coffee", "price": 4.2, "currency": "USD", "unit": "kg", "source_url": "http://eu.example"})
+    if "$5.00" in prompt:
+        return json.dumps({"product": "coffee", "price": 5.0, "currency": "USD", "unit": "kg", "source_url": "http://jp.example"})
+    if "$4.00" in prompt and "pepper" in p:
+        return json.dumps({"product": "pepper", "price": 4.0, "currency": "USD", "unit": "kg"})
+    if "$6.50" in prompt:
+        return json.dumps({"product": "pepper", "price": 6.5, "currency": "USD", "unit": "kg"})
+    if "eudr" in p or "deforestation" in p:
+        return json.dumps({
+            "regulation": "EUDR",
+            "jurisdiction": "EU",
+            "effective_date": "2025-12-30",
+            "who_must_comply": "coffee importers",
+            "entity_count_estimate": 12000,
+            "compliance_cost_per_entity": 5000,
+            "penalty": "product ban + fines",
+            "summary": "Geolocation traceability for deforestation-free supply chains",
+        })
+    if "japan" in p and ("sanitation" in p or "pesticide" in p):
+        return json.dumps({
+            "regulation": "Japan Food Sanitation Act revision",
+            "jurisdiction": "Japan",
+            "effective_date": "2026-09-01",
+            "who_must_comply": "food importers",
+            "entity_count_estimate": 8000,
+            "compliance_cost_per_entity": 3000,
+            "penalty": "import rejection",
+            "summary": "Stricter pesticide residue limits",
+        })
+    if "compliance" in p or "provider" in p:
+        return json.dumps({"providers": ["SGS", "Bureau Veritas"], "gap": "no VN-native provider"})
+    return json.dumps({"product": "unknown", "price": None})
+
+
+class TestFullPipeline:
+    """Exercises the complete hunt v5 flow end-to-end."""
+
+    def test_brain1_finds_deltas(self):
+        engine = PriceDeltaEngine(_coffee_research, _coffee_llm, max_calls=30, spread_threshold=30.0)
+        deltas = engine.scan(seed_products=["coffee", "pepper"], markets=["Vietnam", "EU", "Japan"], founder=FOUNDER)
+        assert len(deltas) >= 1
+        coffee_deltas = [d for d in deltas if d.product == "coffee"]
+        assert len(coffee_deltas) >= 1
+        d = coffee_deltas[0]
+        assert d.spread_pct > 30
+
+    def test_brain2_finds_flows(self):
+        engine = ForcedFlowEngine(_coffee_research, _coffee_llm, max_calls=30)
+        flows = engine.scan(geographies=["EU", "Japan"], industries=["agriculture", "food safety"], founder=FOUNDER)
+        assert len(flows) >= 1
+        eudr = [f for f in flows if "EUDR" in f.regulation]
+        assert len(eudr) >= 1
+        assert eudr[0].entity_count > 0
+
+    def test_full_pipeline_produces_cards(self):
+        engine1 = PriceDeltaEngine(_coffee_research, _coffee_llm, max_calls=30, spread_threshold=30.0)
+        deltas = engine1.scan(seed_products=["coffee"], markets=["Vietnam", "EU"], founder=FOUNDER)
+
+        engine2 = ForcedFlowEngine(_coffee_research, _coffee_llm, max_calls=30)
+        flows = engine2.scan(geographies=["EU"], industries=["agriculture"], founder=FOUNDER)
+
+        graph = MoneyFlowGraph()
+        graph.add_anomaly_overlay(
+            [d.to_dict() for d in deltas],
+            [f.to_dict() for f in flows],
+        )
+
+        xref = AnomalyCrossReferencer()
+        cards = xref.cross_reference(deltas, flows, FOUNDER)
+
+        assert len(cards) >= 1
+        top = cards[0]
+        assert top.anomaly_score > 0
+        assert top.founder_fit > 0
+        assert top.final_rank() > 0
+        assert top.position_type in ("BROKER", "ARBITRAGE", "INTELLIGENCE", "AGGREGATOR")
+        assert len(top.contacts) == 5
+        assert top.kill_criteria != ""
+
+    def test_graph_has_anomaly_nodes(self):
+        engine1 = PriceDeltaEngine(_coffee_research, _coffee_llm, max_calls=30, spread_threshold=30.0)
+        deltas = engine1.scan(seed_products=["coffee"], markets=["Vietnam", "EU"], founder=FOUNDER)
+
+        engine2 = ForcedFlowEngine(_coffee_research, _coffee_llm, max_calls=30)
+        flows = engine2.scan(geographies=["EU"], industries=["agriculture"], founder=FOUNDER)
+
+        graph = MoneyFlowGraph()
+        graph.add_anomaly_overlay(
+            [d.to_dict() for d in deltas],
+            [f.to_dict() for f in flows],
+        )
+
+        anomaly_nodes = graph.get_anomaly_nodes()
+        assert len(anomaly_nodes) >= 1
+
+        stats = graph.to_dict()["stats"]
+        assert stats["anomaly_nodes"] >= 1
+        assert stats["node_count"] >= 2
+        assert stats["edge_count"] >= 1
+
+    def test_store_persistence_roundtrip(self):
+        engine1 = PriceDeltaEngine(_coffee_research, _coffee_llm, max_calls=30, spread_threshold=30.0)
+        deltas = engine1.scan(seed_products=["coffee"], markets=["Vietnam", "EU"], founder=FOUNDER)
+
+        engine2 = ForcedFlowEngine(_coffee_research, _coffee_llm, max_calls=30)
+        flows = engine2.scan(geographies=["EU"], industries=["agriculture"], founder=FOUNDER)
+
+        xref = AnomalyCrossReferencer()
+        cards = xref.cross_reference(deltas, flows, FOUNDER)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = os.path.join(tmpdir, "test.duckdb")
+            store = AnomalyStore(db_path)
+            for card in cards:
+                store.save_card(card)
+                store.record_history(card.id, card.anomaly_score,
+                                     card.delta.get("net_margin") if card.delta else 0.0,
+                                     card.delta.get("spread_pct", 0.0) if card.delta else 0.0)
+
+            assert store.card_count() == len(cards)
+
+            loaded = store.load_active_cards()
+            assert len(loaded) == len(cards)
+
+            first_id = cards[0].id
+            loaded_card = store.load_card(first_id)
+            assert loaded_card is not None
+            assert loaded_card.anomaly_type == cards[0].anomaly_type
+
+            store.close()
+
+    def test_compound_run_uses_history(self):
+        """Second run loads first run's cards as history → boosted scores."""
+        engine1 = PriceDeltaEngine(_coffee_research, _coffee_llm, max_calls=30, spread_threshold=30.0)
+        deltas = engine1.scan(seed_products=["coffee"], markets=["Vietnam", "EU"], founder=FOUNDER)
+
+        engine2 = ForcedFlowEngine(_coffee_research, _coffee_llm, max_calls=30)
+        flows = engine2.scan(geographies=["EU"], industries=["agriculture"], founder=FOUNDER)
+
+        # Run 1: no history
+        xref1 = AnomalyCrossReferencer(historical=[])
+        cards_run1 = xref1.cross_reference(deltas, flows, FOUNDER)
+
+        # Run 2: use run 1 cards as history
+        xref2 = AnomalyCrossReferencer(historical=cards_run1)
+        cards_run2 = xref2.cross_reference(deltas, flows, FOUNDER)
+
+        assert len(cards_run2) >= 1
+        # Historical persistence rule should boost scores for matching cards
+        if len(cards_run1) >= 1 and len(cards_run2) >= 1:
+            matching_run2 = [c for c in cards_run2
+                             if c.anomaly_type == cards_run1[0].anomaly_type
+                             and c.intersection_rule == cards_run1[0].intersection_rule]
+            if matching_run2:
+                assert matching_run2[0].anomaly_score >= cards_run1[0].anomaly_score
+
+    def test_graph_json_serialization(self):
+        engine1 = PriceDeltaEngine(_coffee_research, _coffee_llm, max_calls=30, spread_threshold=30.0)
+        deltas = engine1.scan(seed_products=["coffee"], markets=["Vietnam", "EU"], founder=FOUNDER)
+
+        engine2 = ForcedFlowEngine(_coffee_research, _coffee_llm, max_calls=30)
+        flows = engine2.scan(geographies=["EU"], industries=["agriculture"], founder=FOUNDER)
+
+        graph = MoneyFlowGraph()
+        graph.add_anomaly_overlay(
+            [d.to_dict() for d in deltas],
+            [f.to_dict() for f in flows],
+        )
+
+        json_str = graph.to_json()
+        parsed = json.loads(json_str)
+        assert "nodes" in parsed
+        assert "edges" in parsed
+        assert "stats" in parsed
+        assert parsed["stats"]["anomaly_nodes"] >= 1
+
+    def test_budget_enforcement_across_brains(self):
+        engine1 = PriceDeltaEngine(_coffee_research, _coffee_llm, max_calls=30, spread_threshold=30.0)
+        engine1.scan(seed_products=["coffee", "pepper"], markets=["Vietnam", "EU", "Japan"], founder=FOUNDER)
+
+        engine2 = ForcedFlowEngine(_coffee_research, _coffee_llm, max_calls=30)
+        engine2.scan(geographies=["EU", "Japan", "US"], industries=["agriculture", "food safety"], founder=FOUNDER)
+
+        total_calls = engine1.budget.calls_used + engine2.budget.calls_used
+        assert engine1.budget.calls_used <= 30
+        assert engine2.budget.calls_used <= 30
+        assert total_calls <= 60  # Brain 1 + Brain 2 budget
+
+    def test_intersection_card_has_both_delta_and_flow(self):
+        engine1 = PriceDeltaEngine(_coffee_research, _coffee_llm, max_calls=30, spread_threshold=30.0)
+        deltas = engine1.scan(seed_products=["coffee"], markets=["Vietnam", "EU"], founder=FOUNDER)
+
+        engine2 = ForcedFlowEngine(_coffee_research, _coffee_llm, max_calls=30)
+        flows = engine2.scan(geographies=["EU"], industries=["agriculture"], founder=FOUNDER)
+
+        xref = AnomalyCrossReferencer()
+        cards = xref.cross_reference(deltas, flows, FOUNDER)
+
+        intersections = [c for c in cards if c.anomaly_type == "INTERSECTION"]
+        if intersections:
+            card = intersections[0]
+            assert card.delta is not None
+            assert card.flow is not None
+            assert card.position_type in ("BROKER", "ARBITRAGE", "INTELLIGENCE", "AGGREGATOR")
+            assert card.price_per_unit is not None
+            assert card.cost_per_unit is not None
+            assert card.deadline is not None
+
+    def test_anomaly_card_json_roundtrip(self):
+        engine1 = PriceDeltaEngine(_coffee_research, _coffee_llm, max_calls=30, spread_threshold=30.0)
+        deltas = engine1.scan(seed_products=["coffee"], markets=["Vietnam", "EU"], founder=FOUNDER)
+
+        engine2 = ForcedFlowEngine(_coffee_research, _coffee_llm, max_calls=30)
+        flows = engine2.scan(geographies=["EU"], industries=["agriculture"], founder=FOUNDER)
+
+        xref = AnomalyCrossReferencer()
+        cards = xref.cross_reference(deltas, flows, FOUNDER)
+
+        cards_json = json.dumps([c.to_dict() for c in cards], ensure_ascii=False)
+        parsed = json.loads(cards_json)
+        assert len(parsed) == len(cards)
+        for item in parsed:
+            restored = AnomalyCard.from_dict(item)
+            assert restored.anomaly_type in ("INTERSECTION", "PRICE_DELTA", "FORCED_FLOW")
+            assert restored.id.startswith("ANOM-")
+            assert len(restored.id) > 15  # ANOM-YYMMDD-HHMMSS-xxxxxx
+
+    def test_store_delta_trend_across_runs(self):
+        """3 runs with increasing scores → GROWING trend."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = os.path.join(tmpdir, "trend.duckdb")
+            store = AnomalyStore(db_path)
+
+            card_id = "ANO-test-trend"
+            store.record_history(card_id, 0.5, 100.0, 40.0)
+            store.record_history(card_id, 0.6, 120.0, 45.0)
+            store.record_history(card_id, 0.7, 150.0, 50.0)
+
+            trend = store.compute_delta_trend(card_id)
+            assert trend == "GROWING"
+
+            store.close()

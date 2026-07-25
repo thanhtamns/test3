@@ -1,0 +1,398 @@
+## 🔬 Non-Google Research Source Ladder — AUTO-EXECUTED
+
+**Topic:** review chi tiết toàn bộ tư duy của hệ thống investments và stage0, đây thực chất là vấn đề về tư duy của hệ thống không? đây không phải là kiếm tiền bằng đầu óc mà vẫn đang kiếm tiền bằng sức lao động, và những hành động trên không phải là tư duy suy nghĩ đúng về tiền và đó không
+**Routes auto-detected:** `western_bootstrap_saas` (7 kw hits: bootstrap, bootstrapped, micro-saas) + `supply_chain_sourcing` (4 kw hits: sourcing, alibaba, logistics)
+
+### Route: `western_bootstrap_saas`
+**Cache:** HIT (instant)
+**Tiers probed:** operator_dashboards, podcast_transcripts, acquisition_marketplaces, github_oss_metrics, reddit_operator_subs, trends_newsletters, hackernews_ask, twitter_operator_lists
+**Total sources:** 32
+**Drill recommended:** 20
+**Skipped (low signal):** 6
+**Errored:** 4
+**Tool refs (skipped clean):** 2
+
+**🎯 Deep-drill these sources NOW** (signal density confirmed):
+- **Plausible Analytics blog** [50 signals] https://plausible.io/blog
+  - Examples: [dollar_amount] $400 | [dollar_amount] $2,750 | [dollar_amount] $500k
+- **Empire Flippers** [50 signals] https://empireflippers.com/marketplace/
+  - Examples: [dollar_amount] $519,492 | [dollar_amount] $14,430 | [dollar_amount] $24,048
+- **Bootstrapped Founders (Arvid Kahl)** [50 signals] https://thebootstrappedfounder.com/
+  - Examples: [dollar_amount] $200 | [named_entity] The Bootstrapped Founder | [named_entity] How
+- **Acquire.com** [50 signals] https://acquire.com/buyers/
+  - Examples: [named_entity] View | [named_entity] Online Businesses | [named_entity] Sale
+- **IndieHackers /tech** [50 signals] https://www.indiehackers.com/tech
+  - Examples: [dollar_amount] $65k | [dollar_amount] $50k | [dollar_amount] $3M
+- **Trends.co (The Hustle)** [50 signals] https://trends.co/
+  - Examples: [dollar_amount] $100m | [dollar_amount] $200k | [named_entity] Trends
+- **GitHub trending** [50 signals] https://github.com/trending
+  - Examples: [named_entity] Trending | [named_entity] GitHub | [named_entity] GitHub Skip
+- **MicroAcquire (now Acquire.com)** [50 signals] https://acquire.com/
+  - Examples: [dollar_amount] $500M | [dollar_amount] $2B | [named_entity] Buy
+- **Starter Story interviews** [50 signals] https://www.starterstory.com/ideas/podcast/
+  - Examples: [dollar_amount] $204K | [dollar_amount] $20.5K | [dollar_amount] $400
+- **IndieHackers podcast archive** [50 signals] https://www.indiehackers.com/podcasts
+  - Examples: [dollar_amount] $60 | [dollar_amount] $3 | [dollar_amount] $20k
+- **SwipeFiles by Corey Haines** [50 signals] https://swipefiles.com/
+  - Examples: [named_entity] Swipe Files | [named_entity] SaaS Marketing Newsletter | [named_entity] Community Corey Haines
+- **GitHub code search** [50 signals] https://github.com/search?type=code&q=review+chi+ti%E1%BA%BFt+to%C3%A0n+b%E1%BB%99+t%C6%B0+duy+c%E1%BB%A7a+h%E1%BB%87+th%E1%BB%91ng+investments+v%C3%A0+stage0%2C+%C4%91%C3%A2y+th%E1%BB%B1c+ch%E1%BA%A5t+l%C3%A0+v%E1%BA%A5n+%C4%91%E1%BB%81+v%E1%BB%81+t%C6%B0+duy+c%E1%BB%A7a+h%E1%BB%87+th%E1%BB%91ng+kh%C3%B4ng%3F+%C4%91%C3%A2y+kh%C3%B4ng+ph%E1%BA%A3i+l%C3%A0+ki%E1%BA%BFm+ti%E1%BB%81n+b%E1%BA%B1ng+%C4%91%E1%BA%A7u+%C3%B3c+m%C3%A0+v%E1%BA%ABn+%C4%91ang+ki%E1%BA%BFm+ti%E1%BB%81n+b%E1%BA%B1ng+s%E1%BB%A9c+lao+%C4%91%E1%BB%99ng%2C+v%C3%A0+nh%E1%BB%AFng+h%C3%A0nh+%C4%91%E1%BB%99ng+tr%C3%AAn+kh%C3%B4ng+ph%E1%BA%A3i+l%C3%A0+t%C6%B0+duy+suy+ngh%C4%A9+%C4%91%C3%BAng+v%E1%BB%81+ti%E1%BB%81n+v%C3%A0+%C4%91%C3%B3+kh%C3%B4ng
+  - Examples: [named_entity] Code | [named_entity] GitHub Skip | [named_entity] Navigation Menu Toggle
+- **Flippa** [50 signals] https://flippa.com/buy
+  - Examples: [dollar_amount] $0 | [dollar_amount] $999 | [dollar_amount] $5,000
+- **MicroConf YouTube transcripts** [3 signals] https://www.youtube.com/@microconf
+  - Examples: [named_entity] MicroConf | [named_entity] YouTube | [named_entity] Google LLC
+- **HN Algolia search** [3 signals] https://hn.algolia.com/?query=
+  - Examples: [named_entity] Hacker News Search | [named_entity] Algolia This | [named_entity] JavaScript
+- **Cal.com public metrics** [50 signals] https://cal.com/about
+  - Examples: [named_entity] Learn More About Cal | [named_entity] Story | [named_entity] Cal
+- **Lobste.rs** [50 signals] https://lobste.rs/
+  - Examples: [named_entity] Lobsters Active Recent Comments | [named_entity] Search Login Login | [named_entity] Flipper One
+- **Trends.vc** [50 signals] https://trends.vc/
+  - Examples: [dollar_amount] 100 USD | [named_entity] Discover | [named_entity] Trends
+- **BaseCase / Buttondown public metrics** [30 signals] https://buttondown.com/about
+  - Examples: [named_entity] About | [named_entity] Buttondown Buttondown Features Resources | [named_entity] Pricing Log
+- **GitHub Sponsors leaderboards** [50 signals] https://github.com/sponsors/explore
+  - Examples: [named_entity] Explore GitHub Sponsors | [named_entity] GitHub Skip | [named_entity] Navigation Menu Toggle
+
+**⚠ Errored sources** (consider Playwright escalation if signal is critical):
+- Sourcegraph (HTTP 404)
+- nitter.privacydev.net (fallback) (ConnectionError: HTTPSConnectionPool(host='nitter.privacydev.net', port=443): Ma)
+- nitter.net (primary) ()
+- HN Ask/Show top (ReadTimeout: HTTPSConnectionPool(host='news.ycombinator.com', port=443): Read ti)
+
+### Route: `supply_chain_sourcing`
+**Cache:** HIT (instant)
+**Tiers probed:** supply_chain_sourcing, vn_court_records, patent_databases, archive_web, chinese_operator
+**Total sources:** 19
+**Drill recommended:** 11
+**Skipped (low signal):** 2
+**Errored:** 6
+**Tool refs (skipped clean):** 0
+
+**🎯 Deep-drill these sources NOW** (signal density confirmed):
+- **Tuoi Tre search** [43 signals] https://tuoitre.vn/tim-kiem.htm?keywords=
+  - Examples: [named_entity] Trang | [named_entity] Tre | [named_entity] Online Podcast YouTube
+- **Thanh Nien search** [34 signals] https://thanhnien.vn/tim-kiem.html?keywords=
+  - Examples: [named_entity] Theo | [named_entity] Xem | [named_entity] Tin
+- **Common Crawl** [50 signals] https://commoncrawl.org/
+  - Examples: [named_entity] Common Crawl | [named_entity] Open Repository | [named_entity] Web Crawl Data The
+- **masothue.com** [50 signals] https://masothue.com/Search/?q=review+chi+ti%E1%BA%BFt+to%C3%A0n+b%E1%BB%99+t%C6%B0+duy+c%E1%BB%A7a+h%E1%BB%87+th%E1%BB%91ng+investments+v%C3%A0+stage0%2C+%C4%91%C3%A2y+th%E1%BB%B1c+ch%E1%BA%A5t+l%C3%A0+v%E1%BA%A5n+%C4%91%E1%BB%81+v%E1%BB%81+t%C6%B0+duy+c%E1%BB%A7a+h%E1%BB%87+th%E1%BB%91ng+kh%C3%B4ng%3F+%C4%91%C3%A2y+kh%C3%B4ng+ph%E1%BA%A3i+l%C3%A0+ki%E1%BA%BFm+ti%E1%BB%81n+b%E1%BA%B1ng+%C4%91%E1%BA%A7u+%C3%B3c+m%C3%A0+v%E1%BA%ABn+%C4%91ang+ki%E1%BA%BFm+ti%E1%BB%81n+b%E1%BA%B1ng+s%E1%BB%A9c+lao+%C4%91%E1%BB%99ng%2C+v%C3%A0+nh%E1%BB%AFng+h%C3%A0nh+%C4%91%E1%BB%99ng+tr%C3%AAn+kh%C3%B4ng+ph%E1%BA%A3i+l%C3%A0+t%C6%B0+duy+suy+ngh%C4%A9+%C4%91%C3%BAng+v%E1%BB%81+ti%E1%BB%81n+v%C3%A0+%C4%91%C3%B3+kh%C3%B4ng
+  - Examples: [named_entity] Tra | [named_entity] MaSoThue | [named_entity] Trang
+- **congan.gov.vn news search** [50 signals] https://congan.com.vn/
+  - Examples: [dollar_amount] 000 USD | [named_entity] Tin | [named_entity] Minh
+- **Dan Tri search** [48 signals] https://dantri.com.vn/tim-kiem.htm?keywords=
+  - Examples: [named_entity] Fica DTiNews | [named_entity] VCK | [named_entity] Nam
+- **Panjiva (S&P Global)** [50 signals] https://panjiva.com/
+  - Examples: [named_entity] Panjiva | [named_entity] Global Trade Insights | [named_entity] Panjiva Panjiva MENU Panjiva
+- **ImportYeti** [11 signals] https://www.importyeti.com/
+  - Examples: [named_entity] Home | [named_entity] ImportYeti | [named_entity] Find Quality Suppliers Menu
+- **VnExpress search** [15 signals] https://timkiem.vnexpress.net/?q=review+chi+ti%E1%BA%BFt+to%C3%A0n+b%E1%BB%99+t%C6%B0+duy+c%E1%BB%A7a+h%E1%BB%87+th%E1%BB%91ng+investments+v%C3%A0+stage0%2C+%C4%91%C3%A2y+th%E1%BB%B1c+ch%E1%BA%A5t+l%C3%A0+v%E1%BA%A5n+%C4%91%E1%BB%81+v%E1%BB%81+t%C6%B0+duy+c%E1%BB%A7a+h%E1%BB%87+th%E1%BB%91ng+kh%C3%B4ng%3F+%C4%91%C3%A2y+kh%C3%B4ng+ph%E1%BA%A3i+l%C3%A0+ki%E1%BA%BFm+ti%E1%BB%81n+b%E1%BA%B1ng+%C4%91%E1%BA%A7u+%C3%B3c+m%C3%A0+v%E1%BA%ABn+%C4%91ang+ki%E1%BA%BFm+ti%E1%BB%81n+b%E1%BA%B1ng+s%E1%BB%A9c+lao+%C4%91%E1%BB%99ng%2C+v%C3%A0+nh%E1%BB%AFng+h%C3%A0nh+%C4%91%E1%BB%99ng+tr%C3%AAn+kh%C3%B4ng+ph%E1%BA%A3i+l%C3%A0+t%C6%B0+duy+suy+ngh%C4%A9+%C4%91%C3%BAng+v%E1%BB%81+ti%E1%BB%81n+v%C3%A0+%C4%91%C3%B3+kh%C3%B4ng
+  - Examples: [named_entity] International | [named_entity] VnE | [named_entity] Kinh
+- **USPTO** [3 signals] https://ppubs.uspto.gov/pubwebapp/
+  - Examples: [named_entity] Patent Public Search | [named_entity] USPTO Patent Public Search | [named_entity] USPTO
+- **archive.today (archive.ph)** [11 signals] https://archive.ph/
+  - Examples: [named_entity] Webpage | [named_entity] FAQ | [named_entity] Archive
+
+**⚠ Errored sources** (consider Playwright escalation if signal is critical):
+- V2EX /go/create (HTTP 403 (tier2 unavailable))
+- Internet Archive Wayback Machine (HTTP 429 (tier2 unavailable))
+- 52pojie.cn (HTTP 403 (tier2 unavailable))
+- Zhihu operator answers (HTTP 403 (tier2 unavailable))
+- Espacenet (EPO) (HTTP 403 (tier2 unavailable))
+- ImportGenius (HTTP 407)
+
+---
+### 🔍 Deep-drill snippets (route `western_bootstrap_saas`)
+
+**Plausible Analytics blog** — 200 deep signals from https://plausible.io/blog
+Top signals:
+  - [dollar_amount] $400
+  - [dollar_amount] $2,750
+  - [dollar_amount] $500k
+  - [dollar_amount] $10,000
+  - [dollar_amount] $1M
+  - [dollar_amount] $1
+  - [named_entity] Plausible Analytics
+  - [named_entity] Simple
+  - [named_entity] Google Analytics
+  - [named_entity] Why Plausible Simple
+  - [named_entity] Get
+  - [named_entity] Lightweight
+Snippet:  Plausible Analytics | Simple, privacy-friendly Google Analytics alternative Why Plausible Simple analytics dashboard Get all the important stats on one single page. No training necessary. Lightweight script Loads fast and won't affect your page speed or Core Web Vitals. A fraction of the size of Google Analytics. Privacy-friendly analytics Built with visitor privacy in mind. No cookie banner requ...
+
+**Empire Flippers** — 200 deep signals from https://empireflippers.com/marketplace/
+Top signals:
+  - [dollar_amount] $519,492
+  - [dollar_amount] $14,430
+  - [dollar_amount] $24,048
+  - [dollar_amount] $362,720
+  - [dollar_amount] $9,068
+  - [dollar_amount] $15,340
+  - [dollar_amount] $257,786
+  - [dollar_amount] $8,593
+  - [dollar_amount] $26,324
+  - [dollar_amount] $107,500
+  - [dollar_amount] $4,300
+  - [dollar_amount] $5,235
+Snippet:  Online Businesses For Sale - Ecommerce, SaaS, Affiliate, &amp; More Marketplace For Sellers Company About Us Scoreboard Referral Program Testimonials Press Resources Blog Podcasts Videos Newsletter Support Log In Get Started Marketplace For Sellers Company About Us Scoreboard Referral Program Testimonials Press Resources Blog Podcasts Videos Newsletter Support Get Started Log In Online Businesses...
+
+**Bootstrapped Founders (Arvid Kahl)** — 112 deep signals from https://thebootstrappedfounder.com/
+Top signals:
+  - [dollar_amount] $200
+  - [named_entity] The Bootstrapped Founder
+  - [named_entity] How
+  - [named_entity] Start
+  - [named_entity] Run
+  - [named_entity] Sell
+  - [named_entity] Bootstrapped Business
+  - [named_entity] Arvid Kahl Skip
+  - [named_entity] The Bootstrapped Founder How
+  - [named_entity] Arvid Kahl Menu Posts
+  - [named_entity] Books Newsletter Podcast Consulting
+  - [named_entity] Services Clarity Call Twitter
+Snippet:  The Bootstrapped Founder &#8211; How to Start, Run, and Sell a Bootstrapped Business — by Arvid Kahl Skip to content The Bootstrapped Founder How to Start, Run, and Sell a Bootstrapped Business — by Arvid Kahl Menu Posts Books Newsletter Podcast Consulting &#038; Services Clarity Call Twitter Teardown Shop Arvid About Me Media Kit Tech Stack Search START TYPING AND PRESS ENTER TO SEARCH Posts Boo...
+
+**Acquire.com** — 108 deep signals from https://acquire.com/buyers/
+Top signals:
+  - [named_entity] View
+  - [named_entity] Online Businesses
+  - [named_entity] Sale
+  - [named_entity] Acquire
+  - [named_entity] JavaScript Required
+  - [named_entity] JavaScript
+  - [named_entity] Please
+  - [named_entity] Thank
+  - [named_entity] Reload Page How
+  - [named_entity] Enable JavaScript
+  - [named_entity] Inc
+  - [named_entity] All
+Snippet:  View 1,000s of Online Businesses for Sale | Acquire.com No script JavaScript Required We’re sorry, but this website needs JavaScript enabled to run correctly. Please, turn it on and come back later. Thank you! Reload Page How to Enable JavaScript © Acquire.com, Inc. 2026 . All rights reserved Sellers Sellers List Your Startup Create and publish your business listing to 500k+ buyers Get Acquire'd ...
+
+**IndieHackers /tech** — 104 deep signals from https://www.indiehackers.com/tech
+Top signals:
+  - [dollar_amount] $65k
+  - [dollar_amount] $50k
+  - [dollar_amount] $3M
+  - [dollar_amount] $20k
+  - [dollar_amount] $3k
+  - [dollar_amount] $1M
+  - [dollar_amount] $15M
+  - [dollar_amount] $7M
+  - [dollar_amount] $37M
+  - [dollar_amount] $500k
+  - [dollar_amount] $30k
+  - [dollar_amount] $400M
+Snippet:  For Tech Founders - Indie Hackers Home Starting Up Case Studies DB Products Ideas DB Vibe Coding Tools Subscribe to IH+ Starting Up Case Studies Ideas DB Products DB Join For Tech Founders A.I. Crypto SaaS Dev Tools &amp; APIs Gaming Building a tech business? You don't have to go it alone as an entrepreneur. This is your definitive resource for accessing expert strategies and keeping up with the ...
+
+**Trends.co (The Hustle)** — 200 deep signals from https://trends.co/
+Top signals:
+  - [dollar_amount] $100m
+  - [dollar_amount] $200k
+  - [named_entity] Trends
+  - [named_entity] HubSpot Logo
+  - [named_entity] Full
+  - [named_entity] Color
+  - [named_entity] Skip
+  - [named_entity] English Select
+  - [named_entity] Deutsch English
+  - [named_entity] High Contrast Customer Support
+  - [named_entity] Contact Sales Close Search
+  - [named_entity] Log
+Snippet:  Trends by HubSpot Logo - Full (Color) Skip to content English Select a language 日本語 Deutsch English Español Português Français High Contrast Customer Support Contact Sales Close Search Log in About About About Us Careers Contact Us Investor Relations Management Team Back Menu Close Search Products Products The HubSpot Customer Platform All of HubSpot's marketing, sales, and customer service softw...
+
+**GitHub trending** — 200 deep signals from https://github.com/trending
+Top signals:
+  - [named_entity] Trending
+  - [named_entity] GitHub
+  - [named_entity] GitHub Skip
+  - [named_entity] Navigation Menu Toggle
+  - [named_entity] Sign
+  - [named_entity] Appearance
+  - [named_entity] Platform
+  - [named_entity] CODE CREATION GitHub Copilot
+  - [named_entity] Write
+  - [named_entity] GitHub Spark Build
+  - [named_entity] GitHub Models Manage
+  - [named_entity] MCP Registry New Integrate
+Snippet:  Trending repositories on GitHub today · GitHub Skip to content Navigation Menu Toggle navigation Sign in Appearance settings Platform AI CODE CREATION GitHub Copilot Write better code with AI GitHub Spark Build and deploy intelligent apps GitHub Models Manage and compare prompts MCP Registry New Integrate external tools DEVELOPER WORKFLOWS Actions Automate any workflow Codespaces Instant dev envi...
+
+**MicroAcquire (now Acquire.com)** — 147 deep signals from https://acquire.com/
+Top signals:
+  - [dollar_amount] $500M
+  - [dollar_amount] $2B
+  - [named_entity] Buy
+  - [named_entity] Sell Profitable Online Businesses
+  - [named_entity] Acquire
+  - [named_entity] JavaScript Required
+  - [named_entity] JavaScript
+  - [named_entity] Please
+  - [named_entity] Thank
+  - [named_entity] Reload Page How
+  - [named_entity] Enable JavaScript
+  - [named_entity] Inc
+Snippet:  Buy & Sell Profitable Online Businesses | Acquire.com No script JavaScript Required We’re sorry, but this website needs JavaScript enabled to run correctly. Please, turn it on and come back later. Thank you! Reload Page How to Enable JavaScript © Acquire.com, Inc. 2026 . All rights reserved Sellers Sellers List Your Startup Create and publish your business listing to 500k+ buyers Get Acquire'd wi...
+
+---
+### 🔍 Deep-drill snippets (route `supply_chain_sourcing`)
+
+**Common Crawl** — 96 deep signals from https://commoncrawl.org/
+Top signals:
+  - [named_entity] Common Crawl
+  - [named_entity] Open Repository
+  - [named_entity] Web Crawl Data The
+  - [named_entity] Data Overview CDXJ Index
+  - [named_entity] Columnar Index Web Graphs
+  - [named_entity] Latest Crawl Crawl Stats
+  - [named_entity] Graph Stats Errata Resources
+  - [named_entity] Get Started
+  - [named_entity] Agent Blog Examples CCBot
+  - [named_entity] Infra Status Opt
+  - [named_entity] Out Registry FAQ Community
+  - [named_entity] Research Papers Mailing List
+Snippet:  Common Crawl - Open Repository of Web Crawl Data The Data Overview CDXJ Index Columnar Index Web Graphs Latest Crawl Crawl Stats Graph Stats Errata Resources Get Started AI Agent Blog Examples CCBot Infra Status Opt-Out Registry FAQ Community Research Papers Mailing List Archive Hugging Face Discord Collaborators About About Team Jobs Privacy Policy Terms of Use Search AI Agent Contact Us Common ...
+
+**masothue.com** — 85 deep signals from https://masothue.com/Search/?q=review+chi+ti%E1%BA%BFt+to%C3%A0n+b%E1%BB%99+t%C6%B0+duy+c%E1%BB%A7a+h%E1%BB%87+th%E1%BB%91ng+investments+v%C3%A0+stage0%2C+%C4%91%C3%A2y+th%E1%BB%B1c+ch%E1%BA%A5t+l%C3%A0+v%E1%BA%A5n+%C4%91%E1%BB%81+v%E1%BB%81+t%C6%B0+duy+c%E1%BB%A7a+h%E1%BB%87+th%E1%BB%91ng+kh%C3%B4ng%3F+%C4%91%C3%A2y+kh%C3%B4ng+ph%E1%BA%A3i+l%C3%A0+ki%E1%BA%BFm+ti%E1%BB%81n+b%E1%BA%B1ng+%C4%91%E1%BA%A7u+%C3%B3c+m%C3%A0+v%E1%BA%ABn+%C4%91ang+ki%E1%BA%BFm+ti%E1%BB%81n+b%E1%BA%B1ng+s%E1%BB%A9c+lao+%C4%91%E1%BB%99ng%2C+v%C3%A0+nh%E1%BB%AFng+h%C3%A0nh+%C4%91%E1%BB%99ng+tr%C3%AAn+kh%C3%B4ng+ph%E1%BA%A3i+l%C3%A0+t%C6%B0+duy+suy+ngh%C4%A9+%C4%91%C3%BAng+v%E1%BB%81+ti%E1%BB%81n+v%C3%A0+%C4%91%C3%B3+kh%C3%B4ng
+Top signals:
+  - [named_entity] Tra
+  - [named_entity] MaSoThue
+  - [named_entity] Trang
+  - [named_entity] Tin
+  - [named_entity] Email
+  - [named_entity] Doanh
+  - [named_entity] TNHH
+  - [named_entity] Chi
+  - [named_entity] Nam
+  - [named_entity] Theo
+  - [named_entity] Giang
+  - [named_entity] Ninh
+Snippet:  Tra Cứu Mã Số Thuế (Công Ty, Cá Nhân) - MaSoThue --> Tới điều hướng Tới nội dung Tra cứu mã số thuế công ty, mã số thuế cá nhân Tỉnh / Thành phố Tra cứu mã số thuế cá nhân &#9776; Trang chủ Tin tức --> Tra cứu mã số thuế cá nhân Ngành nghề Liên hệ Hỗ trợ: 1900 988 931 --> Email: [email&#160;protected] Tra cứu mã số thuế Ngành nghề kinh doanh Doanh nghiệp mới thành lập Loại hình công ty Doanh nghi...
+
+**congan.gov.vn news search** — 113 deep signals from https://congan.com.vn/
+Top signals:
+  - [dollar_amount] 000 USD
+  - [named_entity] Tin
+  - [named_entity] Minh
+  - [named_entity] Hai
+  - [named_entity] Toggle
+  - [named_entity] Giao
+  - [named_entity] Video Toggle
+  - [named_entity] Trang
+  - [named_entity] Video Tin
+  - [named_entity] Khi
+  - [named_entity] Phi
+  - [named_entity] TPHCM
+Snippet:  Tin nóng an ninh trật tự 24h - Báo Công An Thành Phố Hồ Chí Minh Thứ Hai, Ngày 18 Tháng 5, 2026 Toggle navigation Tin chính Vụ án Giao thông 24h An ninh kinh tế Thị trường Đời sống Thể thao Quốc tế Gương sáng Từ thiện Công nghệ Xe Video Toggle navigation Trang chủ Tin chính Vụ án Giao thông 24h An ninh kinh tế Thị trường Đời sống Thể thao Quốc tế Gương sáng Từ thiện Công nghệ Xe Video Tin Nóng: ...
+
+**Panjiva (S&P Global)** — 74 deep signals from https://panjiva.com/
+Top signals:
+  - [named_entity] Panjiva
+  - [named_entity] Global Trade Insights
+  - [named_entity] Panjiva Panjiva MENU Panjiva
+  - [named_entity] Demo Request
+  - [named_entity] Demo Sign
+  - [named_entity] Search Subscribe Explore Panjiva
+  - [named_entity] Solutions Panjiva Platform
+  - [named_entity] Capital
+  - [named_entity] Pro XpressFeed
+  - [named_entity] Panjiva Supply Chain Intelligence
+  - [named_entity] Data
+  - [named_entity] Plans
+Snippet:  Panjiva - Global Trade Insights &#8212; Panjiva Panjiva MENU Panjiva Demo Request a Demo Sign in En Español 中文 Search Subscribe Explore Panjiva Solutions Panjiva Platform S&amp;P Capital IQ Pro XpressFeed&trade; Panjiva Supply Chain Intelligence Data-driven insights for the global trade community Plans and Pricing Request a Demo Free Newsletter The Panjiva Difference Panjiva is an intelligence pl...
+
+**Dan Tri search** — 48 deep signals from https://dantri.com.vn/tim-kiem.htm?keywords=
+Top signals:
+  - [named_entity] Fica DTiNews
+  - [named_entity] VCK
+  - [named_entity] Nam
+  - [named_entity] Trung
+  - [named_entity] Virus Hanta
+  - [named_entity] Miu
+  - [named_entity] THPT
+  - [named_entity] Israel
+  - [named_entity] Iran
+  - [named_entity] Tin
+  - [named_entity] Giao
+  - [named_entity] Ung
+Snippet:  Tổng hợp tin tức, video hình ảnh về | Báo Dân trí Fica DTiNews Nội vụ & Xã hội Xu hướng # VCK U17 Đông Nam Á 2026 # Tổng thống Mỹ thăm Trung Quốc # Xét xử &quot;trùm&quot; ma túy Bùi Đình Khánh # 80kg xác ve sầu khô bị tạm giữ # Virus Hanta lây lan gây chết người # Miu Lê sử dụng trái phép chất ma túy # Đại hội Mặt trận Tổ quốc Việt Nam # Kỳ thi tốt nghiệp THPT 2026 # Mỹ, Israel không kích Iran #...
+
+**Tuoi Tre search** — 43 deep signals from https://tuoitre.vn/tim-kiem.htm?keywords=
+Top signals:
+  - [named_entity] Trang
+  - [named_entity] Tre
+  - [named_entity] Online Podcast YouTube
+  - [named_entity] Rao
+  - [named_entity] Xin
+  - [named_entity] Tin
+  - [named_entity] Sao
+  - [named_entity] Xem
+  - [named_entity] Video
+  - [named_entity] Kinh
+  - [named_entity] Camera
+  - [named_entity] Doanh
+Snippet:  Trang tìm kiếm - Tuổi Trẻ Online Podcast YouTube Cần biết Rao vặt Xin chào, Cài đặt tài khoản Tin đã lưu Bình luận của bạn Lịch sử giao dịch Dành cho bạn Vào Tuổi Trẻ Sao Thoát Tuổi Trẻ Sao Đăng xuất Đặt báo Đăng ký Tuổi Trẻ Sao Vào trang Tuổi Trẻ Sao Mới nhất Xem nhiều Video Thời sự Thế giới Pháp luật Kinh doanh Công nghệ Xe Du lịch Nhịp sống trẻ Văn hóa Giải trí Thể thao Giáo dục Nhà đất Sức ...
+
+**Thanh Nien search** — 34 deep signals from https://thanhnien.vn/tim-kiem.html?keywords=
+Top signals:
+  - [named_entity] Theo
+  - [named_entity] Xem
+  - [named_entity] Tin
+  - [named_entity] Kinh
+  - [named_entity] Game
+  - [named_entity] Video Video
+  - [named_entity] Video Magazine
+  - [named_entity] YouTube Music
+  - [named_entity] Spotify
+  - [named_entity] ChatGPT
+  - [named_entity] Google Search ChatGPT
+  - [named_entity] Apple
+Snippet:  Tìm kiếm: tin tức, hình ảnh, video, bình luận mới nhất Bạn cần biết Tiện ích Liên hệ Theo dõi báo trên Quảng cáo Đặt báo Đăng nhập Bình luận mới được duyệt Xem tất cả Thông tin tài khoản Đổi mật khẩu Tin đã lưu Tin đã xem Đăng xuất Chính trị Chính trị Thời sự Thời sự Thế giới Thế giới Kinh tế Kinh tế Đời sống Đời sống Sức khỏe Sức khỏe Giới trẻ Giới trẻ Giáo dục Giáo dục Du lịch Du lịch Văn hóa V...
+
+**VnExpress search** — 15 deep signals from https://timkiem.vnexpress.net/?q=review+chi+ti%E1%BA%BFt+to%C3%A0n+b%E1%BB%99+t%C6%B0+duy+c%E1%BB%A7a+h%E1%BB%87+th%E1%BB%91ng+investments+v%C3%A0+stage0%2C+%C4%91%C3%A2y+th%E1%BB%B1c+ch%E1%BA%A5t+l%C3%A0+v%E1%BA%A5n+%C4%91%E1%BB%81+v%E1%BB%81+t%C6%B0+duy+c%E1%BB%A7a+h%E1%BB%87+th%E1%BB%91ng+kh%C3%B4ng%3F+%C4%91%C3%A2y+kh%C3%B4ng+ph%E1%BA%A3i+l%C3%A0+ki%E1%BA%BFm+ti%E1%BB%81n+b%E1%BA%B1ng+%C4%91%E1%BA%A7u+%C3%B3c+m%C3%A0+v%E1%BA%ABn+%C4%91ang+ki%E1%BA%BFm+ti%E1%BB%81n+b%E1%BA%B1ng+s%E1%BB%A9c+lao+%C4%91%E1%BB%99ng%2C+v%C3%A0+nh%E1%BB%AFng+h%C3%A0nh+%C4%91%E1%BB%99ng+tr%C3%AAn+kh%C3%B4ng+ph%E1%BA%A3i+l%C3%A0+t%C6%B0+duy+suy+ngh%C4%A9+%C4%91%C3%BAng+v%E1%BB%81+ti%E1%BB%81n+v%C3%A0+%C4%91%C3%B3+kh%C3%B4ng
+Top signals:
+  - [named_entity] International
+  - [named_entity] VnE
+  - [named_entity] Kinh
+  - [named_entity] Khoa
+  - [named_entity] Video Podcasts
+  - [named_entity] Video
+  - [named_entity] Infographic
+  - [named_entity] Khi
+  - [named_entity] Trang
+  - [named_entity] Infographics
+  - [named_entity] FSell Startup Pay VnExpress
+  - [named_entity] VnExpress International
+Snippet:  Kết quả tin tức cho từ khóa review chi tiết toàn bộ tư duy của hệ thống investments và stage0, đây thực chất là vấn đề về tư duy của hệ thống không#63; đây không phải là kiếm tiền bằng đầu óc mà vẫn đang kiếm tiền bằng sức lao động, và những hành động trên không phải là tư duy suy nghĩ đúng về tiền và đó không Thứ hai, 18/5/2026 Mới nhất International Mới nhất VnE-GO Thời sự Thế giới Kinh doanh K...
+
+---
+## 🤖 MANDATORY auto-spawn block — execute IMMEDIATELY in next response
+
+Per [EXHAUSTIVE-RESEARCH] rule, you MUST spawn 8 parallel Task agents
+in your VERY NEXT message to deep-extract from the drill-recommended sources above.
+Use a single message with multiple Agent tool calls (parallel execution).
+
+Each Task agent prompt template:
+```
+Task: Deep-extract operator-layer signals for topic "<TOPIC>" from <SOURCE_URL>.
+
+Goal: extract ALL specific data points: dollar amounts (with context),
+dated events (with year), named entities (real people/companies), tool/product names
+(with vendor), URLs, ban/platform mentions, failure/scam examples.
+
+For forum sources (mmo4me, voz, vn-z, V2EX, 52pojie): walk top 5-10 threads matching topic.
+For news sources (vnexpress, tuoitre, dantri, congan): walk top 10 articles.
+For dashboard sources (IndieHackers, Plausible, MicroConf): extract dated MRR + revenue numbers.
+
+Use WebFetch for retrieval. If 403/422/429, escalate to method_chain_fetcher.
+Return structured findings with source URL citations. Under 600 words.
+```
+
+Substitute `<TOPIC>` and `<SOURCE_URL>` for each drill-recommended source listed above.
+
+## 📋 Action plan (BLOCKING per [EXHAUSTIVE-RESEARCH]):
+1. **Spawn 8 Task agents in parallel** in your next response (single message, multiple Agent tool calls)
+2. **Wait for results** — each agent returns structured findings with citations
+3. **Synthesize** findings into the verdict, with mandatory `## Research tiers fired` section
+4. **Do NOT use WebSearch as primary** — that violates the rule. WebSearch is only for URL discovery.
+5. **Cite drill snippets** above — they contain raw signal you can quote directly
+
+**Reference:** `D:/code/invesments/master_investments/data/knowledge-sources/research-ladder.json` | `D:/code/invesments/master_investments/data/knowledge-sources/ladder-runner.py` | `.claude/rules/learned-rules.md` → "Exhaustive Research Rules"

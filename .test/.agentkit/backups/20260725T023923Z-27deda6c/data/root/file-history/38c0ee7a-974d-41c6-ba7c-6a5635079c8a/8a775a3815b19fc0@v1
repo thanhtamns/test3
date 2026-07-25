@@ -1,0 +1,152 @@
+"""
+Headless Browser Fallback — Playwright + stealth, last-resort scraping.
+
+LAZY IMPORT: Playwright binary is ~300MB. Not imported until first use.
+First-use install (run once):
+    pip install playwright playwright-stealth
+    playwright install chromium
+
+Usage:
+    fetcher = HeadlessFallback()
+    result = await fetcher.fetch(url, platform="tiktok")
+    result = await fetcher.fetch(url, proxy="http://1.2.3.4:8080")
+"""
+
+import asyncio
+import logging
+from typing import Any, Dict, Optional
+
+logger = logging.getLogger(__name__)
+
+_HEADLESS_TIMEOUT = 30_000  # ms
+_NAV_WAIT = "networkidle"
+
+
+def _check_playwright() -> bool:
+    try:
+        import playwright  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+async def _apply_stealth(page) -> None:
+    """Apply playwright-stealth if available, else basic evasions."""
+    try:
+        from playwright_stealth import stealth_async
+        await stealth_async(page)
+    except ImportError:
+        # Minimal manual evasions when stealth lib absent
+        await page.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+            window.chrome = {runtime: {}};
+        """)
+
+
+class HeadlessFallback:
+    """Playwright-based last-resort fetcher with optional proxy support."""
+
+    def __init__(self) -> None:
+        self._available: Optional[bool] = None
+
+    @property
+    def available(self) -> bool:
+        if self._available is None:
+            self._available = _check_playwright()
+        return self._available
+
+    async def fetch(
+        self,
+        url: str,
+        platform: Optional[str] = None,
+        proxy: Optional[str] = None,
+        cookies: Optional[Dict[str, str]] = None,
+        wait_selector: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Fetch URL via headless Chromium.
+        Returns dict with keys: html, url, status, error.
+        Never raises — returns error dict on failure.
+        """
+        if not self.available:
+            return self._unavailable_result(url)
+
+        try:
+            from playwright.async_api import async_playwright
+        except ImportError:
+            return self._unavailable_result(url)
+
+        try:
+            return await self._run(url, platform, proxy, cookies, wait_selector)
+        except Exception as exc:
+            logger.error("Headless fetch failed for %s: %s", url, exc)
+            return {"html": "", "url": url, "status": 0, "error": str(exc)}
+
+    async def _run(
+        self,
+        url: str,
+        platform: Optional[str],
+        proxy: Optional[str],
+        cookies: Optional[Dict[str, str]],
+        wait_selector: Optional[str],
+    ) -> Dict[str, Any]:
+        from playwright.async_api import async_playwright
+
+        proxy_config = {"server": proxy} if proxy else None
+
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(
+                headless=True,
+                proxy=proxy_config,
+                args=["--disable-blink-features=AutomationControlled"],
+            )
+            context = await browser.new_context(
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+                viewport={"width": 1280, "height": 800},
+                locale="en-US",
+            )
+
+            if cookies:
+                parsed = _parse_cookie_dict(url, cookies)
+                await context.add_cookies(parsed)
+
+            page = await context.new_page()
+            await _apply_stealth(page)
+
+            response = await page.goto(url, timeout=_HEADLESS_TIMEOUT, wait_until=_NAV_WAIT)
+            status = response.status if response else 0
+
+            if wait_selector:
+                try:
+                    await page.wait_for_selector(wait_selector, timeout=8000)
+                except Exception:
+                    pass  # best-effort
+
+            html = await page.content()
+            final_url = page.url
+
+            await browser.close()
+
+        return {"html": html, "url": final_url, "status": status, "error": None}
+
+    def _unavailable_result(self, url: str) -> Dict[str, Any]:
+        msg = (
+            "Playwright not installed. Run: pip install playwright playwright-stealth "
+            "&& playwright install chromium"
+        )
+        logger.warning(msg)
+        return {"html": "", "url": url, "status": 0, "error": msg}
+
+
+def _parse_cookie_dict(url: str, cookies: Dict[str, str]):
+    """Convert flat cookie dict to Playwright cookie list."""
+    from urllib.parse import urlparse
+    domain = urlparse(url).netloc
+    return [
+        {"name": k, "value": v, "domain": domain, "path": "/"}
+        for k, v in cookies.items()
+    ]

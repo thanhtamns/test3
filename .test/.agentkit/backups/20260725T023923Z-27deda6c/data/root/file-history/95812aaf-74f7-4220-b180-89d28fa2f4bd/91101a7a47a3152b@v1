@@ -1,0 +1,173 @@
+#!/usr/bin/env python3
+"""
+Feedback Cycle Runner — Runs full monthly feedback cycle.
+
+Usage:
+  python feedback-cycle-runner.py --run-cycle     # Full cycle: score → adjust → regenerate
+  python feedback-cycle-runner.py --dry-run       # Preview changes without writing
+
+Steps:
+  1. Count pending predictions (remind founder)
+  2. Recompute accuracy for all personas with outcomes
+  3. Run weight adjuster
+  4. Regenerate agent-accuracy-summary.json
+  5. Output cycle report
+"""
+
+import argparse
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+# Import via package to avoid relative import issues
+FEEDBACK_DIR = Path(__file__).parent
+SKILLS_DIR = FEEDBACK_DIR.parent
+sys.path.insert(0, str(SKILLS_DIR))
+
+from feedback_loop.prediction_tracker import get_unlinked_predictions, get_linked_predictions
+from feedback_loop.accuracy_scorer import calculate_persona_accuracy, rank_personas_by_accuracy
+from feedback_loop.weight_adjuster import get_recommendation_weights
+
+AGENTS_DIR = Path(__file__).parent.parent.parent / "agents" / "business" / "shared"
+ACCURACY_SUMMARY_PATH = AGENTS_DIR / "agent-accuracy-summary.json"
+CYCLE_LOG_DIR = Path(__file__).parent / "data" / "cycles"
+
+
+def count_pending():
+    """Count predictions needing outcome review."""
+    pending = get_unlinked_predictions(days=90)
+    by_persona = {}
+    for p in pending:
+        by_persona.setdefault(p.persona, 0)
+        by_persona[p.persona] += 1
+    return {"total": len(pending), "by_persona": by_persona}
+
+
+def recompute_accuracy():
+    """Recompute accuracy for all personas with linked predictions."""
+    rankings = rank_personas_by_accuracy()
+    results = []
+    for r in rankings:
+        results.append({
+            "persona": r["persona"],
+            "accuracy_score": r.get("accuracy_score"),
+            "sample_size": r.get("sample_size", 0),
+            "reliable": r.get("reliable", False),
+            "mean_error_pct": r.get("mean_error_pct"),
+        })
+    return results
+
+
+def compute_weights():
+    """Get updated recommendation weights."""
+    return get_recommendation_weights()
+
+
+def regenerate_accuracy_summary(accuracy_data, dry_run=False):
+    """Regenerate agent-accuracy-summary.json from fresh accuracy data."""
+    summary = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "cycle_type": "monthly_feedback",
+        "personas": {},
+    }
+
+    for entry in accuracy_data:
+        persona = entry["persona"]
+        summary["personas"][persona] = {
+            "accuracy_score": entry.get("accuracy_score"),
+            "sample_size": entry.get("sample_size", 0),
+            "reliable": entry.get("reliable", False),
+            "mean_error_pct": entry.get("mean_error_pct"),
+            "status": "reliable" if entry.get("reliable") else "insufficient_data",
+        }
+
+    if not dry_run:
+        AGENTS_DIR.mkdir(parents=True, exist_ok=True)
+        with open(ACCURACY_SUMMARY_PATH, "w", encoding="utf-8") as f:
+            json.dump(summary, f, indent=2, ensure_ascii=False)
+
+    return summary
+
+
+def save_cycle_log(report, dry_run=False):
+    """Save cycle report for historical tracking."""
+    if dry_run:
+        return None
+
+    CYCLE_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    date_str = datetime.now().strftime("%y%m%d")
+    log_path = CYCLE_LOG_DIR / f"cycle-{date_str}.json"
+    with open(log_path, "w", encoding="utf-8") as f:
+        json.dump(report, f, indent=2, ensure_ascii=False)
+    return str(log_path)
+
+
+def run_cycle(dry_run=False):
+    """Run full feedback cycle."""
+    report = {
+        "cycle_date": datetime.now(timezone.utc).isoformat(),
+        "dry_run": dry_run,
+        "steps": {},
+    }
+
+    # Step 1: Count pending
+    pending = count_pending()
+    report["steps"]["1_pending_reviews"] = pending
+    if pending["total"] > 0:
+        report["action_needed"] = f"Log outcomes for {pending['total']} predictions via /log-outcome"
+
+    # Step 2: Recompute accuracy
+    accuracy = recompute_accuracy()
+    report["steps"]["2_accuracy_recomputed"] = {
+        "personas_scored": len(accuracy),
+        "reliable_count": sum(1 for a in accuracy if a["reliable"]),
+        "top_performers": [
+            {"persona": a["persona"], "accuracy": a["accuracy_score"]}
+            for a in sorted(accuracy, key=lambda x: x.get("accuracy_score") or 0, reverse=True)[:3]
+        ],
+        "low_performers": [
+            {"persona": a["persona"], "accuracy": a["accuracy_score"]}
+            for a in accuracy
+            if a.get("accuracy_score") is not None and a["accuracy_score"] < 60
+        ],
+    }
+
+    # Step 3: Compute weights
+    weights = compute_weights()
+    report["steps"]["3_weights_updated"] = {
+        "total_personas_weighted": len(weights),
+        "top_weighted": dict(sorted(weights.items(), key=lambda x: x[1], reverse=True)[:5]),
+    }
+
+    # Step 4: Regenerate summary
+    summary = regenerate_accuracy_summary(accuracy, dry_run)
+    report["steps"]["4_summary_regenerated"] = {
+        "personas_in_summary": len(summary.get("personas", {})),
+        "written": not dry_run,
+    }
+
+    # Step 5: Save cycle log
+    log_path = save_cycle_log(report, dry_run)
+    report["steps"]["5_cycle_logged"] = {"path": log_path}
+
+    return report
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Feedback Cycle Runner — monthly accuracy recalibration")
+    parser.add_argument("--run-cycle", action="store_true", help="Run full feedback cycle")
+    parser.add_argument("--dry-run", action="store_true", help="Preview without writing")
+    args = parser.parse_args()
+
+    if args.run_cycle or args.dry_run:
+        result = run_cycle(dry_run=args.dry_run)
+    else:
+        print(json.dumps({"error": "Use --run-cycle or --dry-run"}, indent=2))
+        sys.exit(1)
+
+    print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
+
+
+if __name__ == "__main__":
+    main()

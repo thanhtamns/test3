@@ -1,0 +1,1170 @@
+# /stage0 — Núi Tiền Hunter (Knowledge-First, LLM-Driven, v25 260412)
+
+**Core thesis**: Real núi tiền discovery requires CAUSAL REASONING + DOMAIN KNOWLEDGE + LIVE VERIFICATION, not regex pipelines. The intelligence is in Claude (the LLM) using WebSearch/WebFetch/Read tools, NOT in pipeline machinery.
+
+**Plan**: `260407-1816-stage0-perfection-rebuild` → superseded by `260407-2043-nui-hunter-knowledge-first`
+
+## Trigger
+```
+/stage0                                    # interactive: capture profile + ask topic
+/stage0 <topic>                            # use saved profile, fresh research on topic
+/stage0 <topic> --profile <path>           # explicit profile path
+/stage0 --profile-capture                  # rebuild profile only
+/stage0 --kb-list                          # show all KB cases
+/stage0 --kb-verify                        # re-verify stale cases (>180 days)
+/stage0 --resume <case_id> --replies <p>   # resume after pulse check with replies JSON
+/stage0 <topic> --skip-pulse               # bypass pulse, caps verdict at PROVISIONAL_MOUNTAIN
+```
+
+## Mountain definition (LOCKED — v22)
+**Mountain = ≥$10K/mo NET to 1 founder, repeatable ≤12 months, ≥1 compounding component (data / relationship / distribution-lock / IP / rare skill).**
+Anything else = SIDE_HUSTLE. Do not blur this line.
+
+## Module
+`.claude/skills/business/transaction-layer/nui-hunter/`
+
+## Architecture (CRITICAL — read before executing)
+
+```
+NO PIPELINE. NO REGEX. NO BUCKETS. NO TEMPLATES.
+
+Intelligence = Claude (you) + WebSearch + WebFetch + Read + Write
+Persistence  = Python helpers (kb-query, kb-add, profile-capture)
+KB           = grows ORGANICALLY from each query, never pre-seeded
+Profile      = captured PER USER, never assumed/hard-coded
+```
+
+## Workflow (you, Claude, execute these steps)
+
+### Step 1 — Capture or load founder profile (BLOCKING)
+- If `--profile <path>` provided → Read it
+- Else if `kb/profiles/*.json` exists and user confirms → load latest
+- Else → run `python scripts/profile-capture.py --out kb/profiles/<id>.json` interactively
+- **NEVER hard-code profile defaults. NEVER assume user is in Thanh Hoa unless they said so this run.**
+
+### Step 2 — Receive topic
+- If topic in args → use it
+- Else → AskUserQuestion for topic
+- Do NOT pre-narrow. Whatever the user types is the topic — broad ("kinh doanh online") or narrow (a specific craft / SKU / niche). Do not substitute examples from prior sessions.
+
+### Step 2.5 — Topic Disambiguation (BLOCKING — added v25, 260412)
+
+**Rationale:** Prior /stage0 runs narrowed broad strategic questions to strawman interpretations without user validation. Example: "khai thác toàn diện mọi tài nguyên internet" was reduced to "Platform MMO farming" — the most surface-level reading — then killed. The interesting part of the question was never explored.
+
+**Branch detection triggers:**
+- Topic contains ≥2 question marks
+- Topic contains strategic framing: "how to X at scale", "map all Y", "toàn diện", "tối đa", "comprehensive"
+- Topic references ≥2 distinct business models or platforms
+- Topic asks "where is the value" (meta-question, not specific niche)
+
+**Echo format:**
+```
+I interpret your topic as: "<1-2 sentence interpretation>"
+
+Branches detected:
+  A. <specific interpretation 1>
+  B. <specific interpretation 2>
+  C. <specific interpretation 3>
+
+Which branch(es) to analyze? (A/B/C/all/refine)
+```
+
+**Skip condition:** Unambiguous topics (product name, specific niche, URL-only) → echo but skip branch choice. Signal: topic has ≤15 words AND no question marks AND references exactly 1 entity.
+
+**Failure mode this fixes:** Topic misframing. System spent 12+ minutes researching the wrong interpretation. 30 seconds of disambiguation prevents this entirely.
+
+### Step 2.65 — Decision Question Generator (v26, 260418)
+
+**Rationale:** Prior question-generator used abstract "Why-What If-How" cascade. Questions were structural but not DECISION-focused — they gathered information without forcing GO/NO-GO evaluation. DECISION questions force actionable judgment at each point.
+
+**Agent:** `decision-question-generator` (sonnet, no web calls)
+
+**5 Mandatory Question Types:**
+
+| Code | Purpose | Example |
+|------|---------|---------|
+| WINNER | Who's winning? HOW? | "Ai đang [topic] thành công nhất? Cơ chế thắng là gì?" |
+| KILL | What kills this fastest? | "Điều gì giết [topic] nhanh nhất trong 6 tháng đầu?" |
+| CUSTOMER | 1 specific buyer | "1 người cụ thể sẽ mua = ai? Tên? Chức vụ? Budget?" |
+| ECONOMICS | Math to $10K/mo | "Cần bán bao nhiêu × giá bao nhiêu = $10K/mo?" |
+| MOAT | Asset after 12mo | "Sau 12 tháng sở hữu asset gì mà competitor không có?" |
+| STRUCTURE | Structural leverage beyond single entity | "Cơ hội này mở ra structural leverage gì? (multi-entity, trust arbitrage, float capture, info asymmetry, exit path)" |
+
+**Optional types (add 1-2 if relevant):**
+- TIMING — when topic mentions timing/window/cycle
+- REG — when intent_class = jurisdiction_question
+- SCALE — when topic mentions scale/multi-market
+
+**Output schema:**
+```json
+{
+  "decision_questions": [
+    {
+      "id": "DQ1",
+      "type": "WINNER",
+      "question": "...",
+      "why_matters": "...",
+      "good_answer_looks_like": "...",
+      "bad_answer_looks_like": "...",
+      "search_hints": ["...", "..."]
+    }
+  ],
+  "question_count": 6,
+  "generated_at": "<ISO-8601>",
+  "topic": "<original topic>"
+}
+```
+
+**Token budget:** ≤800 tokens | **Latency:** ≤5s (no web calls)
+
+**Quality gate:** All 6 mandatory types MUST appear. If missing → regenerate (max 2 attempts).
+
+**Failure mode this fixes:** Generic questions like "What is the market size?" don't force decisions. DECISION questions like "Cần bán bao nhiêu units/mo?" force specific math.
+
+### Step 2.66 — Question Deep Analysis (Parallel) (v26, 260418)
+
+**Rationale:** Self-ask loop was iterative (Q→A→follow-up×3) but shallow per question. Deep analysis does ONE question thoroughly with 5-10 targeted WebSearch queries, mechanism identification, and founder-specific implications.
+
+**Agent:** `question-deep-analyzer` (sonnet, with web calls)
+
+**Execution:** Spawn 6-8 parallel Task agents (one per question from Step 2.65).
+
+**Research protocol per question:**
+1. KB-first — check prior analysis
+2. WebSearch — 5-10 queries using search_hints
+3. Data scripts — if type triggers (ECONOMICS → financial-benchmarker)
+4. Ladder — if Google returns SEO spam
+
+**Output schema per question:**
+```json
+{
+  "question_id": "DQ1",
+  "question_type": "WINNER",
+  "question_text": "...",
+  "findings": [
+    {"claim": "...", "evidence": "...", "confidence": 0.72, "zone": "T", "source_url": "..."}
+  ],
+  "mechanism_identified": {"found": true, "mechanism": "...", "reason": "...", "confidence": 0.72},
+  "implication_for_founder": "...",
+  "recommendation": "...",
+  "confidence_overall": 0.72,
+  "zone_overall": "T",
+  "sources": [{"url": "...", "type": "...", "accessed": "..."}]
+}
+```
+
+**Confidence zones:**
+- [K] ≥0.75 — verified source, corroborated
+- [T] 0.50-0.74 — logical inference, partial evidence
+- [?] <0.50 — insufficient data
+
+**Token budget:** ≤1200 tokens per question | **Latency:** ≤60s per question | **Parallel:** 5 concurrent max
+
+**Failure mode this fixes:** Self-ask loop produced 5 shallow iterations per question (200 tokens each). Deep analysis produces 1 thorough output (1200 tokens) with mechanism + implications + recommendation.
+
+### Step 2.67 — User Validation Gate (BLOCKING) (v26, 260418)
+
+**Rationale:** User never saw questions before analysis ran. Questions could be wrong, irrelevant, or missing something critical. Validation gate gives user transparency + control BEFORE committing to full Wave 1/2 analysis.
+
+**Display format:**
+```
+╔══════════════════════════════════════════════════════════════════╗
+║  DECISION QUESTIONS ANALYSIS COMPLETE                            ║
+╠══════════════════════════════════════════════════════════════════╣
+║  DQ1 [WINNER]:    Analyzed ✓  Confidence: 0.72 [T]              ║
+║  DQ2 [KILL]:      Analyzed ✓  Confidence: 0.68 [T]              ║
+║  DQ3 [CUSTOMER]:  Analyzed ✓  Confidence: 0.55 [?]              ║
+║  DQ4 [ECONOMICS]: Analyzed ✓  Confidence: 0.81 [K]              ║
+║  DQ5 [MOAT]:      Analyzed ✓  Confidence: 0.60 [T]              ║
+║  DQ6 [STRUCTURE]: Analyzed ✓  Confidence: 0.45 [?]              ║
+║                                                                  ║
+║  Overall Confidence: 0.64 [T]                                   ║
+╠══════════════════════════════════════════════════════════════════╣
+║  [C] Continue | [A] Add | [R] Re-analyze | [D] Drill | [X] Exit ║
+╚══════════════════════════════════════════════════════════════════╝
+```
+
+**User options:**
+| Option | Action | Next |
+|--------|--------|------|
+| C | Inject findings, continue | Step 2.7 or Step 3 |
+| A | Add new question | Re-run 2.65-2.66 for new Q |
+| R # | Re-analyze question # | Re-run 2.66 for that Q |
+| D # | Drill deeper into # | Spawn drill agent |
+| X | Exit early | Questions-only verdict |
+
+**Context injection template (for downstream agents):**
+```
+## DECISION_QUESTIONS_ANALYSIS
+6 questions analyzed. Key findings:
+- WINNER: [finding] — confidence [X]
+- KILL: [finding] — confidence [X]
+- CUSTOMER: [finding] — confidence [X]
+- ECONOMICS: [finding] — confidence [X]
+- MOAT: [finding] — confidence [X]
+- STRUCTURE: [finding] — confidence [X]
+
+Use these findings as GROUNDED PRIORS for your analysis.
+```
+
+**Inject into:** Wave 1 agents, Wave 2 agents, Mountain Test (Step 6), Verdict synthesis (Step 7).
+
+**Failure mode this fixes:** Black box analysis. User couldn't see or validate questions. Now: full transparency, user approval before continuing.
+
+### Step 2.7 — User URL Processing (added v25, 260412)
+
+**Rationale:** User provided 2 TikTok URLs in their /stage0 prompt. System tried WebFetch only (1 tool path). Got 300KB HTML shell (JavaScript-rendered, no actual content). Second URL returned 301 redirect, not followed. Per [TOOL-EXHAUSTION] rule: must try ≥4 tool paths before concluding "blocked." Per [CONTENT-LAYER-MANDATORY]: publishing "the channel probably teaches X" without reading actual content = fabrication.
+
+**Platform extraction stacks (ordered by reliability):**
+
+| Platform | Stack | Free? |
+|---|---|---|
+| TikTok profile | yt-dlp --flat-playlist --dump-json | Yes |
+| TikTok post | yt-dlp + tikwm API | Yes (1.6s rate limit) |
+| TikTok photo | tikwm slides + ai-multimodal | Yes |
+| YouTube | yt-dlp --write-info-json --write-comments | Yes |
+| Reddit | .json endpoint | Yes |
+| Instagram | Not supported (auth required) | No |
+| Generic | method_chain_fetcher.py chain | Yes |
+
+**Failure mode this fixes:** ugblackmmo's actual business model was GUESSED ("guru model") without reading any of their 118 posts. The guess may be right but it's structurally unfounded — a [CONTENT-LAYER-MANDATORY] violation.
+
+**Content extraction audit hook:** `stage0-content-extraction-audit.cjs` fires on Stop and WARNs (non-blocking) if user URLs were not extracted. Does not block because some URLs may be genuinely inaccessible.
+
+### Step 2.8 — Claim Expansion Engine (v25, 260412)
+
+**Rationale:** When analyzing video content, the system previously treated extracted claims as the BOUNDARY of analysis — reporting "video mentions $50K/mo" without verifying. An expert would immediately verify revenue, calculate unit economics, find base rates, and counter-research.
+
+**Claim priority classifier:**
+
+| Tier | Triggers | Research depth | Rationale |
+|---|---|---|---|
+| P0 | Revenue numbers, replicable methods | 5 queries (verify + base rate + counter + economics + replication) | Determines verdict |
+| P1 | Cost claims, market claims | 3 queries (verify + base rate + counter) | Informs feasibility |
+| P2 | Timeline, tool specifics | 1-2 queries (verify only) | Nice to have |
+| P3 | Opinions, motivation, generic advice | 0 queries | No research value |
+
+**Research dispatch protocol:**
+1. KB-first: Check knowledge base before WebSearch (cheaper + verified)
+2. Specific query templates per claim type (not generic searches)
+3. Ladder escalation: If Google returns ≥6/10 SEO spam, fire ladder-runner.py
+4. Evidence synthesis: 3+ independent source types for [K] tag
+
+**Downstream impact:**
+- Claim verdicts injected as `## CLAIM_SET` into every agent prompt
+- hypothesis-generator produces dynamic hypotheses from verified/disputed claims
+- Mountain Test Step 6 receives claim-backed evidence for Q1
+- Financial triangulator receives pre-verified revenue ranges from P0 claims
+
+**Failure mode this fixes:** ugblackmmo classified as "guru model" without verifying actual revenue, content, or business model from first-party data. With claim expansion, every revenue/method claim verified or disputed with data.
+
+**Token economics:** P0 claims average 5 queries × 3-5 results. Typical video: 2-4 P0 claims = 30-100 WebSearch calls. KB-first optimization reduces 30-50%. No token cap — quality over budget.
+
+**Skip condition:** No URL_CONTENT from Step 2.7 → skip entirely. Backward compatible with text-only queries.
+
+### Step 3 — KB-first lookup
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/kb-query.py \
+  "<topic>" --profile <profile-path> --limit 10
+```
+- If hits ≥3 with `confidence ≥ 0.6` AND `last_verified` within 180 days → use cached, jump to Step 6 (verify freshness only)
+- If hits 1-2 OR low confidence → use cached as PRIORS, do fresh research to expand
+- If 0 hits → fully fresh research
+
+### Step 3.4 — Data Intelligence Dispatch (PARALLEL with Step 3.5 — added 2026-04-12)
+
+**Rationale:** Data scripts query structured databases (Comtrade, EDGAR, job boards, etc.) and return COMPUTED JSON — numbers, not narratives. Agents in Step 3.5 receive this as ground-truth context, eliminating redundant WebSearch for data already available from authoritative APIs.
+
+```bash
+# Route topic to relevant data scripts
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/data-intelligence/scripts/data-intelligence-router.py \
+  "<topic>"
+# Read JSON → execute top 2-3 scripts with suggested_params
+# Store outputs as COMPUTED_DATA for injection into Step 3.5 agent prompts
+```
+
+**Available scripts (8):**
+| Script | Data source | Signal |
+|--------|-------------|--------|
+| comtrade-mirror-gap.py | UN Comtrade API | Trade flow discrepancies, mirror gaps |
+| edgar-insight-finder.py | SEC EDGAR | Form D filings, insider trades, 10-K search |
+| job-velocity-tracker.py | Remotive/Arbeitnow/HN | Hiring velocity signals |
+| supply-chain-mapper.py | ImportYeti/USITC | Importer↔exporter graphs |
+| vn-business-monitor.py | masothue/dangkykinhdoanh | VN business registrations/dissolutions |
+| trademark-factory-matcher.py | USPTO/masothue | New TM filings + VN factory matches |
+| trend-signal-detector.py | Google Trends/Reddit | Interest trends + demand signals |
+| financial-benchmarker.py | yfinance/OpenBB | SaaS benchmarks + public comparables |
+
+**Degrade rule:** If router returns 0 scripts or all scripts error → proceed without COMPUTED_DATA. Print `⚠ DATA SCRIPTS: 0 executed — research relies on agents + WebSearch only`.
+
+### Step 3.5 — Parallel Intelligence Dispatch (BLOCKING — degrade-with-warn)
+
+**Rationale:** Before LLM-only research, load proprietary intelligence from local agents + persona knowledge + prior patterns. Generalist WebSearch is fallback, not primary.
+
+**DATA AUGMENTATION (from Step 3.4):** If COMPUTED_DATA available, prepend to every agent prompt as `## COMPUTED_DATA` section. Agents MUST use computed numbers directly — do NOT re-search for the same data via WebSearch.
+
+### Step 3.5.0 — Cognitive Retrieval + Training Corpus Load (PARALLEL-RUN — updated 2026-04-11, phase-06)
+
+**BEFORE dispatching any of the 14 parallel agents below, run BOTH the new cognitive retrieval AND the legacy training corpus load in parallel. Outputs merged + deduplicated. Migration window: 2026-04-11 → 2026-04-25.**
+
+```bash
+# === NEW (primary) — cognitive retrieval ===
+# Index file (same list surface as old INDEX.json, plus stores + HITL + migration metadata)
+cat data/cognitive/INDEX.json
+
+# Query the 7-layer cognitive system (system1 reflex + system2 spreading activation)
+data/cognitive/.venv/Scripts/python.exe \
+  data/cognitive/scripts/retrieve/cognitive_retrieve.py \
+  --query "<topic from user request>" \
+  --domain "<inferred domain or omit>" \
+  --mode auto \
+  --top-k 20 \
+  --json \
+  > /tmp/cognitive-context-<case_id>.json
+
+# Downstream agents read retrieved rules/models/archetypes/cases from /tmp/cognitive-context-<case_id>.json
+
+# === LEGACY (fallback, parallel-run validation) ===
+# Kept online until retrieval precision ≥ 0.80 AND parallel overlap ≥ 0.90 AND user approves cutover.
+# If cognitive retrieve returns empty/error → legacy becomes primary for this run.
+cat data/training/INDEX.json
+cat data/training/inference-engine.md
+cat data/training/universal-analysis-protocol.md
+cat data/training/mental-models.md
+cat data/training/verification-toolkit.md
+for f in data/training/archetypes/*.json; do cat "$f"; done
+cat data/training/extracted-rules-channel-analysis.json
+cat data/training/mental-models.json
+cat data/training/reflex-training-corpus.json
+for f in data/training/domain-heuristics/*.json; do cat "$f"; done
+```
+
+**Dual-lane contract:**
+- Cognitive retrieval output (JSON) is the machine-readable PRIMARY source for downstream citation.
+- Legacy .md corpus load remains as human-readable FALLBACK and cross-check (never deleted — see `data/cognitive/docs/migration.md`).
+- If cognitive retrieval errors or returns zero hits → log to `data/cognitive/custom/consolidation-log.jsonl` and proceed with legacy load only.
+
+**What this provides to downstream agents:**
+- **Behavioral rules (SCH-012 to SCH-021+)** become PRIORS for hypothesis-generator (#14)
+- **Mental models (MM-01 to MM-27)** become discipline gates for every reasoning step
+- **Red flags (RF-001 to RF-022)** become automatic pattern-match triggers for decision contexts
+- **Domain heuristics (DH-TF/MI/CF-NNN)** become domain-specific priors for niche analysis
+- **Archetype library** feeds knowledge-graph-curator (#11) cohort matching
+- **Verification toolkit** is the reference for ground-truth-fetcher (#9) method selection
+- **Inference engine spec** defines HOW each artifact fires during this run
+
+**Abort conditions (during parallel-run window):**
+- If BOTH cognitive retrieval AND legacy corpus load fail → `❌ KNOWLEDGE LOAD FAILURE: both data/cognitive/ and data/training/ unavailable. Cannot proceed.`
+- If only cognitive retrieval fails → WARN, proceed with legacy load, log fallback event.
+- If only legacy load fails → WARN, proceed with cognitive only (acceptable post-cutover).
+
+**Downstream impact:**
+- **Step 5 hypothesis-generator** MUST cite which MM-NN model informed each hypothesis
+- **Step 6 Mountain Test** MUST apply MM-03 Triangulation Gate (auto-KILL if revenue < $5K floor)
+- **Step 6** MUST apply MM-04 Munger 10-Condition Inversion
+- **Step 7 verdict** MUST include "Knowledge fired during this analysis" section citing every SCH/MM/RF/DH/ARCH that activated
+- **Step 9.5 schema-accumulator** (write mode) MUST mirror new patterns to BOTH `data/schemas/registry.json` AND `data/training/extracted-rules-channel-analysis.json`
+
+---
+
+
+**Spawn via Task tool in 2 waves (see stage0.md Step 3.5a/3.5b):**
+
+1. **schema-accumulator** (mode=read)
+   - Input: niche keywords from topic + profile tags
+   - Returns: top-5 matching prior patterns from `data/schemas/registry.json` (pattern_library SCH-NNN format) + top-3 from `data/patterns/pattern-library.json`
+   - Also reads: `data/elimination-ledger.json` (prior kill decisions), `data/predictions/live-posterior.json` (Bayesian priors), `data/case-studies/index.json`
+   - Filter: match by `domain` field + keyword overlap on `pattern`/`trigger` strings
+
+2. **persona-loader** (keyword-classified PATP load)
+   - Input: topic keywords + profile.skills
+   - Returns: 3 persona IDs + concatenated PATP knowledge (≤33 files)
+   - Config: `.claude/config/persona-keyword-map.json`
+   - Fallback stack: charlie-munger + naval-ravikant + alex-hormozi
+
+3. **contrarian-research-agent**
+   - Input: topic verbatim
+   - Returns: 8-layer anti-confirmation packet (failure patterns, base rates, pricing/legal/channels)
+
+4. **market-reality-checker**
+   - Input: topic + geography from profile
+   - Returns: base rates (median not mean), failure stats, pricing power, channel health
+
+5. **failure-archaeologist**
+   - Input: topic + business-model keywords
+   - Returns: 5-10 post-mortems with $ amounts, survivor vs failure analysis
+
+6. **competitive-intelligence-engine**
+   - Input: topic + geography
+   - Returns: existing players + exploitable gaps + money-flow scorecard
+
+7. **deep-comment-miner** (BLOCKING)
+   - Input: 5-10 seed URLs from topic-spider (agent #8) + WebSearch discovery queries + user-provided URLs
+   - Returns: verbatim themes from comment threads with author attribution
+   - Supports free: YouTube (full comments), Reddit (full trees), TikTok video metadata, generic articles
+   - Supports with session cookies: TikTok comments (`TIKTOK_MS_TOKEN`), Instagram (`INSTAGRAM_SESSION_FILE`)
+   - CLI: `.claude/skills/business/data_intelligence/scrapers/deep_comment_miner.py`
+   - See `docs/deep-comment-miner-setup.md` for cookie extraction steps
+
+8. **topic-spider** (BLOCKING — autonomous cross-platform discovery)
+   - Input: topic + LLM-expanded keywords in EN/VI/CN (minimum) + HS codes if applicable
+   - Returns: 50-200 signals from 6 platforms, ranked by tier (patents + trade stats = S tier)
+   - Platforms (all free): Tiki (VN ecom), 1688 (CN sourcing), Google Patents, UN Comtrade, Google Scholar, Google Trends
+   - Output feeds: agent #7 deep-comment-miner (URL harvest), Step 4 research synthesis, Step 5 causal extraction
+   - CLI: `.claude/skills/business/data_intelligence/scrapers/topic_spider.py`
+   - Runs BEFORE deep-comment-miner in practice (topic-spider harvests URLs, deep-comment-miner mines them)
+
+9. **ground-truth-fetcher** (P00)
+   - Input: founder name/handle + topic + geography from profile
+   - Returns: MST registry status, hiring posts, app store data (N/A if non-app), backlink count, reverse-image identity check
+   - Feeds: Step 6 Q1 triangulation, Step 7.5 dim 7/8/9 audit
+
+10. **full-coverage-ingest** (P01)
+    - Input: all seed URLs from topic-spider + WebSearch discovery
+    - Returns: all video transcripts (≥95% coverage), all captions (100%), ≥3 content clusters, hashtag timeline arc, cross-platform profiles (FB/IG/YT/Threads if bio-linked)
+    - Routes ALL scraping through `method_chain_fetcher` (P06 anti-bot chain)
+    - Feeds: Step 4 transcript claims, Step 7.5 dim 1-5/10 audit
+
+11. **knowledge-graph-curator** (mode=read, P05)
+    - Input: topic keywords + candidate opportunity names
+    - Returns: cohort of similar verified entities, prior stage0 verdicts on same niche, compounding type examples with ≥2 evidence entries
+    - Feeds: Step 6 Q2 cross-check, compounding validation
+
+12. **persona-insider-loader** (P07)
+    - Input: 3 loaded persona IDs from agent #2 + topic keywords
+    - Returns: topic-keyed insider facts (≥3 facts per persona, cited with source)
+    - Feeds: Step 4 moat research, Step 7.5 dim 11 audit
+
+13. **financial-triangulator** (P03)
+    - Input: Q1 evidence URL + founder name + claimed revenue range
+    - Returns: triangulated revenue range from 3+ independent signals (job posts, ad spend, SKU count, platform rank), burn_math downside estimate
+    - Feeds: Step 6 Q1 rejection gate ($5K/mo min), asymmetry downside
+
+14. **hypothesis-generator** (P02)
+    - Input: signals from ground-truth-fetcher + full-coverage-ingest + financial-triangulator
+    - Returns: 5 distinct hypotheses covering revenue/moat/timing/founder/market dimensions
+    - Feeds: Step 5 parallel hypothesis testing dispatch
+
+**Degrade rule (NEVER hard-abort) — v23:**
+- ≥10 of 14 return valid output → proceed to Step 4 with loaded intelligence, tag claims normally
+- <10 return valid output → print `⚠ INTELLIGENCE DEGRADED: N/14 agents responded. Falling back to narration mode.` and proceed with LLM-only research; prefix ALL claims in Steps 4-7 with `[DEGRADED]` marker alongside zone tag
+- Never exit. Always produce a verdict.
+- Execution order note: topic-spider + agents 1-6 run first; ground-truth-fetcher (9) + full-coverage-ingest (10) run in parallel; deep-comment-miner (7) consumes URL output last
+
+**Preflight check:** `.claude/commands/stage0-lib/preflight-check.cjs` tracks which agents were invoked. Step 4 preamble reads the check status. CLI usage: `node .claude/commands/stage0-lib/preflight-check.cjs "agent1,agent2,..."` → exits 0 (OK) or 2 (DEGRADED). Threshold = 10 of 14.
+
+### Step 3.6 — Non-Google Research Source Ladder (BLOCKING — auto-fire, added 2026-04-11)
+
+**Rationale:** Google WebSearch is structurally compromised for grey-hat, VN-market, operator-layer, and niche technical topics because SEO/course-funnel/affiliate-blog spam saturates top results. This step forces a parallel ladder probe across 70+ non-Google sources (forums, archive layers, code search, operator dashboards, trade data, regulatory registries) organized into 8 topic routes.
+
+**MANDATORY execution. Zero exceptions when stage0 fires. No manual invocation required.**
+
+**Step 3.6a — Classify topic into ladder route (Claude decides, no config):**
+
+Map the topic to ONE of these 8 routes based on keyword match:
+
+| Route key | Trigger keywords |
+|---|---|
+| `vn_greyhat_mmo` | "VN Black MMO", "kiếm tiền online VN", Vietnamese grey-hat, VN affiliate/CPA, "đội nhóm" telegram |
+| `western_bootstrap_saas` | "bootstrap", "micro-SaaS", "solo founder", "indie hacker", "MRR" Western markets |
+| `technical_deep_research` | "how does X work", specific technical/architecture/code questions, library deep dives |
+| `market_regulatory` | "is X legal", compliance, licensing, regulatory, court records, entity verification |
+| `supply_chain_sourcing` | sourcing, factory, import/export, trade data, HS codes, Alibaba, Panjiva |
+| `competitor_intelligence` | specific competitor name, product teardown, stack analysis, historical evolution |
+| `creator_economy` | TikTok / YouTube / creator / influencer analysis, CPM, RPM, sponsor rates |
+| `crypto_grey` | Web3, onchain, DeFi, airdrops, NFT, smart contract analysis |
+
+**Ambiguous topics:** fire MULTIPLE routes in parallel (e.g. `vn_greyhat_mmo` + `creator_economy` for TikTok creator analysis in VN).
+
+**Step 3.6b — Fire ladder-runner (parallel probe):**
+
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  D:/code/invesments/master_investments/data/knowledge-sources/ladder-runner.py \
+  --topic "<user topic verbatim>" \
+  --route <chosen_route_key> \
+  --json > /tmp/ladder-<case_id>.json
+```
+
+For multi-route topics, fire multiple in parallel. Wall time ~60-90s per route. 24h cache hit returns instantly.
+
+**Step 3.6c — Parse value-gate output:**
+
+The runner returns `{summary: {drill_recommended_sources: [...], errored_sources: [...]}}`. Actions:
+
+1. For each source in `drill_recommended_sources`:
+   - Spawn a parallel Task agent with instruction: "Deep-drill <source_name> at <url_probed> for topic <topic>. Extract all specific signals (dollar amounts, dated events, named entities, tool names, URLs, failure examples). Return structured findings with source URL citations."
+2. For each source in `errored_sources` (403/522/bot-protected):
+   - Escalate to `method_chain_fetcher.py` (already exists at `.claude/skills/business/data_intelligence/anti_bot/`) with Playwright headless tier
+   - If still fails, log and proceed (do NOT block)
+
+**Step 3.6d — Mandatory citation in final output:**
+
+Every `/stage0` verdict MUST include a `## Research tiers fired` section listing:
+- Which ladder routes were selected and why
+- Which tiers were probed (tier keys)
+- Which sources returned drill-recommended signal (with URLs)
+- Which sources were skipped (value gate failed)
+- Which sources errored (bot-protected, HTTP code, fallback path taken)
+- Which sources were deep-drilled vs probe-only
+
+**No invisible research.** Research phase must be auditable from verdict output alone.
+
+**Rules enforced:**
+
+- `[EXHAUSTIVE-RESEARCH]` — ladder is mandatory, not optional
+- `[LADDER-VALUE-GATE]` — drill only where signals ≥3, else skip
+- `[LADDER-CITATION]` — all sources cited in verdict
+- `[GOOGLE-SEO-SATURATION]` — if top 10 WebSearch returns ≥6 SEO spam entries, escalate immediately to ladder
+- `[FORUM-LAYER-PRIORITY]` — for VN topics, forum layer outranks Google; for CN topics, V2EX/52pojie/Zhihu outrank Google
+
+**See:** `data/knowledge-sources/research-ladder.json` (config), `data/knowledge-sources/ladder-runner.py` (runner), `data/knowledge-sources/README.md` (docs).
+
+**Degrade rule:** If ladder-runner.py fails entirely (import error, no network, etc.), print `⚠ LADDER DEGRADED — research will rely on WebSearch + Step 3.5 agents only. Flag all claims with [NO_LADDER]` and proceed. Never hard-abort.
+
+**Step 3.6e — Consumption routing (v25, 260412):**
+
+Ladder output MUST be consumed by Wave 2 agents, not just cited in verdict. Routing table:
+
+| drill_recommended source type | Inject into | How |
+|---|---|---|
+| Forum URLs (mmo4me.com, voz.vn, BHW, V2EX, 52pojie) | deep-comment-miner (#7) seed_urls | Append to seed URL list |
+| Business registry (masothue.com, congan.gov.vn) | ground-truth-fetcher (#9) | Append to registry_check_urls |
+| Trade/customs data (Comtrade mirrors, ImportYeti) | topic-spider (#8) augmentation | Merge with existing platform list |
+| Code search (GitHub, npm, PyPI) | Dedicated drill Task agent | Spawn 1 agent per source |
+| News/archive (DanTri, Wayback, congan.gov.vn news) | Dedicated drill Task agent | Spawn 1 agent per source (Wave 1 can't receive ladder in parallel) |
+| Court/legal (congan.gov.vn, caselaw) | Dedicated drill Task agent | Spawn 1 agent per source |
+
+**Injection format — prepend to each Wave 2 agent prompt:**
+```
+## LADDER_SOURCES (drill-recommended, signals ≥3)
+<paste drill_recommended_sources URLs + signal_count per source>
+```
+
+**Failure mode this fixes:** Ladder auto-described as fired in spec, probed 23 sources, found 15 drill-recommended — then pipeline never consumed the output. Wave 2 agents used Google WebSearch only. Ladder was decorative, not functional.
+
+**Hook guard:** No UserPromptSubmit hook fires ladder-runner.py. Stage0 owns its own Step 3.6 ladder dispatch via stage0.md. Non-stage0 invocations do not get ladder from any hook — ladder is stage0-exclusive.
+
+### Step 4 — Deep Research (first-party signal mining, WebSearch as fallback)
+
+**Preamble — intelligence check:** Confirm Step 3.5 dispatch occurred. Check environment markers:
+- If preflight status=DEGRADED → tag ALL claims with `[DEGRADED]` alongside zone tag
+- If `CLAUDE_STALE_MODE=1` → tag ALL persona-sourced claims with `[STALE]`
+- Both can coexist: `60% failure rate [T][DEGRADED][STALE]`
+
+**Anti-bot routing — ALL scraping via method_chain_fetcher (P06):**
+All URL fetches MUST route through `method_chain_fetcher` to avoid bot-block (91% fail rate on direct pho run):
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/data_intelligence/anti_bot/method_chain_fetcher.py \
+  "<URL>" --out /tmp/fetch-<slug>.json
+```
+`method_chain_fetcher` tries: direct httpx → cloudscraper → playwright headless → proxy pool. Never call raw `httpx` or `requests` for first-party content.
+
+**Coverage gate:**
+- After full-coverage-ingest (P01) reports, check: `transcripts_coverage = transcripts_processed / videos_total`
+- If coverage <80%, print `⚠ COVERAGE GAP: only N% transcript coverage. Missing: [list of uncovered video IDs]` — do NOT block, but tag all transcript claims with `[COVERAGE_GAP]`
+- Every claim from comments or transcripts MUST cite specific video URL + timestamp (e.g. `[yt:abc123@2:34]`)
+
+**Philosophy shift from v22:**
+- **WebSearch is FALLBACK, not primary.** Generalist top-10 skim produces consensus LLM noise, not signal.
+- **Primary source = first-party content:** comments, thread replies, video transcripts, full forum posts, raw reviews.
+- **No article cap, no time cap, no "top 10".** Pull until saturation (3 fetches yield no new themes → stop).
+- **Every comment counts.** 500 YouTube comments on a relevant video > 10 blog articles.
+- **Chase citations depth-3.** Follow links from primary sources to their linked sources.
+- **Source tier ranking** (higher = trust more):
+  | Tier | Source type |
+  |---|---|
+  | S | Primary transactional: filings, receipts, public records |
+  | A | Full comment threads (YouTube, Reddit, TikTok where accessible) |
+  | A | Video transcripts (yt-dlp auto-subs) |
+  | B | Review platforms full-text (not aggregated stars) |
+  | B | Job postings verbatim |
+  | C | News articles |
+  | C | Blog posts |
+  | D | Aggregator / "top 10 list" articles |
+  | F | AI-generated SEO spam |
+
+**Deep mining tool: `deep-comment-miner` agent**
+
+Invoke via Task tool for each candidate source URL. Supports:
+- `youtube.com` / `youtu.be` → full comments free (yt-dlp)
+- `reddit.com` → full thread + comment tree free (json endpoint)
+- `tiktok.com /video/` → metadata free, comments need `TIKTOK_MS_TOKEN` or paid proxy
+- `tiktok.com /photo/` → metadata free, comments paid-only
+- generic URL → article body + citation links free (httpx + parsel)
+
+CLI fallback (if agent dispatch fails — still routes through method_chain_fetcher):
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/data_intelligence/scrapers/deep_comment_miner.py \
+  "<URL>" --max-comments 500 --out /tmp/mine-<slug>.json
+```
+
+**Research workflow (replaces 6-axis shallow grid):**
+
+1. **Seed URL collection** — from Step 3.5 agents + 1-2 targeted WebSearch queries (WebSearch only to DISCOVER URLs, not to extract signal from search snippets)
+2. **Platform prioritization** — prefer YouTube + Reddit first (free + deep) > forums > blogs > news
+3. **Parallel mining** — spawn deep-comment-miner across all seed URLs simultaneously
+4. **Saturation** — stop adding sources when last 10 comments add zero new themes
+5. **Cross-verification** — each `[K]` claim requires ≥3 independent source TYPES (not 3 blogs; needs blog + comment thread + video transcript, or similar)
+6. **Contradiction hunting** — for every positive finding, generate 2-3 inversion queries ("why does X fail", "X scam", "X regulatory problem") and mine those too
+
+**Covered research axes** (same as v22 but via deep mining instead of skim):
+
+| Axis | Preferred sources |
+|---|---|
+| **A. TAM today** | industry reports in full, statista full articles, trade stats raw |
+| **B. Trajectory 5y** | YouTube trend videos + comments, Reddit historical threads, Google Trends |
+| **C. Moat sources** | Founder interview full transcripts (yt-dlp), Reddit AMA comment trees, case study deep dives |
+| **D. Achievability** | Reddit r/Entrepreneur/smallbusiness threads, YouTube tutorial comments where learners report blockers |
+| **E. Saturation** | Competitor product review comment mining, failure story threads, r/SaaS failure posts |
+| **F. Buyer demand gap** | TikTok/Reddit "I wish / looking for" posts (TikTok metadata + Reddit full text), LinkedIn sourcing manager posts |
+
+**Rules (unchanged):**
+- Each finding MUST have a source URL
+- Each claim tagged with zone: `[K]` ≥3 independent source types, `[T]` single/inference, `[?]` weak
+- No fabrication. If evidence missing, say so.
+- Anti-confirmation: for every positive finding, mine 2-3 contradiction sources
+
+**You MUST still cover the 6 axes — but now via deep mining, not shallow search.**
+
+| Axis | What to search | Tools |
+|---|---|---|
+| **A. TAM today** | "<topic> market size <relevant-geo> 2025", industry reports, statista, official trade stats | WebSearch + WebFetch |
+| **B. Trajectory 5y** | Google Trends data via search "<topic> trends 2020-2025", funding announcements, media coverage frequency | WebSearch |
+| **C. Moat sources** | Real founders/companies in this niche → who succeeded? Why? IP filings, brand mentions, distribution lock evidence | WebSearch + read founder interviews |
+| **D. Achievability** | What's the EXACT capital, skill, time, network needed? Cross-reference with profile constraints | WebSearch + cross-check |
+| **E. Saturation** | "<topic> competitors", "<topic> failure rate", "why <topic> fails", count active players | WebSearch — anti-confirmation queries |
+| **F. Buyer demand gap** | Reddit "looking for <X> supplier", FB groups "WANTED <X>", Quora "best <X>", LinkedIn sourcing manager hires | WebSearch |
+
+**Rules**:
+- Each finding MUST have a source URL
+- Each claim MUST be tagged with confidence: `[K]` verified by ≥2 sources, `[T]` single source/inference, `[?]` weak
+- If you cannot find evidence → say so. Do NOT fabricate.
+- Anti-confirmation: for every positive finding, search "why X fails", "X scam", "X declining"
+
+### Step 5 — Hypothesis Engine (REPLACES causal extraction — v23)
+
+**Rationale:** 1-shot forward narrative per candidate is LLM theater. Hypothesis engine forces falsifiable claims, parallel stress-testing, and contradiction resolution.
+
+**Dispatch sequence:**
+```
+1. Dispatch hypothesis-generator (P02) with signals from:
+     - ground-truth-fetcher output (P00)
+     - full-coverage-ingest output (P01)
+     - financial-triangulator output (P03)
+   → Returns: 5 distinct hypotheses covering revenue / moat / timing / founder / market dimensions
+   → Each hypothesis must be falsifiable (has at least 1 stated kill condition)
+
+**Dynamic hypothesis generation from CLAIM_SET (v25):**
+When claim_set is available from Step 2.8:
+- For each VERIFIED P0 claim → generate 1 hypothesis testing scalability/sustainability
+- For each DISPUTED P0 claim → generate 1 counter-hypothesis explaining why claim fails
+- Base 5 dimensions still REQUIRED (revenue/moat/timing/founder/market)
+- Total hypotheses = 5 base + N dynamic (typically 7-10 total for video analysis)
+- Each dynamic hypothesis MUST cite the specific claim ID (C1, C2...) and its evidence
+
+2. Parallel dispatch hypothesis-tester × 5 via Task tool (one per hypothesis)
+   → Each tester returns: {supported: bool, evidence_urls: [], kill_triggered: bool, note: str}
+
+3. hypothesis-arbiter ranks survivors by evidence strength
+   → Output: ordered list, top survivor first
+
+4. If 2+ survivors contradict each other:
+     → dispatch contradiction-resolver (max depth 2 recursion)
+     → contradiction-resolver output: {resolved: bool, winner: hypothesis_id, rationale: str}
+
+5. Surviving hypotheses (non-killed, non-contradicted) feed Step 6 Mountain Test
+   → Minimum 1 survivor required to proceed; if 0 → verdict = INSUFFICIENT_SIGNAL, skip to Step 7
+```
+
+**Hypothesis dimensions (at least 1 hypothesis per dimension):**
+- **Revenue**: causal mechanism — WHY does this make money? (not WHAT — WHY)
+- **Moat**: unfair advantage — WHY can 99% not replicate in 12mo?
+- **Timing**: why NOW? — what changed in last 24mo that opened this window?
+- **Founder match**: WHY this founder specifically? prerequisites from user profile
+- **Market**: TAM trajectory — is this growing, flat, or dying?
+
+**Replication path** (from top surviving hypothesis):
+- Step-by-step from user's current position to first dollar
+- Real references: ≥2 real founders/companies that proved this (with URL + estimated revenue + verification method)
+
+### Step 6 — Mountain Test v2 (per candidate) — REPLACES 5-Property Test
+For each candidate, answer these in JSON (no scoring, no sums):
+
+```
+Q1: Is a REAL person currently earning ≥$10K/mo NET from the closest equivalent to this?
+    answer: yes | no | insufficient_data
+    evidence_url: <single strongest proof>
+    founder_name: <name>
+    monthly_net_usd: <number>
+    triangulated_range_max_usd: <from financial-triangulator — REQUIRED>
+```
+
+**Q1 triangulation gate (P03 — financial-triangulator):**
+- financial-triangulator output from Step 3.5 must have been received
+- If `triangulated_range_max_usd < 5000` → force answer to `no` regardless of claimed revenue
+  - Print: `⚠ Q1 OVERRIDDEN: triangulated max $X/mo < $5K floor. Claimed figure rejected.`
+- If triangulation unavailable (DEGRADED) → note as `[UNVERIFIED]` and allow claimed figure through with flag
+
+```
+Q2: Does the user profile have ≥1 CONCRETE unfair advantage 99% of people lack?
+    answer: yes | weak | no
+    advantage: <string>
+    why_99pct_lack: <why others can't replicate>
+    kg_cohort_confirms: <bool — KG cohort query result from knowledge-graph-curator>
+```
+
+**Q2 KG cross-check (P05 — knowledge-graph-curator):**
+- "99% lack this" claim MUST be cross-checked against KG cohort from Step 3.5
+- If cohort shows ≥20% of similar founders had the same advantage → downgrade Q2 from `yes` to `weak`
+  - Print: `⚠ Q2 KG CHECK: cohort shows X% possession rate — advantage not rare enough for 'yes'`
+
+```
+Asymmetry ratio:
+    upside_p50_usd: <12mo realistic upside>
+    downside_p50_usd: <max loss if fail — from burn_math in financial-triangulator, NEVER zero>
+    ratio: upside / downside
+```
+
+**Asymmetry downside (P03 — financial-triangulator burn_math):**
+- `downside_p50_usd` MUST come from financial-triangulator burn_math output, not LLM guess
+- If burn_math unavailable → use: `(profile.capital * 0.5) + (12 * profile.monthly_living_cost)` with `[ESTIMATED]` tag
+
+```
+Compounding component:
+    type: data | relationship | distribution-lock | ip | rare-skill | none
+    evidence: <how it compounds>
+    kg_entity_match: <KG entity ID from knowledge-graph-curator — required if type ≠ none>
+    kg_evidence_count: <int — must be ≥2 for compounding type to count>
+```
+
+**Compounding KG validation (P05 — knowledge-graph-curator):**
+- Compounding type ≠ none REQUIRES a matching KG entity with ≥2 evidence entries
+- If no KG entity found OR evidence_count < 2 → downgrade to `none` with note
+  - Print: `⚠ COMPOUNDING DOWNGRADED: no KG entity with ≥2 evidence for type='<type>'`
+
+**Structure Score (advisory annotation — NOT a kill gate):**
+```
+Structure Score: [0-10] — quality multiplier for post-verdict prioritization
+  0-3: Single entity, linear, no structural advantage
+  4-6: Some structural leverage (platform, float, trust chain)
+  7-10: Multi-entity, exit designed, liability isolated
+  Topology: [type or "linear"]
+  Structural leverage: [types detected]
+  Exit readiness: [high/medium/low/not-designed]
+  Position: [value chain role]
+```
+Structure Score comes from `stage0_integration.py` structural_analysis output.
+If structural modules unavailable → skip section, no degradation.
+Structure Score DOES NOT affect MOUNTAIN/KILL verdict. It annotates for prioritization.
+
+**Flow topology check:** If opportunity enables multi-hop money flow, classify topology type from structural_analysis.topology. If circular_flow or entity_multiplication detected → note as structural advantage in verdict.
+
+**Exit-first summary:** "Exit to whom? Exit multiple? Timeline?" — sourced from position_intelligence exit design if available.
+
+**Deterministic verdict rule (no LLM judgment):**
+- Q1=yes AND Q2=yes AND ratio≥10 AND compounding≠none → `MOUNTAIN_CANDIDATE` (NOT yet MOUNTAIN — must pass Step 6.5)
+- Q1=yes AND Q2=weak/no → `SIDE_HUSTLE`
+- Q1=no → `KILL`
+- Q1=insufficient_data → `INSUFFICIENT_SIGNAL`
+
+### Step 6.5 — Human-in-Loop Pulse Check (BLOCKING for MOUNTAIN_CANDIDATE only)
+Skipped for SIDE_HUSTLE / KILL / INSUFFICIENT_SIGNAL — those jump to Step 7.
+
+```
+PULSE PROTOCOL:
+1. Load .claude/skills/business/transaction-layer/nui-hunter/pulse-templates.md
+2. Dispatch primary-research-agent (P04) to generate action cards for this opportunity:
+   - Input: topic + geography + founding context + Q1 evidence URL
+   - Returns: action card with ready-to-execute contacts:
+       * phone numbers (if publicly listed)
+       * email addresses (scraped or inferred pattern)
+       * signup/landing URLs
+       * event listings (meetups, trade shows, FB groups)
+       * insider contact paths (LinkedIn connection, forum username)
+   - All contacts verified against ground-truth-fetcher registry output
+   - NO placeholder fills — all fields must be real or omitted
+3. Pick archetype matching the opportunity (B2B export / B2C marketplace / service / arbitrage / info)
+4. Merge pulse-templates.md messages with primary-research-agent action card contacts
+5. Print 5 ready-to-send messages (VN + EN) — contacts pre-filled, no [PLACEHOLDER] remaining
+6. PAUSE. Print exactly:
+   "📨 PULSE CHECK BLOCKING — send the 5 inquiries above within 24-48h.
+    When you receive replies (or 0 after 48h), run:
+      /stage0 --resume <case_id> --replies <path/to/replies.json>
+    Or bypass with --skip-pulse → verdict capped at PROVISIONAL_MOUNTAIN."
+7. EXIT cleanly. Do NOT write a final MOUNTAIN verdict yet.
+```
+
+**On resume** (`--resume <case_id> --replies <path>`):
+- Load replies JSON (schema: `pulse_replies` array per schema-case.json)
+- Count `buyer_intent in {buying_now, researching}` → `pulse_intent_count`
+- `pulse_intent_count >= 1` → verdict = `MOUNTAIN`
+- `pulse_intent_count == 0` after ≥48h → verdict downgrades to `INSUFFICIENT_SIGNAL`
+
+**On `--skip-pulse`:** verdict = `PROVISIONAL_MOUNTAIN` (persists to KB but flagged; not a real mountain).
+
+### Step 6.8 — Alternative Generation Protocol (v25, 260412)
+
+**Rationale:** When verdict = KILL, the 3 alternatives proposed were generic and low-value. "Build MMO Tooling SaaS" had no specific gap identified. HeadshotPro (AI headshots) was cited as precedent for creator economy tools — wrong domain. "Contrarian Content" had no revenue mechanism.
+
+**Root cause:** Alternatives were generated inline by LLM after KILL — no dedicated agent, no quality check. The opportunity-scanner agent (designed for this exact task) was never spawned.
+
+**Protocol:**
+- Alternatives are the MOST VALUABLE part of a KILL verdict (user asked "where IS the value?")
+- Each alternative must survive a mini Mountain Test (founder URL + profile fit + revenue mechanism + compounding)
+- Cited precedents must match the alternative's domain (cross-domain precedents are false signals)
+- opportunity-scanner agent is MANDATORY for alternatives — no inline LLM generation
+
+**[LAYERED-ROLE-SCAN] enforcement:** Before proposing any alternatives, enumerate ≥6 ecosystem roles for the topic (Platform / Infrastructure / Tooling / Content / Service / Training / Data / Arbitrage). This prevents binary "do X or don't" framing and catches value-chain layers that inline thinking misses.
+
+### Step 7 — Verdict synthesis (REWRITTEN)
+
+**Step 7 requirement — Knowledge citation (NEW, added 2026-04-11; updated phase-06):**
+The verdict MUST include a "Knowledge fired during this analysis" section listing every artifact that activated during Steps 3.5.0 through 6.5.
+
+**Source of citations (parallel-run):**
+1. PRIMARY: `/tmp/cognitive-context-<case_id>.json` — iterate the buckets `rules[]`, `models[]`, `archetypes[]`, `episodes[]`, `procedures[]`, `confidence_weighted[]`. Cite each fired node by `node_id`, first 120 chars of `text`, `confidence`, `hebbian_boost`.
+2. FALLBACK: legacy training corpus `.md` artifacts cat'd in Step 3.5.0 — cite by filename + section.
+3. If cognitive context missing → degrade to FALLBACK only + add warning line `[cognitive-retrieval-unavailable]`.
+
+Citation block appended to verdict markdown as a new section `## Knowledge fired during this analysis` (see template below).
+
+A verdict without knowledge citation is degraded and must be rewritten.
+
+Output ONE verdict markdown, ≤1500 words, in user's language (default Vietnamese):
+
+```markdown
+# /stage0 Verdict — <topic>
+**Mountain definition:** ≥$10K/mo net + ≥1 compounding component + repeatable ≤12mo
+
+## VERDICT: <MOUNTAIN | PROVISIONAL_MOUNTAIN | SIDE_HUSTLE | INSUFFICIENT_SIGNAL | KILL>
+
+## Mountain Test
+- **Q1 — $10K/mo proof:** <yes/no/insufficient> — <founder + url + monthly_net>
+- **Q2 — Unfair advantage:** <yes/weak/no> — <advantage + why 99% lack>
+- **Asymmetry ratio:** <upside> / <downside> = <ratio>x
+- **Compounding:** <type> — <evidence>
+
+## Pulse Check (only if MOUNTAIN_CANDIDATE ran)
+- Sent: <5 channels listed>
+- Replies: <N> (buying_now: <X>, researching: <Y>, no_intent: <Z>)
+- Verdict-driving reply: <quoted text>
+
+## Causal mechanism
+[1 paragraph — WHY this works, not WHAT]
+
+## Replication path (MOUNTAIN / PROVISIONAL only — Day 1-7)
+[concrete steps]
+
+## Failure modes (always — top 3 + probability)
+
+## Why NOT a mountain (SIDE_HUSTLE / KILL only)
+[direct: which Q failed + what would need to change]
+
+## NEXT ACTION (always, ≤2h doable)
+[ONE concrete action]
+
+## Structure Score: X/10 (advisory — does not affect verdict)
+- Topology: [type or "linear"]
+- Structural leverage: [types detected or "none"]
+- Exit readiness: [high/medium/low/not-designed]
+- Position: [value chain role]
+- Upgrade opportunities: [if any]
+<!-- Omit this section if structural modules unavailable -->
+
+## Sources
+[urls grouped by Q1 / Q2 / asymmetry / compounding]
+
+## Knowledge fired during this analysis
+<!-- populated from /tmp/cognitive-context-<case_id>.json; fallback: legacy corpus filenames -->
+**Rules:** <SCH-NNN — text(≤120) — conf — heb_boost — how_fired>
+**Mental models:** <MM-NN — text(≤120) — where_applied>
+**Red flags:** <RF-NNN — text(≤120) — trigger_matched — severity>
+**Domain heuristics:** <DH-XX-NNN — text(≤120) — domain — how_applied>
+**Archetypes:** <ARCH-NNN — cohort_match_reason>
+**Episodes:** <node_id — similarity — outcome_relevance>
+**Procedures:** <node_id — application_step>
+**Source:** cognitive | fallback_legacy | both
+```
+
+### Step 7.5 — Post-Synthesis Red-Team Gate (NEW — v23, P08)
+
+Dispatch **post-synthesis-red-team** agent with full verdict JSON + all phase output dossier. Agent runs 16-dimension gap auditor and returns a structured score.
+
+**Dossier schema** (populate from phase outputs before dispatching):
+```json
+{
+  "ground_truth":     { "videos_total": N, "transcripts_processed": N, "transcript_waiver": false },
+  "ingest":           { "captions_total": N, "captions_read": N, "bio_links_total": N,
+                        "bio_links_fetched": N, "comments_attempted": N, "comments_scraped": N,
+                        "backlinks_count": N, "is_app_business": false, "app_store_data": null },
+  "hypothesis":       { "hypotheses_tested": N },
+  "triangulation":    { "registry_checked": bool, "is_vn_entity": bool, "hiring_checked": bool,
+                        "staff_claim_min": N, "vn_benchmark_ran": bool },
+  "kg":               { "timeline_arcs": N, "topic_clusters": N },
+  "insider_facts":    { "personas_with_3plus_facts": N },
+  "primary_research": { "action_card_generated": bool, "base_rate_checked": bool,
+                        "base_rate_cited": bool, "identity_checked": bool|null,
+                        "founder_identified": bool }
+}
+```
+
+CLI invocation:
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/data_intelligence/red_team/gap_auditor.py \
+  --dossier /tmp/dossier-<case_id>.json --out /tmp/audit-<case_id>.json
+```
+
+**Gate logic:**
+```
+score ≤ 3.0  → PASS             — proceed to Step 8 normally
+score > 3.0
+ and < 7.0   → PASS_WITH_FLAGS  — append audit section to verdict, proceed to Step 8
+score ≥ 7.0  → BLOCK
+               - Do NOT persist to KB
+               - Print remediation tasks from drill_down_generator output
+               - Print: "❌ RED TEAM BLOCK (score=X.X) — fix flagged dimensions and re-run from Step 4"
+               - Exit with code 2
+               - User must fix flagged dimensions + re-run from Step 4
+```
+
+**PASS_WITH_FLAGS audit section** (append to Step 7 verdict markdown):
+```markdown
+## Red-Team Audit (PASS_WITH_FLAGS — score X.X/10)
+| Dim | Label | Status | Note |
+|-----|-------|--------|------|
+...flagged rows only...
+```
+
+### Step 8 — Persist new cases to KB
+**GATED by Step 7.5.** Only runs if Step 7.5 result = PASS or PASS_WITH_FLAGS. If BLOCK → skip entirely.
+
+Persist only if verdict ∈ {MOUNTAIN, PROVISIONAL_MOUNTAIN, SIDE_HUSTLE, KILL}. Skip INSUFFICIENT_SIGNAL (no learning signal yet). Case JSON must populate `mountain_test_v2` and (for MOUNTAIN) `pulse_replies`. Call:
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/kb-add.py \
+  /tmp/case-<id>.json
+```
+- Validates schema (real_references required, evidence_sources required)
+- KB grows organically — after 30 queries, you have 50+ verified cases
+
+### Step 9 — Save verdict + log (DETERMINISTIC, P0 wiring 260412)
+
+**MANDATORY:** Use the atomic 3-store writer. Do NOT save markdown files ad-hoc — that path
+caused audit findings F2/F3 (verdicts/ empty, memory.jsonl empty) for weeks of stage0 runs.
+
+```bash
+# Step 9a — write case JSON to a temp file (or use kb/cases/ directly)
+#   Required schema: {case_id, title_en, title_vn, domain, topic, verdict, verdict_class,
+#                     confidence, founder_profile_fit, knowledge_fired, new_artifacts, source_urls}
+
+# Step 9b — call atomic persistence (writes case + verdict.md + memory.jsonl ATOMICALLY)
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/persist-verdict.py \
+  --case /tmp/case-<id>.json \
+  --verdict-md /tmp/verdict-<id>.md
+```
+
+**Returns JSON receipt:** `{case_id, case_path, verdict_path, memory_appended, ts}`. Check
+`memory_appended == true` before proceeding to Step 9.5. Fail loud if false.
+
+Reference: `plans/260412-0854-brain-harness-empirical-fix/audit-empirical.md` (F2-F4)
+
+### Step 9.5 — Schema + Knowledge Graph write (compound learning)
+
+**DETERMINISTIC GUARANTEE PATH (P0.4 wiring 260412 — runs FIRST, atomic):**
+
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/persist-knowledge.py \
+  --case /tmp/case-<id>.json
+```
+
+This single call writes ALL of:
+1. `data/kg/entities.jsonl` (verdict + niche + founder entities, append-only)
+2. `data/kg/relations.jsonl` (verified_by, operates_in)
+3. `data/kg/index.json` (entity_id → metadata, last-write-wins)
+4. `data/schemas/registry.json` (append SCH-NNN if new_artifacts present, increment evidence_count if exists)
+5. `data/schemas/patterns/SCH-NNN-<slug>.md` (one file per pattern)
+6. `data/case-studies/stage0/<case_id>.json` (cognee idempotent ingest target)
+7. `data/cognitive/custom/consolidation-log.jsonl` (case_ingestion event)
+8. `data/calibration/brier-scores.jsonl` (delayed_pending entry — P2.2 calibration wire)
+
+**Returns JSON receipt** with counts. If any field missing → fail loud. NEVER skip.
+
+**ENRICHMENT AGENT PATH (runs in parallel, non-blocking):**
+
+Spawn **schema-accumulator** (mode=write) with full stage0 output. Agent extracts 1-3 transferable patterns using the EXISTING registry schema:
+
+```json
+{
+  "id": "SCH-NNN",           // auto-increment from registry.stats.total
+  "pattern": "1-line transferable insight (not case-specific)",
+  "trigger": "when does this pattern apply?",
+  "evidence_strength": "strong|medium|weak",
+  "evidence_count": <int>,
+  "counter_examples": "when it fails",
+  "domain": "buyer|pricing|supply_arbitrage|financing|...",
+  "chunk_ready": true,
+  "source": "<stage0 verdict file path>",
+  "created": "<YYYY-MM-DD>",
+  "usage_count": 0,
+  "notes": "case-specific detail"
+}
+```
+
+Append to `data/schemas/registry.json` patterns array. Increment `stats.total`. Update `last_updated`.
+
+Dedupe: if new pattern text has ≥0.7 cosine similarity with existing + same domain → increment existing `evidence_count` instead of adding new row. NEVER create parallel files under `data/schemas/patterns/` — the registry is the single source.
+
+Also write stage0 case itself to `data/case-studies/` indexed appropriately.
+
+Log warn on write failure. NEVER block verdict output.
+
+**KG write — knowledge-graph-curator (mode=write, P05):**
+Spawn **knowledge-graph-curator** (mode=write) in parallel with schema-accumulator. Extract:
+- Entities: founder, opportunity, product, geography, channel (with type + attributes)
+- Relations: founder→opportunity (PURSUES), opportunity→channel (USES), product→market (SERVES), etc.
+- Verdict signal: tag each entity/relation with `{verdict, score, date, case_id}`
+
+CLI:
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/data_intelligence/kg/kg_writer.py \
+  --case /tmp/case-<id>.json --out data/knowledge-graph/
+```
+
+Log success/fail for BOTH schema-accumulator and knowledge-graph-curator writes independently.
+Format: `[SCHEMA WRITE: OK|FAIL] [KG WRITE: OK|FAIL]`
+Neither failure blocks verdict output — both non-blocking.
+
+**Why:** KG write enables Step 3.5 `knowledge-graph-curator` (mode=read) on subsequent runs — cohort queries, compounding validation, contradiction detection all improve with each KG-persisted run.
+
+**Cognitive HITL capture (NEW — phase-06, added 2026-04-11):**
+
+Parallel to schema + KG writes, capture new inferences generated during Steps 4-7 into the cognitive HITL queue. Inferences = novel rules/models/patterns the analysis DISCOVERED but that didn't come from the retrieved corpus.
+
+```bash
+# 1. Build inference JSON array (one object per new insight)
+#    Schema: {id_hint, type: rule|model|archetype|case, title, statement,
+#             confidence, evidence_refs[], domain, source_case_id}
+#    Write to: /tmp/new-inferences-<case_id>.json
+
+# 2. Enqueue to pending HITL store (stdin batch mode — real CLI signature)
+cat /tmp/new-inferences-<case_id>.json | \
+  data/cognitive/.venv/Scripts/python.exe \
+  data/cognitive/scripts/hitl/inference-capture.py \
+  --session-id <case_id> \
+  --stdin-batch
+
+# 3. (Async — user-driven) Review pending queue interactively later
+#    Runs at end of /stage0 session OR on demand
+data/cognitive/.venv/Scripts/python.exe \
+  data/cognitive/scripts/hitl/cognitive-review-pending.py \
+  --session-id <case_id> \
+  --interactive
+```
+
+**Contract:**
+- Inference capture is **non-blocking** — failure logs to `data/cognitive/custom/consolidation-log.jsonl`, never blocks verdict.
+- Review is **async by default**: stage0 prints `HITL: N inferences queued. Run cognitive-review-pending.py --interactive when ready.`
+- Approved inferences → Cognee graph nodes with Beta(2,1) priors (via `approval-workflow.py`).
+- Rejected inferences → `data/cognitive/custom/rejected-log.jsonl` (feeds `rejected-meta-learner.py`).
+- Zero new inferences is acceptable — log `HITL: 0 inferences captured` and proceed.
+
+### Step 9.6 — Verify + Auto-Evolve + Dashboard (P0.5 + P4 wiring 260412)
+
+**P0.5 — verify-persistence.py BLOCKING gate** (6 checks all stores updated within 60s):
+
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/verify-persistence.py \
+  --case-id <case_id> --json
+```
+
+If overall_pass=false → STOP, fail loud with check list, do NOT show user the verdict yet.
+Investigate which seam failed (C1-C6) before any retry. Reference `audit-empirical.md`.
+
+**P4 — auto-evolve.py** (continuous self-correction, non-blocking):
+
+```bash
+.claude/skills/.venv/Scripts/python.exe \
+  .claude/skills/business/transaction-layer/nui-hunter/scripts/auto-evolve.py
+```
+
+Reads `data/calibration/evolution-policy.json` + current metrics (brier_avg_30d, drift, orphans),
+fires triggered actions (auto-downgrade, rerun-fixture, block-stage0, force-reembed, alert).
+Logs to `data/calibration/evolution-log.jsonl`. If `MODEL_OVERCONFIDENT` triggered, surface to user.
+
+**Brain Information Flow Audit** (D6 — print at end of every run):
+
+```
+## Brain Information Flow Audit
+- DATA:     <N>/8 data scripts routed | <M> executed ✅ | computed data points: <count>
+- PERCEIVE: 14/14 agents fired ✅ | cognitive retrieval active ✅
+- PROCESS:  5 hypotheses ✅ | contradiction-resolver fired ✅ | red-team gate PASS ✅
+- DEVELOP:  persist-verdict ✅ | persist-knowledge ✅ | verify 6/6 ✅ | brier delayed_pending ✅
+- EVOLUTION: brier_30d=<x> | drift_alerts_7d=<n> | auto-evolve fired: <YES|NO>
+```
+
+If ANY ❌, surface explicit reason. Brain principle: meta-cognition = consciousness of own state.
+
+### Step 10 — End
+Stop. Do NOT chain into other commands. User reads verdict, decides, executes.
+
+When pulse_check responses arrive (T1 reflex feedback), user runs:
+```
+/log-outcome --stage0-case-id <case_id> --observed <0|1>
+```
+This closes the calibration loop and triggers auto-evolve scan.
+
+## Forbidden behaviors
+
+| ❌ NEVER | ✅ INSTEAD |
+|---|---|
+| Hard-code geography, craft, niche, or supplier network | Capture in profile each session — ZERO assumed access |
+| Reuse a prior session's example topic as scaffolding | Start every run fresh from user's actual input |
+| Use regex to "extract" revenue | Read claims with semantic LLM understanding, tag confidence |
+| Fabricate revenue numbers from anecdotes | Cite real sources or say "no evidence" |
+| Cluster by tier-bucket | Reason about each opportunity individually with 5-property test |
+| Surface cluster of n=2 as "trend" | Require ≥3 real verified references per opportunity |
+| Ignore counterfactual saturation | Always run anti-confirmation queries |
+| Use `pipeline_drop_on_fail`, `archetype-allocator`, etc. | None of those exist in nui-hunter — that was V20 theater |
+| Output P90/P50 as if rigorous | If you don't have audited financials, give RANGES with confidence intervals + provenance |
+| Output 5-property scores (X/50) | Use Q1/Q2/ratio/compounding binary test |
+| Mark MOUNTAIN without `pulse_replies` | Use MOUNTAIN_CANDIDATE → pause for Step 6.5 pulse |
+| Cap downside at zero | Always estimate real downside loss (time, capital, opportunity) |
+| Skip Step 6.5 silently | Print blocking message + exit cleanly |
+
+## Acceptance test (does this command work?)
+
+Run `/stage0 "<arbitrary topic from user>"` with any profile. The rubric is topic-agnostic — it MUST produce these structural properties regardless of domain:
+
+- Step 6 outputs a deterministic verdict from Q1 / Q2 / ratio / compounding — NOT a weighted sum.
+- If Q1 cannot be proven with a real founder URL at ≥$10K/mo net → verdict ∈ {INSUFFICIENT_SIGNAL, KILL, SIDE_HUSTLE}.
+- Verdict **MUST NOT** be `MOUNTAIN` or `PROVISIONAL_MOUNTAIN` without a populated `pulse_replies` array with ≥1 `buying_now` / `researching` reply.
+- Any "PURSUE X/50" style sum-score output is a test failure.
+- Verdict saved to `verdicts/`. Case persisted to `kb/cases/` only if verdict ∈ {MOUNTAIN, PROVISIONAL_MOUNTAIN, SIDE_HUSTLE, KILL}.
+
+Intentionally no fixed example topic — examples bias the LLM toward the last-seen niche. Topics must be discovered each run.
+
+## V19/V20 archive
+
+- V19: `archive/stage0-v19/`
+- V20 (mechanical pipeline): `archive/stage0-v20-mechanical/stage0_v20/`
+- Both kept for reference. Neither invoked by /stage0 anymore.
+
+## Why this works (vs V20)
+
+V20 was a regex+bucket pipeline that laundered LLM domain knowledge through fake aggregation theater.
+
+This (V21 nui-hunter) is **honest**: the LLM (you) does causal reasoning using real-time research tools, persists structured findings to a growing KB, and outputs verifiable verdicts with provenance.
+
+Intelligence ceiling = LLM ceiling. No theater. No hidden assumptions. No mechanical limits.
+
+Per project rules: Vietnamese language preferred for user-facing output, English internal. Sacrifice grammar for concision.

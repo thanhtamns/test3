@@ -1,0 +1,137 @@
+"""
+Dedup Checker — fuzzy match new claims against existing KB to prevent duplicates.
+
+Thresholds:
+  > 0.85 similarity → SKIP (duplicate)
+  0.60–0.85         → FLAG (possible variant, include with note)
+  < 0.60            → NEW (ingest)
+
+Uses Levenshtein ratio for short claims (faster than embedding similarity).
+"""
+
+import json
+import re
+from pathlib import Path
+from typing import List, Tuple
+
+TRAINING_DIR = Path(__file__).parent.parent.parent / "training"
+EVIDENCE_KB_DIR = (
+    Path(__file__).parent.parent.parent.parent
+    / ".claude" / "lib" / "intelligence" / "layers" / "evidence_kb"
+)
+
+SKIP_THRESHOLD = 0.85
+FLAG_THRESHOLD = 0.60
+
+
+def _levenshtein_ratio(s1: str, s2: str) -> float:
+    if not s1 or not s2:
+        return 0.0
+    if s1 == s2:
+        return 1.0
+
+    len1, len2 = len(s1), len(s2)
+    if abs(len1 - len2) / max(len1, len2) > 0.5:
+        return 0.0
+
+    matrix = [[0] * (len2 + 1) for _ in range(len1 + 1)]
+    for i in range(len1 + 1):
+        matrix[i][0] = i
+    for j in range(len2 + 1):
+        matrix[0][j] = j
+
+    for i in range(1, len1 + 1):
+        for j in range(1, len2 + 1):
+            cost = 0 if s1[i - 1] == s2[j - 1] else 1
+            matrix[i][j] = min(
+                matrix[i - 1][j] + 1,
+                matrix[i][j - 1] + 1,
+                matrix[i - 1][j - 1] + cost,
+            )
+
+    distance = matrix[len1][len2]
+    return 1.0 - (distance / max(len1, len2))
+
+
+def _normalize(text: str) -> str:
+    text = text.lower().strip()
+    text = re.sub(r"\[K\]|\[T\]|\[\?\]", "", text)
+    text = re.sub(r"\s+", " ", text)
+    return text
+
+
+def load_existing_claims() -> List[str]:
+    claims = []
+
+    for md_file in TRAINING_DIR.glob("*.md"):
+        try:
+            content = md_file.read_text(encoding="utf-8")
+            for line in content.splitlines():
+                line = line.strip()
+                if line.startswith("- ") or line.startswith("* "):
+                    claims.append(_normalize(line[2:]))
+                elif line and not line.startswith("#") and len(line) > 20:
+                    claims.append(_normalize(line))
+        except Exception:
+            continue
+
+    for py_file in EVIDENCE_KB_DIR.glob("*.py"):
+        try:
+            content = py_file.read_text(encoding="utf-8")
+            for match in re.finditer(r'["\']([^"\']{20,})["\']', content):
+                claims.append(_normalize(match.group(1)))
+        except Exception:
+            continue
+
+    return list(set(claims))
+
+
+def check_dedup(new_claims: List[str], existing: List[str] = None) -> List[dict]:
+    if existing is None:
+        existing = load_existing_claims()
+
+    results = []
+    for claim in new_claims:
+        normalized = _normalize(claim)
+        best_ratio = 0.0
+        best_match = ""
+
+        for existing_claim in existing:
+            ratio = _levenshtein_ratio(normalized, existing_claim)
+            if ratio > best_ratio:
+                best_ratio = ratio
+                best_match = existing_claim
+
+        if best_ratio > SKIP_THRESHOLD:
+            status = "SKIP"
+        elif best_ratio > FLAG_THRESHOLD:
+            status = "FLAG"
+        else:
+            status = "NEW"
+
+        results.append({
+            "claim": claim,
+            "status": status,
+            "similarity": round(best_ratio, 3),
+            "closest_match": best_match if best_ratio > FLAG_THRESHOLD else None,
+        })
+
+    return results
+
+
+if __name__ == "__main__":
+    import sys
+
+    if len(sys.argv) > 1:
+        with open(sys.argv[1], "r", encoding="utf-8") as f:
+            claims = json.load(f)
+    else:
+        claims = [line.strip() for line in sys.stdin if line.strip()]
+
+    results = check_dedup(claims)
+    print(json.dumps(results, indent=2, ensure_ascii=False))
+
+    skip_count = sum(1 for r in results if r["status"] == "SKIP")
+    flag_count = sum(1 for r in results if r["status"] == "FLAG")
+    new_count = sum(1 for r in results if r["status"] == "NEW")
+    print(f"\n--- Dedup: {new_count} NEW, {flag_count} FLAG, {skip_count} SKIP ---", file=sys.stderr)

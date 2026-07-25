@@ -1,0 +1,92 @@
+---
+phase: 5
+title: "Dashboard Polish (P3)"
+status: pending
+priority: P3
+effort: "2h"
+dependencies: []
+---
+
+# Phase 5: Dashboard Polish (P3)
+
+## Overview
+
+Fix hardcoded tenant fallback (lazy validation, not module-level throw), add error boundaries. Path encoding change CUT (YAGNI — no proven failure case). Model-aware cost estimate CUT (YAGNI — API doesn't track model data). Skip G5 (WebSocket reconnection already works).
+
+## Requirements
+
+- Functional: Dashboard handles API failures gracefully. Tenant ID validated at first API call, not module load.
+- Non-functional: No new npm dependencies for error boundaries (React built-in).
+
+## Related Code Files
+
+- Modify: `dashboard/src/lib/api.ts` (tenant validation in apiFetch, not module scope)
+- Modify: `dashboard/src/hooks/use-live-metrics.ts` (tenant validation)
+- Create: `dashboard/src/components/error-boundary.tsx`
+- Modify: `dashboard/src/app/layout.tsx` (wrap children in ErrorBoundary)
+- Create: `dashboard/.env.example`
+
+## Implementation Steps
+
+### Step 1: Remove hardcoded tenant fallback — G1
+
+**Do NOT throw at module scope** — `api.ts` is imported by 5+ page files, a module-level throw crashes the entire app for any developer without `.env.local`.
+
+1. In `api.ts`: keep `const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID || ""` at module scope
+2. Add validation inside `apiFetch()`:
+   ```typescript
+   function apiFetch(path: string, opts?: RequestInit): Promise<any> {
+       if (!TENANT_ID) {
+           console.error("NEXT_PUBLIC_TENANT_ID not set — API calls will fail");
+       }
+       // ... existing fetch logic
+   }
+   ```
+3. OR use Next.js env validation in `next.config.js`:
+   ```js
+   env: { NEXT_PUBLIC_TENANT_ID: process.env.NEXT_PUBLIC_TENANT_ID }
+   ```
+   This provides a clear build-time error without crashing module imports.
+4. In `use-live-metrics.ts`: same pattern — remove "demo-tenant" fallback, validate lazily
+5. Create `dashboard/.env.example` with `NEXT_PUBLIC_TENANT_ID=your-tenant-id`
+
+### Step 2: Add error boundary — G3
+
+1. Create `dashboard/src/components/error-boundary.tsx`:
+   ```tsx
+   "use client";
+   import { Component, ReactNode } from "react";
+   export class ErrorBoundary extends Component<{children: ReactNode, fallback?: ReactNode}> {
+       state = { hasError: false, error: null as Error | null };
+       static getDerivedStateFromError(error: Error) { return { hasError: true, error }; }
+       render() {
+           if (this.state.hasError) return this.props.fallback || <div>Something went wrong. Please refresh.</div>;
+           return this.props.children;
+       }
+   }
+   ```
+2. In `layout.tsx`: wrap `{children}` with `<ErrorBoundary>`
+
+### Step 3: Verify
+
+1. `npm run build` — clean (with NEXT_PUBLIC_TENANT_ID set in env)
+2. `npm run dev` — works even without NEXT_PUBLIC_TENANT_ID (warns, doesn't crash)
+3. `npm run lint` — clean
+4. Manual test: navigate all pages, verify error boundary catches thrown errors
+
+## ~~CUT items (from red team)~~
+
+- **Path encoding (G2):** CUT. Breaking API change with no migration path, no proven failure case with pipe encoding. If needed later, implement as versioned API with backwards compatibility.
+- **Model-aware cost estimate (G4):** CUT. API response types (`CommandStat`, `OverviewStats`) have no `model` field. Cannot pass model to `estimateCost()`. Keep hardcoded $3/1M (Sonnet) until API tracks model tiers. Single-line fix when model data is available.
+
+## Success Criteria
+
+- [ ] Tenant ID validated lazily (warns on missing, doesn't crash app)
+- [ ] ErrorBoundary wraps all pages in layout.tsx
+- [ ] `.env.example` documents required env vars
+- [ ] `npm run build` clean, `npm run lint` clean
+
+## Risk Assessment
+
+- **Tenant validation (low risk):** Lazy validation allows dev workflows. Build-time validation via next.config.js catches CI issues.
+- **Error boundary (low risk):** Additive, no behavior change for working pages.

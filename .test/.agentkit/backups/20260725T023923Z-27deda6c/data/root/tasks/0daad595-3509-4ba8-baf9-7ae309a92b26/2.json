@@ -1,0 +1,19 @@
+{
+  "id": "2",
+  "subject": "Phase 2: Quality Gate (codeflow gate + dep validation)",
+  "description": "Build dep_validator (HTTP HEAD to registries), license_checker, quality_gate orchestrator, gate/scan CLI commands. 29 TDD steps. Plan: plans/260608-codeflow-gap-closure-tdd/phase-02-quality-gate-codeflow-gate-dep-validation.md",
+  "status": "pending",
+  "blocks": [
+    "3",
+    "7"
+  ],
+  "blockedBy": [
+    "1"
+  ],
+  "metadata": {
+    "phase": 2,
+    "effort": "4d",
+    "priority": "P1",
+    "planDir": "plans/260608-codeflow-gap-closure-tdd"
+  }
+}

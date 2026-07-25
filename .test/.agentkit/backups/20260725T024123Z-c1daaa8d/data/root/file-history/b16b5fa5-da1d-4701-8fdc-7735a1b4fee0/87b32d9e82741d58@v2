@@ -1,0 +1,69 @@
+# Hunt System Overhaul: Money-Flow-First + Leverage Gate + Deal Tracker
+
+**Date:** 2026-05-22
+**Status:** Design approved, pending implementation
+**Target:** `D:\code\invesments\master_investments\.claude\commands\`
+
+## Problem
+
+Hunt system thinks BUILDER-first: finds gaps → recommends "build X." Even with asymmetry scanners, #1 output was "build DPIA template tool" = labor thinking. User needs POSITION-first: find money flows → sit at bottleneck → broker/arbitrage/intelligence.
+
+## Root Causes (4 diagnosed)
+
+1. **Filter has no leverage gate** — BUILDER scores same as BROKER
+2. **Scanners find gaps, not money flows** — "missing tool" → "build it" pipeline
+3. **Wrong root question** — "what to sell?" instead of "who pays whom?"
+4. **No deal tracking** — output dies as text, no action pipeline, no learning
+
+## Solution: 3-Part Overhaul
+
+### Part A: Filter Fix — Add Leverage Type (Filter 6)
+
+Position scoring: ARBITRAGE(10) > BROKER(9) > INTELLIGENCE(8) > AGGREGATOR(7) > MEDIA(5) > WRAPPER(3) > BUILDER(1). Score < 3 = KILL.
+
+New weights: leverage(0.25) + competition(0.20) + protection(0.20) + ai_resistance(0.15) + access(0.10) + margin(0.10).
+
+### Part B: Scanner Inversion — Money Flow First
+
+All scanners inverted from "find gap" to "find money flow + bottleneck + position":
+- **money-flow-scanner.md** (NEW) — primary scanner, maps transaction volumes and bottleneck nodes
+- **regulatory-scanner** — from "compliance gap" to "compliance money flow broker"
+- **cross-price-scanner** — from "price gap" to "arbitrage position"
+- **cross-language-scanner** — from "missing tool" to "translation broker/reseller"
+- **timing-scanner** — from "demand window" to "flow surge position"
+- **founder-network-scanner** — enhanced with money flow mapping per contact
+
+### Part C: Deal Tracker System (3 new files)
+
+- **deal-tracker.md** — converts opportunities to DEAL CARDS with contact/script/deadline/status
+- **deal-learner.md** — records outcomes, extracts patterns, feeds back into scanner weights
+- **deal-dashboard.md** — pipeline status, conversion rates, revenue by position type
+
+## File Changes
+
+| Action | File | Change |
+|---|---|---|
+| MODIFY | asymmetry-filter.md | +Filter 6 leverage type, reweight formula |
+| NEW | scanners/money-flow-scanner.md | Primary money flow scanner |
+| MODIFY | scanners/regulatory-scanner.md | Invert to broker position |
+| MODIFY | scanners/cross-price-scanner.md | Invert to arbitrage position |
+| MODIFY | scanners/cross-language-scanner.md | Invert to broker/reseller |
+| MODIFY | scanners/timing-scanner.md | Invert to surge position |
+| MODIFY | scanners/founder-network-scanner.md | Add money flow per contact |
+| NEW | deal-tracker.md | Deal card pipeline |
+| NEW | deal-learner.md | Outcome learning |
+| NEW | deal-dashboard.md | Pipeline dashboard |
+| MODIFY | hunt.md | Philosophy, leverage enforcement, deal integration |
+| MODIFY | hunt-checklist.md | Filter 6, deal cards, leverage checks |
+
+## Expected Output Shift
+
+BEFORE: "Build DPIA Kit, sell to SMBs at $49/mo"
+AFTER: "Broker GDPR clients to Vietnamese compliance teams, take €500-1500/referral, here are 10 contacts with scripts"
+
+## Success Criteria
+
+1. Zero "build X" in top-3 opportunities
+2. Every opportunity has leverage_type and position_type
+3. Every opportunity produces deal cards with specific contacts
+4. Deal learner updates patterns after outcomes

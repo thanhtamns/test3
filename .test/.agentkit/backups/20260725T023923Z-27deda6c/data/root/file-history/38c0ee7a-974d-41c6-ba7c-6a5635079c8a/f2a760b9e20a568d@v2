@@ -1,0 +1,12 @@
+services:
+  cloakbrowser:
+    build:
+      context: .
+      dockerfile: Dockerfile.cloakbrowser
+    container_name: cloakbrowser
+    ports:
+      - "127.0.0.1:9222:9222"
+    restart: unless-stopped
+    shm_size: "2gb"
+    environment:
+      - DISPLAY=:99

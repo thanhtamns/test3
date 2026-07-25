@@ -1,0 +1,215 @@
+"""
+bayesian_knob_updater.py — Proposes knob edits from mechanism error evidence.
+
+Uses Bayesian reasoning on small samples (~5-50 cases):
+- Prior: current knob value is "correct" with variance proportional to range
+- Evidence: mechanism errors attributed to this knob
+- Posterior: updated belief about optimal value
+
+Direction inference:
+- "direction_mismatch" where step signaled GO but actual=KILL → threshold too permissive → raise
+- "direction_mismatch" where step signaled KILL but actual=GO → threshold too restrictive → lower
+- "confidence_inflation" → confidence gate too low → raise
+- "missing_signal" → agent count too low → raise
+- "override_error" → minimum agents too low or confidence gate too high → adjust
+
+Usage:
+    updater = BayesianKnobUpdater(registry)
+    edit = updater.propose_edit("mountain_threshold_monthly", errors)
+"""
+
+from __future__ import annotations
+
+import logging
+import math
+from dataclasses import dataclass
+from typing import Optional
+
+from .knob_registry import KnobRegistry
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class KnobEdit:
+    """A proposed or applied knob modification."""
+    knob_id: str
+    old_value: float
+    new_value: float
+    direction: int  # +1 = raise, -1 = lower
+    magnitude: float  # absolute change
+    evidence_count: int
+    avg_severity: float
+    confidence: float  # 0-1, how confident we are in the direction
+    reason: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "knob_id": self.knob_id,
+            "old_value": self.old_value,
+            "new_value": self.new_value,
+            "direction": self.direction,
+            "magnitude": self.magnitude,
+            "evidence_count": self.evidence_count,
+            "avg_severity": self.avg_severity,
+            "confidence": self.confidence,
+            "reason": self.reason,
+        }
+
+
+class BayesianKnobUpdater:
+    """Proposes knob edits using Bayesian posterior on mechanism errors."""
+
+    def __init__(self, registry: KnobRegistry, max_pct_change: float = 0.20):
+        self.registry = registry
+        self.max_pct_change = max_pct_change
+
+    def propose_edit(self, knob_id: str, errors: list[dict]) -> Optional[KnobEdit]:
+        """
+        Propose a knob edit from accumulated errors.
+
+        Args:
+            knob_id: The knob to edit
+            errors: List of MechanismError dicts attributed to this knob
+
+        Returns:
+            KnobEdit if edit should be proposed, None if evidence insufficient
+        """
+        if len(errors) < 2:
+            return None
+
+        current = self.registry.get(knob_id)
+        knob_range = self.registry.get_range(knob_id)
+        if knob_range[0] is None or knob_range[1] is None:
+            return None
+
+        direction = self._infer_direction(knob_id, errors)
+        if direction == 0:
+            return None
+
+        avg_severity = sum(e.get("severity", 0.5) for e in errors) / len(errors)
+        magnitude = self._bayesian_magnitude(
+            n_errors=len(errors),
+            avg_severity=avg_severity,
+            knob_range=knob_range,
+            current_value=current,
+        )
+
+        new_value = current + (direction * magnitude)
+        new_value = self._clamp_to_range(new_value, knob_range)
+        new_value = self._enforce_max_change(current, new_value, knob_range)
+
+        meta = self.registry.get_meta(knob_id)
+        if meta.get("type") == "int":
+            new_value = int(round(new_value))
+
+        if new_value == current:
+            return None
+
+        confidence = self._calculate_confidence(len(errors), avg_severity)
+
+        return KnobEdit(
+            knob_id=knob_id,
+            old_value=current,
+            new_value=new_value,
+            direction=direction,
+            magnitude=abs(new_value - current),
+            evidence_count=len(errors),
+            avg_severity=avg_severity,
+            confidence=confidence,
+            reason=f"{len(errors)} errors (avg_sev={avg_severity:.2f}) → "
+                   f"{'raise' if direction > 0 else 'lower'} by {abs(new_value - current):.2f}",
+        )
+
+    def _infer_direction(self, knob_id: str, errors: list[dict]) -> int:
+        """
+        Infer whether to raise or lower the knob.
+
+        Returns: +1 (raise), -1 (lower), 0 (ambiguous)
+        """
+        raise_votes = 0
+        lower_votes = 0
+
+        for err in errors:
+            error_type = err.get("error_type", "")
+            detail = err.get("detail", "").lower()
+            predicted = err.get("predicted_verdict", "").upper()
+            actual = err.get("actual_outcome", "").upper()
+
+            if error_type == "direction_mismatch":
+                if self._is_positive(predicted) and self._is_negative(actual):
+                    raise_votes += 1  # too permissive → raise threshold
+                elif self._is_negative(predicted) and self._is_positive(actual):
+                    lower_votes += 1  # too restrictive → lower threshold
+            elif error_type == "confidence_inflation":
+                raise_votes += 1  # confidence too easily achieved → raise gate
+            elif error_type == "missing_signal":
+                raise_votes += 1  # not enough agents/data → raise count
+            elif error_type == "override_error":
+                lower_votes += 1  # minority signal suppressed → lower gate
+
+        total = raise_votes + lower_votes
+        if total == 0:
+            return 0
+
+        ratio = max(raise_votes, lower_votes) / total
+        if ratio < 0.6:
+            return 0  # too ambiguous
+
+        return 1 if raise_votes > lower_votes else -1
+
+    def _bayesian_magnitude(
+        self,
+        n_errors: int,
+        avg_severity: float,
+        knob_range: tuple,
+        current_value: float,
+    ) -> float:
+        """
+        Calculate edit magnitude using Bayesian posterior width.
+
+        More errors + higher severity → larger magnitude (more certain of direction).
+        Fewer errors → smaller, more conservative edit.
+
+        Formula: magnitude = range_width × base_step × evidence_weight
+        - base_step = 0.05 (5% of range per edit cycle minimum)
+        - evidence_weight = sqrt(n_errors) × avg_severity / 2
+        - Capped at max_pct_change × range_width
+        """
+        range_width = knob_range[1] - knob_range[0]
+
+        base_step = 0.05 * range_width
+        evidence_weight = math.sqrt(n_errors) * avg_severity / 2.0
+
+        magnitude = base_step * evidence_weight
+        max_magnitude = self.max_pct_change * range_width
+        magnitude = min(magnitude, max_magnitude)
+
+        return magnitude
+
+    def _clamp_to_range(self, value: float, knob_range: tuple) -> float:
+        """Clamp value to valid range."""
+        return max(knob_range[0], min(knob_range[1], value))
+
+    def _enforce_max_change(
+        self, current: float, proposed: float, knob_range: tuple
+    ) -> float:
+        """Enforce max percentage change per cycle."""
+        range_width = knob_range[1] - knob_range[0]
+        max_delta = self.max_pct_change * range_width
+        delta = proposed - current
+        if abs(delta) > max_delta:
+            return current + (max_delta if delta > 0 else -max_delta)
+        return proposed
+
+    def _calculate_confidence(self, n_errors: int, avg_severity: float) -> float:
+        """Confidence in the proposed edit (0-1)."""
+        n_factor = 1 - (1 / (1 + n_errors))
+        severity_factor = avg_severity
+        return min(0.95, n_factor * severity_factor)
+
+    def _is_positive(self, verdict: str) -> bool:
+        return verdict in {"MOUNTAIN_CANDIDATE", "MOUNTAIN_STRONG", "GO"}
+
+    def _is_negative(self, verdict: str) -> bool:
+        return verdict in {"KILL", "NO_GO", "REJECT"}

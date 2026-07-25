@@ -1,0 +1,206 @@
+"""Tests for MetaEvolutionOrchestrator — top-level AEVO loop coordinator."""
+
+import json
+from pathlib import Path
+
+import pytest
+
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
+from intelligence.mechanism.knob_registry import KnobRegistry
+from intelligence.mechanism.error_attributor import ErrorAttributor
+from intelligence.mechanism.trace_logger import TraceLogger
+from intelligence.mechanism.bayesian_knob_updater import BayesianKnobUpdater
+from intelligence.mechanism.segment_evaluator import SegmentEvaluator
+from intelligence.mechanism.safety_harness import SafetyHarness
+from intelligence.mechanism.meta_edit_controller import MetaEditController
+from intelligence.mechanism.meta_evolution_orchestrator import (
+    MetaEvolutionOrchestrator,
+    OrchestrationResult,
+)
+
+
+@pytest.fixture
+def env(tmp_path):
+    """Full isolated environment."""
+    knobs_data = {
+        "version": 1,
+        "knobs": {
+            "mountain_threshold_monthly": {
+                "value": 10000, "type": "int", "range": [3000, 50000],
+                "unit": "USD/month", "step_ref": "test", "category": "scoring",
+                "description": "Test",
+            },
+            "confidence_gate_minimum": {
+                "value": 0.70, "type": "float", "range": [0.50, 0.95],
+                "unit": "probability", "step_ref": "test", "category": "threshold",
+                "description": "Test",
+            },
+        },
+    }
+    invariants = {
+        "version": 1,
+        "invariants": [
+            {"id": "conf_floor", "type": "floor",
+             "protected_knob": "confidence_gate_minimum", "min_value": 0.50,
+             "description": "test"},
+        ],
+    }
+
+    knobs_path = tmp_path / "knobs.json"
+    knobs_path.write_text(json.dumps(knobs_data), encoding="utf-8")
+    inv_path = tmp_path / "invariants.json"
+    inv_path.write_text(json.dumps(invariants), encoding="utf-8")
+
+    traces_dir = tmp_path / "traces"
+    traces_dir.mkdir()
+    errors_path = tmp_path / "mechanism-errors.jsonl"
+    history_path = tmp_path / "knobs-history.jsonl"
+    ctrl_state = tmp_path / "controller-state.json"
+    seg_state = tmp_path / "segment-state.json"
+    seg_history = tmp_path / "meta-edit-history.jsonl"
+    brier_path = tmp_path / "brier-scores.jsonl"
+    outcomes_path = tmp_path / "outcomes.jsonl"
+
+    return {
+        "tmp_path": tmp_path,
+        "knobs_path": knobs_path,
+        "invariants_path": inv_path,
+        "history_path": history_path,
+        "traces_dir": traces_dir,
+        "errors_path": errors_path,
+        "ctrl_state": ctrl_state,
+        "seg_state": seg_state,
+        "seg_history": seg_history,
+        "brier_path": brier_path,
+        "outcomes_path": outcomes_path,
+    }
+
+
+@pytest.fixture
+def orchestrator(env, monkeypatch):
+    """Build orchestrator with all test paths."""
+    import intelligence.mechanism.meta_evolution_orchestrator as mod
+    monkeypatch.setattr(mod, "_OUTCOMES_PATH", env["outcomes_path"])
+    monkeypatch.setattr(mod, "_BRIER_PATH", env["brier_path"])
+
+    registry = KnobRegistry(knobs_path=env["knobs_path"], history_path=env["history_path"])
+    attributor = ErrorAttributor(traces_dir=env["traces_dir"], errors_path=env["errors_path"])
+    harness = SafetyHarness(invariants_path=env["invariants_path"], history_path=env["history_path"])
+    updater = BayesianKnobUpdater(registry)
+    evaluator = SegmentEvaluator(segment_size=3, state_path=env["seg_state"],
+                                  history_path=env["seg_history"])
+    controller = MetaEditController(
+        registry=registry, attributor=attributor, evaluator=evaluator,
+        updater=updater, harness=harness, state_path=env["ctrl_state"],
+        brier_path=env["brier_path"], min_errors_to_propose=3, trigger_interval=5,
+    )
+
+    orch = MetaEvolutionOrchestrator.__new__(MetaEvolutionOrchestrator)
+    orch.repo_root = env["tmp_path"]
+    orch.registry = registry
+    orch.attributor = attributor
+    orch.evaluator = evaluator
+    orch.controller = controller
+    return orch
+
+
+def _seed_errors(errors_path, knob_id, n=5):
+    errors_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(errors_path, "a", encoding="utf-8") as f:
+        for i in range(n):
+            f.write(json.dumps({
+                "case_id": f"T-{i:03d}", "step": "6_mountain_test",
+                "step_name": "Mountain Test", "error_type": "direction_mismatch",
+                "severity": 0.7, "knobs_implicated": [knob_id],
+                "detail": "test", "predicted_verdict": "MOUNTAIN_CANDIDATE",
+                "actual_outcome": "KILL", "timestamp": f"2026-05-16T15:{i:02d}:00Z",
+            }) + "\n")
+
+
+def _seed_outcomes(outcomes_path, n=5):
+    outcomes_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(outcomes_path, "w", encoding="utf-8") as f:
+        for i in range(n):
+            f.write(json.dumps({
+                "case_id": f"O-{i:03d}", "outcome": "KILL",
+                "timestamp": f"2026-05-16T16:{i:02d}:00Z",
+            }) + "\n")
+
+
+class TestSessionCheck:
+    def test_idle_no_outcomes(self, orchestrator):
+        result = orchestrator.run_session_check()
+        assert result.mode == "session_check"
+        assert result.outcomes_since_last_edit == 0
+
+    def test_not_enough_outcomes(self, orchestrator, env):
+        _seed_outcomes(env["outcomes_path"], n=3)
+        result = orchestrator.run_session_check()
+        assert result.meta_edit_action == "idle"
+
+    def test_triggers_at_threshold(self, orchestrator, env):
+        _seed_outcomes(env["outcomes_path"], n=5)
+        _seed_errors(env["errors_path"], "mountain_threshold_monthly", n=5)
+        result = orchestrator.run_session_check()
+        assert result.meta_edit_action == "edit_applied"
+
+    def test_graceful_on_error(self, orchestrator, monkeypatch):
+        monkeypatch.setattr(orchestrator.controller, "should_run",
+                            lambda x: (_ for _ in ()).throw(RuntimeError("boom")))
+        result = orchestrator.run_session_check()
+        assert len(result.errors) > 0
+
+
+class TestAfterOutcome:
+    def test_runs_attribution(self, orchestrator, env):
+        trace = TraceLogger(case_id="ATTR-001", traces_dir=env["traces_dir"])
+        trace.log_step("3.5_wave1", "Wave 1",
+                       knobs_used=["mountain_threshold_monthly"],
+                       signal={"direction": "GO", "confidence": 0.8})
+        trace.log_step("6_mountain_test", "Mountain",
+                       knobs_used=["mountain_threshold_monthly"],
+                       signal={"direction": "GO", "confidence": 0.75})
+        trace.log_step("7_verdict_synthesis", "Synthesis",
+                       knobs_used=["confidence_gate_minimum"],
+                       signal={"direction": "GO", "confidence": 0.78})
+        trace.log_step("3.5_wave2", "Wave 2",
+                       knobs_used=["mountain_threshold_monthly"],
+                       signal={"direction": "GO", "confidence": 0.7})
+        trace.log_verdict_composition("MOUNTAIN_CANDIDATE", final_confidence=0.78)
+        trace.save()
+
+        result = orchestrator.run_after_outcome("ATTR-001", "KILL", "MOUNTAIN_CANDIDATE")
+        assert result.attribution_errors > 0
+
+    def test_no_trace_still_works(self, orchestrator):
+        result = orchestrator.run_after_outcome("MISSING-001", "KILL", "GO")
+        assert result.attribution_errors == 0
+        assert len(result.errors) == 0
+
+
+class TestStatus:
+    def test_status_returns_dict(self, orchestrator):
+        status = orchestrator.get_status()
+        assert "controller_state" in status
+        assert "outcomes_since_last_edit" in status
+        assert "error_summary" in status
+
+    def test_status_after_edit(self, orchestrator, env):
+        _seed_outcomes(env["outcomes_path"], n=5)
+        _seed_errors(env["errors_path"], "mountain_threshold_monthly", n=5)
+        orchestrator.run_session_check()
+
+        status = orchestrator.get_status()
+        assert status["controller_state"] == "segment_running"
+        assert status["active_segment"] is not None
+
+
+class TestOrchestrationResult:
+    def test_to_dict(self):
+        r = OrchestrationResult(mode="test", outcomes_since_last_edit=3,
+                                 meta_edit_action="edit_applied")
+        d = r.to_dict()
+        assert d["mode"] == "test"
+        assert "timestamp" in d

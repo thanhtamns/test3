@@ -1,0 +1,24 @@
+{
+  "type": "case_study",
+  "description": "Template for deal case studies — track record credential (Phase 3-4)",
+  "required_fields": ["deal_type", "size_vnd", "my_role", "outcome"],
+  "template": {
+    "id": "cs-NNNN",
+    "type": "case_study",
+    "date": "",
+    "parties": {
+      "party_a": "",
+      "party_b": "",
+      "anonymized": true
+    },
+    "deal_type": "",
+    "size_vnd": 0,
+    "my_role": "bridge|certifier|facilitator|negotiator|guarantor",
+    "commission_earned_vnd": 0,
+    "commission_type": "free|percentage|flat",
+    "outcome": "",
+    "what_i_learned": "",
+    "linked_deal_id": "",
+    "usable_as_reference": true
+  }
+}

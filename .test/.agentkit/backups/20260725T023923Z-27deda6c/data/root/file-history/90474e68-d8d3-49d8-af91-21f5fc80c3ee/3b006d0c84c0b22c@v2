@@ -1,0 +1,337 @@
+use regex::Regex;
+use std::sync::LazyLock;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FindingType {
+    AwsKey,
+    GithubToken,
+    PrivateKey,
+    GenericSecret,
+    Email,
+    HighEntropy,
+}
+
+impl FindingType {
+    pub fn name(&self) -> &'static str {
+        match self {
+            FindingType::AwsKey => "aws_key",
+            FindingType::GithubToken => "github_token",
+            FindingType::PrivateKey => "private_key",
+            FindingType::GenericSecret => "generic_secret",
+            FindingType::Email => "email",
+            FindingType::HighEntropy => "high_entropy",
+        }
+    }
+
+    pub fn severity(&self) -> &'static str {
+        match self {
+            FindingType::AwsKey | FindingType::PrivateKey => "critical",
+            FindingType::GithubToken | FindingType::GenericSecret => "high",
+            FindingType::HighEntropy => "medium",
+            FindingType::Email => "low",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SecurityFinding {
+    pub finding_type: FindingType,
+    pub matched_text: String,
+    pub redacted: String,
+    pub line_number: usize,
+    pub action: Action,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Action {
+    Block,
+    Warn,
+}
+
+static AWS_KEY: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"AKIA[0-9A-Z]{16}").unwrap());
+
+static GITHUB_TOKEN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"gh[pso]_[A-Za-z0-9_]{36,}").unwrap());
+
+static PRIVATE_KEY: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"-----BEGIN\s+(RSA\s+|EC\s+|DSA\s+|OPENSSH\s+)?PRIVATE KEY-----").unwrap());
+
+static GENERIC_SECRET: LazyLock<Regex> =
+    LazyLock::new(|| {
+        Regex::new(r#"(?i)(api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token|password)\s*[=:]\s*['"]?([A-Za-z0-9+/=_\-]{16,})['"]?"#).unwrap()
+    });
+
+static EMAIL: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}").unwrap());
+
+pub struct ScanResult {
+    pub findings: Vec<SecurityFinding>,
+    pub output: String,
+}
+
+pub fn scan(input: &str) -> ScanResult {
+    let mut findings = Vec::new();
+
+    for (line_idx, line) in input.lines().enumerate() {
+        let line_num = line_idx + 1;
+
+        for m in AWS_KEY.find_iter(line) {
+            findings.push(SecurityFinding {
+                finding_type: FindingType::AwsKey,
+                matched_text: m.as_str().to_string(),
+                redacted: redact(m.as_str()),
+                line_number: line_num,
+                action: Action::Block,
+            });
+        }
+
+        for m in GITHUB_TOKEN.find_iter(line) {
+            findings.push(SecurityFinding {
+                finding_type: FindingType::GithubToken,
+                matched_text: m.as_str().to_string(),
+                redacted: redact(m.as_str()),
+                line_number: line_num,
+                action: Action::Block,
+            });
+        }
+
+        if PRIVATE_KEY.is_match(line) {
+            findings.push(SecurityFinding {
+                finding_type: FindingType::PrivateKey,
+                matched_text: "-----BEGIN PRIVATE KEY-----".to_string(),
+                redacted: "[REDACTED: private key]".to_string(),
+                line_number: line_num,
+                action: Action::Block,
+            });
+        }
+
+        for caps in GENERIC_SECRET.captures_iter(line) {
+            if let Some(value) = caps.get(2) {
+                findings.push(SecurityFinding {
+                    finding_type: FindingType::GenericSecret,
+                    matched_text: value.as_str().to_string(),
+                    redacted: redact(value.as_str()),
+                    line_number: line_num,
+                    action: Action::Block,
+                });
+            }
+        }
+
+        for m in EMAIL.find_iter(line) {
+            let email = m.as_str();
+            if !is_test_email(email) {
+                findings.push(SecurityFinding {
+                    finding_type: FindingType::Email,
+                    matched_text: email.to_string(),
+                    redacted: redact_email(email),
+                    line_number: line_num,
+                    action: Action::Warn,
+                });
+            }
+        }
+
+        for token in line.split_whitespace() {
+            if token.len() >= 20 && shannon_entropy(token) > 4.5 && !is_known_safe(token) {
+                findings.push(SecurityFinding {
+                    finding_type: FindingType::HighEntropy,
+                    matched_text: token.to_string(),
+                    redacted: redact(token),
+                    line_number: line_num,
+                    action: Action::Warn,
+                });
+            }
+        }
+    }
+
+    let output = apply_blocks(input, &findings);
+    ScanResult { findings, output }
+}
+
+fn apply_blocks(input: &str, findings: &[SecurityFinding]) -> String {
+    let mut output = input.to_string();
+    for f in findings {
+        if f.action == Action::Block {
+            output = output.replace(&f.matched_text, &f.redacted);
+        }
+    }
+    output
+}
+
+fn redact(s: &str) -> String {
+    if s.len() <= 8 {
+        return "[REDACTED]".to_string();
+    }
+    let first4 = &s[..4];
+    let last4 = &s[s.len() - 4..];
+    format!("{}****{}", first4, last4)
+}
+
+fn redact_email(email: &str) -> String {
+    if let Some(at_pos) = email.find('@') {
+        let local = &email[..at_pos];
+        let domain = &email[at_pos..];
+        if local.len() <= 2 {
+            return format!("**{}", domain);
+        }
+        format!("{}**{}", &local[..2], domain)
+    } else {
+        "[REDACTED]".to_string()
+    }
+}
+
+fn is_test_email(email: &str) -> bool {
+    let lower = email.to_lowercase();
+    lower.ends_with("@example.com")
+        || lower.ends_with("@test.com")
+        || lower.ends_with("@localhost")
+        || lower.contains("noreply")
+        || lower.contains("no-reply")
+}
+
+fn is_known_safe(token: &str) -> bool {
+    // UUIDs
+    if token.len() == 36 && token.chars().filter(|c| *c == '-').count() == 4 {
+        return true;
+    }
+    // Git SHAs
+    if token.len() == 40 && token.chars().all(|c| c.is_ascii_hexdigit()) {
+        return true;
+    }
+    // Common hash prefixes
+    if token.starts_with("sha256:") || token.starts_with("sha1:") {
+        return true;
+    }
+    false
+}
+
+pub fn shannon_entropy(s: &str) -> f64 {
+    if s.is_empty() {
+        return 0.0;
+    }
+    let mut freq = [0u32; 256];
+    for b in s.bytes() {
+        freq[b as usize] += 1;
+    }
+    let len = s.len() as f64;
+    let mut entropy = 0.0;
+    for &count in &freq {
+        if count > 0 {
+            let p = count as f64 / len;
+            entropy -= p * p.log2();
+        }
+    }
+    entropy
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_detect_aws_key() {
+        let input = "export AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE";
+        let result = scan(input);
+        assert_eq!(result.findings.len(), 1);
+        assert_eq!(result.findings[0].finding_type, FindingType::AwsKey);
+        assert_eq!(result.findings[0].action, Action::Block);
+        assert!(!result.output.contains("AKIAIOSFODNN7EXAMPLE"));
+    }
+
+    #[test]
+    fn test_detect_github_token() {
+        let input = "GITHUB_TOKEN=ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijkl";
+        let result = scan(input);
+        let gh = result.findings.iter().find(|f| f.finding_type == FindingType::GithubToken);
+        assert!(gh.is_some());
+        assert_eq!(gh.unwrap().action, Action::Block);
+    }
+
+    #[test]
+    fn test_detect_private_key() {
+        let input = "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA0Z3V...";
+        let result = scan(input);
+        let pk = result.findings.iter().find(|f| f.finding_type == FindingType::PrivateKey);
+        assert!(pk.is_some());
+    }
+
+    #[test]
+    fn test_detect_generic_secret() {
+        let input = r#"api_key = "sk_live_abcdef1234567890abcdef""#;
+        let result = scan(input);
+        let gs = result.findings.iter().find(|f| f.finding_type == FindingType::GenericSecret);
+        assert!(gs.is_some());
+    }
+
+    #[test]
+    fn test_detect_email() {
+        let input = "Contact: john.doe@company.com for access";
+        let result = scan(input);
+        let email = result.findings.iter().find(|f| f.finding_type == FindingType::Email);
+        assert!(email.is_some());
+        assert_eq!(email.unwrap().action, Action::Warn);
+    }
+
+    #[test]
+    fn test_skip_test_emails() {
+        let input = "user@example.com and noreply@github.com";
+        let result = scan(input);
+        let emails: Vec<_> = result.findings.iter().filter(|f| f.finding_type == FindingType::Email).collect();
+        assert_eq!(emails.len(), 0);
+    }
+
+    #[test]
+    fn test_entropy_analysis() {
+        let high_entropy = "aK3mX9pQ2wR7vB1nC5hL8jF4dG6eS0tY";
+        assert!(shannon_entropy(high_entropy) > 4.5);
+
+        let low_entropy = "aaaaaaaaaaaaaaaaaaaaaa";
+        assert!(shannon_entropy(low_entropy) < 1.0);
+    }
+
+    #[test]
+    fn test_uuid_not_flagged() {
+        let input = "ID: 550e8400-e29b-41d4-a716-446655440000";
+        let result = scan(input);
+        let he: Vec<_> = result.findings.iter().filter(|f| f.finding_type == FindingType::HighEntropy).collect();
+        assert_eq!(he.len(), 0);
+    }
+
+    #[test]
+    fn test_git_sha_not_flagged() {
+        let input = "commit da39a3ee5e6b4b0d3255bfef95601890afd80709";
+        let result = scan(input);
+        let he: Vec<_> = result.findings.iter().filter(|f| f.finding_type == FindingType::HighEntropy).collect();
+        assert_eq!(he.len(), 0);
+    }
+
+    #[test]
+    fn test_block_redacts_output() {
+        let input = "key=AKIAIOSFODNN7EXAMPLE rest of line";
+        let result = scan(input);
+        assert!(!result.output.contains("AKIAIOSFODNN7EXAMPLE"));
+        assert!(result.output.contains("AKIA"));
+        assert!(result.output.contains("****"));
+    }
+
+    #[test]
+    fn test_multiple_findings_per_line() {
+        let input = "AWS_KEY=AKIAIOSFODNN7EXAMPLE TOKEN=ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijkl";
+        let result = scan(input);
+        assert!(result.findings.len() >= 2);
+    }
+
+    #[test]
+    fn test_clean_input_no_findings() {
+        let input = "fn main() {\n    println!(\"Hello, world!\");\n}";
+        let result = scan(input);
+        assert_eq!(result.findings.len(), 0);
+        assert_eq!(result.output, input);
+    }
+
+    #[test]
+    fn test_redact_email_format() {
+        assert_eq!(redact_email("john.doe@company.com"), "jo**@company.com");
+        assert_eq!(redact_email("ab@x.com"), "**@x.com");
+    }
+}

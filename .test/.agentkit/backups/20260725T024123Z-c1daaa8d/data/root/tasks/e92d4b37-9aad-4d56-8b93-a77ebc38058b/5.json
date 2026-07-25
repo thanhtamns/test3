@@ -1,0 +1,18 @@
+{
+  "id": "5",
+  "subject": "Phase 3: Waste Pattern Detection",
+  "description": "Create WasteAnalyzer with 5 detectors (re-read waste, redundant commands, failed searches, glob spam, large unused reads), add --waste flag to stats command, render terminal + JSON reports.",
+  "activeForm": "Implementing Waste Pattern Detection",
+  "status": "pending",
+  "blocks": [],
+  "blockedBy": [
+    "3"
+  ],
+  "metadata": {
+    "phase": 3,
+    "priority": "P2",
+    "effort": "2d",
+    "planDir": "plans/260604-codeflow-differentiation-mvp",
+    "phaseFile": "phase-03-waste-pattern-detection.md"
+  }
+}

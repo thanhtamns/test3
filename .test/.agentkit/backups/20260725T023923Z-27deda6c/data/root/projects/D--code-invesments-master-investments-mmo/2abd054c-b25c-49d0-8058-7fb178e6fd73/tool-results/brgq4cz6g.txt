@@ -1,0 +1,946 @@
+warning: in the working copy of '.claude/.ck.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/.env.example', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/.mcp.json.example', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/agents/brainstormer.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/agents/code-reviewer.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/agents/code-simplifier.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/agents/debugger.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/agents/docs-manager.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/agents/fullstack-developer.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/agents/git-manager.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/agents/journal-writer.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/agents/mcp-manager.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/agents/personas/_persona-template.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/agents/planner.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/agents/project-manager.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/agents/researcher.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/agents/tester.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/agents/ui-ux-designer.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/commands/startup.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/__tests__/ck-config-utils.test.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/__tests__/dev-rules-reminder.test.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/__tests__/integration/path-resolution.test.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/__tests__/session-init.test.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/__tests__/subagent-init.test.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/cook-after-plan-reminder.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/descriptive-name.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/dev-rules-reminder.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/docs/README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/lib/__tests__/README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/lib/__tests__/ck-config-utils.test.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/lib/__tests__/context-builder.test.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/lib/__tests__/statusline-integration.test.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/lib/__tests__/statusline.test.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/lib/ck-config-utils.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/lib/colors.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/lib/context-builder.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/lib/hook-logger.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/lib/project-detector.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/lib/scout-checker.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/lib/transcript-parser.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/notifications/docs/discord-hook-setup.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/notifications/docs/telegram-hook-setup.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/privacy-block.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/scout-block.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/scout-block/broad-pattern-detector.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/scout-block/error-formatter.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/scout-block/path-extractor.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/scout-block/pattern-matcher.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/scout-block/tests/test-error-formatter.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/session-init.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/skill-dedup.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/subagent-init.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/tests/test-scout-block.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/hooks/usage-context-awareness.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/knowledge-state.yaml', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/metadata.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/rules/development-rules.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/rules/orchestration-protocol.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/rules/primary-workflow.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/schemas/ck-config.schema.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/scripts/README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/scripts/resolve_env.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/scripts/scan_commands.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/scripts/scan_skills.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/scripts/set-active-plan.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/scripts/worktree.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/scripts/worktree.test.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/settings.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/settings.local.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/.env.example', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/agent-browser/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/ai-artist/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/ai-artist/scripts/generate.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/ai-multimodal/.env.example', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/ai-multimodal/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/ai-multimodal/references/image-generation.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/ai-multimodal/scripts/check_setup.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/ai-multimodal/scripts/gemini_batch_process.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/ai-multimodal/scripts/requirements.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/ai-multimodal/scripts/tests/requirements.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/ai-multimodal/scripts/tests/test_gemini_batch_process.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/backend-development/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/better-auth/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/brainstorm/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/chrome-devtools/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/chrome-devtools/scripts/aria-snapshot.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/chrome-devtools/scripts/click.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/chrome-devtools/scripts/console.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/chrome-devtools/scripts/evaluate.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/chrome-devtools/scripts/fill.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/chrome-devtools/scripts/import-cookies.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/chrome-devtools/scripts/inject-auth.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/chrome-devtools/scripts/lib/browser.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/chrome-devtools/scripts/navigate.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/chrome-devtools/scripts/network.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/chrome-devtools/scripts/performance.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/chrome-devtools/scripts/screenshot.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/chrome-devtools/scripts/select-ref.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/chrome-devtools/scripts/snapshot.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/code-review/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/code-review/references/edge-case-scouting.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/common/api_key_rotator.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/context-engineering/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/context-engineering/references/runtime-awareness.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/cook/README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/cook/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/cook/references/intent-detection.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/cook/references/subagent-patterns.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/cook/references/workflow-steps.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/copywriting/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/copywriting/references/workflow-cro.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/copywriting/references/workflow-enhance.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/copywriting/references/workflow-fast.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/copywriting/references/workflow-good.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/copywriting/references/writing-styles.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/databases/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/devops/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/docs-seeker/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/document-skills/docx/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/document-skills/pdf/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/document-skills/pptx/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/document-skills/xlsx/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/find-skills/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/fix/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/fix/references/complexity-assessment.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/fix/references/parallel-exploration.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/fix/references/skill-activation-matrix.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/fix/references/workflow-deep.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/fix/references/workflow-logs.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/fix/references/workflow-quick.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/fix/references/workflow-standard.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/fix/references/workflow-test.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/fix/references/workflow-ui.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/frontend-design/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/frontend-design/references/ai-multimodal-overview.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/frontend-design/references/asset-generation.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/frontend-design/references/visual-analysis-overview.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/frontend-design/references/workflow-3d.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/frontend-design/references/workflow-describe.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/frontend-design/references/workflow-immersive.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/frontend-design/references/workflow-quick.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/frontend-design/references/workflow-screenshot.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/frontend-design/references/workflow-video.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/frontend-development/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/git/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/gkg/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/google-adk-python/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/install.ps1', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/install.sh', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/knowledge-syncer/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/markdown-novel-viewer/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/markdown-novel-viewer/assets/reader.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/markdown-novel-viewer/assets/styles/novel-theme-components.css', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/markdown-novel-viewer/assets/styles/novel-theme-content.css', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/markdown-novel-viewer/assets/styles/novel-theme-mermaid.css', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/markdown-novel-viewer/assets/styles/novel-theme-sidebar.css', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/markdown-novel-viewer/scripts/lib/http-server.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/markdown-novel-viewer/scripts/lib/plan-navigator.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/markdown-novel-viewer/scripts/tests/server.test.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/mcp-builder/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/mcp-management/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/mcp-management/references/gemini-cli-integration.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/media-processing/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/mermaidjs-v11/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/mintlify/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/mintlify/references/deployment-and-continuous-integration-reference.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/mobile-development/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/payment-integration/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/plans-kanban/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/plans-kanban/package.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/plans-kanban/scripts/lib/plan-metadata-extractor.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/plans-kanban/scripts/lib/plan-parser.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/problem-solving/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/react-best-practices/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/remotion/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/repomix/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/research/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/scout/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/scout/references/external-scouting.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/sequential-thinking/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/shader/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/shopify/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/skill-creator/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/skill-creator/references/metadata-quality-criteria.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/skill-creator/references/plugin-marketplace-hosting.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/skill-creator/references/plugin-marketplace-overview.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/skill-creator/references/plugin-marketplace-schema.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/skill-creator/references/plugin-marketplace-sources.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/skill-creator/references/plugin-marketplace-troubleshooting.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/skill-creator/references/structure-organization-criteria.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/skill-creator/references/token-efficiency-criteria.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/skill-creator/references/validation-checklist.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/skill-creator/scripts/init_skill.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/skill-creator/scripts/package_skill.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/skill-creator/scripts/quick_validate.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/template-skill/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/threejs/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/ui-styling/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/ui-ux-pro-max/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/ui-ux-pro-max/data/icons.csv', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/ui-ux-pro-max/data/products.csv', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/ui-ux-pro-max/data/styles.csv', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/ui-ux-pro-max/data/typography.csv', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/ui-ux-pro-max/scripts/core.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/ui-ux-pro-max/scripts/design_system.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/web-design-guidelines/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/web-frameworks/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/skills/web-testing/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/statusline.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/workflows/business-workflow.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/workflows/orchestration-protocol.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.claude/workflows/primary-workflow.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.gitignore', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/.env.example', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/agents/brainstormer.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/agents/code-reviewer.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/agents/code-simplifier.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/agents/debugger.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/agents/docs-manager.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/agents/fullstack-developer.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/agents/git-manager.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/agents/journal-writer.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/agents/mcp-manager.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/agents/planner.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/agents/project-manager.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/agents/researcher.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/agents/tester.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/agents/ui-ux-designer.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/plugin/lib/ck-config-utils.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/plugin/lib/colors.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/plugin/lib/context-builder.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/plugin/lib/project-detector.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/plugin/lib/scout-checker.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/plugin/scout-block.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/plugin/scout-block/broad-pattern-detector.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/plugin/scout-block/error-formatter.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/plugin/scout-block/path-extractor.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/plugin/scout-block/pattern-matcher.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/plugin/scout-block/tests/test-error-formatter.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/scripts/README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/scripts/resolve_env.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/scripts/scan_commands.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/scripts/scan_skills.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/scripts/set-active-plan.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/scripts/skills_data.yaml', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/scripts/worktree.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/scripts/worktree.test.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/agent-browser/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/ai-artist/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/ai-artist/scripts/generate.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/ai-multimodal/.env.example', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/ai-multimodal/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/ai-multimodal/references/image-generation.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/ai-multimodal/scripts/gemini_batch_process.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/backend-development/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/better-auth/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/brainstorm/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/chrome-devtools/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/chrome-devtools/scripts/aria-snapshot.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/chrome-devtools/scripts/click.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/chrome-devtools/scripts/console.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/chrome-devtools/scripts/evaluate.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/chrome-devtools/scripts/fill.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/chrome-devtools/scripts/import-cookies.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/chrome-devtools/scripts/inject-auth.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/chrome-devtools/scripts/lib/browser.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/chrome-devtools/scripts/navigate.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/chrome-devtools/scripts/network.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/chrome-devtools/scripts/performance.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/chrome-devtools/scripts/screenshot.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/chrome-devtools/scripts/select-ref.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/chrome-devtools/scripts/snapshot.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/code-review/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/code-review/references/edge-case-scouting.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/context-engineering/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/context-engineering/references/runtime-awareness.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/cook/README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/cook/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/cook/references/intent-detection.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/cook/references/subagent-patterns.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/cook/references/workflow-steps.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/copywriting/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/copywriting/references/workflow-cro.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/copywriting/references/workflow-enhance.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/copywriting/references/workflow-fast.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/copywriting/references/workflow-good.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/copywriting/references/writing-styles.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/databases/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/devops/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/docs-seeker/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/find-skills/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/fix/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/fix/references/complexity-assessment.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/fix/references/parallel-exploration.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/fix/references/skill-activation-matrix.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/fix/references/workflow-deep.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/fix/references/workflow-logs.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/fix/references/workflow-quick.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/fix/references/workflow-standard.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/fix/references/workflow-test.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/fix/references/workflow-ui.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/frontend-design/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/frontend-design/references/ai-multimodal-overview.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/frontend-design/references/asset-generation.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/frontend-design/references/visual-analysis-overview.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/frontend-design/references/workflow-3d.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/frontend-design/references/workflow-describe.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/frontend-design/references/workflow-immersive.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/frontend-design/references/workflow-quick.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/frontend-design/references/workflow-screenshot.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/frontend-design/references/workflow-video.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/frontend-development/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/git/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/gkg/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/google-adk-python/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/markdown-novel-viewer/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/markdown-novel-viewer/assets/reader.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/markdown-novel-viewer/assets/styles/novel-theme-components.css', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/markdown-novel-viewer/assets/styles/novel-theme-content.css', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/markdown-novel-viewer/assets/styles/novel-theme-mermaid.css', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/markdown-novel-viewer/assets/styles/novel-theme-sidebar.css', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/markdown-novel-viewer/scripts/lib/http-server.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/markdown-novel-viewer/scripts/lib/plan-navigator.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/markdown-novel-viewer/scripts/tests/server.test.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/mcp-builder/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/mcp-management/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/media-processing/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/mermaidjs-v11/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/mintlify/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/mintlify/references/deployment-and-continuous-integration-reference.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/mobile-development/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/payment-integration/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/plans-kanban/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/plans-kanban/scripts/lib/plan-metadata-extractor.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/plans-kanban/scripts/lib/plan-parser.cjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/problem-solving/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/react-best-practices/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/remotion/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/repomix/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/research/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/scout/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/sequential-thinking/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/shader/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/shopify/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/skill-creator/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/skill-creator/references/metadata-quality-criteria.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/skill-creator/references/plugin-marketplace-hosting.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/skill-creator/references/plugin-marketplace-overview.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/skill-creator/references/plugin-marketplace-schema.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/skill-creator/references/plugin-marketplace-sources.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/skill-creator/references/plugin-marketplace-troubleshooting.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/skill-creator/references/structure-organization-criteria.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/skill-creator/references/token-efficiency-criteria.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/skill-creator/references/validation-checklist.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/skill-creator/scripts/init_skill.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/skill-creator/scripts/package_skill.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/skill-creator/scripts/quick_validate.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/template-skill/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/threejs/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/ui-styling/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/ui-ux-pro-max/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/ui-ux-pro-max/data/icons.csv', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/ui-ux-pro-max/data/products.csv', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/ui-ux-pro-max/data/styles.csv', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/ui-ux-pro-max/data/typography.csv', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/ui-ux-pro-max/scripts/core.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/ui-ux-pro-max/scripts/design_system.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/web-design-guidelines/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/web-frameworks/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.opencode/skills/web-testing/SKILL.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.startup-context.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'AGENTS.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/codebase-summary.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/project-changelog.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/project-roadmap.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/system-architecture.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'release-manifest.json', LF will be replaced by CRLF the next time Git touches it
+ .claude/.ck.json                                   |     9 +-
+ .claude/.env.example                               |    20 +
+ .claude/.mcp.json.example                          |     7 +
+ .claude/agents/brainstormer.md                     |    30 +-
+ .claude/agents/code-reviewer.md                    |    40 +-
+ .claude/agents/code-simplifier.md                  |    12 +
+ .claude/agents/debugger.md                         |    44 +-
+ .claude/agents/docs-manager.md                     |    21 +-
+ .claude/agents/fullstack-developer.md              |    29 +-
+ .claude/agents/git-manager.md                      |    14 +-
+ .claude/agents/journal-writer.md                   |    26 +-
+ .claude/agents/mcp-manager.md                      |    21 +-
+ .claude/agents/personas/_persona-template.md       |    13 +-
+ .claude/agents/planner.md                          |    56 +-
+ .claude/agents/project-manager.md                  |   136 +-
+ .claude/agents/researcher.md                       |    38 +-
+ .claude/agents/tester.md                           |    65 +-
+ .claude/agents/ui-ux-designer.md                   |    17 +-
+ .claude/commands/ask.md                            |    56 -
+ .claude/commands/bootstrap.md                      |   137 -
+ .claude/commands/bootstrap/auto.md                 |   115 -
+ .claude/commands/bootstrap/auto/fast.md            |   111 -
+ .claude/commands/bootstrap/auto/parallel.md        |    66 -
+ .claude/commands/ck-help.md                        |   129 -
+ .claude/commands/code/auto.md                      |   170 -
+ .claude/commands/code/no-test.md                   |   158 -
+ .claude/commands/code/parallel.md                  |    55 -
+ .claude/commands/coding-level.md                   |    48 -
+ .claude/commands/content/cro.md                    |    43 -
+ .claude/commands/content/enhance.md                |    14 -
+ .claude/commands/content/fast.md                   |    13 -
+ .claude/commands/content/good.md                   |    16 -
+ .claude/commands/cook/auto.md                      |    15 -
+ .claude/commands/cook/auto/fast.md                 |    26 -
+ .claude/commands/cook/auto/parallel.md             |    49 -
+ .claude/commands/design/3d.md                      |    83 -
+ .claude/commands/design/describe.md                |    23 -
+ .claude/commands/design/fast.md                    |    31 -
+ .claude/commands/design/good.md                    |    35 -
+ .claude/commands/design/screenshot.md              |    34 -
+ .claude/commands/design/video.md                   |    34 -
+ .claude/commands/docs/init.md                      |    38 -
+ .claude/commands/docs/summarize.md                 |    22 -
+ .claude/commands/docs/update.md                    |    76 -
+ .claude/commands/fix/ci.md                         |    17 -
+ .claude/commands/fix/fast.md                       |    19 -
+ .claude/commands/fix/hard.md                       |    39 -
+ .claude/commands/fix/logs.md                       |    26 -
+ .claude/commands/fix/parallel.md                   |    54 -
+ .claude/commands/fix/test.md                       |    20 -
+ .claude/commands/fix/types.md                      |     9 -
+ .claude/commands/fix/ui.md                         |    48 -
+ .claude/commands/git/cm.md                         |     5 -
+ .claude/commands/git/cp.md                         |     4 -
+ .claude/commands/git/pr.md                         |    48 -
+ .claude/commands/integrate/polar.md                |    28 -
+ .claude/commands/integrate/sepay.md                |    28 -
+ .claude/commands/journal.md                        |     7 -
+ .claude/commands/kanban.md                         |    99 -
+ .claude/commands/plan.md                           |    30 -
+ .claude/commands/plan/archive.md                   |    57 -
+ .claude/commands/plan/ci.md                        |    33 -
+ .claude/commands/plan/cro.md                       |    69 -
+ .claude/commands/plan/fast.md                      |    82 -
+ .claude/commands/plan/hard.md                      |   108 -
+ .claude/commands/plan/parallel.md                  |   145 -
+ .claude/commands/plan/two.md                       |    61 -
+ .claude/commands/plan/validate.md                  |   188 -
+ .claude/commands/preview.md                        |   280 -
+ .claude/commands/review/codebase.md                |    49 -
+ .claude/commands/review/codebase/parallel.md       |   122 -
+ .claude/commands/scout/ext.md                      |    35 -
+ .claude/commands/skill/add.md                      |    36 -
+ .claude/commands/skill/create.md                   |    29 -
+ .claude/commands/skill/fix-logs.md                 |    22 -
+ .claude/commands/skill/optimize.md                 |    34 -
+ .claude/commands/skill/optimize/auto.md            |    25 -
+ .claude/commands/startup.md                        |     4 +-
+ .claude/commands/test.md                           |     8 -
+ .claude/commands/test/ui.md                        |    92 -
+ .claude/commands/use-mcp.md                        |    38 -
+ .claude/commands/watzup.md                         |     8 -
+ .claude/commands/worktree.md                       |   109 -
+ .claude/hooks/__tests__/ck-config-utils.test.cjs   |     4 +
+ .../hooks/__tests__/dev-rules-reminder.test.cjs    |   179 +
+ .../__tests__/integration/path-resolution.test.cjs |    50 +
+ .claude/hooks/__tests__/session-init.test.cjs      |   194 +-
+ .claude/hooks/__tests__/subagent-init.test.cjs     |    54 +
+ .claude/hooks/cook-after-plan-reminder.cjs         |     8 +-
+ .claude/hooks/descriptive-name.cjs                 |    13 +-
+ .claude/hooks/dev-rules-reminder.cjs               |    44 +-
+ .claude/hooks/docs/README.md                       |     2 +-
+ .claude/hooks/lib/__tests__/README.md              |   281 +-
+ .../hooks/lib/__tests__/ck-config-utils.test.cjs   |    12 +
+ .../hooks/lib/__tests__/context-builder.test.cjs   |   126 +-
+ .../lib/__tests__/statusline-integration.test.cjs  |   110 +-
+ .claude/hooks/lib/__tests__/statusline.test.cjs    |   238 +-
+ .claude/hooks/lib/ck-config-utils.cjs              |   135 +-
+ .claude/hooks/lib/ck-paths.cjs                     |   110 -
+ .claude/hooks/lib/colors.cjs                       |   109 +-
+ .claude/hooks/lib/context-builder.cjs              |   300 +-
+ .claude/hooks/lib/context-tracker.cjs              |   335 -
+ .claude/hooks/lib/hook-logger.cjs                  |    90 +-
+ .claude/hooks/lib/project-detector.cjs             |    52 +-
+ .claude/hooks/lib/scout-checker.cjs                |   146 +-
+ .claude/hooks/lib/transcript-parser.cjs            |   135 +-
+ .claude/hooks/notifications/discord_notify.sh      |   234 -
+ .../hooks/notifications/docs/discord-hook-setup.md |   284 +-
+ .../notifications/docs/telegram-hook-setup.md      |   185 +-
+ .claude/hooks/notifications/send-discord.sh        |    75 -
+ .claude/hooks/notifications/telegram_notify.sh     |   137 -
+ .claude/hooks/post-edit-simplify-reminder.cjs      |   152 -
+ .claude/hooks/privacy-block.cjs                    |    45 +-
+ .claude/hooks/scout-block.cjs                      |    52 +-
+ .../hooks/scout-block/broad-pattern-detector.cjs   |     4 +
+ .claude/hooks/scout-block/error-formatter.cjs      |    23 +-
+ .claude/hooks/scout-block/path-extractor.cjs       |    94 +-
+ .claude/hooks/scout-block/pattern-matcher.cjs      |    50 +-
+ .../scout-block/tests/test-error-formatter.cjs     |     9 +-
+ .claude/hooks/session-end.cjs                      |    35 -
+ .claude/hooks/session-init.cjs                     |   225 +-
+ .claude/hooks/skill-dedup.cjs                      |    15 +-
+ .claude/hooks/subagent-init.cjs                    |    44 +-
+ .claude/hooks/tests/test-context-tracker.cjs       |   454 -
+ .claude/hooks/tests/test-scout-block.cjs           |    27 +
+ .claude/hooks/tests/test-scout-block.js            |   163 -
+ .claude/hooks/usage-context-awareness.cjs          |   182 +-
+ .claude/hooks/write-compact-marker.cjs             |   159 -
+ .claude/knowledge-state.yaml                       |    54 +
+ .claude/metadata.json                              |  8315 +++++++-----
+ .claude/rules/development-rules.md                 |     9 +-
+ .claude/rules/orchestration-protocol.md            |    77 +-
+ .claude/rules/primary-workflow.md                  |    18 +-
+ .claude/schemas/ck-config.schema.json              |   205 +-
+ .claude/scripts/README.md                          |    35 -
+ .claude/scripts/commands_data.yaml                 |   363 -
+ .claude/scripts/fix-shebang-permissions.sh         |    50 -
+ .claude/scripts/generate_catalogs.py               |   168 -
+ .claude/scripts/resolve_env.py                     |    22 +-
+ .claude/scripts/scan_commands.py                   |   103 +-
+ .claude/scripts/scan_skills.py                     |   493 +-
+ .claude/scripts/set-active-plan.cjs                |     7 +-
+ .claude/scripts/skills_data.yaml                   |   370 -
+ .claude/scripts/test_ck_help.py                    |   420 -
+ .claude/scripts/test_ck_help_integration.py        |   127 -
+ .claude/scripts/worktree.cjs                       |   824 +-
+ .claude/scripts/worktree.test.cjs                  |   771 +-
+ .claude/settings.json                              |   171 +-
+ .claude/settings.local.json                        |   786 +-
+ .claude/skills/.env.example                        |    15 +
+ .claude/skills/agent-browser/SKILL.md              |     8 +-
+ .claude/skills/ai-artist/SKILL.md                  |    21 +-
+ .claude/skills/ai-artist/scripts/generate.py       |   118 +-
+ .claude/skills/ai-multimodal/.env.example          |    64 +-
+ .claude/skills/ai-multimodal/SKILL.md              |    95 +-
+ .../ai-multimodal/references/image-generation.md   |    91 +-
+ .../skills/ai-multimodal/scripts/check_setup.py    |   130 +-
+ .../ai-multimodal/scripts/gemini_batch_process.py  |   291 +-
+ .../skills/ai-multimodal/scripts/requirements.txt  |     1 +
+ .../ai-multimodal/scripts/tests/requirements.txt   |     1 +
+ .../scripts/tests/test_gemini_batch_process.py     |    93 +-
+ .claude/skills/backend-development/SKILL.md        |     9 +-
+ .claude/skills/better-auth/SKILL.md                |     9 +-
+ .claude/skills/brainstorm/SKILL.md                 |   318 +-
+ .../business/factors/factor-calibration-engine.py  |   181 -
+ .../business/factors/factor-db-schema-init.py      |   183 -
+ .../factors/multidisciplinary-factor-engine.py     |   195 -
+ .../business/factors/simple-yaml-serializer.py     |   191 -
+ .claude/skills/business/factors/test-mfe-system.py |   242 -
+ .../alex-hormozi/knowledge-base-skill/SKILL.md     |    42 +
+ .../andrew-grove/knowledge-base-skill/SKILL.md     |    42 +
+ .../brian-chesky/knowledge-base-skill/SKILL.md     |    42 +
+ .../brian-tracy/knowledge-base-skill/SKILL.md      |    42 +
+ .../charlie-munger/knowledge-base-skill/SKILL.md   |    42 +
+ .../knowledge-base-skill/SKILL.md                  |    42 +
+ .../chris-voss/knowledge-base-skill/SKILL.md       |    42 +
+ .../cold-email-king/knowledge-base-skill/SKILL.md  |    42 +
+ .../dan-kennedy/knowledge-base-skill/SKILL.md      |    42 +
+ .../daniel-kahneman/knowledge-base-skill/SKILL.md  |    42 +
+ .../david-sandler/knowledge-base-skill/SKILL.md    |    42 +
+ .../elon-musk/knowledge-base-skill/SKILL.md        |    42 +
+ .../gary-vaynerchuk/knowledge-base-skill/SKILL.md  |    42 +
+ .../george-soros/knowledge-base-skill/SKILL.md     |    42 +
+ .../grant-cardone/knowledge-base-skill/SKILL.md    |    42 +
+ .../knowledge-base-skill/SKILL.md                  |    42 +
+ .../personas/jack-ma/knowledge-base-skill/SKILL.md |    42 +
+ .../jamie-dimon/knowledge-base-skill/SKILL.md      |    42 +
+ .../jeff-bezos/knowledge-base-skill/SKILL.md       |    42 +
+ .../jeffrey-gitomer/knowledge-base-skill/SKILL.md  |    42 +
+ .../jensen-huang/knowledge-base-skill/SKILL.md     |    42 +
+ .../knowledge-base-skill/SKILL.md                  |    42 +
+ .../mark-cuban/knowledge-base-skill/SKILL.md       |    42 +
+ .../masayoshi-son/knowledge-base-skill/SKILL.md    |    42 +
+ .../nassim-taleb/knowledge-base-skill/SKILL.md     |    42 +
+ .../neil-rackham/knowledge-base-skill/SKILL.md     |    42 +
+ .../noah-kagan/knowledge-base-skill/SKILL.md       |    42 +
+ .../peter-thiel/knowledge-base-skill/SKILL.md      |    42 +
+ .../pham-nhat-vuong/knowledge-base-skill/SKILL.md  |    42 +
+ .../philip-kotler/knowledge-base-skill/SKILL.md    |    42 +
+ .../personas/pony-ma/knowledge-base-skill/SKILL.md |    42 +
+ .../ray-dalio/knowledge-base-skill/SKILL.md        |    42 +
+ .../reid-hoffman/knowledge-base-skill/SKILL.md     |    42 +
+ .../richard-branson/knowledge-base-skill/SKILL.md  |    42 +
+ .../robert-cialdini/knowledge-base-skill/SKILL.md  |    42 +
+ .../russell-brunson/knowledge-base-skill/SKILL.md  |    42 +
+ .../sam-altman/knowledge-base-skill/SKILL.md       |    42 +
+ .../satya-nadella/knowledge-base-skill/SKILL.md    |    42 +
+ .../thai-van-linh/knowledge-base-skill/SKILL.md    |    42 +
+ .../tim-cook/knowledge-base-skill/SKILL.md         |    42 +
+ .../upwork-top-rated/knowledge-base-skill/SKILL.md |    42 +
+ .../knowledge-base-skill/SKILL.md                  |    42 +
+ .../warren-buffett/knowledge-base-skill/SKILL.md   |    42 +
+ .../zig-ziglar/knowledge-base-skill/SKILL.md       |    42 +
+ .claude/skills/chrome-devtools/SKILL.md            |    61 +-
+ .../chrome-devtools/scripts/aria-snapshot.js       |     2 +-
+ .claude/skills/chrome-devtools/scripts/click.js    |     2 +-
+ .claude/skills/chrome-devtools/scripts/console.js  |     2 +-
+ .claude/skills/chrome-devtools/scripts/evaluate.js |     7 +-
+ .claude/skills/chrome-devtools/scripts/fill.js     |     2 +-
+ .../chrome-devtools/scripts/import-cookies.js      |     2 +-
+ .../skills/chrome-devtools/scripts/inject-auth.js  |     2 +-
+ .../skills/chrome-devtools/scripts/lib/browser.js  |    41 +-
+ .claude/skills/chrome-devtools/scripts/navigate.js |    76 +-
+ .claude/skills/chrome-devtools/scripts/network.js  |     2 +-
+ .../skills/chrome-devtools/scripts/performance.js  |     2 +-
+ .../skills/chrome-devtools/scripts/screenshot.js   |     2 +-
+ .../skills/chrome-devtools/scripts/select-ref.js   |     2 +-
+ .claude/skills/chrome-devtools/scripts/snapshot.js |     2 +-
+ .claude/skills/code-review/SKILL.md                |   155 +-
+ .../code-review/references/edge-case-scouting.md   |     2 +-
+ .../references/requesting-code-review.md           |     2 +-
+ .claude/skills/common/api_key_rotator.py           |    34 +
+ .claude/skills/context-engineering/SKILL.md        |     9 +-
+ .../references/runtime-awareness.md                |     2 +-
+ .claude/skills/cook/README.md                      |    28 +-
+ .claude/skills/cook/SKILL.md                       |    84 +-
+ .claude/skills/cook/references/intent-detection.md |    22 +-
+ .../skills/cook/references/subagent-patterns.md    |    15 +-
+ .claude/skills/cook/references/workflow-steps.md   |   120 +-
+ .claude/skills/copywriting/SKILL.md                |    16 +-
+ .../skills/copywriting/references/workflow-cro.md  |    35 +-
+ .../copywriting/references/workflow-enhance.md     |     6 +-
+ .../skills/copywriting/references/workflow-fast.md |     4 +-
+ .../skills/copywriting/references/workflow-good.md |     6 +-
+ .../copywriting/references/writing-styles.md       |     4 +-
+ .claude/skills/databases/SKILL.md                  |     8 +-
+ .claude/skills/debug/SKILL.md                      |    84 -
+ .../skills/debug/references/defense-in-depth.md    |   124 -
+ .../skills/debug/references/root-cause-tracing.md  |   122 -
+ .../debug/references/systematic-debugging.md       |   102 -
+ .claude/skills/debug/references/verification.md    |   123 -
+ .claude/skills/debug/scripts/find-polluter.sh      |    63 -
+ .claude/skills/debug/scripts/find-polluter.test.md |   102 -
+ .claude/skills/devops/SKILL.md                     |     9 +-
+ .claude/skills/docs-seeker/SKILL.md                |     9 +-
+ .claude/skills/document-skills/docx/SKILL.md       |     7 +-
+ .claude/skills/document-skills/pdf/SKILL.md        |     7 +-
+ .claude/skills/document-skills/pptx/SKILL.md       |     7 +-
+ .claude/skills/document-skills/xlsx/SKILL.md       |     7 +-
+ .claude/skills/find-skills/SKILL.md                |     8 +-
+ .claude/skills/fix/SKILL.md                        |   178 +-
+ .../skills/fix/references/complexity-assessment.md |    27 +-
+ .../skills/fix/references/parallel-exploration.md  |    31 +-
+ .../fix/references/skill-activation-matrix.md      |    97 +-
+ .claude/skills/fix/references/workflow-deep.md     |   145 +-
+ .claude/skills/fix/references/workflow-logs.md     |    56 +-
+ .claude/skills/fix/references/workflow-quick.md    |    57 +-
+ .claude/skills/fix/references/workflow-standard.md |   112 +-
+ .claude/skills/fix/references/workflow-test.md     |    59 +-
+ .claude/skills/fix/references/workflow-ui.md       |    68 +-
+ .claude/skills/frontend-design/SKILL.md            |   100 +-
+ .../references/ai-multimodal-overview.md           |    12 +-
+ .../frontend-design/references/asset-generation.md |     8 +-
+ .../references/visual-analysis-overview.md         |     2 +-
+ .../frontend-design/references/workflow-3d.md      |    12 +-
+ .../references/workflow-describe.md                |     6 +-
+ .../references/workflow-immersive.md               |     6 +-
+ .../frontend-design/references/workflow-quick.md   |     8 +-
+ .../references/workflow-screenshot.md              |    10 +-
+ .../frontend-design/references/workflow-video.md   |    10 +-
+ .claude/skills/frontend-development/SKILL.md       |    10 +-
+ .claude/skills/git/SKILL.md                        |    26 +-
+ .claude/skills/gkg/SKILL.md                        |     8 +-
+ .claude/skills/google-adk-python/SKILL.md          |     9 +-
+ .claude/skills/install.ps1                         |    43 +-
+ .claude/skills/install.sh                          |   152 +-
+ .claude/skills/knowledge-syncer/SKILL.md           |    26 +
+ .claude/skills/markdown-novel-viewer/SKILL.md      |    22 +-
+ .../skills/markdown-novel-viewer/assets/reader.js  |   108 +-
+ .../assets/styles/novel-theme-components.css       |   105 +
+ .../assets/styles/novel-theme-content.css          |     3 +
+ .../assets/styles/novel-theme-mermaid.css          |    31 +-
+ .../assets/styles/novel-theme-sidebar.css          |     5 +-
+ .../scripts/lib/http-server.cjs                    |     2 +-
+ .../scripts/lib/plan-navigator.cjs                 |   606 +-
+ .../scripts/tests/server.test.cjs                  |    58 +-
+ .claude/skills/mcp-builder/SKILL.md                |     8 +-
+ .claude/skills/mcp-management/SKILL.md             |    21 +-
+ .../references/gemini-cli-integration.md           |    46 +-
+ .claude/skills/media-processing/SKILL.md           |    10 +-
+ .claude/skills/mermaidjs-v11/SKILL.md              |     8 +-
+ .claude/skills/mintlify/SKILL.md                   |     9 +-
+ ...loyment-and-continuous-integration-reference.md |     8 +-
+ .claude/skills/mobile-development/SKILL.md         |     9 +-
+ .claude/skills/payment-integration/SKILL.md        |     9 +-
+ .claude/skills/plans-kanban/SKILL.md               |   200 +-
+ .claude/skills/plans-kanban/package.json           |    12 +-
+ .../scripts/lib/dashboard-renderer.cjs             |   884 --
+ .../plans-kanban/scripts/lib/http-server.cjs       |   310 -
+ .../scripts/lib/plan-metadata-extractor.cjs        |    15 +-
+ .../plans-kanban/scripts/lib/plan-parser.cjs       |   166 +-
+ .../plans-kanban/scripts/lib/port-finder.cjs       |    48 -
+ .../plans-kanban/scripts/lib/process-mgr.cjs       |   128 -
+ .claude/skills/plans-kanban/scripts/server.cjs     |   260 -
+ .claude/skills/problem-solving/SKILL.md            |     9 +-
+ .claude/skills/react-best-practices/SKILL.md       |    10 +-
+ .claude/skills/remotion/SKILL.md                   |     9 +-
+ .claude/skills/repomix/SKILL.md                    |     8 +-
+ .claude/skills/research/SKILL.md                   |    20 +-
+ .claude/skills/scout/SKILL.md                      |    32 +-
+ .../skills/scout/references/external-scouting.md   |    26 +-
+ .claude/skills/sequential-thinking/SKILL.md        |     9 +-
+ .claude/skills/shader/SKILL.md                     |     9 +-
+ .claude/skills/shopify/SKILL.md                    |     8 +-
+ .claude/skills/skill-creator/SKILL.md              |   369 +-
+ .../references/metadata-quality-criteria.md        |    28 +-
+ .../references/plugin-marketplace-hosting.md       |    73 +-
+ .../references/plugin-marketplace-overview.md      |    94 +-
+ .../references/plugin-marketplace-schema.md        |   149 +-
+ .../references/plugin-marketplace-sources.md       |    86 +-
+ .../plugin-marketplace-troubleshooting.md          |   100 +-
+ .../references/structure-organization-criteria.md  |     2 +-
+ .../references/token-efficiency-criteria.md        |     8 +-
+ .../references/validation-checklist.md             |     6 +-
+ .claude/skills/skill-creator/scripts/init_skill.py |    72 +-
+ .../skills/skill-creator/scripts/package_skill.py  |    32 +-
+ .../skills/skill-creator/scripts/quick_validate.py |    57 +-
+ .claude/skills/template-skill/SKILL.md             |    10 +-
+ .claude/skills/threejs/SKILL.md                    |    11 +-
+ .claude/skills/ui-styling/SKILL.md                 |     9 +-
+ .claude/skills/ui-ux-pro-max/SKILL.md              |   583 +-
+ .claude/skills/ui-ux-pro-max/data/charts.csv       |    52 +-
+ .claude/skills/ui-ux-pro-max/data/colors.csv       |   259 +-
+ .claude/skills/ui-ux-pro-max/data/icons.csv        |   207 +-
+ .claude/skills/ui-ux-pro-max/data/landing.csv      |    40 +-
+ .claude/skills/ui-ux-pro-max/data/products.csv     |   249 +-
+ .claude/skills/ui-ux-pro-max/data/styles.csv       |   144 +-
+ .claude/skills/ui-ux-pro-max/data/typography.csv   |    20 +-
+ .claude/skills/ui-ux-pro-max/data/ui-reasoning.csv |   253 +-
+ .claude/skills/ui-ux-pro-max/scripts/core.py       |    46 +-
+ .../skills/ui-ux-pro-max/scripts/design_system.py  |   591 +-
+ .claude/skills/ui-ux-pro-max/scripts/search.py     |    50 +-
+ .claude/skills/web-design-guidelines/SKILL.md      |     9 +-
+ .claude/skills/web-frameworks/SKILL.md             |    11 +-
+ .claude/skills/web-testing/SKILL.md                |     9 +-
+ .claude/statusline.cjs                             |   602 +-
+ .claude/statusline.ps1                             |   307 -
+ .claude/statusline.sh                              |   237 -
+ .claude/workflows/business-workflow.md             |    81 +-
+ .claude/workflows/orchestration-protocol.md        |    69 +-
+ .claude/workflows/primary-workflow.md              |    10 +-
+ .gitignore                                         |    11 +
+ .opencode/.env.example                             |    16 +
+ .opencode/agents/brainstormer.md                   |    29 +-
+ .opencode/agents/code-reviewer.md                  |    39 +-
+ .opencode/agents/code-simplifier.md                |    13 +-
+ .opencode/agents/debugger.md                       |    42 +-
+ .opencode/agents/docs-manager.md                   |    22 +-
+ .opencode/agents/fullstack-developer.md            |    28 +-
+ .opencode/agents/git-manager.md                    |    12 +-
+ .opencode/agents/journal-writer.md                 |    25 +-
+ .opencode/agents/mcp-manager.md                    |    12 +-
+ .opencode/agents/planner.md                        |    40 +-
+ .opencode/agents/project-manager.md                |   132 +-
+ .opencode/agents/researcher.md                     |    36 +-
+ .opencode/agents/tester.md                         |    63 +-
+ .opencode/agents/ui-ux-designer.md                 |    16 +-
+ .opencode/plugin/lib/ck-config-utils.cjs           |   135 +-
+ .opencode/plugin/lib/colors.cjs                    |   109 +-
+ .opencode/plugin/lib/context-builder.cjs           |   300 +-
+ .opencode/plugin/lib/project-detector.cjs          |    52 +-
+ .opencode/plugin/lib/scout-checker.cjs             |   146 +-
+ .opencode/plugin/scout-block.ts                    |    10 +-
+ .../plugin/scout-block/broad-pattern-detector.cjs  |     4 +
+ .opencode/plugin/scout-block/error-formatter.cjs   |    23 +-
+ .opencode/plugin/scout-block/path-extractor.cjs    |    94 +-
+ .opencode/plugin/scout-block/pattern-matcher.cjs   |    50 +-
+ .../scout-block/tests/test-error-formatter.cjs     |     9 +-
+ .opencode/scripts/README.md                        |    35 -
+ .opencode/scripts/resolve_env.py                   |    22 +-
+ .opencode/scripts/scan_commands.py                 |   103 +-
+ .opencode/scripts/scan_skills.py                   |    89 +-
+ .opencode/scripts/set-active-plan.cjs              |     7 +-
+ .opencode/scripts/skills_data.yaml                 |   828 +-
+ .opencode/scripts/worktree.cjs                     |   824 +-
+ .opencode/scripts/worktree.test.cjs                |   771 +-
+ .opencode/skills/agent-browser/SKILL.md            |     6 +-
+ .opencode/skills/ai-artist/SKILL.md                |    10 +-
+ .opencode/skills/ai-artist/scripts/generate.py     |     5 +-
+ .opencode/skills/ai-multimodal/.env.example        |    26 +
+ .opencode/skills/ai-multimodal/SKILL.md            |    77 +-
+ .../ai-multimodal/references/image-generation.md   |    91 +-
+ .../ai-multimodal/scripts/gemini_batch_process.py  |    60 +-
+ .opencode/skills/backend-development/SKILL.md      |     7 +-
+ .opencode/skills/better-auth/SKILL.md              |     7 +-
+ .opencode/skills/brainstorm/SKILL.md               |    79 +-
+ .opencode/skills/chrome-devtools/SKILL.md          |    59 +-
+ .../chrome-devtools/scripts/aria-snapshot.js       |     2 +-
+ .opencode/skills/chrome-devtools/scripts/click.js  |     2 +-
+ .../skills/chrome-devtools/scripts/console.js      |     2 +-
+ .../skills/chrome-devtools/scripts/evaluate.js     |     7 +-
+ .opencode/skills/chrome-devtools/scripts/fill.js   |     2 +-
+ .../chrome-devtools/scripts/import-cookies.js      |     2 +-
+ .../skills/chrome-devtools/scripts/inject-auth.js  |     2 +-
+ .../skills/chrome-devtools/scripts/lib/browser.js  |    41 +-
+ .../skills/chrome-devtools/scripts/navigate.js     |    76 +-
+ .../skills/chrome-devtools/scripts/network.js      |     2 +-
+ .../skills/chrome-devtools/scripts/performance.js  |     2 +-
+ .../skills/chrome-devtools/scripts/screenshot.js   |     2 +-
+ .../skills/chrome-devtools/scripts/select-ref.js   |     2 +-
+ .../skills/chrome-devtools/scripts/snapshot.js     |     2 +-
+ .opencode/skills/code-review/SKILL.md              |   147 +-
+ .../code-review/references/edge-case-scouting.md   |     2 +-
+ .../references/requesting-code-review.md           |     2 +-
+ .opencode/skills/context-engineering/SKILL.md      |     7 +-
+ .../references/runtime-awareness.md                |     2 +-
+ .opencode/skills/cook/README.md                    |    20 +-
+ .opencode/skills/cook/SKILL.md                     |    66 +-
+ .../skills/cook/references/intent-detection.md     |    14 +-
+ .../skills/cook/references/subagent-patterns.md    |     4 +-
+ .opencode/skills/cook/references/workflow-steps.md |    58 +-
+ .opencode/skills/copywriting/SKILL.md              |    14 +-
+ .../skills/copywriting/references/workflow-cro.md  |    35 +-
+ .../copywriting/references/workflow-enhance.md     |     6 +-
+ .../skills/copywriting/references/workflow-fast.md |     4 +-
+ .../skills/copywriting/references/workflow-good.md |     6 +-
+ .../copywriting/references/writing-styles.md       |     4 +-
+ .opencode/skills/databases/SKILL.md                |     6 +-
+ .opencode/skills/devops/SKILL.md                   |     7 +-
+ .opencode/skills/docs-seeker/SKILL.md              |     7 +-
+ .opencode/skills/find-skills/SKILL.md              |     6 +-
+ .opencode/skills/fix/SKILL.md                      |   170 +-
+ .../skills/fix/references/complexity-assessment.md |    27 +-
+ .../skills/fix/references/parallel-exploration.md  |    31 +-
+ .../fix/references/skill-activation-matrix.md      |    97 +-
+ .opencode/skills/fix/references/workflow-deep.md   |   145 +-
+ .opencode/skills/fix/references/workflow-logs.md   |    56 +-
+ .opencode/skills/fix/references/workflow-quick.md  |    57 +-
+ .../skills/fix/references/workflow-standard.md     |   112 +-
+ .opencode/skills/fix/references/workflow-test.md   |    59 +-
+ .opencode/skills/fix/references/workflow-ui.md     |    68 +-
+ .opencode/skills/frontend-design/SKILL.md          |    98 +-
+ .../references/ai-multimodal-overview.md           |    12 +-
+ .../frontend-design/references/asset-generation.md |     8 +-
+ .../references/visual-analysis-overview.md         |     2 +-
+ .../frontend-design/references/workflow-3d.md      |    12 +-
+ .../references/workflow-describe.md                |     6 +-
+ .../references/workflow-immersive.md               |     6 +-
+ .../frontend-design/references/workflow-quick.md   |     8 +-
+ .../references/workflow-screenshot.md              |    10 +-
+ .../frontend-design/references/workflow-video.md   |    10 +-
+ .opencode/skills/frontend-development/SKILL.md     |     8 +-
+ .opencode/skills/git/SKILL.md                      |    24 +-
+ .opencode/skills/gkg/SKILL.md                      |     6 +-
+ .opencode/skills/google-adk-python/SKILL.md        |     7 +-
+ .opencode/skills/markdown-novel-viewer/SKILL.md    |    20 +-
+ .../skills/markdown-novel-viewer/assets/reader.js  |   108 +-
+ .../assets/styles/novel-theme-components.css       |   105 +
+ .../assets/styles/novel-theme-content.css          |     3 +
+ .../assets/styles/novel-theme-mermaid.css          |    31 +-
+ .../assets/styles/novel-theme-sidebar.css          |     5 +-
+ .../scripts/lib/http-server.cjs                    |     2 +-
+ .../scripts/lib/plan-navigator.cjs                 |   606 +-
+ .../scripts/tests/server.test.cjs                  |    58 +-
+ .opencode/skills/mcp-builder/SKILL.md              |     6 +-
+ .opencode/skills/mcp-management/SKILL.md           |     8 +-
+ .opencode/skills/media-processing/SKILL.md         |     8 +-
+ .opencode/skills/mermaidjs-v11/SKILL.md            |     6 +-
+ .opencode/skills/mintlify/SKILL.md                 |     7 +-
+ ...loyment-and-continuous-integration-reference.md |     8 +-
+ .opencode/skills/mobile-development/SKILL.md       |     7 +-
+ .opencode/skills/payment-integration/SKILL.md      |     7 +-
+ .opencode/skills/plans-kanban/SKILL.md             |    15 +-
+ .../scripts/lib/plan-metadata-extractor.cjs        |    15 +-
+ .../plans-kanban/scripts/lib/plan-parser.cjs       |   166 +-
+ .opencode/skills/problem-solving/SKILL.md          |     7 +-
+ .opencode/skills/react-best-practices/SKILL.md     |     6 +-
+ .opencode/skills/remotion/SKILL.md                 |     5 +-
+ .opencode/skills/repomix/SKILL.md                  |     6 +-
+ .opencode/skills/research/SKILL.md                 |    18 +-
+ .opencode/skills/scout/SKILL.md                    |    25 +-
+ .opencode/skills/sequential-thinking/SKILL.md      |     7 +-
+ .opencode/skills/shader/SKILL.md                   |     7 +-
+ .opencode/skills/shopify/SKILL.md                  |     6 +-
+ .opencode/skills/skill-creator/SKILL.md            |   367 +-
+ .../references/metadata-quality-criteria.md        |    28 +-
+ .../references/plugin-marketplace-hosting.md       |    73 +-
+ .../references/plugin-marketplace-overview.md      |    94 +-
+ .../references/plugin-marketplace-schema.md        |   149 +-
+ .../references/plugin-marketplace-sources.md       |    86 +-
+ .../plugin-marketplace-troubleshooting.md          |   100 +-
+ .../references/structure-organization-criteria.md  |     2 +-
+ .../references/token-efficiency-criteria.md        |     8 +-
+ .../references/validation-checklist.md             |     6 +-
+ .../skills/skill-creator/scripts/init_skill.py     |    72 +-
+ .../skills/skill-creator/scripts/package_skill.py  |    32 +-
+ .../skills/skill-creator/scripts/quick_validate.py |    57 +-
+ .opencode/skills/template-skill/SKILL.md           |     5 +-
+ .opencode/skills/threejs/SKILL.md                  |     7 +-
+ .opencode/skills/ui-styling/SKILL.md               |     7 +-
+ .opencode/skills/ui-ux-pro-max/SKILL.md            |   581 +-
+ .opencode/skills/ui-ux-pro-max/data/charts.csv     |    52 +-
+ .opencode/skills/ui-ux-pro-max/data/colors.csv     |   259 +-
+ .opencode/skills/ui-ux-pro-max/data/icons.csv      |   207 +-
+ .opencode/skills/ui-ux-pro-max/data/landing.csv    |    40 +-
+ .opencode/skills/ui-ux-pro-max/data/products.csv   |   249 +-
+ .opencode/skills/ui-ux-pro-max/data/styles.csv     |   144 +-
+ .opencode/skills/ui-ux-pro-max/data/typography.csv |    20 +-
+ .../skills/ui-ux-pro-max/data/ui-reasoning.csv     |   253 +-
+ .opencode/skills/ui-ux-pro-max/scripts/core.py     |    46 +-
+ .../skills/ui-ux-pro-max/scripts/design_system.py  |   591 +-
+ .opencode/skills/ui-ux-pro-max/scripts/search.py   |    50 +-
+ .opencode/skills/web-design-guidelines/SKILL.md    |     7 +-
+ .opencode/skills/web-frameworks/SKILL.md           |     9 +-
+ .opencode/skills/web-testing/SKILL.md              |     7 +-
+ .startup-context.json                              |    88 +-
+ AGENTS.md                                          |     3 +-
+ BUSINESS_CALCULATION_ENGINES_TEST_REPORT.md        |   795 --
+ METAPHYSICS-TECHNICAL-SUMMARY.md                   |   438 -
+ METAPHYSICS-TEST-MANIFEST.md                       |   456 -
+ METAPHYSICS-TEST-REPORT.md                         |   300 -
+ METAPHYSICS-TESTING-COMPLETE.md                    |   337 -
+ METAPHYSICS-TESTING-INDEX.md                       |   360 -
+ README.md                                          |   347 -
+ docs/codebase-summary.md                           |   150 +-
+ docs/project-changelog.md                          |   576 +-
+ docs/project-roadmap.md                            |   406 +-
+ docs/system-architecture.md                        |  1158 +-
+ .../phase-01-multi-language-source-parity.md       |   110 -
+ .../phase-02-platform-normalized-engagement.md     |   123 -
+ .../phase-03-evidence-based-risk-assessment.md     |   133 -
+ .../phase-04-leverage-bonus-expansion.md           |    86 -
+ .../phase-05-build-threshold-money-flow-maps.md    |   232 -
+ .../phase-06-deep-mining-intelligence.md           |   166 -
+ .../plan.md                                        |    55 -
+ .../audit-results/build-threshold-audit.md         |   135 -
+ .../phase-01-learned-rule-cleanup.md               |    28 -
+ .../phase-02-deep-reasoner-contract.md             |    33 -
+ .../phase-03-pattern-library-wiring.md             |    58 -
+ .../phase-04-calibration-schema-v2.md              |    45 -
+ .../phase-05-leverage-bonus-stacking.md            |    53 -
+ .../phase-06-build-threshold-audit.md              |    47 -
+ .../phase-07-v17-plan-rewrite.md                   |    57 -
+ plans/260406-1154-v17-gap-fixes/plan.md            |    49 -
+ .../phase-01-topic-disambiguation.md               |    60 -
+ .../phase-02-agent-dispatch-enforcer.md            |    87 -
+ .../phase-03-ladder-integration.md                 |    85 -
+ .../phase-04-financial-triangulator-gate.md        |    81 -
+ .../phase-05-content-extraction-enforcer.md        |   132 -
+ .../phase-06-alternative-quality-gate.md           |    87 -
+ .../phase-07-spec-consistency.md                   |    87 -
+ plans/260412-1550-stage0-pipeline-overhaul/plan.md |    61 -
+ .../phase-01-claim-extractor.md                    |   150 -
+ .../phase-02-research-queries.md                   |   115 -
+ .../phase-03-pipeline-integration.md               |   127 -
+ .../phase-04-verification-hook.md                  |    77 -
+ plans/260412-1919-claim-expansion-engine/plan.md   |    90 -
+ release-manifest.json                              | 13325 ++++++++-----------
+ 568 files changed, 30578 insertions(+), 40026 deletions(-)

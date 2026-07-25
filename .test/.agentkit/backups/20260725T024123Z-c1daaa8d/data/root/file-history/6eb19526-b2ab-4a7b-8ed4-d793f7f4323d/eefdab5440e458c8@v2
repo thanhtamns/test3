@@ -1,0 +1,50 @@
+---
+phase: 3
+title: Register hook + test
+status: completed
+priority: P1
+effort: 30m
+dependencies:
+  - 1
+  - 2
+---
+
+# Phase 3: Register hook + test
+
+## Overview
+
+Register `evolution-auto-runner.cjs` in master_investments `settings.json` and verify all hooks work end-to-end.
+
+## Related Code Files
+
+- Modify: `D:\code\invesments\master_investments\.claude\settings.json` (add SessionStart entry)
+- Test: `D:\code\invesments\master_investments\.claude\hooks\evolution-auto-runner.cjs`
+- Test: `D:\code\invesments\master_investments_mmo\.claude\hooks\knowledge-auto-refresh.cjs`
+
+## Implementation Steps
+
+1. Add SessionStart hook entry to `settings.json`:
+   ```json
+   {
+     "matcher": "startup|resume|clear|compact",
+     "hooks": [{
+       "type": "command",
+       "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/evolution-auto-runner.cjs\"",
+       "_origin": "autonomous-evolution-hook-260509"
+     }]
+   }
+   ```
+2. Test `evolution-auto-runner.cjs` directly: `node .claude/hooks/evolution-auto-runner.cjs`
+   - Verify exit code 0
+   - Verify log file created at `.logs/evolution-auto-runner.log`
+   - Verify no errors in stderr
+3. Test `knowledge-auto-refresh.cjs` directly: `node .claude/hooks/knowledge-auto-refresh.cjs`
+   - Verify queue file created at `.logs/kb-refresh-queue.json`
+4. Verify lock files are created and cleaned up properly
+
+## Success Criteria
+
+- [ ] Hook registered in settings.json
+- [ ] `node evolution-auto-runner.cjs` exits 0 with log output
+- [ ] `node knowledge-auto-refresh.cjs` exits 0 with queue output
+- [ ] No hook crashes on missing data files (graceful degradation)

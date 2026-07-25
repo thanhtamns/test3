@@ -1,0 +1,70 @@
+---
+phase: 7
+title: "End-to-End Testing + Validation"
+status: pending
+priority: P1
+effort: "1-2d"
+dependencies: [1, 2, 3, 4, 5, 6]
+---
+
+# Phase 7: End-to-End Testing + Validation
+
+## Overview
+
+Run /hunt V5 end-to-end with a real topic. Compare output quality vs V4. Validate anomaly persistence across 2 runs. Verify budget compliance.
+
+## Requirements
+
+- Functional: full pipeline test (load→brains→graph→crossref→output→persist), V4 vs V5 comparison, multi-run persistence test
+- Non-functional: total web calls <=75, runtime <10 min, all unit tests pass before E2E
+
+## Implementation Steps
+
+1. **Pre-flight:** run ALL unit tests from Phases 1-5
+   - `pytest .claude/lib/intelligence/brains/tests/`
+   - `pytest .claude/lib/intelligence/store/tests/`
+   - `pytest .claude/lib/intelligence/controller/tests/`
+   - All must pass before E2E
+2. **E2E Run 1:** `/hunt coffee export VN to EU`
+   - Verify Brain 1 produces >=1 PriceDelta with spread >30%
+   - Verify Brain 2 produces >=1 ForcedFlow (EUDR likely)
+   - Verify Brain 3 produces >=3 AnomalyCards
+   - Verify output has Money Flow Map + Anomaly Cards (not generic list)
+   - Verify anomalies saved to DuckDB
+   - Verify hunt report saved to data/hunts/
+   - Count total web calls: must be <=75
+3. **E2E Run 2:** `/hunt coffee export VN to EU` (same topic)
+   - Verify historical anomalies loaded from DuckDB
+   - Verify delta_trend computed (GROWING/STABLE/SHRINKING)
+   - Verify Rule 4 (historical persistence) triggers
+   - Verify new anomalies don't duplicate existing ones (upsert, not insert)
+4. **V4 vs V5 Comparison:**
+   - Collect V4 output from 260522/260524 runs (if available)
+   - Compare: V5 must have specific prices with sources vs V4 generic models
+   - Compare: V5 must have regulation deadlines vs V4 none
+   - Compare: V5 must have margin calculations vs V4 TAM estimates
+   - Document comparison in `plans/reports/hunt-v5-validation.md`
+5. **Budget compliance test:**
+   - Mock research_fn with call counter
+   - Run full pipeline with 20 products × 5 markets
+   - Verify total calls <=75 (budget enforced even with large input)
+6. **Edge case tests:**
+   - Empty founder profile → graceful degradation (default seeds)
+   - No deltas >30% found → output says "no significant price arbitrage found" instead of empty
+   - No regulatory mandates found → output says "no forced flows detected" instead of empty
+   - DuckDB file doesn't exist → created on first run
+
+## Success Criteria
+
+- [ ] All unit tests pass (Phases 1-5)
+- [ ] E2E Run 1: >=1 delta, >=1 flow, >=3 cards, <=75 calls
+- [ ] E2E Run 2: historical persistence works, delta_trend computed
+- [ ] V5 output is CATEGORICALLY different from V4 (specific vs generic)
+- [ ] Budget compliance: 75 max even with large input
+- [ ] Edge cases handled gracefully
+- [ ] Validation report written to plans/reports/
+
+## Risk Assessment
+
+- **Flaky web results:** Real web searches may return different results each run. Mitigation: compare structure (has prices? has regulations?) not exact values.
+- **DuckDB state leaks:** Test runs may pollute production DB. Mitigation: use temp DB path for E2E tests, clean up after.

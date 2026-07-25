@@ -1,0 +1,36 @@
+# CODEFLOW Phase 3: Budget Governance + Policy Engine — Shipped
+
+**Date:** 2026-06-07
+**Repo:** `D:/code/invesments/tools_decisions/rtk-analysis/`
+
+## What shipped
+
+Real-time budget enforcement via TOML policy engine + PreToolUse hook integration.
+
+| Module | Purpose |
+|--------|---------|
+| `core/budget_policy.rs` | PolicyConfig, PolicyEngine, Verdict (Allow/Warn/Block), period calculation |
+| `cmds/codeflow/budget_cmd.rs` | `rtk budget [--json]` — spend vs limits table |
+| `core/cost_store.rs` (extended) | `accumulated_cost_by_dev()`, `accumulated_cost_by_project()`, `total_cost_since()` |
+| `hooks/hook_cmd.rs` (extended) | `check_budget_best_effort()` — runs BEFORE provenance/PR capture |
+| `data/budget-policy-example.toml` | Example config with per-dev/project/team limits |
+
+**Total: 2099 tests passing (20 new from Phase 3), 0 regressions.**
+
+## Code review findings (both fixed)
+
+- **[H1] budget_policy.rs:** Weekly `period_start` wrong when week spans month boundary. `day.saturating_sub(weekday_num)` clamped to 1, producing wrong month. Fixed with `chrono::Duration::days()` subtraction.
+- **[H2] cost_store.rs:** `accumulated_cost_by_project` used exact `WHERE project_path = ?1` but hook writes basename only. Budget queries would return $0 for any project with full-path records. Fixed with `OR project_path LIKE '%/' || ?1` suffix matching.
+
+## Key design decisions
+
+1. **Fail-open pattern** — any policy engine error → tool call proceeds (warning only). Consistent with provenance capture pattern.
+2. **RTK_BUDGET=0** — complete opt-out via env var. Same pattern as RTK_PROVENANCE=0.
+3. **No model downgrade** — hook protocol doesn't support model_id in response. Verdicts: Allow/Warn/Block only.
+4. **Separate cost.db** — budget queries CostStore (cost.db), not tracking.db. Each subsystem owns its DB.
+5. **Webhook alerts descoped** — CLI + hook enforcement sufficient for MVP. Webhook can be added later.
+
+## What's next
+
+- **Phase 5 (Compliance Export)** — now unblocked (Phases 1-4 all complete)
+- Phase 6 (CLI Export + Dashboard) and Phase 7 (OSS Launch) follow sequentially

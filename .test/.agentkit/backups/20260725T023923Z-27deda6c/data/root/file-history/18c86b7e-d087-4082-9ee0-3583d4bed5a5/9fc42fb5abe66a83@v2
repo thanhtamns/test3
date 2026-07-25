@@ -1,0 +1,30 @@
+strip_ansi = true
+on_empty = "(all tests passed)"
+
+[command]
+name = "npm"
+args_contain = ["test"]
+
+[[strip_lines]]
+pattern = '^\s*$'
+
+[[strip_lines]]
+pattern = '^npm warn'
+
+[[strip_lines]]
+pattern = '^\s*at\s+(Object|Module|node:)'
+
+[[replace]]
+pattern = 'PASS\s+'
+replacement = '✓ '
+
+[[replace]]
+pattern = 'FAIL\s+'
+replacement = '✗ '
+
+[head_tail]
+head = 10
+tail = 30
+separator = "\n... ({omitted} lines omitted) ...\n"
+
+max_lines = 100

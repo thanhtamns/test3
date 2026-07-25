@@ -1,0 +1,42 @@
+# Hypothesis-Driven Intelligence Engine — Session Journal
+
+**Date:** 2026-05-27
+**Scope:** Stage0 evolution from search-aggregation to adversarial intelligence engine
+**Status:** Plan complete (5 phases), pending implementation
+
+## What Happened
+
+1. Shipped tournament engine (Phase 2.7) to master_investments — 33/33 tests, ELO pairwise debates
+2. Tested with `/startup` on AI cost management thesis
+3. User declared output "quá bình thường" — too ordinary, too much web search
+4. Extracted TikTok video about DeepMind Co-Scientist (Nature May 2025)
+5. Deep comparison: Co-Scientist allocates 70% compute to VERIFICATION, Stage0 allocates 60% to WEB SEARCH
+6. Diagnosed 3 structural flaws in Stage0's thinking approach
+7. Designed 5-phase evolution plan
+
+## Core Diagnosis
+
+Stage0 produces DATA, not INTELLIGENCE. The pipeline is COLLECT → ORGANIZE → SUMMARIZE. Missing the THINK step.
+
+**3 flaws:**
+1. RESEARCH = WEB SEARCH (no first-principles reasoning)
+2. NO STRUCTURED KNOWLEDGE BASE (flat vault vs queryable graph)
+3. NO ITERATIVE REFINEMENT (single-pass vs converge-until-stable)
+
+**Irony:** Tournament engine we just shipped IS the Co-Scientist debate component. But the REST of the pipeline is still web-search-first.
+
+## Plan Created
+
+5 phases, ~25h total:
+- Phase 1: First Principles Generator (think BEFORE search)
+- Phase 2: Knowledge Graph (structured evidence with contradictions)
+- Phase 3: Refinement Loop (strengthen → attack → evolve × N)
+- Phase 4: Mechanism-First Output (causal chains + falsification + evolution traces)
+- Phase 5: Integration + testing
+
+**Key insight adopted from Co-Scientist:** Contradictions are MORE valuable than confirmations. The graph explicitly tracks conflicting evidence — that's where genuine intelligence lives.
+
+## Files
+
+- Plan: `plans/260527-hypothesis-driven-intelligence-engine/` (5 phase files + plan.md + report)
+- Tournament (shipped earlier): `.claude/lib/intelligence/tournament/` + `.claude/agents/core/intelligence/tournament-protocol.md`

@@ -1,0 +1,140 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  fetchProvenance,
+  type ProvenanceSummary,
+} from "@/lib/api";
+import { DateRangeSelector } from "@/components/date-range-selector";
+
+export default function ProvenancePage() {
+  const [data, setData] = useState<ProvenanceSummary | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [days, setDays] = useState(90);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    fetchProvenance(days)
+      .then((r) => { if (!cancelled) setData(r); })
+      .catch((e) => { if (!cancelled) setError(e.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [days]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold">Provenance</h1>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-muted-foreground">
+              Could not load provenance data. Make sure the API is running.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const humanPct = data ? (100 - data.ai_percentage) : 0;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Provenance</h1>
+        <DateRangeSelector value={days} onChange={setDays} />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <MetricCard title="Total Records" value={data?.total_records.toString() ?? "0"} description="provenance entries" />
+        <MetricCard title="Unique Files" value={data?.unique_files.toString() ?? "0"} description="with AI contributions" />
+        <MetricCard title="AI Generated" value={`${(data?.ai_percentage ?? 0).toFixed(1)}%`} description="of code changes" />
+        <MetricCard title="Human Written" value={`${humanPct.toFixed(1)}%`} description="of code changes" />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Contributor Breakdown</CardTitle>
+            <CardDescription>AI vs Human code contribution ratio</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <ProgressBar label="AI Generated" pct={data?.ai_percentage ?? 0} color="bg-blue-500" />
+              <ProgressBar label="Human Written" pct={humanPct} color="bg-green-500" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Model Coverage</CardTitle>
+            <CardDescription>Unique AI models detected in codebase</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-center h-24">
+              <span className="text-5xl font-bold">{data?.unique_models ?? 0}</span>
+              <span className="text-muted-foreground ml-2">models</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {!data?.total_records && (
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-muted-foreground">
+              No provenance records yet. Records appear after the CLI hook captures AI code contributions.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function MetricCard({ title, value, description }: { title: string; value: string; description: string }) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardDescription>{title}</CardDescription>
+        <CardTitle className="text-3xl">{value}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ProgressBar({ label, pct, color }: { label: string; pct: number; color: string }) {
+  return (
+    <div>
+      <div className="flex justify-between text-sm mb-1">
+        <span>{label}</span>
+        <span className="font-medium">{pct.toFixed(1)}%</span>
+      </div>
+      <div className="h-3 bg-muted rounded-full overflow-hidden">
+        <div className={`h-full ${color} rounded-full transition-all`} style={{ width: `${Math.min(pct, 100)}%` }} />
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,134 @@
+---
+title: "CODEFLOW AI Cost Intelligence Engine"
+description: "Reduce enterprise AI coding costs 40-65% while proving developer productivity maintained — CLI + Cloud + Dashboard"
+status: in-progress
+priority: P1
+effort: "24 weeks"
+branch: "master"
+tags: [rust, go, clickhouse, react, cli, observability, enterprise-saas]
+blockedBy: []
+blocks: []
+created: "2026-06-03"
+createdBy: "ck:plan"
+source: skill
+---
+
+# CODEFLOW AI Cost Intelligence Engine
+
+## Overview
+
+Enterprise AI coding tool spend is $9.8-11B/year. CODEFLOW reduces costs 40-65% via smart compression, context deduplication, model routing, and waste elimination — while proving with data that developer productivity maintained or improved. Unique position: only product covering tool-layer interception + observability + optimization + enterprise dashboard.
+
+**Architecture source:** [architecture-review.md](./architecture-review.md)
+**Product source:** [brainstorm-report.md](./brainstorm-report.md)
+
+## Tech Stack
+
+### Phase 1-2 (MVP — keep simple)
+
+| Layer | Technology | Rationale |
+|-------|-----------|-----------|
+| CLI | Rust | Sub-ms overhead, single binary |
+| Dedup cache | SQLite WAL | Cross-platform, no mmap issues. Upgrade to LMDB post-MVP if needed |
+| Local store | SQLite WAL | Shared DB for dedup + tracking + event buffer |
+| Event buffer | SQLite WAL (append-only table) | Crash-safe via WAL. Replace custom mmap ring buffer |
+| Event schema | Protobuf v3 | Versioned, typed, forward-compatible. **Versioning contract: proto3 additive-only, no field removal/rename** |
+| Cloud ingest | Go | Direct batch insert to ClickHouse (no NATS in Phase 2) |
+| Analytics DB | ClickHouse Cloud (single instance) | Managed, scale later. No self-managed cluster until 100+ customers |
+| Dashboard | React + Next.js | SSR, deploy on Vercel |
+| Auth | WorkOS | OIDC login. SAML/SCIM deferred to Phase 5 |
+
+### Phase 3+ (scale when needed)
+
+| Layer | Technology | When to Add |
+|-------|-----------|-------------|
+| Message queue | NATS JetStream | Phase 3 — when 2nd consumer (waste detector) exists |
+| Dedup cache | LMDB | Post-MVP — if SQLite dedup latency exceeds 5ms p99 |
+| Event buffer | mmap ring buffer | Post-MVP — if SQLite WAL throughput bottlenecks |
+| ClickHouse cluster | 3 shards × 2 replicas | When query p99 exceeds 500ms or >1M events/day |
+| Self-monitoring | OpenTelemetry | Phase 3 — alongside NATS infrastructure |
+
+## Phases
+
+| Phase | Name | Status |
+|-------|------|--------|
+| 1 | [Rust CLI MVP (L1 Compress + L2 Dedup + Local Metrics)](./phase-01-rust-cli-mvp-l1-compress-l2-dedup-local-metrics.md) | Complete |
+| 2 | [Cloud MVP (Go Ingest + ClickHouse + React Dashboard)](./phase-02-cloud-mvp-go-ingest-clickhouse-react-dashboard.md) | Complete (local) |
+| 3 | [Model Routing + Waste Detection + Live Metrics](./phase-03-model-routing-waste-detection-live-metrics.md) | Pending |
+| 4 | [IDE Plugins (VS Code + Cursor)](./phase-04-ide-plugins-vs-code-cursor.md) | Pending |
+| 5 | [Security Scanner + Policy Engine + SSO](./phase-05-security-scanner-policy-engine-sso.md) | Pending |
+| 6 | [Enterprise (SOC2 + CFO Export + Data Residency)](./phase-06-enterprise-soc2-cfo-export-data-residency.md) | Pending |
+
+## Execution Strategy
+
+```
+Phase 1 (4w) ──→ Phase 2 (4w) ──→ Phase 3 (4w) ──→ Phase 6 (4w)
+                                ├──→ Phase 4 (4w) ──┘
+                                └──→ Phase 5 (4w) ──┘
+```
+
+- Phase 1 ships CLI with **minimal dashboard landing page** (savings preview) — not invisible
+- Phase 2 ships cloud pipeline + dashboard — first revenue at Week 8
+- Phases 3, 4, 5 parallelize after Phase 2
+- Phase 6 depends on Phase 5
+
+**Key red-team changes:**
+- Phase 1+2 compressed: first revenue at Week 8, not Week 16
+- Phase 1 includes a static landing page + waitlist to validate demand early
+- Phase 2: no NATS, no K8s, no self-managed ClickHouse. Direct Go→ClickHouse Cloud
+- Phase 4: VS Code FileSystemProvider approach INVALID. Needs fundamental redesign
+
+## Revenue Targets
+
+| Milestone | When | Target |
+|-----------|------|--------|
+| Phase 1 ship | Week 4 | CLI on 2 platforms (macOS + Linux), 50+ stars, waitlist signups |
+| Phase 2 ship | Week 8 | Dashboard live, 5+ teams on Pro, $500+ MRR |
+| Phase 3-5 ship | Week 20 | 50+ teams, $25K+ MRR |
+| Phase 6 ship | Week 24 | 3+ enterprise pilots, SOC2 initiated |
+
+## Dependencies
+
+- RTK source code (Apache 2.0, fork rights confirmed) — PORT top-10 filters, do NOT fork entire 70K LOC
+- ClickHouse Cloud account (managed, single instance)
+- WorkOS account for auth
+- Vercel for dashboard
+- GitHub Actions for CI/CD
+- Anthropic dev relations contact for hook API stability
+
+## Red Team Review
+
+### Session — 2026-06-03
+**Findings:** 15 (15 accepted, 0 rejected)
+**Severity breakdown:** 8 Critical, 5 High, 2 Medium
+
+| # | Finding | Severity | Disposition | Applied To |
+|---|---------|----------|-------------|------------|
+| 1 | ClickHouse row policy `currentUser()` broken for shared-service | Critical | Accept | Phase 2, architecture-review |
+| 2 | mmap ring buffer has no corruption recovery | Critical | Accept | Phase 1 — replaced with SQLite WAL |
+| 3 | mmap ring buffer producer-consumer race condition | Critical | Accept | Phase 1 — replaced with SQLite WAL |
+| 4 | VS Code FileSystemProvider CANNOT intercept Claude Code Read/Grep/Glob | Critical | Accept | Phase 4 — fundamental redesign needed |
+| 5 | 11 technologies for greenfield team | Critical | Accept | plan.md — tiered tech stack (MVP vs scale) |
+| 6 | Phase 1 invisible product, 12 weeks to revenue | Critical | Accept | plan.md — compressed timeline, landing page in Phase 1 |
+| 7 | NATS consumer no DLQ or poison message handling | Critical | Accept | Phase 3 — add MaxDeliver + DLQ when NATS introduced |
+| 8 | mTLS device cert no revocation model | Critical | Accept | Phase 2 — short-lived certs + revocation spec |
+| 9 | Ingest API trusts client-supplied tenant_id | High | Accept | Phase 2 — server overrides from auth context |
+| 10 | NATS JetStream is YAGNI in Phase 2 | High | Accept | Phase 2 — direct to ClickHouse, add NATS in Phase 3 |
+| 11 | Phase 2 scope is 6 months in 6 weeks | High | Accept | Phase 2 — cut to essential features |
+| 12 | Fork RTK vs Port RTK contradiction | High | Accept | Phase 1 — port top-10 filters only |
+| 13 | Security scanner runs after compression | High | Accept | Phase 5 — scanner runs on raw output first |
+| 14 | Protobuf versioning unresolved but CLI ships | High | Accept | Phase 1 — additive-only contract defined |
+| 15 | 40+ filters is scope creep | Medium | Accept | Phase 1 — MVP: 10-15 filters |
+
+### Whole-Plan Consistency Sweep
+
+**Changes applied across all files:**
+- plan.md: tech stack tiered (MVP vs scale), timeline compressed, revenue targets adjusted
+- Phase 1: SQLite replaces LMDB + mmap, 10-15 filters not 40+, port not fork, 2 platforms not 6, protobuf versioning contract defined
+- Phase 2: no NATS (direct ClickHouse), no K8s (Railway/Fly.io), no Stripe (manual billing), tenant isolation via Go middleware not row policies, short-lived certs, server overrides tenant_id
+- Phase 3: NATS introduced here with MaxDeliver + DLQ, waste detector uses persistent checkpointing
+- Phase 4: FileSystemProvider approach marked INVALID, needs R&D spike for alternative interception
+- Phase 5: scanner runs on raw output before compression, policy cache signed
+- Phase 6: US + EU only, no APAC, no migration tool, single ClickHouse Cloud per region
+
+**Unresolved contradictions:** None — all phase files updated consistently.

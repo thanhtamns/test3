@@ -1,0 +1,46 @@
+{
+  "type": "micro_deal",
+  "description": "Template for micro-deal execution tracking (Phase 3)",
+  "required_fields": ["party_a", "party_b", "deal_type"],
+  "deal_types": [
+    "supplier_introduction",
+    "freelancer_agency_referral",
+    "talent_introduction",
+    "buyer_seller_bridge",
+    "investor_introduction"
+  ],
+  "template": {
+    "id": "mdeal-YYMMDD-NNNN",
+    "type": "micro_deal",
+    "stage": "identified|verified|introduced|facilitating|negotiating|closed|paid|failed",
+    "party_a": {
+      "name": "",
+      "needs": "",
+      "source": "deal_journal|coffee_meeting|intel_group|referral"
+    },
+    "party_b": {
+      "name": "",
+      "has": "",
+      "source": "deal_journal|coffee_meeting|intel_group|referral"
+    },
+    "deal_type": "",
+    "estimated_size_vnd": 0,
+    "commission": {
+      "agreed_before_intro": false,
+      "type": "percentage|flat_fee|free",
+      "rate_pct": 0,
+      "flat_amount_vnd": 0,
+      "earned_vnd": 0
+    },
+    "timeline": {
+      "identified_at": "",
+      "introduced_at": "",
+      "closed_at": "",
+      "paid_at": ""
+    },
+    "outcome": "",
+    "case_study_id": null,
+    "referrals_generated": [],
+    "learnings": ""
+  }
+}

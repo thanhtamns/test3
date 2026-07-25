@@ -1,0 +1,121 @@
+"""
+IntelligenceLLM — unified LLM interface for the intelligence system.
+Wires StructuredQueryBuilder + AntiHallucinationFilter + ProvenanceLogger + LLMProvider.
+All callers use this instead of direct SDK imports.
+"""
+
+import json
+import logging
+from pathlib import Path
+from typing import Optional
+
+from .factory import get_default_provider, create_provider, complete_with_fallback
+from .provider_interface import LLMProvider, CompletionResult
+from .structured_query_builder import StructuredQueryBuilder, SCHEMAS
+from .anti_hallucination_filter import AntiHallucinationFilter, VerifiedResult
+from .provenance_logger import ProvenanceLogger
+
+logger = logging.getLogger("intelligence_llm")
+
+
+class IntelligenceLLM:
+    """Single entry point for all LLM queries in the intelligence system."""
+
+    def __init__(
+        self,
+        provider: Optional[LLMProvider] = None,
+        provenance_db: Optional[Path] = None,
+        min_confidence: int = 4,
+        enable_cross_query: bool = False,
+    ):
+        self._provider = provider
+        self.query_builder = StructuredQueryBuilder()
+        self.filter = AntiHallucinationFilter(min_confidence=min_confidence)
+        self.provenance = ProvenanceLogger(provenance_db)
+        self.enable_cross_query = enable_cross_query
+        self._query_count = 0
+        self._total_tokens = 0
+
+    @property
+    def provider(self) -> LLMProvider:
+        if self._provider is None:
+            self._provider = get_default_provider()
+        return self._provider
+
+    def query(
+        self,
+        question: str,
+        schema: Optional[dict] = None,
+        schema_name: Optional[str] = None,
+        domain: str = "",
+        context: str = "",
+        max_tokens: int = 4096,
+    ) -> VerifiedResult:
+        """Structured, verified LLM query with provenance logging."""
+        prompt = self.query_builder.build(question, schema, schema_name, context)
+
+        completion = self.provider.complete(prompt, max_tokens=max_tokens)
+        self._query_count += 1
+        self._total_tokens += completion.total_tokens
+
+        result = self.filter.verify(completion.content, schema)
+
+        if self.enable_cross_query and result.overall_confidence > 0.7:
+            prompts = self.query_builder.build_cross_query(question, schema)
+            if len(prompts) >= 2:
+                completion2 = self.provider.complete(prompts[1], max_tokens=max_tokens)
+                self._query_count += 1
+                self._total_tokens += completion2.total_tokens
+                result2 = self.filter.verify(completion2.content, schema)
+                result = self.filter.cross_validate(result, result2)
+
+        self.provenance.log_batch(
+            claims=[
+                {
+                    "claim": c.claim,
+                    "confidence": c.confidence,
+                    "verified_by": c.verified_by,
+                }
+                for c in result.claims
+                if c.status != "rejected"
+            ],
+            source_llm=completion.provider,
+            source_model=completion.model,
+            source_query=question,
+            domain=domain,
+        )
+
+        return result
+
+    def query_raw(
+        self,
+        prompt: str,
+        max_tokens: int = 4096,
+    ) -> CompletionResult:
+        """Raw LLM query without structured extraction. Use sparingly."""
+        completion = self.provider.complete(prompt, max_tokens=max_tokens)
+        self._query_count += 1
+        self._total_tokens += completion.total_tokens
+        return completion
+
+    def query_with_fallback(
+        self,
+        prompt: str,
+        max_tokens: int = 4096,
+    ) -> CompletionResult:
+        """Raw query with automatic provider fallback chain."""
+        result = complete_with_fallback(prompt, max_tokens=max_tokens)
+        self._query_count += 1
+        self._total_tokens += result.total_tokens
+        return result
+
+    @property
+    def stats(self) -> dict:
+        return {
+            "queries": self._query_count,
+            "total_tokens": self._total_tokens,
+            "provenance_facts": self.provenance.count(),
+        }
+
+    def close(self):
+        self.provenance.close()

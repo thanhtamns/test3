@@ -1,0 +1,141 @@
+"""
+StructuredQueryBuilder — converts open questions into JSON-schema-constrained prompts.
+Forces LLM to return structured, verifiable facts instead of free-text.
+"""
+
+import json
+from typing import Optional
+
+
+COMPETITOR_SCHEMA = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "url": {"type": "string"},
+            "pricing": {"type": "string"},
+            "users_estimate": {"type": "integer"},
+            "confidence": {"type": "integer", "minimum": 1, "maximum": 10},
+        },
+    },
+}
+
+MARKET_SIZE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "tam": {
+            "type": "object",
+            "properties": {
+                "value_usd": {"type": "integer"},
+                "source": {"type": "string"},
+                "year": {"type": "integer"},
+                "confidence": {"type": "integer", "minimum": 1, "maximum": 10},
+            },
+        },
+    },
+}
+
+KILL_SIGNAL_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "kill_signals": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "signal": {"type": "string"},
+                    "severity": {"type": "string", "enum": ["critical", "high", "medium"]},
+                    "evidence": {"type": "string"},
+                    "confidence": {"type": "integer", "minimum": 1, "maximum": 10},
+                },
+            },
+        },
+    },
+}
+
+GENERIC_FACTS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "facts": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "claim": {"type": "string"},
+                    "evidence": {"type": "string"},
+                    "source": {"type": "string"},
+                    "confidence": {"type": "integer", "minimum": 1, "maximum": 10},
+                },
+            },
+        },
+    },
+}
+
+SCHEMAS = {
+    "competitors": COMPETITOR_SCHEMA,
+    "market_size": MARKET_SIZE_SCHEMA,
+    "kill_signals": KILL_SIGNAL_SCHEMA,
+    "generic": GENERIC_FACTS_SCHEMA,
+}
+
+
+class StructuredQueryBuilder:
+    """Converts open questions into prompts that force JSON output matching a schema."""
+
+    def build(
+        self,
+        question: str,
+        schema: Optional[dict] = None,
+        schema_name: Optional[str] = None,
+        context: str = "",
+    ) -> str:
+        if schema is None:
+            schema = SCHEMAS.get(schema_name or "generic", GENERIC_FACTS_SCHEMA)
+
+        parts = [
+            "You are a structured data extraction engine.",
+            "Return ONLY valid JSON matching the schema below. No explanation, no markdown.",
+            "",
+            f"QUESTION: {question}",
+        ]
+
+        if context:
+            parts.append(f"CONTEXT: {context}")
+
+        parts.extend([
+            "",
+            "JSON SCHEMA (your output MUST conform to this):",
+            json.dumps(schema, indent=2),
+            "",
+            "RULES:",
+            "- Every claim MUST include a 'confidence' field (1-10)",
+            "- 1-3 = low confidence (speculation)",
+            "- 4-6 = moderate confidence (inferred from partial data)",
+            "- 7-10 = high confidence (verified or well-established)",
+            "- If you don't know something, set confidence to 1, don't fabricate",
+            "- Include source/evidence for confidence >= 7 claims",
+            "",
+            "OUTPUT:",
+        ])
+
+        return "\n".join(parts)
+
+    def build_cross_query(self, question: str, schema: Optional[dict] = None) -> list[str]:
+        """Build 2 prompts asking the same question differently for cross-validation."""
+        prompt1 = self.build(question, schema)
+
+        rephrased = self._rephrase(question)
+        prompt2 = self.build(rephrased, schema)
+
+        return [prompt1, prompt2]
+
+    def _rephrase(self, question: str) -> str:
+        q = question.lower()
+        if q.startswith("what is the "):
+            return "How large is the " + question[12:]
+        if q.startswith("what are "):
+            return "List the " + question[9:]
+        if q.startswith("how many "):
+            return "What is the count of " + question[9:]
+        return f"From a different angle: {question}"

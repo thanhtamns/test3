@@ -1,0 +1,1060 @@
+[THINK] [WIRE] Iterative deepener loaded
+[THINK] [WIRE] Ladder bridge loaded
+[THINK] Decomposed: 36 micro-queries across 9 dimensions
+[THINK] Researching: 36 queries (0 cached)
+[THINK] Assembled: 36 new facts, 0 duplicates
+[THINK] Iterative deepening: +6 facts
+[THINK] Synthesized: score=0.30, 42 facts used
+[THINK] SBE: verdict=NEEDS_DEEPER_ANALYSIS, confidence=0.40
+[THINK] Mental models: 7 active (MM-18, MM-17, MM-04, MM-06, MM-09)
+[THINK] Techniques: consensus=SPLIT, strategy_weeks=138
+[THINK] Local verdict skipped: AtomicQuestion.__init__() got an unexpected keyword argument 'dimension'
+[THINK] Strategic reasoning: 1 LLM calls, verdict=
+[THINK] Execution bridge: 6 scripts generated
+[THINK] Evolution: 23 dimension weights updated
+{
+  "query": "Phân tích kênh TikTok phỏng vấn người giàu/thành công (toithanhcongbancungthe) - đánh giá chất lượng tư duy kinh doanh, dòng tiền, giá trị thực sự của nội dung so với motivation porn. Kênh interview doanh nhân tại Dubai, Beverly Hills về cách làm giàu, bán hàng, đàm phán, mindset.",
+  "query_type": "power_infiltration",
+  "overall_score": 0.3,
+  "dimension_scores": {
+    "operator_intelligence": {
+      "dimension": "operator_intelligence",
+      "score": 0.465,
+      "fact_count": 4,
+      "avg_confidence": 0.562,
+      "contradictions": 1,
+      "zone_tag": "?"
+    },
+    "economics_reality": {
+      "dimension": "economics_reality",
+      "score": 0.383,
+      "fact_count": 7,
+      "avg_confidence": 0.44,
+      "contradictions": 5,
+      "zone_tag": "?"
+    },
+    "reverse_leverage": {
+      "dimension": "reverse_leverage",
+      "score": 0.398,
+      "fact_count": 4,
+      "avg_confidence": 0.52,
+      "contradictions": 2,
+      "zone_tag": "?"
+    },
+    "shortcut_paths": {
+      "dimension": "shortcut_paths",
+      "score": 0.555,
+      "fact_count": 4,
+      "avg_confidence": 0.662,
+      "contradictions": 0,
+      "zone_tag": "T"
+    },
+    "alternative_money_flows": {
+      "dimension": "alternative_money_flows",
+      "score": 0.375,
+      "fact_count": 4,
+      "avg_confidence": 0.463,
+      "contradictions": 2,
+      "zone_tag": "?"
+    },
+    "information_supply_chain": {
+      "dimension": "information_supply_chain",
+      "score": 0.39,
+      "fact_count": 4,
+      "avg_confidence": 0.5,
+      "contradictions": 2,
+      "zone_tag": "?"
+    },
+    "community_as_asset": {
+      "dimension": "community_as_asset",
+      "score": 0.496,
+      "fact_count": 7,
+      "avg_confidence": 0.507,
+      "contradictions": 2,
+      "zone_tag": "?"
+    },
+    "indirect_entry": {
+      "dimension": "indirect_entry",
+      "score": 0.542,
+      "fact_count": 4,
+      "avg_confidence": 0.63,
+      "contradictions": 0,
+      "zone_tag": "T"
+    },
+    "network_access": {
+      "dimension": "network_access",
+      "score": 0.38,
+      "fact_count": 4,
+      "avg_confidence": 0.475,
+      "contradictions": 2,
+      "zone_tag": "?"
+    }
+  },
+  "gaps": [
+    {
+      "dimension": "information_supply_chain",
+      "score": 0.39,
+      "missing_queries": [
+        "artificial intelligence deal sourcing channels methods how scouts find deals global?",
+        "artificial intelligence intelligence platforms pricing Tracxn PitchBook alternatives global?",
+        "artificial intelligence information asymmetry what insiders know that outsiders don't?",
+        "proprietary startup data global not on Crunchbase where to find?"
+      ],
+      "priority": 2.872,
+      "suggested_action": "Research information_supply_chain for this domain"
+    },
+    {
+      "dimension": "community_as_asset",
+      "score": 0.496,
+      "missing_queries": [
+        "artificial intelligence community builder became fund manager examples revenue?",
+        "artificial intelligence newsletter curator monetization subscription pricing examples?",
+        "artificial intelligence global investor community groups where LPs GPs network?",
+        "deal flow platform artificial intelligence global who built it revenue model?"
+      ],
+      "priority": 2.28,
+      "suggested_action": "Research community_as_asset for this domain"
+    },
+    {
+      "dimension": "shortcut_paths",
+      "score": 0.555,
+      "missing_queries": [
+        "youngest artificial intelligence fund manager started own fund without experience timeline?",
+        "unconventional path into artificial intelligence bypassed career ladder examples?",
+        "artificial intelligence operator community groups Telegram Discord where deals happen?",
+        "solo GP micro fund global started from zero how timeline revenue?"
+      ],
+      "priority": 1.812,
+      "suggested_action": "Research shortcut_paths for this domain"
+    },
+    {
+      "dimension": "alternative_money_flows",
+      "score": 0.375,
+      "missing_queries": [
+        "all capital flows into global innovation ecosystem beyond VC: PE family offices corporate government?",
+        "which capital source in global is easiest to access for newcomer without credentials?",
+        "government innovation funds grants global who allocates how to access?",
+        "corporate venture arms M&A teams in global who scouts deals for them?"
+      ],
+      "priority": 1.364,
+      "suggested_action": "Research alternative_money_flows for this domain"
+    },
+    {
+      "dimension": "economics_reality",
+      "score": 0.383,
+      "missing_queries": [
+        "actual take-home income for professionals at artificial intelligence fund global after expenses?",
+        "how long until professionals earns first carry payout from artificial intelligence fund?",
+        "median income vs aspirational income for professionals in artificial intelligence global?",
+        "what does professionals earn year 1 vs year 5 vs year 10 in artificial intelligence?"
+      ],
+      "priority": 1.142,
+      "suggested_action": "Research economics_reality for this domain"
+    },
+    {
+      "dimension": "indirect_entry",
+      "score": 0.542,
+      "missing_queries": [
+        "Who controls the supply chain for professionals?",
+        "What do gatekeepers in artificial intelligence need that's underserved?",
+        "What free value could a newcomer provide to artificial intelligence ecosystem?",
+        "What's the parasitic attachment opportunity in artificial intelligence?"
+      ],
+      "priority": 1.012,
+      "suggested_action": "Map gatekeepers, underserved players, and parasitic opportunities"
+    },
+    {
+      "dimension": "operator_intelligence",
+      "score": 0.465,
+      "missing_queries": [
+        "who specifically approved last 3 investments at top artificial intelligence fund in global name title?",
+        "specific decision makers at artificial intelligence funds actively deploying in global 2024 2025 names?",
+        "what does professionals at artificial intelligence fund personally need that no one provides global?",
+        "artificial intelligence fund internal politics who competes for deal allocation global?"
+      ],
+      "priority": 0.991,
+      "suggested_action": "Research operator_intelligence for this domain"
+    },
+    {
+      "dimension": "network_access",
+      "score": 0.38,
+      "missing_queries": [
+        "How to access artificial intelligence professional circles in global?",
+        "Key networking events for artificial intelligence in global?",
+        "Who are the gatekeepers in artificial intelligence in global?",
+        "What professional associations exist for artificial intelligence?"
+      ],
+      "priority": 0.579,
+      "suggested_action": "Identify gatekeepers, events, and access strategies"
+    },
+    {
+      "dimension": "reverse_leverage",
+      "score": 0.398,
+      "missing_queries": [
+        "people who became artificial intelligence partner by bringing LP money deal flow first?",
+        "artificial intelligence scout program how to join without experience examples?",
+        "started own artificial intelligence fund without working at fund first examples success?",
+        "freelance artificial intelligence advisor consultant who became indispensable examples?"
+      ],
+      "priority": 0.389,
+      "suggested_action": "Research reverse_leverage for this domain"
+    }
+  ],
+  "path": [
+    {
+      "step_number": 1,
+      "action": "Check failure rates for artificial intelligence deals",
+      "rationale": "Based on: failure_patterns=N/A[?], base_rates=N/A[?]",
+      "confidence": 0.0,
+      "dependencies": [],
+      "zone_tag": "?"
+    },
+    {
+      "step_number": 2,
+      "action": "Analyze competitive landscape and free alternatives",
+      "rationale": "Based on: competitive_landscape=N/A[?]",
+      "confidence": 0.0,
+      "dependencies": [],
+      "zone_tag": "?"
+    },
+    {
+      "step_number": 5,
+      "action": "Check timing windows and regulatory risks",
+      "rationale": "Based on: timing_windows=N/A[?], regulatory_risks=N/A[?]",
+      "confidence": 0.0,
+      "dependencies": [],
+      "zone_tag": "?"
+    },
+    {
+      "step_number": 3,
+      "action": "Validate unit economics: CAC, LTV, margins",
+      "rationale": "Based on: unit_economics=N/A[?]",
+      "confidence": 0.0,
+      "dependencies": [
+        "competitive_landscape"
+      ],
+      "zone_tag": "?"
+    },
+    {
+      "step_number": 4,
+      "action": "Assess moat defensibility",
+      "rationale": "Based on: moat_patterns=N/A[?]",
+      "confidence": 0.0,
+      "dependencies": [
+        "competitive_landscape"
+      ],
+      "zone_tag": "?"
+    },
+    {
+      "step_number": 6,
+      "action": "Calculate required capital and break-even",
+      "rationale": "Based on: capital_requirements=N/A[?]",
+      "confidence": 0.0,
+      "dependencies": [
+        "unit_economics"
+      ],
+      "zone_tag": "?"
+    }
+  ],
+  "facts_used": 42,
+  "facts_by_zone": {
+    "K": 0,
+    "T": 26,
+    "?": 16
+  },
+  "llm_calls_made": 0,
+  "recommendations": [
+    "Critical gaps to research: information_supply_chain, community_as_asset",
+    "Contradictions found in: operator_intelligence, economics_reality, reverse_leverage — resolve before deciding"
+  ],
+  "causal_insights": [
+    "Low base rate applies to direct entry; indirect path has different statistics",
+    "No moat + no compounding = commodity position, race to bottom",
+    "Overall capped at 0.5: 16 uncertain/contradicted facts",
+    "Overall capped at 0.3: zero [K] verified facts — insufficient evidence"
+  ],
+  "technique_results": {
+    "results": {
+      "T00_gold_rush_law": {
+        "technique_id": "T00_gold_rush_law",
+        "score": 0.0,
+        "confidence": 0.0,
+        "verdict": "NEEDS_DATA",
+        "reasoning_chain": [
+          "No players in ecosystem_map — cannot classify crowd vs servers"
+        ],
+        "zone_tag": "?",
+        "data_used": [],
+        "needs_data": [
+          "ecosystem_players"
+        ],
+        "metadata": {}
+      },
+      "T01_tree_of_thoughts": {
+        "technique_id": "T01_tree_of_thoughts",
+        "score": 0.84,
+        "confidence": 0.9,
+        "verdict": "INVESTIGATE",
+        "reasoning_chain": [
+          "Path A (Optimistic, conf>=0.7 in positive dims): 0 facts, score=0.000",
+          "Path B (Pessimistic, risk dims + competitive signals): 0 facts, score=0.000",
+          "Path C (Unexpected, low-conf high-value + indirect): 4 facts, score=2.520",
+          "Best path: unexpected with raw score 2.520",
+          "Normalized score: 0.840 → verdict: INVESTIGATE"
+        ],
+        "zone_tag": "K",
+        "data_used": [
+          "total_facts:57"
+        ],
+        "needs_data": [],
+        "metadata": {
+          "path_a_score": 0.0,
+          "path_b_score": 0.0,
+          "path_c_score": 2.52,
+          "best_path": "unexpected",
+          "best_fact_count": 4
+        }
+      },
+      "T02_reflexion": {
+        "technique_id": "T02_reflexion",
+        "score": 0.4,
+        "confidence": 0.9,
+        "verdict": "INVESTIGATE",
+        "reasoning_chain": [
+          "source_bias: OK — 46 distinct domains",
+          "optimism_bias DETECTED: no facts in failure_patterns or base_rates dimensions",
+          "blind_spot DETECTED: no competitive_landscape facts",
+          "reality_gap: OK — no explicit capital contradiction found",
+          "verification_gap DETECTED: zero facts with zone_tag 'K' (all unverified)",
+          "Moderate bias (3/5): ['optimism_bias', 'blind_spot', 'verification_gap'] — re-research needed"
+        ],
+        "zone_tag": "K",
+        "data_used": [
+          "facts_checked:57"
+        ],
+        "needs_data": [],
+        "metadata": {
+          "bias_count": 3,
+          "biases_detected": [
+            "optimism_bias",
+            "blind_spot",
+            "verification_gap"
+          ]
+        }
+      },
+      "T03_adversarial_debate": {
+        "technique_id": "T03_adversarial_debate",
+        "score": 0.0,
+        "confidence": 0.3,
+        "verdict": "INVESTIGATE",
+        "reasoning_chain": [
+          "BULL: 0 verified [K] positive facts, score=0.000",
+          "BEAR: 0 verified [K] negative facts, score=0.000",
+          "BEAR after kill_signal boost (+0.0): 0.000",
+          "BEAR classification factors: structural_kw=0, competitive_kw=0, kill_hits=0.0",
+          "BEAR classification: EXECUTION, capped score: 0.000",
+          "Tie/no evidence: bull=0.000, bear=0.000 → INVESTIGATE"
+        ],
+        "zone_tag": "T",
+        "data_used": [
+          "bull_facts:0",
+          "bear_facts:0"
+        ],
+        "needs_data": [],
+        "metadata": {
+          "bull_score": 0.0,
+          "bear_score": 0.0,
+          "bear_raw_score": 0.0,
+          "kill_signal_hits": 0.0,
+          "winner": "TIE",
+          "bear_classification": "EXECUTION"
+        }
+      },
+      "T04_second_order": {
+        "technique_id": "T04_second_order",
+        "score": 0.0,
+        "confidence": 0.9,
+        "verdict": "INVESTIGATE",
+        "reasoning_chain": [
+          "L0 (description): missing",
+          "L1 (compounding_mechanisms): 0 facts, score=0.000",
+          "L2 (moat_patterns): 0 facts, score=0.000",
+          "L3 (competitive_landscape): 0 facts, 0 saturation signals, saturation_score=0.000",
+          "Levels with data: 0/4, base_score=0.000",
+          "L4: PLATEAU (no compounding or moat) → -0.2",
+          "Final score: 0.000 + -0.2 = 0.0"
+        ],
+        "zone_tag": "K",
+        "data_used": [
+          "l1_facts:0",
+          "l2_facts:0",
+          "l3_facts:0"
+        ],
+        "needs_data": [],
+        "metadata": {
+          "classification": "PLATEAU",
+          "levels_with_data": 0,
+          "l1_score": 0.0,
+          "l2_score": 0.0,
+          "saturation_risk": 0.0,
+          "competitor_count": 0,
+          "adjustment": -0.2
+        }
+      },
+      "T05_moat_tester": {
+        "technique_id": "T05_moat_tester",
+        "score": 0.3,
+        "confidence": 0.5,
+        "verdict": "INVESTIGATE",
+        "reasoning_chain": [
+          "No moat types claimed in context"
+        ],
+        "zone_tag": "T",
+        "data_used": [],
+        "needs_data": [
+          "moat_type"
+        ],
+        "metadata": {}
+      },
+      "T06_analogical": {
+        "technique_id": "T06_analogical",
+        "score": 0.0,
+        "confidence": 0.0,
+        "verdict": "NEEDS_DATA",
+        "reasoning_chain": [
+          "Only 0 analogy fact(s) found — need ≥2 for pattern matching"
+        ],
+        "zone_tag": "?",
+        "data_used": [],
+        "needs_data": [
+          "analogical_cases"
+        ],
+        "metadata": {}
+      },
+      "T07_constraint_propagation": {
+        "technique_id": "T07_constraint_propagation",
+        "score": 1.0,
+        "confidence": 0.6,
+        "verdict": "GO",
+        "reasoning_chain": [
+          "Capital: $1,000 — no gap detected in facts",
+          "Time: 4.0h/day — sufficient for side-hustle entry",
+          "Skill gap: insufficient data to assess — assuming viable"
+        ],
+        "zone_tag": "T",
+        "data_used": [],
+        "needs_data": [
+          "required_skills"
+        ],
+        "metadata": {
+          "viable_approaches": 3,
+          "total_approaches": 3,
+          "capital_usd": 1000.0,
+          "hours_per_day": 4.0
+        }
+      },
+      "T08_staircase": {
+        "technique_id": "T08_staircase",
+        "score": 0.65,
+        "confidence": 0.45,
+        "verdict": "STAIRCASE_POSSIBLE",
+        "reasoning_chain": [
+          "Stage detector unavailable — estimating from capital=$1,000",
+          "No revenue target in facts — defaulting to $1,000/mo",
+          "Estimated path: ~52 weeks based on capital tier (no path data)",
+          "Total path: 12.0 months to reach scale target"
+        ],
+        "zone_tag": "T",
+        "data_used": [],
+        "needs_data": [],
+        "metadata": {
+          "total_months": 12.0,
+          "total_weeks": 52,
+          "path_steps_count": 0,
+          "path_confidence": "low",
+          "current_stage_id": "stage_1_side_hustle",
+          "revenue_target": 1000.0
+        }
+      },
+      "T09_durability": {
+        "technique_id": "T09_durability",
+        "score": 0.6,
+        "confidence": 0.7,
+        "verdict": "GO",
+        "reasoning_chain": [
+          "Owned assets detected: 8 (brand, community, content, data, database)",
+          "Single-platform dependency: False",
+          "Antifragile signals: False",
+          "DURABLE: 8 owned assets provide platform-independent foundation"
+        ],
+        "zone_tag": "T",
+        "data_used": [
+          "owned_assets:8",
+          "single_platform:False"
+        ],
+        "needs_data": [],
+        "metadata": {
+          "classification": "DURABLE",
+          "owned_assets": [
+            "brand",
+            "community",
+            "content",
+            "data",
+            "database",
+            "ip",
+            "network",
+            "newsletter"
+          ],
+          "owned_count": 8,
+          "single_platform": false,
+          "antifragile": false
+        }
+      },
+      "T10_value_chain": {
+        "technique_id": "T10_value_chain",
+        "score": 0.0,
+        "confidence": 0.2,
+        "verdict": "NEEDS_DATA",
+        "reasoning_chain": [
+          "No value_chain data in ecosystem_map"
+        ],
+        "zone_tag": "?",
+        "data_used": [],
+        "needs_data": [
+          "value_chain_steps"
+        ],
+        "metadata": {}
+      },
+      "T11_speed_test": {
+        "technique_id": "T11_speed_test",
+        "score": 0.3,
+        "confidence": 0.2,
+        "verdict": "NEEDS_DATA",
+        "reasoning_chain": [
+          "No business_model in context"
+        ],
+        "zone_tag": "?",
+        "data_used": [],
+        "needs_data": [
+          "business_model"
+        ],
+        "metadata": {}
+      },
+      "T12_simulation": {
+        "technique_id": "T12_simulation",
+        "score": 0.306,
+        "confidence": 0.4,
+        "verdict": "INVESTIGATE",
+        "reasoning_chain": [
+          "Execution distance: 4 skill gaps vs 4 required",
+          "No price fact found — using default $100",
+          "Projected month-12 MRR: $973 (target: $5,000)",
+          "Churn rate: 5.0%, monthly new customers: 1.0",
+          "No compounding_mechanisms or moat_patterns facts — cannot reach GO",
+          "Highly executable bonus: distance 4 <= 8"
+        ],
+        "zone_tag": "T",
+        "data_used": [],
+        "needs_data": [
+          "price_per_unit",
+          "compounding_or_moat_evidence"
+        ],
+        "metadata": {
+          "month12_mrr": 973.32,
+          "mrr_target": 5000.0,
+          "mrr_series": [
+            195.0,
+            285.25,
+            370.99,
+            452.44,
+            529.82,
+            603.33,
+            673.16,
+            739.5,
+            802.53,
+            862.4,
+            919.28,
+            973.32
+          ],
+          "execution_distance": 4,
+          "highly_executable": true,
+          "compound_gate_pass": false,
+          "price": 100.0,
+          "churn_rate": 0.05
+        }
+      },
+      "T13_observation": {
+        "technique_id": "T13_observation",
+        "score": 0.7,
+        "confidence": 0.65,
+        "verdict": "GO",
+        "reasoning_chain": [
+          "Ad signal found: 'In February 2023, I started a venture capital fund without r' (conf=0.70)",
+          "No arbitrage signals detected",
+          "Market timing signal: calm (indicators: ['capital_flowing_in'])",
+          "Score components: base=0.3, +0.3 ad_validated, +0.1 calm → 0.70"
+        ],
+        "zone_tag": "T",
+        "data_used": [
+          "ad_fact:In February 2023, I started a venture ca",
+          "cycle_fallback:tc=1,hc=0"
+        ],
+        "needs_data": [],
+        "metadata": {
+          "ad_validated": true,
+          "arbitrage_found": false,
+          "timing_signal": "calm",
+          "indicators_extracted": [
+            "capital_flowing_in"
+          ]
+        }
+      },
+      "T14_compound_intelligence": {
+        "technique_id": "T14_compound_intelligence",
+        "score": 0.727,
+        "confidence": 0.9,
+        "verdict": "GO",
+        "reasoning_chain": [
+          "data_moat: 10.0/10 (5 facts)",
+          "network_effect: 8.5/10 (4 facts)",
+          "content_library: 10.0/10 (5 facts)",
+          "customer_relationships: 3.2/10 (1 facts)",
+          "brand_authority: 1.9/10 (1 facts)",
+          "process_ip: 10.0/10 (6 facts)",
+          "Total compound score: 43.6 (STRONG>35, MODERATE>18)",
+          "Classification: STRONG",
+          "data_moat > 5 + STRONG classification → compound_multiplier activated"
+        ],
+        "zone_tag": "K",
+        "data_used": [
+          "data_moat:Crunchbase vs. VentureXpert: A Detailed Comparison",
+          "data_moat:7 Best AI Newsletters Platforms and Directories to",
+          "data_moat:The AI-powered deal and relationship intelligence ",
+          "data_moat:Guide: Obtaining Wallet Address NFT Statistics Ful",
+          "data_moat:Australian Bureau of Statistics – Economics Explor",
+          "network_effect:War strains AI funding pipelines globally — Arabia",
+          "network_effect:Methods of the recruitment - Metti RND: Metti RND ",
+          "network_effect:Artificial Intelligence can Reduce Information Asy",
+          "network_effect:For investors | Go Global World: Expand your globa",
+          "content_library:\"Unleash the Future: Global AI Conference Sparks I",
+          "content_library:Actualized.org Forum - Personal Development Forum:",
+          "content_library:The Enterprise AI Scalability Gap: Common Failure ",
+          "content_library:The Enterprise AI Scalability Gap: Common Failure ",
+          "content_library:The Enterprise AI Scalability Gap: Common Failure ",
+          "customer_relationships:The AI-powered deal and relationship intelligence ",
+          "brand_authority:Artificial intelligence bot maker Jobs, Employment",
+          "process_ip:Artificial Intelligence Grant – Apply Today | NSF ",
+          "process_ip:War strains AI funding pipelines globally — Arabia",
+          "process_ip:The AI-powered deal and relationship intelligence ",
+          "process_ip:Supply Chain Job Titles and Descriptions (2026) - ",
+          "process_ip:Analysis and Forecast of the Growing Demand for th",
+          "process_ip:Analysis and Forecast of the Growing Demand for th"
+        ],
+        "needs_data": [],
+        "metadata": {
+          "mechanism_scores": {
+            "data_moat": 10.0,
+            "network_effect": 8.5,
+            "content_library": 10.0,
+            "customer_relationships": 3.25,
+            "brand_authority": 1.9,
+            "process_ip": 10.0
+          },
+          "total_compound_score": 43.65,
+          "classification": "STRONG",
+          "compound_multiplier": true,
+          "weak_blocked": false
+        }
+      }
+    },
+    "overall_score": 0.448,
+    "consensus": "SPLIT",
+    "techniques_agreeing_go": 4,
+    "techniques_agreeing_kill": 0,
+    "needs_data_dimensions": [
+      "ecosystem_players",
+      "business_model",
+      "analogical_cases",
+      "value_chain_steps",
+      "required_skills",
+      "price_per_unit",
+      "moat_type",
+      "compounding_or_moat_evidence"
+    ],
+    "reasoning_summary": "No consensus: 4 GO, 0 KILL",
+    "staircase_override": false,
+    "fragile_block": false
+  },
+  "strategy": {
+    "total_timeline_weeks": 138,
+    "highest_leverage_dimension": "founder_experience",
+    "critical_path": [
+      "founder_experience",
+      "network_access",
+      "unit_economics",
+      "competitive_landscape",
+      "timing_windows",
+      "base_rates"
+    ],
+    "confidence": 0.0,
+    "steps": [
+      {
+        "dimension": "founder_experience",
+        "action": "Build relevant experience: complete 1 domain project, document learnings",
+        "prerequisites": [],
+        "priority": 1,
+        "estimated_weeks": 18,
+        "confidence": "medium",
+        "milestone": {
+          "description": "Build portfolio of 3+ relevant wins",
+          "metric": "relevant_projects",
+          "target_value": "3",
+          "gap_size": 1.0
+        }
+      },
+      {
+        "dimension": "network_access",
+        "action": "Build targeted network: attend 3+ industry events, secure warm intros",
+        "prerequisites": [],
+        "priority": 2,
+        "estimated_weeks": 10,
+        "confidence": "medium",
+        "milestone": {
+          "description": "Attend 5 industry events, secure 10 connections",
+          "metric": "verified_connections",
+          "target_value": "10",
+          "gap_size": 0.62
+        }
+      },
+      {
+        "dimension": "unit_economics",
+        "action": "Validate economics: calculate CAC, LTV, margins, break-even timeline",
+        "prerequisites": [],
+        "priority": 3,
+        "estimated_weeks": 6,
+        "confidence": "medium",
+        "milestone": {
+          "description": "Achieve positive unit economics for 30 days",
+          "metric": "positive_unit_econ_days",
+          "target_value": "30",
+          "gap_size": 1.0
+        }
+      },
+      {
+        "dimension": "competitive_landscape",
+        "action": "Map competitive terrain: profile top 5 competitors with pricing + users",
+        "prerequisites": [],
+        "priority": 4,
+        "estimated_weeks": 3,
+        "confidence": "medium",
+        "milestone": {
+          "description": "Deep-profile 10 competitors with pricing",
+          "metric": "competitors_profiled",
+          "target_value": "10",
+          "gap_size": 1.0
+        }
+      },
+      {
+        "dimension": "timing_windows",
+        "action": "Monitor and position for timing: track 3 cycle signals monthly",
+        "prerequisites": [],
+        "priority": 5,
+        "estimated_weeks": 6,
+        "confidence": "medium",
+        "milestone": {
+          "description": "Position for next cycle window",
+          "metric": "cycle_position_score",
+          "target_value": "positioned",
+          "gap_size": 1.0
+        }
+      },
+      {
+        "dimension": "base_rates",
+        "action": "Anchor expectations: research failure rates and survival statistics for domain",
+        "prerequisites": [],
+        "priority": 6,
+        "estimated_weeks": 2,
+        "confidence": "medium",
+        "milestone": {
+          "description": "Collect base rates from 5+ sources, calibrate expectations",
+          "metric": "base_rate_sources",
+          "target_value": "5",
+          "gap_size": 1.0
+        }
+      },
+      {
+        "dimension": "deal_skills",
+        "action": "Develop deal competency: study structures, run 1 micro-transaction",
+        "prerequisites": [
+          "network_access"
+        ],
+        "priority": 7,
+        "estimated_weeks": 18,
+        "confidence": "medium",
+        "milestone": {
+          "description": "Complete 3 deals, document process",
+          "metric": "deals_closed",
+          "target_value": "3",
+          "gap_size": 1.0
+        }
+      },
+      {
+        "dimension": "moat_patterns",
+        "action": "Identify defensible advantages: find switching costs, data moats, network effects",
+        "prerequisites": [
+          "competitive_landscape"
+        ],
+        "priority": 8,
+        "estimated_weeks": 18,
+        "confidence": "medium",
+        "milestone": {
+          "description": "Build 2+ compounding assets",
+          "metric": "compound_assets_active",
+          "target_value": "2",
+          "gap_size": 1.0
+        }
+      },
+      {
+        "dimension": "execution_distance",
+        "action": "Close skill/resource gaps: map exact steps from current state to target",
+        "prerequisites": [
+          "deal_skills"
+        ],
+        "priority": 9,
+        "estimated_weeks": 9,
+        "confidence": "medium",
+        "milestone": {
+          "description": "Complete 3-month skill acquisition plan",
+          "metric": "skill_plan_weeks_complete",
+          "target_value": "12",
+          "gap_size": 1.0
+        }
+      },
+      {
+        "dimension": "capital_requirements",
+        "action": "Secure required capital: validate revenue model, accumulate through staircase",
+        "prerequisites": [
+          "network_access",
+          "deal_skills"
+        ],
+        "priority": 10,
+        "estimated_weeks": 24,
+        "confidence": "medium",
+        "milestone": {
+          "description": "Generate $5K revenue from staircase step 1",
+          "metric": "capital_usd",
+          "target_value": "5000",
+          "gap_size": 1.0
+        }
+      },
+      {
+        "dimension": "compounding_mechanisms",
+        "action": "Activate compounding loops: instrument 1 flywheel, measure weekly",
+        "prerequisites": [
+          "moat_patterns"
+        ],
+        "priority": 11,
+        "estimated_weeks": 24,
+        "confidence": "medium",
+        "milestone": {
+          "description": "3 compound loops active and measured",
+          "metric": "active_compound_loops",
+          "target_value": "3",
+          "gap_size": 1.0
+        }
+      }
+    ],
+    "compound_map": {
+      "connections": [
+        {
+          "from": "founder_experience",
+          "to": "network_access",
+          "asset": "track record opens doors"
+        },
+        {
+          "from": "founder_experience",
+          "to": "moat_patterns",
+          "asset": "experience reveals defensible patterns"
+        },
+        {
+          "from": "network_access",
+          "to": "deal_skills",
+          "asset": "warm intros accelerate deal sourcing"
+        },
+        {
+          "from": "network_access",
+          "to": "founder_experience",
+          "asset": "network validates and amplifies experience"
+        },
+        {
+          "from": "unit_economics",
+          "to": "capital_requirements",
+          "asset": "positive economics reduces capital pressure"
+        },
+        {
+          "from": "deal_skills",
+          "to": "capital_requirements",
+          "asset": "deal flow generates capital"
+        },
+        {
+          "from": "deal_skills",
+          "to": "network_access",
+          "asset": "closed deals expand network credibility"
+        },
+        {
+          "from": "moat_patterns",
+          "to": "compounding_mechanisms",
+          "asset": "moat activates compounding loop"
+        },
+        {
+          "from": "moat_patterns",
+          "to": "unit_economics",
+          "asset": "moat improves margin structure"
+        },
+        {
+          "from": "compounding_mechanisms",
+          "to": "moat_patterns",
+          "asset": "compounding deepens moat"
+        },
+        {
+          "from": "compounding_mechanisms",
+          "to": "capital_requirements",
+          "asset": "compounding reduces capital needs"
+        }
+      ],
+      "compound_density": 0.5455,
+      "terminal_steps": [
+        "competitive_landscape",
+        "timing_windows",
+        "base_rates",
+        "execution_distance",
+        "capital_requirements"
+      ],
+      "flywheel_loops": [
+        [
+          "compounding_mechanisms",
+          "moat_patterns",
+          "compounding_mechanisms"
+        ],
+        [
+          "deal_skills",
+          "network_access",
+          "deal_skills"
+        ],
+        [
+          "founder_experience",
+          "network_access",
+          "founder_experience"
+        ]
+      ]
+    }
+  },
+  "strategic_insight": {
+    "causal_chain": "[error]",
+    "contradictions": [],
+    "inferred_gaps": [],
+    "asymmetric_play": "",
+    "compound_trap": "",
+    "kill_go_reasoning": "",
+    "verdict": "",
+    "kill_conditions": [],
+    "proceed_conditions": [],
+    "fact_references": [
+      "The biggest private biotech investments in February 2024: ... one series D round",
+      "The 2025 AI Index Report | Stanford HAI: Artificial Intelligence has leapt to th",
+      "Artificial Intelligence Grant – Apply Today | NSF SBIR: The principal investigat",
+      "War strains AI funding pipelines globally — Arabian Post: ... global artificial ",
+      "Mutual Funds | CI Global Asset Management: Commissions, trailing commissions, ma",
+      "Artificial intelligence bot maker Jobs, Employment | Freelancer: ... clearly sho",
+      "Artificial Intelligence Engineer Salary: Around the Globe in 2026: 2 weeks ago -",
+      "2026 Different Types of Artificial Intelligence Degrees and: Individuals with a ",
+      "AI Perimeter: Where Artificial Intelligence Becomes Real Business: Artificial in",
+      "Artificial Intelligence Merit Badge - scoutmasterbucky.com: The lesson should in",
+      "Should Your Nonprofit Jump on the Artificial Intelligence: ... Fundraising and A",
+      "11 Best Freelance AI Developers for Hire in May 2026 | Toptal: Artificial intell",
+      "In February 2023, I started a venture capital fund without really...: I had a na",
+      "AI risks 'broken' career ladder for college graduates, some ...: Jun 6, 2025 · A",
+      "10 Best AI Discord Servers to Join in 2025 | DigitalOcean: AI Discord servers ar",
+      "The Brutal Math of Micro-Funds: Is the Solo GP Era Ending? | Founder Collective:",
+      "With Sticky & Patient Capital, Family Offices Trade Up As Startup...: \"When fami",
+      "Capital Sources: Capital Sources and Capital ... - FasterCapital: Apr 3, 2025 · ",
+      "Global Innovation through Science and Technology: Global,: ... in learning about",
+      "Corporate Venture Arms: Are They Worth It? - Venture Capital: Can corporate vent"
+    ],
+    "llm_calls_made": 1,
+    "total_latency_ms": 0,
+    "founder_constraint_map": {},
+    "compound_asset_blueprint": {},
+    "side_doors": [],
+    "mental_models_applied": []
+  },
+  "sbe_evaluation": {
+    "sbe_verdict": "NEEDS_DEEPER_ANALYSIS",
+    "sbe_confidence": 0.4,
+    "kill_signals": [],
+    "enriched_features": {},
+    "short_circuited": false
+  },
+  "execution_scripts": [
+    {
+      "action": "Check failure rates for artificial intelligence deals",
+      "script": "Step 1: List 3 specific data points you need (not 'understand the market').\nStep 2: For each, identify the EXACT source (URL, database, person).\nStep 3: Set a 2-hour timebox. Extract data. Stop.\nStep 4: Write a 1-paragraph summary of what you found vs. what you expected.",
+      "psych": "Research is the most common procrastination disguise. The 2-hour timebox prevents infinite research loops.",
+      "timing": "First thing in the morning when focus is highest. Never after lunch.",
+      "fallback": "If data unavailable after 2 hours: the question is too broad. Narrow to 1 specific metric.",
+      "sixty_sec": true,
+      "persona": "default",
+      "difficulty": "novice"
+    },
+    {
+      "action": "Analyze competitive landscape and free alternatives",
+      "script": "Step 1: List 3 specific data points you need (not 'understand the market').\nStep 2: For each, identify the EXACT source (URL, database, person).\nStep 3: Set a 2-hour timebox. Extract data. Stop.\nStep 4: Write a 1-paragraph summary of what you found vs. what you expected.",
+      "psych": "Research is the most common procrastination disguise. The 2-hour timebox prevents infinite research loops.",
+      "timing": "First thing in the morning when focus is highest. Never after lunch.",
+      "fallback": "If data unavailable after 2 hours: the question is too broad. Narrow to 1 specific metric.",
+      "sixty_sec": true,
+      "persona": "default",
+      "difficulty": "novice"
+    },
+    {
+      "action": "Check timing windows and regulatory risks",
+      "script": "Step 1: List 3 specific data points you need (not 'understand the market').\nStep 2: For each, identify the EXACT source (URL, database, person).\nStep 3: Set a 2-hour timebox. Extract data. Stop.\nStep 4: Write a 1-paragraph summary of what you found vs. what you expected.",
+      "psych": "Research is the most common procrastination disguise. The 2-hour timebox prevents infinite research loops.",
+      "timing": "First thing in the morning when focus is highest. Never after lunch.",
+      "fallback": "If data unavailable after 2 hours: the question is too broad. Narrow to 1 specific metric.",
+      "sixty_sec": true,
+      "persona": "default",
+      "difficulty": "novice"
+    },
+    {
+      "action": "Validate unit economics: CAC, LTV, margins",
+      "script": "Step 1: List 3 specific data points you need (not 'understand the market').\nStep 2: For each, identify the EXACT source (URL, database, person).\nStep 3: Set a 2-hour timebox. Extract data. Stop.\nStep 4: Write a 1-paragraph summary of what you found vs. what you expected.",
+      "psych": "Research is the most common procrastination disguise. The 2-hour timebox prevents infinite research loops.",
+      "timing": "First thing in the morning when focus is highest. Never after lunch.",
+      "fallback": "If data unavailable after 2 hours: the question is too broad. Narrow to 1 specific metric.",
+      "sixty_sec": true,
+      "persona": "default",
+      "difficulty": "novice"
+    },
+    {
+      "action": "Assess moat defensibility",
+      "script": "Step 1: List 3 specific data points you need (not 'understand the market').\nStep 2: For each, identify the EXACT source (URL, database, person).\nStep 3: Set a 2-hour timebox. Extract data. Stop.\nStep 4: Write a 1-paragraph summary of what you found vs. what you expected.",
+      "psych": "Research is the most common procrastination disguise. The 2-hour timebox prevents infinite research loops.",
+      "timing": "First thing in the morning when focus is highest. Never after lunch.",
+      "fallback": "If data unavailable after 2 hours: the question is too broad. Narrow to 1 specific metric.",
+      "sixty_sec": true,
+      "persona": "default",
+      "difficulty": "novice"
+    },
+    {
+      "action": "Calculate required capital and break-even",
+      "script": "Specific first step: identify the SINGLE person who can say yes to this and find their contact. Write them a 3-sentence message explaining what you want and why it benefits THEM.",
+      "psych": "Most actions stall because the first step isn't specific enough. 'Who can say yes?' collapses complexity into one search.",
+      "timing": "Today. Not tomorrow. Not 'this week.' Now.",
+      "fallback": "If blocked: the action isn't specific enough. Break it into 3 smaller actions, each with a named target.",
+      "sixty_sec": true,
+      "persona": "default",
+      "difficulty": "novice"
+    }
+  ]
+}

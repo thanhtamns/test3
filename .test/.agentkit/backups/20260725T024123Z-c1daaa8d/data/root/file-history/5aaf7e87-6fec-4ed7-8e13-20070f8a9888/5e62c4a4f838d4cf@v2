@@ -1,0 +1,78 @@
+# Brainstorm Report: Hypothesis-Driven Intelligence Engine
+
+**Date:** 2026-05-27
+**Trigger:** User critique — Stage0 output "quá bình thường và vẫn web search quá nhiều"
+**Reference:** DeepMind Co-Scientist (Nature May 2025), TikTok video analysis
+
+## Problem Statement
+
+Stage0 produces DATA, not INTELLIGENCE. Pipeline allocates 60% compute to web search, 20% to organization, 10% to debate, 10% to synthesis. Output is structured summarization of web results — functionally a research assistant, not a thinking engine.
+
+User's demand: system should THINK like Co-Scientist — generate novel hypotheses, verify against structured knowledge, debate adversarially, refine iteratively until convergence.
+
+## Co-Scientist Architecture (from video + Nature paper)
+
+7 agents, 3 phases. Critical insight: **70% compute on VERIFICATION, not generation.**
+
+| Agent | Role | Stage0 Equivalent |
+|-------|------|-------------------|
+| Generation | Create novel hypotheses | **MISSING** — Stage0 only searches for existing ideas |
+| Proximity/Clustering | Diversity enforcement | Tournament diversity check (Phase 2.7) ✓ |
+| Reflection | Peer review / self-critique | Reasoning chain Step 3 (partial) |
+| Ranking | ELO tournament | Tournament engine (Phase 2.7) ✓ |
+| Evolution | Refine top ideas + merge | **MISSING** — single-pass, no iteration |
+| Meta-review | Quality gate | Vision quality gate (Phase 4A) ✓ |
+| Supervisor | Orchestration | SKILL.md pipeline ✓ |
+
+**2 of 7 agents missing. Both are the highest-impact ones.**
+
+## 3 Structural Flaws Diagnosed
+
+1. **RESEARCH = WEB SEARCH** — no first-principles reasoning, no novel hypothesis generation
+2. **NO STRUCTURED KNOWLEDGE BASE** — flat markdown vault vs Co-Scientist's queryable databases (UniProt, AlphaFold)
+3. **NO ITERATIVE REFINEMENT** — single-pass pipeline vs Co-Scientist's converge-until-stable loop
+
+## What Stage0 HAS (genuine advantages over Co-Scientist)
+
+- Founder context integration (personal constraints shape every recommendation)
+- 12 analytical framework lenses (Hormozi, Thiel, Munger, etc.)
+- Adversarial contrarian agent
+- Action translation (7-day execution plan)
+- Multi-language research capability
+
+## Solution: 5-Phase Evolution
+
+Shift compute allocation from SEARCH(60%) to THINK(80%):
+
+```
+CURRENT: Search(60%) → Organize(20%) → Debate(10%) → Synthesize(10%)
+PROPOSED: Seed(10%) → [Generate → Verify → Debate → Evolve] × N → Synthesize(10%)
+```
+
+| Phase | What | Effort | Key Artifact |
+|-------|------|--------|-------------|
+| 1 | First Principles Generator | 5h | first-principles-protocol.md + models.py |
+| 2 | Knowledge Graph | 8h | knowledge_graph.py + vault_to_graph.py |
+| 3 | Refinement Loop | 6h | refinement-loop-protocol.md + convergence_checker.py |
+| 4 | Mechanism-First Output | 3h | mechanism-output-protocol.md + template update |
+| 5 | Integration + Testing | 3h | SKILL.md wiring + end-to-end validation |
+
+**Total: ~25h. Target repo: master_investments.**
+
+## Key Design Decisions
+
+1. Knowledge Graph is Python (structured, queryable), not markdown (flat, read-once)
+2. First Principles Generator runs BEFORE any web search — think-first, verify-second
+3. Contradictions tracked explicitly — they're MORE valuable than confirmations
+4. Refinement loop bounded: max 3 rounds, convergence = top-3 stable across 2 rounds
+5. Every new component has null-check fallback — cannot break existing pipeline
+6. Evidence vault NOT replaced — Knowledge Graph is a structured layer on top
+
+## Unresolved Questions
+
+1. Should Knowledge Graph persist across sessions (SQLite) or be session-only (JSON)?
+   - Recommendation: JSON for MVP, SQLite as Phase 2 enhancement
+2. Should refinement loop run in parallel with Phase 3 (Lens Analysis) or sequentially?
+   - Recommendation: Sequential — refinement updates the knowledge graph that lenses should read
+3. How to handle the combined candidate pool (pattern-matcher + first-principles) exceeding tournament's N=10 cap?
+   - Recommendation: Keep top 5 from each source, ensuring diversity of origins

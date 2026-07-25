@@ -1,0 +1,385 @@
+## 🔬 Non-Google Research Source Ladder — AUTO-EXECUTED
+
+**Topic:** <task-notification>
+<task-id>abe84ab07ce265a2a</task-id>
+<tool-use-id>toolu_017TEZxbFcxZh1R43AaVAoVx</tool-use-id>
+<output-file>C:\Users\phamt\AppData\Local\Temp\claude\D--code-invesments-master-investments-mmo\1d5ddb0a-63d9-4ae7-ac80-ff8787ee45fb\tasks\abe84ab07ce265a2a.output</
+**Routes auto-detected:** `western_bootstrap_saas` (1 kw hits: indie hacker) + `crypto_grey` (1 kw hits: defi)
+
+### Route: `western_bootstrap_saas`
+**Cache:** MISS (31.98s)
+**Tiers probed:** operator_dashboards, podcast_transcripts, acquisition_marketplaces, github_oss_metrics, reddit_operator_subs, trends_newsletters, hackernews_ask, twitter_operator_lists
+**Total sources:** 32
+**Drill recommended:** 20
+**Skipped (low signal):** 6
+**Errored:** 4
+**Tool refs (skipped clean):** 2
+
+**🎯 Deep-drill these sources NOW** (signal density confirmed):
+- **Plausible Analytics blog** [50 signals] https://plausible.io/blog
+  - Examples: [dollar_amount] $1M | [dollar_amount] $1 | [dollar_amount] $500k
+- **Bootstrapped Founders (Arvid Kahl)** [50 signals] https://thebootstrappedfounder.com/
+  - Examples: [dollar_amount] $200 | [named_entity] The Bootstrapped Founder | [named_entity] How
+- **Empire Flippers** [50 signals] https://empireflippers.com/marketplace/
+  - Examples: [dollar_amount] $23,000,000 | [dollar_amount] $383,476 | [dollar_amount] $1,466,109
+- **Acquire.com** [50 signals] https://acquire.com/buyers/
+  - Examples: [named_entity] View | [named_entity] Online Businesses | [named_entity] Sale
+- **IndieHackers /tech** [50 signals] https://www.indiehackers.com/tech
+  - Examples: [dollar_amount] $20k | [dollar_amount] $3k | [dollar_amount] $1M
+- **GitHub trending** [50 signals] https://github.com/trending
+  - Examples: [named_entity] Trending | [named_entity] GitHub | [named_entity] GitHub Skip
+- **Trends.co (The Hustle)** [50 signals] https://trends.co/
+  - Examples: [dollar_amount] $100m | [dollar_amount] $200k | [named_entity] Trends
+- **Starter Story interviews** [50 signals] https://www.starterstory.com/ideas/podcast/
+  - Examples: [dollar_amount] $204K | [dollar_amount] $20.5K | [dollar_amount] $400
+- **MicroAcquire (now Acquire.com)** [50 signals] https://acquire.com/
+  - Examples: [dollar_amount] $500M | [dollar_amount] $2B | [named_entity] Buy
+- **IndieHackers podcast archive** [50 signals] https://www.indiehackers.com/podcasts
+  - Examples: [dollar_amount] $60 | [dollar_amount] $3 | [dollar_amount] $20k
+- **Cal.com public metrics** [50 signals] https://cal.com/about
+  - Examples: [named_entity] Learn More About Cal | [named_entity] Story | [named_entity] Cal
+- **SwipeFiles by Corey Haines** [50 signals] https://swipefiles.com/
+  - Examples: [named_entity] Swipe Files | [named_entity] SaaS Marketing Newsletter | [named_entity] Community Corey Haines
+- **Flippa** [50 signals] https://flippa.com/buy
+  - Examples: [dollar_amount] $0 | [dollar_amount] $999 | [dollar_amount] $5,000
+- **Lobste.rs** [50 signals] https://lobste.rs/
+  - Examples: [named_entity] Lobsters Active Recent Comments | [named_entity] Search Login Login | [named_entity] Steering Zig Fmt
+- **MicroConf YouTube transcripts** [3 signals] https://www.youtube.com/@microconf
+  - Examples: [named_entity] MicroConf | [named_entity] YouTube | [named_entity] Google LLC
+- **HN Algolia search** [3 signals] https://hn.algolia.com/?query=
+  - Examples: [named_entity] Hacker News Search | [named_entity] Algolia This | [named_entity] JavaScript
+- **Trends.vc** [50 signals] https://trends.vc/
+  - Examples: [dollar_amount] 100 USD | [named_entity] Discover | [named_entity] Trends
+- **BaseCase / Buttondown public metrics** [30 signals] https://buttondown.com/about
+  - Examples: [named_entity] About | [named_entity] Buttondown Buttondown Features Resources | [named_entity] Pricing Log
+- **GitHub Sponsors leaderboards** [50 signals] https://github.com/sponsors/explore
+  - Examples: [named_entity] Explore GitHub Sponsors | [named_entity] GitHub Skip | [named_entity] Navigation Menu Toggle
+- **GitHub code search** [50 signals] https://github.com/search?type=code&q=%3Ctask-notification%3E%0A%3Ctask-id%3Eabe84ab07ce265a2a%3C%2Ftask-id%3E%0A%3Ctool-use-id%3Etoolu_017TEZxbFcxZh1R43AaVAoVx%3C%2Ftool-use-id%3E%0A%3Coutput-file%3EC%3A%5CUsers%5Cphamt%5CAppData%5CLocal%5CTemp%5Cclaude%5CD--code-invesments-master-investments-mmo%5C1d5ddb0a-63d9-4ae7-ac80-ff8787ee45fb%5Ctasks%5Cabe84ab07ce265a2a.output%3C%2F
+  - Examples: [named_entity] Code | [named_entity] GitHub Skip | [named_entity] Navigation Menu Toggle
+
+**⚠ Errored sources** (consider Playwright escalation if signal is critical):
+- nitter.privacydev.net (fallback) (ConnectionError: HTTPSConnectionPool(host='nitter.privacydev.net', port=443): Ma)
+- Sourcegraph (HTTP 404)
+- nitter.net (primary) ()
+- HN Ask/Show top (ReadTimeout: HTTPSConnectionPool(host='news.ycombinator.com', port=443): Read ti)
+
+### Route: `crypto_grey`
+**Cache:** MISS (26.16s)
+**Tiers probed:** crypto_grey, github_oss_metrics, twitter_operator_lists, hackernews_ask
+**Total sources:** 15
+**Drill recommended:** 8
+**Skipped (low signal):** 0
+**Errored:** 5
+**Tool refs (skipped clean):** 2
+
+**🎯 Deep-drill these sources NOW** (signal density confirmed):
+- **GitHub trending** [50 signals] https://github.com/trending
+  - Examples: [named_entity] Trending | [named_entity] GitHub | [named_entity] GitHub Skip
+- **HN Algolia search** [3 signals] https://hn.algolia.com/?query=
+  - Examples: [named_entity] Hacker News Search | [named_entity] Algolia This | [named_entity] JavaScript
+- **DefiLlama** [50 signals] https://defillama.com/
+  - Examples: [dollar_amount] $85.465b | [dollar_amount] $322.796b | [dollar_amount] $6.546b
+- **Lobste.rs** [50 signals] https://lobste.rs/
+  - Examples: [named_entity] Lobsters Active Recent Comments | [named_entity] Search Login Login | [named_entity] Steering Zig Fmt
+- **Arkham Intelligence** [46 signals] https://www.arkhamintelligence.com/
+  - Examples: [named_entity] Arkham | [named_entity] Deanonymizing The Blockchain Mobile | [named_entity] App Announcements Media Research
+- **Nansen free lists** [50 signals] https://www.nansen.ai/
+  - Examples: [named_entity] Nansen | [named_entity] Agentic Trading | [named_entity] Onchain Intelligence Nansen Sign
+- **GitHub code search** [50 signals] https://github.com/search?type=code&q=%3Ctask-notification%3E%0A%3Ctask-id%3Eabe84ab07ce265a2a%3C%2Ftask-id%3E%0A%3Ctool-use-id%3Etoolu_017TEZxbFcxZh1R43AaVAoVx%3C%2Ftool-use-id%3E%0A%3Coutput-file%3EC%3A%5CUsers%5Cphamt%5CAppData%5CLocal%5CTemp%5Cclaude%5CD--code-invesments-master-investments-mmo%5C1d5ddb0a-63d9-4ae7-ac80-ff8787ee45fb%5Ctasks%5Cabe84ab07ce265a2a.output%3C%2F
+  - Examples: [named_entity] Code | [named_entity] GitHub Skip | [named_entity] Navigation Menu Toggle
+- **GitHub Sponsors leaderboards** [50 signals] https://github.com/sponsors/explore
+  - Examples: [named_entity] Explore GitHub Sponsors | [named_entity] GitHub Skip | [named_entity] Navigation Menu Toggle
+
+**⚠ Errored sources** (consider Playwright escalation if signal is critical):
+- Dune Analytics (HTTP 403 (tier2 unavailable))
+- nitter.privacydev.net (fallback) (ConnectionError: HTTPSConnectionPool(host='nitter.privacydev.net', port=443): Ma)
+- Sourcegraph (HTTP 404)
+- nitter.net (primary) ()
+- HN Ask/Show top (ReadTimeout: HTTPSConnectionPool(host='news.ycombinator.com', port=443): Read ti)
+
+---
+### 🔍 Deep-drill snippets (route `western_bootstrap_saas`)
+
+**Plausible Analytics blog** — 200 deep signals from https://plausible.io/blog
+Top signals:
+  - [dollar_amount] $1M
+  - [dollar_amount] $1
+  - [dollar_amount] $500k
+  - [dollar_amount] $400
+  - [dollar_amount] $10,000
+  - [dollar_amount] $2,750
+  - [named_entity] Plausible Analytics
+  - [named_entity] Simple
+  - [named_entity] Google Analytics
+  - [named_entity] Why Plausible Simple
+  - [named_entity] Get
+  - [named_entity] Lightweight
+Snippet:  Plausible Analytics | Simple, privacy-friendly Google Analytics alternative Why Plausible Simple analytics dashboard Get all the important stats on one single page. No training necessary. Lightweight script Our analytics script is tiny and fast. Privacy-friendly analytics Built with visitor privacy in mind. No cookie banner required. Open source Open source and self-hostable. Who it's for Startup...
+
+**Bootstrapped Founders (Arvid Kahl)** — 112 deep signals from https://thebootstrappedfounder.com/
+Top signals:
+  - [dollar_amount] $200
+  - [named_entity] The Bootstrapped Founder
+  - [named_entity] How
+  - [named_entity] Start
+  - [named_entity] Run
+  - [named_entity] Sell
+  - [named_entity] Bootstrapped Business
+  - [named_entity] Arvid Kahl Skip
+  - [named_entity] The Bootstrapped Founder How
+  - [named_entity] Arvid Kahl Menu Posts
+  - [named_entity] Books Newsletter Podcast Consulting
+  - [named_entity] Services Clarity Call Twitter
+Snippet:  The Bootstrapped Founder &#8211; How to Start, Run, and Sell a Bootstrapped Business — by Arvid Kahl Skip to content The Bootstrapped Founder How to Start, Run, and Sell a Bootstrapped Business — by Arvid Kahl Menu Posts Books Newsletter Podcast Consulting &#038; Services Clarity Call Twitter Teardown Shop Arvid About Me Media Kit Tech Stack Search START TYPING AND PRESS ENTER TO SEARCH Posts Boo...
+
+**Empire Flippers** — 200 deep signals from https://empireflippers.com/marketplace/
+Top signals:
+  - [dollar_amount] $23,000,000
+  - [dollar_amount] $383,476
+  - [dollar_amount] $1,466,109
+  - [dollar_amount] $6,900,000
+  - [dollar_amount] $127,207
+  - [dollar_amount] $525,984
+  - [dollar_amount] $1,666,016
+  - [dollar_amount] $52,064
+  - [dollar_amount] $105,222
+  - [dollar_amount] $1,400,000
+  - [dollar_amount] $32,492
+  - [dollar_amount] $171,057
+Snippet:  Online Businesses For Sale - Ecommerce, SaaS, Affiliate, &amp; More Marketplace For Sellers Company About Us Scoreboard Referral Program Testimonials Press Resources Blog Podcasts Videos Newsletter Support Log In Get Started Marketplace For Sellers Company About Us Scoreboard Referral Program Testimonials Press Resources Blog Podcasts Videos Newsletter Support Get Started Log In Online Businesses...
+
+**Acquire.com** — 108 deep signals from https://acquire.com/buyers/
+Top signals:
+  - [named_entity] View
+  - [named_entity] Online Businesses
+  - [named_entity] Sale
+  - [named_entity] Acquire
+  - [named_entity] JavaScript Required
+  - [named_entity] JavaScript
+  - [named_entity] Please
+  - [named_entity] Thank
+  - [named_entity] Reload Page How
+  - [named_entity] Enable JavaScript
+  - [named_entity] Inc
+  - [named_entity] All
+Snippet:  View 1,000s of Online Businesses for Sale | Acquire.com No script JavaScript Required We’re sorry, but this website needs JavaScript enabled to run correctly. Please, turn it on and come back later. Thank you! Reload Page How to Enable JavaScript © Acquire.com, Inc. 2026 . All rights reserved Sellers Sellers List Your Startup Create and publish your business listing to 500k+ buyers Get Acquire'd ...
+
+**IndieHackers /tech** — 102 deep signals from https://www.indiehackers.com/tech
+Top signals:
+  - [dollar_amount] $20k
+  - [dollar_amount] $3k
+  - [dollar_amount] $1M
+  - [dollar_amount] $15M
+  - [dollar_amount] $7M
+  - [dollar_amount] $37M
+  - [dollar_amount] $500k
+  - [dollar_amount] $30k
+  - [dollar_amount] $400M
+  - [dollar_amount] $500M
+  - [dollar_amount] $18k
+  - [dollar_amount] $120k
+Snippet:  For Tech Founders - Indie Hackers Home Starting Up Case Studies DB Products Ideas DB Vibe Coding Tools Subscribe to IH+ Starting Up Case Studies Ideas DB Products DB Join For Tech Founders A.I. Crypto SaaS Dev Tools &amp; APIs Gaming Building a tech business? You don't have to go it alone as an entrepreneur. This is your definitive resource for accessing expert strategies and keeping up with the ...
+
+**GitHub trending** — 200 deep signals from https://github.com/trending
+Top signals:
+  - [named_entity] Trending
+  - [named_entity] GitHub
+  - [named_entity] GitHub Skip
+  - [named_entity] Navigation Menu Toggle
+  - [named_entity] Sign
+  - [named_entity] Appearance
+  - [named_entity] Platform
+  - [named_entity] CODE CREATION GitHub Copilot
+  - [named_entity] Write
+  - [named_entity] GitHub Spark Build
+  - [named_entity] GitHub Models Manage
+  - [named_entity] MCP Registry New Integrate
+Snippet:  Trending repositories on GitHub today · GitHub Skip to content Navigation Menu Toggle navigation Sign in Appearance settings Platform AI CODE CREATION GitHub Copilot Write better code with AI GitHub Spark Build and deploy intelligent apps GitHub Models Manage and compare prompts MCP Registry New Integrate external tools DEVELOPER WORKFLOWS Actions Automate any workflow Codespaces Instant dev envi...
+
+**Trends.co (The Hustle)** — 200 deep signals from https://trends.co/
+Top signals:
+  - [dollar_amount] $100m
+  - [dollar_amount] $200k
+  - [named_entity] Trends
+  - [named_entity] HubSpot Logo
+  - [named_entity] Full
+  - [named_entity] Color
+  - [named_entity] Skip
+  - [named_entity] English Select
+  - [named_entity] Deutsch English
+  - [named_entity] High Contrast Customer Support
+  - [named_entity] Contact Sales Close Search
+  - [named_entity] Log
+Snippet:  Trends by HubSpot Logo - Full (Color) Skip to content English Select a language 日本語 Deutsch English Español Português Français High Contrast Customer Support Contact Sales Close Search Log in About About About Us Careers Contact Us Investor Relations Management Team Back Menu Close Search Products Products The HubSpot Customer Platform All of HubSpot's marketing, sales, and customer service softw...
+
+**Starter Story interviews** — 136 deep signals from https://www.starterstory.com/ideas/podcast/
+Top signals:
+  - [dollar_amount] $204K
+  - [dollar_amount] $20.5K
+  - [dollar_amount] $400
+  - [dollar_amount] $2.6M
+  - [dollar_amount] $2.45M
+  - [dollar_amount] $100
+  - [dollar_amount] $12,000
+  - [dollar_amount] $9.5M
+  - [dollar_amount] $31.2
+  - [dollar_amount] $12M
+  - [dollar_amount] $1.02M
+  - [dollar_amount] $12K
+Snippet:  Business Idea: Start A Podcast in 2026 - Starter Story S tarter Story Starter Story Starter Story Build Explore Ideas Case Studies Episodes Academy Build New Login Join Starter Story Ideas Case Studies Episodes Academy Build Login 4,418 Founder Case Studies Business Idea: Start A Podcast in 2026 Podcast Overview Startup Costs Success Stories Pros & Cons Marketing Ideas Tips Profitability Revenue ...
+
+---
+### 🔍 Deep-drill snippets (route `crypto_grey`)
+
+**GitHub trending** — 200 deep signals from https://github.com/trending
+Top signals:
+  - [named_entity] Trending
+  - [named_entity] GitHub
+  - [named_entity] GitHub Skip
+  - [named_entity] Navigation Menu Toggle
+  - [named_entity] Sign
+  - [named_entity] Appearance
+  - [named_entity] Platform
+  - [named_entity] CODE CREATION GitHub Copilot
+  - [named_entity] Write
+  - [named_entity] GitHub Spark Build
+  - [named_entity] GitHub Models Manage
+  - [named_entity] MCP Registry New Integrate
+Snippet:  Trending repositories on GitHub today · GitHub Skip to content Navigation Menu Toggle navigation Sign in Appearance settings Platform AI CODE CREATION GitHub Copilot Write better code with AI GitHub Spark Build and deploy intelligent apps GitHub Models Manage and compare prompts MCP Registry New Integrate external tools DEVELOPER WORKFLOWS Actions Automate any workflow Codespaces Instant dev envi...
+
+**DefiLlama** — 136 deep signals from https://defillama.com/
+Top signals:
+  - [dollar_amount] $85.465b
+  - [dollar_amount] $322.796b
+  - [dollar_amount] $6.546b
+  - [dollar_amount] $36.754b
+  - [dollar_amount] $20.027b
+  - [dollar_amount] $136.526b
+  - [dollar_amount] $317.44m
+  - [dollar_amount] $135.9m
+  - [dollar_amount] $4.119b
+  - [dollar_amount] $58.4m
+  - [named_entity] DefiLlama
+  - [named_entity] DeFi Dashboard
+Snippet:  DefiLlama - DeFi Dashboard &amp; Crypto Analytics Navigate to DeFi Dashboard Home Metrics Tools Chains Yields Stablecoins RWA New Support API &amp; MCP DEX Aggregator Investor Relations New PREMIUM Try free Pricing LlamaAI Downloads Custom Dashboards Sheets LlamaFeed Old Menu Market Overview Overview Chains Categories Oracles Top Protocols Bridged TVL Forks Yields Overview Stablecoin Yields Lever...
+
+**Lobste.rs** — 57 deep signals from https://lobste.rs/
+Top signals:
+  - [named_entity] Lobsters Active Recent Comments
+  - [named_entity] Search Login Login
+  - [named_entity] Steering Zig Fmt
+  - [named_entity] Archive
+  - [named_entity] Ghostarchive
+  - [named_entity] Web
+  - [named_entity] Just Fucking Use
+  - [named_entity] Chrome
+  - [named_entity] Inflorescence
+  - [named_entity] GUI
+  - [named_entity] Pijul
+  - [named_entity] GPUs
+Snippet:  Lobsters Active Recent Comments Search Login Login 42 Steering Zig Fmt zig matklad.github.io via vi_mi 9 hours ago | caches Archive.org Ghostarchive | 14 comments 14 18 On forking the Web web dillo-browser.org via spc476 4 hours ago | caches Archive.org Ghostarchive | 8 comments 8 156 Just Fucking Use Go go blainsmith.com via zarldev 25 hours ago | caches Archive.org Ghostarchive | 200 comments 2...
+
+**Nansen free lists** — 76 deep signals from https://www.nansen.ai/
+Top signals:
+  - [named_entity] Nansen
+  - [named_entity] Agentic Trading
+  - [named_entity] Onchain Intelligence Nansen Sign
+  - [named_entity] Nansen Sign
+  - [named_entity] Sign
+  - [named_entity] Nansen Surface The Signal
+  - [named_entity] Explore Trading
+  - [named_entity] Download App
+  - [named_entity] Surface
+  - [named_entity] Signal
+  - [named_entity] Create Winners Surface
+  - [named_entity] Create Winners
+Snippet:  Nansen AI - Agentic Trading with Onchain Intelligence Nansen Sign Up Nansen Sign Up Sign Up Nansen Surface The Signal A g e n t i c T r a d i n g w i t h O n c h a i n I n t e l l i g e n c e A g e n t i c T r a d i n g w i t h O n c h a i n I n t e l l i g e n c e D i s c o v e r S m a r t M o n e y s i g n a l s , e x e c u t e t r a d e s , a n d s t a k e a s s e t s Explore Trading -&gt; Exp...
+
+**GitHub code search** — 83 deep signals from https://github.com/search?type=code&q=%3Ctask-notification%3E%0A%3Ctask-id%3Eabe84ab07ce265a2a%3C%2Ftask-id%3E%0A%3Ctool-use-id%3Etoolu_017TEZxbFcxZh1R43AaVAoVx%3C%2Ftool-use-id%3E%0A%3Coutput-file%3EC%3A%5CUsers%5Cphamt%5CAppData%5CLocal%5CTemp%5Cclaude%5CD--code-invesments-master-investments-mmo%5C1d5ddb0a-63d9-4ae7-ac80-ff8787ee45fb%5Ctasks%5Cabe84ab07ce265a2a.output%3C%2F
+Top signals:
+  - [named_entity] Code
+  - [named_entity] GitHub Skip
+  - [named_entity] Navigation Menu Toggle
+  - [named_entity] Sign
+  - [named_entity] Appearance
+  - [named_entity] Platform
+  - [named_entity] CODE CREATION GitHub Copilot
+  - [named_entity] Write
+  - [named_entity] GitHub Spark Build
+  - [named_entity] GitHub Models Manage
+  - [named_entity] MCP Registry New Integrate
+  - [named_entity] DEVELOPER WORKFLOWS Actions Automate
+Snippet:  Code search results · GitHub Skip to content Navigation Menu Toggle navigation Sign in Appearance settings Platform AI CODE CREATION GitHub Copilot Write better code with AI GitHub Spark Build and deploy intelligent apps GitHub Models Manage and compare prompts MCP Registry New Integrate external tools DEVELOPER WORKFLOWS Actions Automate any workflow Codespaces Instant dev environments Issues Pl...
+
+**GitHub Sponsors leaderboards** — 142 deep signals from https://github.com/sponsors/explore
+Top signals:
+  - [named_entity] Explore GitHub Sponsors
+  - [named_entity] GitHub Skip
+  - [named_entity] Navigation Menu Toggle
+  - [named_entity] Sign
+  - [named_entity] Appearance
+  - [named_entity] Platform
+  - [named_entity] CODE CREATION GitHub Copilot
+  - [named_entity] Write
+  - [named_entity] GitHub Spark Build
+  - [named_entity] GitHub Models Manage
+  - [named_entity] MCP Registry New Integrate
+  - [named_entity] DEVELOPER WORKFLOWS Actions Automate
+Snippet:  Explore GitHub Sponsors · GitHub Skip to content Navigation Menu Toggle navigation Sign in Appearance settings Platform AI CODE CREATION GitHub Copilot Write better code with AI GitHub Spark Build and deploy intelligent apps GitHub Models Manage and compare prompts MCP Registry New Integrate external tools DEVELOPER WORKFLOWS Actions Automate any workflow Codespaces Instant dev environments Issue...
+
+**Arkham Intelligence** — 46 deep signals from https://www.arkhamintelligence.com/
+Top signals:
+  - [named_entity] Arkham
+  - [named_entity] Deanonymizing The Blockchain Mobile
+  - [named_entity] App Announcements Media Research
+  - [named_entity] Careers Contact GENERAL INTEL
+  - [named_entity] BUG BOUNTY Intel Trade
+  - [named_entity] Trade
+  - [named_entity] GUIDE DEMOS VERIFIED ACCOUNT
+  - [named_entity] Learn
+  - [named_entity] Arkham Intelligence Inc
+  - [named_entity] All
+  - [named_entity] This
+  - [named_entity] Opt
+Snippet:  Arkham | Deanonymizing The Blockchain Mobile App Announcements Media Research Careers Contact GENERAL INTEL BUG BOUNTY Intel Trade Trade platform platform GUIDE DEMOS VERIFIED ACCOUNT Learn © 2025 Arkham Intelligence Inc. All rights reserved. This site uses cookies to ensure that you get the best experience possible. Opt-out Accept Deanonymizing the blockchain Received. Shareable link . Copied. O...
+
+**HN Algolia search** — 3 deep signals from https://hn.algolia.com/?query=
+Top signals:
+  - [named_entity] Hacker News Search
+  - [named_entity] Algolia This
+  - [named_entity] JavaScript
+Snippet:  Hacker News Search powered by Algolia This page will only work with JavaScript enabled ...
+
+---
+## 🤖 MANDATORY auto-spawn block — execute IMMEDIATELY in next response
+
+Per [EXHAUSTIVE-RESEARCH] rule, you MUST spawn 8 parallel Task agents
+in your VERY NEXT message to deep-extract from the drill-recommended sources above.
+Use a single message with multiple Agent tool calls (parallel execution).
+
+Each Task agent prompt template:
+```
+Task: Deep-extract operator-layer signals for topic "<TOPIC>" from <SOURCE_URL>.
+
+Goal: extract ALL specific data points: dollar amounts (with context),
+dated events (with year), named entities (real people/companies), tool/product names
+(with vendor), URLs, ban/platform mentions, failure/scam examples.
+
+For forum sources (mmo4me, voz, vn-z, V2EX, 52pojie): walk top 5-10 threads matching topic.
+For news sources (vnexpress, tuoitre, dantri, congan): walk top 10 articles.
+For dashboard sources (IndieHackers, Plausible, MicroConf): extract dated MRR + revenue numbers.
+
+Use WebFetch for retrieval. If 403/422/429, escalate to method_chain_fetcher.
+Return structured findings with source URL citations. Under 600 words.
+```
+
+Substitute `<TOPIC>` and `<SOURCE_URL>` for each drill-recommended source listed above.
+
+## 📋 Action plan (BLOCKING per [EXHAUSTIVE-RESEARCH]):
+1. **Spawn 8 Task agents in parallel** in your next response (single message, multiple Agent tool calls)
+2. **Wait for results** — each agent returns structured findings with citations
+3. **Synthesize** findings into the verdict, with mandatory `## Research tiers fired` section
+4. **Do NOT use WebSearch as primary** — that violates the rule. WebSearch is only for URL discovery.
+5. **Cite drill snippets** above — they contain raw signal you can quote directly
+
+**Reference:** `D:/code/invesments/master_investments/data/knowledge-sources/research-ladder.json` | `D:/code/invesments/master_investments/data/knowledge-sources/ladder-runner.py` | `.claude/rules/learned-rules.md` → "Exhaustive Research Rules"

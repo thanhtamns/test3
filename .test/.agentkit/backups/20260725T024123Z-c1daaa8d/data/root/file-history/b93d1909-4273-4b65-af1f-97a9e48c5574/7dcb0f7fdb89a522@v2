@@ -1,0 +1,53 @@
+'use strict';
+
+const { getIterationCount, getLastGapIds, getPreviousGapIds } = require('./audit-history.cjs');
+
+const MAX_ITERATIONS = 5;
+const STAGNATION_THRESHOLD = 2;
+
+function shouldPass(currentGaps) {
+  const iterCount = getIterationCount();
+  const actionable = currentGaps.filter(g => g.severity === 'critical' || g.severity === 'major');
+
+  if (actionable.length === 0) {
+    return { pass: true, reason: 'no_actionable_gaps', unfillable: [] };
+  }
+
+  if (iterCount >= MAX_ITERATIONS) {
+    return { pass: true, reason: 'max_iterations', unfillable: actionable.map(g => g.id) };
+  }
+
+  const currentIds = currentGaps.map(g => g.id);
+  const lastIds = getLastGapIds();
+  const prevIds = getPreviousGapIds();
+
+  // Stagnation: gaps not decreasing for 2 consecutive iterations
+  if (lastIds.length > 0 && currentIds.length >= lastIds.length) {
+    if (prevIds.length > 0 && lastIds.length >= prevIds.length) {
+      return { pass: true, reason: 'stagnating', unfillable: currentIds };
+    }
+  }
+
+  // Repeat detection: same gap in 2+ iterations
+  const unfillable = [];
+  for (const gap of actionable) {
+    if (lastIds.includes(gap.id)) {
+      unfillable.push(gap.id);
+    }
+  }
+
+  // If ALL actionable gaps are unfillable, pass
+  if (unfillable.length > 0 && unfillable.length >= actionable.length) {
+    return { pass: true, reason: 'all_unfillable', unfillable };
+  }
+
+  // Filter out unfillable from blocking set
+  const stillBlocking = actionable.filter(g => !unfillable.includes(g.id));
+  if (stillBlocking.length === 0) {
+    return { pass: true, reason: 'only_unfillable_remain', unfillable };
+  }
+
+  return { pass: false, reason: null, unfillable };
+}
+
+module.exports = { shouldPass, MAX_ITERATIONS };

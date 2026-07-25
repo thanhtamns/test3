@@ -1,0 +1,136 @@
+---
+title: "Meta-Evolution Layer: Strategy-Level Self-Evolution (EvoX-class)"
+description: "Upgrade system from knob-tuning to full strategy-level self-evolution. System evolves HOW it thinks, not just WHAT thresholds it uses."
+status: pending
+priority: P0
+effort: 5d
+progress: 0%
+branch: master
+tags: [meta-evolution, EvoX, strategy-evolution, mechanism, pipeline-mutation]
+created: 2026-05-16
+blockedBy: []
+blocks: []
+---
+
+# Meta-Evolution Layer: Strategy-Level Self-Evolution
+
+## Problem Statement
+
+Current system has 3 evolution layers:
+- **L1 DATA** ✅: Brier scores, KB cases, learned rules, signal weights
+- **L2 KNOBS** ✅: BayesianKnobUpdater tunes 6+ numeric thresholds via meta_edit_controller
+- **L3 TEMPLATES** ✅: TemplateMutator generates variant research prompts via LLM
+
+**MISSING — L4 STRATEGY**: Pipeline logic (wave composition, gate sequence, agent selection, scoring rubric) is LOCKED. If the pipeline DESIGN is wrong, no amount of knob-tuning or template-mutating fixes it.
+
+## Inspiration: EvoX (arXiv:2602.23413)
+
+EvoX operates a **two-level evolution loop**:
+1. Solution-Evolution Loop (candidates = verdicts)
+2. Meta-Evolution Loop (strategies = how-to-evaluate)
+
+When solution progress stagnates, meta-loop generates NEW search strategies conditioned on:
+- Prior strategies + their performance
+- Current population state
+- Stagnation signals
+
+## What "Strategy" Means for Stage0
+
+A **Strategy** = serialized JSON defining:
+```json
+{
+  "wave1_agents": ["market-reality-checker", "niche-archaeologist", ...],
+  "wave1_count": 8,
+  "wave2_agents": ["competitive-intelligence-engine", ...],
+  "wave2_count": 4,
+  "gate_sequence": ["local_prescreen", "premise_challenge", "intent_classification", "kb_lookup", "wave1", "wave2", "hypothesis_gen", "mountain_test", "verdict"],
+  "mountain_rubric_weights": {"revenue_potential": 0.3, "compounding": 0.25, ...},
+  "scoring_formula": "weighted_sum",
+  "confidence_aggregation": "bayesian_posterior"
+}
+```
+
+## Current State (What Exists)
+
+| Component | Location | Status |
+|-----------|----------|--------|
+| KnobRegistry | `.claude/lib/intelligence/mechanism/knob_registry.py` | ✅ Production |
+| MetaEditController | `.claude/lib/intelligence/mechanism/meta_edit_controller.py` | ✅ Production |
+| BayesianKnobUpdater | `.claude/lib/intelligence/mechanism/bayesian_knob_updater.py` | ✅ Production |
+| SafetyHarness | `.claude/lib/intelligence/mechanism/safety_harness.py` | ✅ Production |
+| EvolutionOrchestrator | `.claude/lib/intelligence/evolution/orchestrator.py` | ✅ Production |
+| SandboxRunner | `.claude/lib/intelligence/evolution/sandbox_runner.py` | ✅ Production |
+| TemplateMutator | `.claude/lib/intelligence/evolution/template_mutator.py` | ✅ Production |
+| ErrorAttributor | `.claude/lib/intelligence/mechanism/error_attributor.py` | ✅ Production |
+| TraceLogger | `.claude/lib/intelligence/mechanism/trace_logger.py` | ✅ Production |
+
+## Architecture: 3-Tier Meta-Evolution
+
+```
+┌────────────────────────────────────────────────────────┐
+│  TIER 3: META-META (evolves evolution strategy)        │
+│  Trigger: strategy population stagnation (3 cycles)    │
+│  Action: mutate selection/variation operators          │
+│  Frequency: monthly                                    │
+└───────────────────────┬────��───────────────────────────┘
+                        │ controls
+┌───────────────────────▼────────────────────────────────┐
+│  TIER 2: STRATEGY EVOLUTION (EvoX-class) ← NEW        │
+│  Population: 3-5 competing pipeline strategies         │
+│  Fitness: Brier improvement rate per N verdicts        │
+│  Mutation: LLM generates variant strategies            │
+│  Selection: kill worst, breed from best per window     │
+│  Safety: max 1 strategy flip per 10 verdicts           │
+└───────────────────────┬────────────────────────────────┘
+                        │ deploys winner
+┌──��────────────────────▼────────────────────────────────┐
+│  TIER 1: EXISTING (knob tuning + template evolution)   │
+│  BayesianKnobUpdater + TemplateMutator + SandboxRunner │
+│  Operates WITHIN the active strategy                   │
+└─────────────���──────────────────────────────────────────┘
+```
+
+## Phases
+
+| # | Phase | Status | Effort | Dependencies |
+|---|-------|--------|--------|--------------|
+| 1 | Strategy Schema + Registry | pending | 4h | none |
+| 2 | Strategy Mutator (LLM-driven) | pending | 6h | Phase 1 |
+| 3 | Strategy Sandbox (A/B on same topic) | pending | 6h | Phase 1 |
+| 4 | Strategy Fitness + Selection | pending | 4h | Phase 3 |
+| 5 | Meta-Meta Loop (stagnation detection) | pending | 4h | Phase 4 |
+| 6 | Integration + Hook Wiring | pending | 6h | Phase 4 |
+| 7 | Safety Constraints + Tests | pending | 6h | All |
+
+## Key Design Decisions
+
+1. **Population size = 3-5** — small enough for LLM context, large enough for diversity
+2. **Fitness = Brier improvement rate** (not absolute Brier) — rewards LEARNING, not just accuracy
+3. **Window = 10 verdicts** — after 10 verdicts, evaluate all strategies
+4. **Safety: max 1 structural flip per window** — prevents oscillation
+5. **Seed population from HISTORY** — extract implicit strategies from past good/bad runs
+6. **Strategies are JSON** — serializable, diffable, version-controlled
+7. **Trace integration** — every verdict logs which strategy was active
+
+## Success Criteria
+
+- [ ] System can run 3+ competing strategies on same topic
+- [ ] Strategy with lower Brier gets promoted automatically
+- [ ] Stagnating strategies get mutated without human intervention
+- [ ] Safety harness prevents regression (auto-rollback if 3 consecutive worse)
+- [ ] 133 existing tests still pass
+- [ ] New meta-evolution tests: ≥20 unit + 3 integration
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|------|-----------|
+| Strategy diversity collapses | Forced diversity injection: 1 "wild" strategy always in population |
+| Reward hacking (gaming fitness) | Multi-metric fitness (Brier + fact_yield + user_satisfaction) |
+| Catastrophic regression | SafetyHarness extended to strategy-level: auto-revert after 3 worse |
+| Insufficient outcome data | Minimum 20 verdicts before first strategy evolution cycle |
+| Complexity overwhelm | Phase 7 writes comprehensive integration tests before merge |
+
+## Next Steps
+
+Implementation target: `D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\`

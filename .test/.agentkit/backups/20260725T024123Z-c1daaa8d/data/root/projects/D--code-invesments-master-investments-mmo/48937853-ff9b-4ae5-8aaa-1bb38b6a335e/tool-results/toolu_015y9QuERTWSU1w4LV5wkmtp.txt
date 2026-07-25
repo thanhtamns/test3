@@ -1,0 +1,224 @@
+D:\code\invesments\master_investments\.claude\lib\intelligence\hunger\claim_parser.py:265:            "timing_windows": ["window", "trend", "cycle", "seasonal", "timing", "wave", "peak"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\hunger\claim-schema.json:4:  "description": "Schema for Wave 1/2 agent structured output — fuel line from LLM to local KB",
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py:98:        expected_agents = set(strategy.wave1_agents + strategy.wave2_agents)
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py:159:        expected = set(strategy.wave1_agents + strategy.wave2_agents)
+D:\code\invesments\master_investments\.claude\lib\intelligence\layers\elite\cycle_intelligence.py:26:    "trough": CyclePhase("trough", "6-12mo", "position_for_wave"),
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_aevox_integration.py:18:        wave1_agents=["niche-archaeologist", "market-reality-checker", "failure-archaeologist", "risk-mapper"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_aevox_integration.py:19:        wave2_agents=["competitive-intelligence", "pricing-psychology"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py:29:        "agent_outputs": json.dumps({"wave1": {"niche-archaeologist": "long output " * 500}}),
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py:62:        assert "wave1" in json.loads(retrieved["agent_outputs"])
+D:\code\invesments\master_investments\.claude\lib\intelligence\strategic-brain\integration\llm_constraint_generator.py:4:downstream Wave 1 agents to RESPOND to evidence rather than hallucinate.
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\trace_logger.py:10:    trace.log_step("3.5_wave1", "Wave 1 Agent Dispatch",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\trace_logger.py:11:        knobs_used=["wave1_base_agents", "max_web_calls_per_step"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\trace_logger.py:15:    trace.log_verdict_composition("MOUNTAIN_CANDIDATE", {"3.5_wave1": 0.4, "6_mountain_test": 0.6})
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\trace_logger.py:73:        "3.5_wave1",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\trace_logger.py:74:        "3.5_wave2",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\error_attributor.py:56:    "3.5_wave1": ["wave1_base_agent_count", "agents_fired_minimum"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\error_attributor.py:57:    "3.5_wave2": ["wave2_min_agents"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\error_attributor.py:263:        critical_steps = {"3.5_wave1", "3.5_wave2", "6_mountain_test", "7_verdict_synthesis"}
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\trace_cli.py:9:        --case-id CASE-001 --step 3.5_wave1 --step-name "Wave 1" \
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\trace_cli.py:11:        --knobs "wave1_base_agent_count,agents_fired_minimum"
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\agent_pool.py:46:def get_wave1_agent_ids() -> list[str]:
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\agent_pool.py:50:def get_wave2_agent_ids() -> list[str]:
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_replay_engine.py:26:    wave1=None,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_replay_engine.py:27:    wave2=None,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_replay_engine.py:32:    wave1 = wave1 or ["niche-archaeologist", "market-reality-checker", "failure-archaeologist", "risk-mapper"]
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_replay_engine.py:33:    wave2 = wave2 or ["competitive-intelligence", "pricing-psychology"]
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_replay_engine.py:37:        wave1_agents=wave1,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_replay_engine.py:38:        wave2_agents=wave2,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_replay_engine.py:119:        s_full = _make_strategy(wave1=["niche-archaeologist", "market-reality-checker", "failure-archaeologist", "risk-mapper"])
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_replay_engine.py:120:        s_partial = _make_strategy(wave1=["niche-archaeologist", "failure-archaeologist", "risk-mapper", "unknown-agent"])
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_replay_engine.py:161:        s = _make_strategy(wave1=["niche-archaeologist", "NONEXISTENT-agent", "risk-mapper", "failure-archaeologist"])
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_error_attributor.py:40:    trace.log_step("3.5_wave1", "Wave 1 Agent Dispatch",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_error_attributor.py:41:                   knobs_used=["wave1_base_agent_count"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_error_attributor.py:44:    trace.log_step("3.5_wave2", "Wave 2 Deep Agents",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_error_attributor.py:45:                   knobs_used=["wave2_min_agents"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_error_attributor.py:55:                                  step_weights={"3.5_wave1": 0.3, "3.5_wave2": 0.3,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_error_attributor.py:66:    trace.log_step("3.5_wave1", "Wave 1 Agent Dispatch",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_error_attributor.py:67:                   knobs_used=["wave1_base_agent_count"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_error_attributor.py:69:    trace.log_step("3.5_wave2", "Wave 2 Deep Agents",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_error_attributor.py:70:                   knobs_used=["wave2_min_agents"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_error_attributor.py:79:                                  step_weights={"3.5_wave1": 0.35, "3.5_wave2": 0.25,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_error_attributor.py:99:    assert len(direction_errors) >= 3  # wave1, wave2, mountain_test all pushed GO
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_error_attributor.py:110:    trace.log_step("3.5_wave1", "Wave 1",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_error_attributor.py:111:                   knobs_used=["wave1_base_agent_count"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_error_attributor.py:132:    assert override_errors[0].step == "3.5_wave2"
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_error_attributor.py:139:    trace.log_step("3.5_wave1", "Wave 1",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_error_attributor.py:140:                   knobs_used=["wave1_base_agent_count"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_error_attributor.py:142:    # Missing: wave2, mountain_test, verdict_synthesis
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_error_attributor.py:151:    assert "3.5_wave2" in missing_steps
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_error_attributor.py:159:    trace.log_step("3.5_wave1", "Wave 1",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_error_attributor.py:160:                   knobs_used=["wave1_base_agent_count"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_error_attributor.py:169:                                  step_weights={"3.5_wave1": 0.4, "6_mountain_test": 0.4,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_error_attributor.py:211:    wave1_errors = attributor.load_errors(knob_id="wave1_base_agent_count")
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_error_attributor.py:212:    assert all("wave1_base_agent_count" in e["knobs_implicated"] for e in wave1_errors)
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_error_attributor.py:247:        step="3.5_wave1",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_error_attributor.py:248:        step_name="Wave 1",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_error_attributor.py:251:        knobs_implicated=["wave1_base_agent_count"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_meta_edit_controller.py:38:            "wave1_base_agent_count": {
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_meta_edit_controller.py:41:                "description": "Wave 1 agents",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_meta_edit_controller.py:171:        errors = _make_errors("wave1_base_agent_count", 5,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_meta_edit_controller.py:173:        edit = updater.propose_edit("wave1_base_agent_count", errors)
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_meta_evolution_orchestrator.py:159:        trace.log_step("3.5_wave1", "Wave 1",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_meta_evolution_orchestrator.py:168:        trace.log_step("3.5_wave2", "Wave 2",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_safety_harness.py:93:        result = harness.validate_edit("wave1_base_agent_count", 8, 10)
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_safety_harness.py:100:            "wave1_base_agent_count", 8, 12,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_safety_harness.py:108:            "wave1_base_agent_count", 8, 9,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_safety_harness.py:115:            "wave1_base_agent_count", 8, 12,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_safety_harness.py:136:            "wave1_base_agent_count", 8, 9,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_safety_harness.py:155:            "wave1_base_agent_count", 8, 9,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_safety_harness.py:174:            "wave1_base_agent_count", 8, 9,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutation_prompts.py:13:5. AGENT_ADD_REMOVE: Expand or shrink wave composition
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutation_prompts.py:18:- wave1_count >= 4, wave2_count >= 2
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutation_prompts.py:53:### Wave 1 agents:
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutation_prompts.py:54:{wave1_pool}
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutation_prompts.py:56:### Wave 2 agents:
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutation_prompts.py:57:{wave2_pool}
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\fitness.py:118:        agent_count = len(getattr(strategy, "wave1_agents", []) or []) + \
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\fitness.py:119:                      len(getattr(strategy, "wave2_agents", []) or [])
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\meta_meta.py:149:            return len(getattr(s, "wave1_agents", []) or []) + \
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\meta_meta.py:150:                   len(getattr(s, "wave2_agents", []) or [])
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_trace_logger.py:27:    entry = trace.log_step("3.5_wave1", "Wave 1 Agent Dispatch",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_trace_logger.py:28:                           knobs_used=["wave1_base_agent_count"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_trace_logger.py:32:    assert entry.step == "3.5_wave1"
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_trace_logger.py:47:                                  step_weights={"3.5_wave1": 0.5, "6_mountain_test": 0.5},
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_trace_logger.py:56:    trace.log_step("3.5_wave1", "Wave 1",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_trace_logger.py:86:    trace.log_step("3.5_wave1", "Wave 1", signal={"direction": "GO", "confidence": 0.6})
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_trace_logger.py:102:        trace.log_step("3.5_wave1", "Wave 1", signal={"direction": "GO", "confidence": 0.5})
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_trace_logger.py:116:    trace.log_step("3.5_wave1", "Wave 1", agents=["researcher", "niche-archaeologist"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_trace_logger.py:118:    trace.log_step("3.5_wave2", "Wave 2", agents=["bullshit-detector", "researcher"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_trace_logger.py:150:    trace.log_step("3.5_wave1", "Wave 1", signal={"direction": "GO", "confidence": 0.5})
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutator.py:18:    get_wave1_agent_ids,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutator.py:19:    get_wave2_agent_ids,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutator.py:85:        available_w1 = get_wave1_agent_ids()
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutator.py:86:        available_w2 = get_wave2_agent_ids()
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutator.py:91:            used_w1.update(s.wave1_agents)
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutator.py:92:            used_w2.update(s.wave2_agents)
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutator.py:116:            wave1_agents=w1,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutator.py:117:            wave2_agents=w2,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutator.py:118:            wave1_count=max(4, len(w1)),
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutator.py:119:            wave2_count=max(2, len(w2)),
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutator.py:122:                "wave1", "wave2", "mountain_test", "verdict",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutator.py:156:            wave1_pool=w1_pool,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutator.py:157:            wave2_pool=w2_pool,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutator.py:192:            strat_data.setdefault("wave1_agents", parent.wave1_agents)
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutator.py:193:            strat_data.setdefault("wave2_agents", parent.wave2_agents)
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutator.py:197:                wave1_agents=strat_data["wave1_agents"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutator.py:198:                wave2_agents=strat_data["wave2_agents"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutator.py:199:                wave1_count=strat_data.get("wave1_count", len(strat_data["wave1_agents"])),
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutator.py:200:                wave2_count=strat_data.get("wave2_count", len(strat_data["wave2_agents"])),
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutator.py:232:            name="tmp", wave1_agents=["x"] * 4, wave2_agents=["x"] * 2,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutator.py:246:            available = get_wave1_agent_ids()
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutator.py:247:            current = set(child.wave1_agents)
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutator.py:249:            if alternatives and child.wave1_agents:
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutator.py:250:                idx = random.randint(0, len(child.wave1_agents) - 1)
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutator.py:251:                child.wave1_agents[idx] = random.choice(alternatives)
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\mutator.py:252:            child.mutation_rationale = f"Random agent swap at wave1[{idx}]"
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\safety.py:78:        if strategy.wave1_count < MIN_WAVE1_COUNT:
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\safety.py:80:                rule="min_wave1_count",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\safety.py:81:                message=f"wave1_count={strategy.wave1_count} < {MIN_WAVE1_COUNT}",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\safety.py:84:        if strategy.wave2_count < MIN_WAVE2_COUNT:
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\safety.py:86:                rule="min_wave2_count",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\safety.py:87:                message=f"wave2_count={strategy.wave2_count} < {MIN_WAVE2_COUNT}",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\replay_engine.py:147:        expected = set(strategy.wave1_agents + strategy.wave2_agents)
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:38:    wave1_agents: list[str]
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:39:    wave1_count: int
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:40:    wave2_agents: list[str]
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:41:    wave2_count: int
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:60:        wave1_agents: list[str],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:61:        wave2_agents: list[str],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:66:        wave1_count: Optional[int] = None,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:67:        wave2_count: Optional[int] = None,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:78:            wave1_agents=wave1_agents,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:79:            wave1_count=wave1_count or len(wave1_agents),
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:80:            wave2_agents=wave2_agents,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:81:            wave2_count=wave2_count or len(wave2_agents),
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:108:        if self.wave1_count < MIN_WAVE1_COUNT:
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:109:            errors.append(f"wave1_count {self.wave1_count} < minimum {MIN_WAVE1_COUNT}")
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:111:        if self.wave2_count < MIN_WAVE2_COUNT:
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:112:            errors.append(f"wave2_count {self.wave2_count} < minimum {MIN_WAVE2_COUNT}")
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:114:        if not self.wave1_agents:
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:115:            errors.append("wave1_agents cannot be empty")
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:117:        if not self.wave2_agents:
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:118:            errors.append("wave2_agents cannot be empty")
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:138:            "wave1_agents": self.wave1_agents,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:139:            "wave1_count": self.wave1_count,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:140:            "wave2_agents": self.wave2_agents,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:141:            "wave2_count": self.wave2_count,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:163:            wave1_agents=data["wave1_agents"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:164:            wave1_count=data.get("wave1_count", len(data["wave1_agents"])),
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:165:            wave2_agents=data["wave2_agents"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:166:            wave2_count=data.get("wave2_count", len(data["wave2_agents"])),
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:181:        set_a = set(self.wave1_agents + self.wave2_agents + self.gate_sequence)
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\schema.py:182:        set_b = set(other.wave1_agents + other.wave2_agents + other.gate_sequence)
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_trace_cli.py:41:            "--step", "3.5_wave1",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_trace_cli.py:42:            "--step-name", "Wave 1",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_trace_cli.py:46:            "--knobs", "wave1_base_agent_count",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_trace_cli.py:51:        assert out["step"] == "3.5_wave1"
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_trace_cli.py:57:            "--step", "3.5_wave1",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\tests\test_trace_cli.py:58:            "--step-name", "Wave 1",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\seed_extractor.py:45:    "wave1",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\seed_extractor.py:46:    "wave2",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\seed_extractor.py:75:            wave1_agents=DEFAULT_WAVE1_AGENTS.copy(),
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\seed_extractor.py:76:            wave2_agents=DEFAULT_WAVE2_AGENTS.copy(),
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\seed_extractor.py:86:            wave1_agents=DEFAULT_WAVE1_AGENTS[:6],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\seed_extractor.py:87:            wave2_agents=DEFAULT_WAVE2_AGENTS[:2],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\seed_extractor.py:88:            wave1_count=6,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\seed_extractor.py:89:            wave2_count=2,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\seed_extractor.py:103:        extended_wave1 = DEFAULT_WAVE1_AGENTS + [
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\seed_extractor.py:107:        extended_wave2 = DEFAULT_WAVE2_AGENTS + [
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\seed_extractor.py:113:            wave1_agents=extended_wave1,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\seed_extractor.py:114:            wave2_agents=extended_wave2,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\seed_extractor.py:115:            wave1_count=8,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\seed_extractor.py:116:            wave2_count=4,
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\stage0_injector.py:63:            "### Wave 1 Agents",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\stage0_injector.py:65:        for agent in strategy.wave1_agents:
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\stage0_injector.py:67:        lines.append(f"  - min_required: {strategy.wave1_count}")
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\stage0_injector.py:69:        lines.append("### Wave 2 Agents")
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\stage0_injector.py:70:        for agent in strategy.wave2_agents:
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\stage0_injector.py:72:        lines.append(f"  - min_required: {strategy.wave2_count}")
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\stage0_injector.py:83:    def get_wave1_agents(self) -> Optional[list[str]]:
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\stage0_injector.py:84:        """Get wave1 agent list from active strategy."""
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\stage0_injector.py:86:        return strategy.wave1_agents if strategy else None
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\stage0_injector.py:88:    def get_wave2_agents(self) -> Optional[list[str]]:
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\stage0_injector.py:89:        """Get wave2 agent list from active strategy."""
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\stage0_injector.py:91:        return strategy.wave2_agents if strategy else None
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_selector.py:18:        wave1_agents=["a", "b", "c", "d", "e"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_selector.py:19:        wave2_agents=["x", "y", "z"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_selector.py:20:        gate_sequence=["wave1", "wave2", "mountain_test", "verdict"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_schema.py:14:        "wave1_agents": ["a", "b", "c", "d", "e"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_schema.py:15:        "wave2_agents": ["x", "y", "z"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_schema.py:16:        "gate_sequence": ["local_prescreen", "wave1", "wave2", "mountain_test", "verdict"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_schema.py:39:    s = _valid_strategy(gate_sequence=["wave1", "wave2", "verdict"])
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_schema.py:44:def test_wave1_count_below_minimum():
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_schema.py:45:    s = _valid_strategy(wave1_count=2)
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_schema.py:47:    assert any("wave1_count" in e for e in errors)
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_schema.py:50:def test_wave2_count_below_minimum():
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_schema.py:51:    s = _valid_strategy(wave2_count=1)
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_schema.py:53:    assert any("wave2_count" in e for e in errors)
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_schema.py:80:    assert s2.wave1_agents == s.wave1_agents
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_schema.py:90:    s1 = _valid_strategy(wave1_agents=["a", "b", "c", "d"])
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_schema.py:91:    s2 = _valid_strategy(wave1_agents=["e", "f", "g", "h"])
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_fitness.py:18:        wave1_agents=["a", "b", "c", "d", "e"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_fitness.py:19:        wave2_agents=["x", "y", "z"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_fitness.py:20:        gate_sequence=["wave1", "wave2", "mountain_test", "verdict"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_fitness.py:73:    s1.wave1_agents = ["unique1", "unique2", "unique3", "unique4", "unique5"]
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_mutator.py:15:        wave1_agents=["market-reality-checker", "niche-archaeologist",
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_mutator.py:18:        wave2_agents=["cash-flow-surgeon", "leverage-architect", "intelligence-stack-designer"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_mutator.py:19:        gate_sequence=["local_prescreen", "wave1", "wave2", "mountain_test", "verdict"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_mutator.py:46:            child.wave1_agents != parent.wave1_agents
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_sandbox.py:19:        wave1_agents=["a", "b", "c", "d", "e"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_sandbox.py:20:        wave2_agents=["x", "y", "z"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_sandbox.py:21:        gate_sequence=["wave1", "wave2", "mountain_test", "verdict"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_integration.py:95:        wave1_agents=["a", "b", "c", "d"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_integration.py:96:        wave2_agents=["x", "y"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_integration.py:97:        gate_sequence=["wave1", "wave2"],  # missing mountain_test + verdict
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_integration.py:116:    agents = injector.get_wave1_agents()
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_integration.py:132:    assert "Wave 1 Agents" in block
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_integration.py:134:    agents = injector.get_wave1_agents()
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_integration.py:135:    assert agents == seeds[0].wave1_agents
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_integration.py:143:        wave1_agents=["a", "b", "c", "d"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_integration.py:144:        wave2_agents=["x", "y"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_registry.py:16:        "wave1_agents": ["a", "b", "c", "d", "e"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_registry.py:17:        "wave2_agents": ["x", "y", "z"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\mechanism\strategy_evolution\tests\test_registry.py:18:        "gate_sequence": ["local_prescreen", "wave1", "mountain_test", "verdict"],

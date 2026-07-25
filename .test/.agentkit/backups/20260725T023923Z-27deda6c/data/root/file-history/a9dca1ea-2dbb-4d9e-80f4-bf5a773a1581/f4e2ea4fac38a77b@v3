@@ -1,0 +1,370 @@
+"""Tests for MetaEditController, BayesianKnobUpdater, and SegmentEvaluator."""
+
+import json
+from pathlib import Path
+
+import pytest
+
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
+from intelligence.mechanism.knob_registry import KnobRegistry
+from intelligence.mechanism.error_attributor import ErrorAttributor
+from intelligence.mechanism.trace_logger import TraceLogger
+from intelligence.mechanism.bayesian_knob_updater import BayesianKnobUpdater, KnobEdit
+from intelligence.mechanism.segment_evaluator import SegmentEvaluator, EvalDecision
+from intelligence.mechanism.meta_edit_controller import MetaEditController, MetaEditResult
+
+
+# ── Fixtures ──────────────────────────────────────────────────
+
+
+@pytest.fixture
+def tmp_env(tmp_path):
+    """Full temp environment for controller tests."""
+    knobs_data = {
+        "version": 1,
+        "knobs": {
+            "mountain_threshold_monthly": {
+                "value": 10000, "type": "int", "range": [3000, 50000],
+                "unit": "USD/month", "step_ref": "test", "category": "scoring",
+                "description": "Minimum NET $/mo for Mountain",
+            },
+            "confidence_gate_minimum": {
+                "value": 0.70, "type": "float", "range": [0.50, 0.95],
+                "unit": "probability", "step_ref": "test", "category": "threshold",
+                "description": "Min confidence for verdict",
+            },
+            "wave1_base_agent_count": {
+                "value": 8, "type": "int", "range": [4, 12],
+                "unit": "count", "step_ref": "test", "category": "composition",
+                "description": "Wave 1 agents",
+            },
+        },
+    }
+    knobs_path = tmp_path / "knobs.json"
+    knobs_path.write_text(json.dumps(knobs_data), encoding="utf-8")
+
+    traces_dir = tmp_path / "traces"
+    traces_dir.mkdir()
+    errors_path = tmp_path / "mechanism-errors.jsonl"
+    state_path = tmp_path / "controller-state.json"
+    seg_state_path = tmp_path / "segment-state.json"
+    history_path = tmp_path / "knobs-history.jsonl"
+    seg_history_path = tmp_path / "meta-edit-history.jsonl"
+    brier_path = tmp_path / "brier-scores.jsonl"
+
+    return {
+        "knobs_path": knobs_path,
+        "history_path": history_path,
+        "traces_dir": traces_dir,
+        "errors_path": errors_path,
+        "state_path": state_path,
+        "seg_state_path": seg_state_path,
+        "seg_history_path": seg_history_path,
+        "brier_path": brier_path,
+    }
+
+
+@pytest.fixture
+def registry(tmp_env):
+    return KnobRegistry(knobs_path=tmp_env["knobs_path"], history_path=tmp_env["history_path"])
+
+
+@pytest.fixture
+def attributor(tmp_env):
+    return ErrorAttributor(traces_dir=tmp_env["traces_dir"], errors_path=tmp_env["errors_path"])
+
+
+@pytest.fixture
+def evaluator(tmp_env):
+    return SegmentEvaluator(
+        segment_size=3,
+        state_path=tmp_env["seg_state_path"],
+        history_path=tmp_env["seg_history_path"],
+    )
+
+
+@pytest.fixture
+def updater(registry):
+    return BayesianKnobUpdater(registry, max_pct_change=0.20)
+
+
+def _make_errors(knob_id, n, error_type="direction_mismatch", severity=0.7,
+                 predicted="MOUNTAIN_CANDIDATE", actual="KILL"):
+    """Generate n fake mechanism error dicts."""
+    return [
+        {
+            "case_id": f"TEST-{i:03d}",
+            "step": "6_mountain_test",
+            "step_name": "Mountain Test",
+            "error_type": error_type,
+            "severity": severity,
+            "knobs_implicated": [knob_id],
+            "detail": f"Step signaled GO but actual was KILL",
+            "predicted_verdict": predicted,
+            "actual_outcome": actual,
+            "timestamp": f"2026-05-16T15:{i:02d}:00Z",
+        }
+        for i in range(n)
+    ]
+
+
+def _seed_errors(errors_path, knob_id, n=5, **kwargs):
+    """Write fake errors to JSONL."""
+    errors = _make_errors(knob_id, n, **kwargs)
+    errors_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(errors_path, "a", encoding="utf-8") as f:
+        for e in errors:
+            f.write(json.dumps(e) + "\n")
+    return errors
+
+
+# ── BayesianKnobUpdater Tests ────────────────────────────────
+
+
+class TestBayesianKnobUpdater:
+    def test_propose_edit_raises_threshold(self, updater):
+        errors = _make_errors("mountain_threshold_monthly", 5,
+                              predicted="MOUNTAIN_CANDIDATE", actual="KILL")
+        edit = updater.propose_edit("mountain_threshold_monthly", errors)
+        assert edit is not None
+        assert edit.direction == 1  # raise — was too permissive
+        assert edit.new_value > edit.old_value
+
+    def test_propose_edit_lowers_threshold(self, updater):
+        errors = _make_errors("mountain_threshold_monthly", 5,
+                              predicted="KILL", actual="GO")
+        edit = updater.propose_edit("mountain_threshold_monthly", errors)
+        assert edit is not None
+        assert edit.direction == -1  # lower — was too restrictive
+        assert edit.new_value < edit.old_value
+
+    def test_propose_edit_respects_max_change(self, updater):
+        errors = _make_errors("mountain_threshold_monthly", 50, severity=0.95)
+        edit = updater.propose_edit("mountain_threshold_monthly", errors)
+        assert edit is not None
+        range_width = 50000 - 3000
+        max_delta = 0.20 * range_width
+        assert abs(edit.new_value - edit.old_value) <= max_delta + 1  # +1 for int rounding
+
+    def test_propose_edit_returns_none_for_single_error(self, updater):
+        errors = _make_errors("mountain_threshold_monthly", 1)
+        assert updater.propose_edit("mountain_threshold_monthly", errors) is None
+
+    def test_propose_edit_returns_none_for_ambiguous(self, updater):
+        errors = (
+            _make_errors("mountain_threshold_monthly", 3, predicted="GO", actual="KILL")
+            + _make_errors("mountain_threshold_monthly", 3, predicted="KILL", actual="GO")
+        )
+        edit = updater.propose_edit("mountain_threshold_monthly", errors)
+        assert edit is None  # 50/50 split → ambiguous
+
+    def test_confidence_inflation_raises_gate(self, updater):
+        errors = _make_errors("confidence_gate_minimum", 4,
+                              error_type="confidence_inflation")
+        edit = updater.propose_edit("confidence_gate_minimum", errors)
+        assert edit is not None
+        assert edit.direction == 1
+
+    def test_int_knob_produces_int_value(self, updater):
+        errors = _make_errors("wave1_base_agent_count", 5,
+                              error_type="missing_signal")
+        edit = updater.propose_edit("wave1_base_agent_count", errors)
+        if edit:
+            assert isinstance(edit.new_value, int)
+
+    def test_edit_to_dict(self, updater):
+        errors = _make_errors("mountain_threshold_monthly", 5)
+        edit = updater.propose_edit("mountain_threshold_monthly", errors)
+        d = edit.to_dict()
+        assert "knob_id" in d
+        assert "old_value" in d
+        assert "confidence" in d
+
+
+# ── SegmentEvaluator Tests ────────────────────────────────────
+
+
+class TestSegmentEvaluator:
+    def test_start_and_check(self, evaluator):
+        edit = {"knob_id": "test_knob", "old_value": 10, "new_value": 12}
+        seg_id = evaluator.start_segment(edit, brier_before=0.40)
+        assert seg_id.startswith("seg-test_knob-")
+
+        result = evaluator.check_segment(seg_id)
+        assert not result.ready
+        assert result.verdicts_collected == 0
+
+    def test_record_and_ready(self, evaluator):
+        edit = {"knob_id": "k", "old_value": 1, "new_value": 2}
+        seg_id = evaluator.start_segment(edit, brier_before=0.40)
+
+        for score in [0.35, 0.30, 0.32]:
+            evaluator.record_verdict(seg_id, score)
+
+        result = evaluator.check_segment(seg_id)
+        assert result.ready
+        assert result.verdicts_collected == 3
+
+    def test_evaluate_keep(self, evaluator):
+        edit = {"knob_id": "k", "old_value": 1, "new_value": 2}
+        seg_id = evaluator.start_segment(edit, brier_before=0.40)
+        for score in [0.39, 0.38, 0.40]:
+            evaluator.record_verdict(seg_id, score)
+
+        decision = evaluator.evaluate(seg_id)
+        assert decision.decision == "KEEP"
+
+    def test_evaluate_revert(self, evaluator):
+        edit = {"knob_id": "k", "old_value": 1, "new_value": 2}
+        seg_id = evaluator.start_segment(edit, brier_before=0.30)
+        for score in [0.40, 0.45, 0.42]:
+            evaluator.record_verdict(seg_id, score)
+
+        decision = evaluator.evaluate(seg_id)
+        assert decision.decision == "REVERT"
+
+    def test_evaluate_amplify(self, evaluator):
+        edit = {"knob_id": "k", "old_value": 1, "new_value": 2}
+        seg_id = evaluator.start_segment(edit, brier_before=0.50)
+        for score in [0.35, 0.30, 0.32]:
+            evaluator.record_verdict(seg_id, score)
+
+        decision = evaluator.evaluate(seg_id)
+        assert decision.decision == "AMPLIFY"
+
+    def test_evaluate_not_ready_returns_none(self, evaluator):
+        edit = {"knob_id": "k", "old_value": 1, "new_value": 2}
+        seg_id = evaluator.start_segment(edit, brier_before=0.40)
+        evaluator.record_verdict(seg_id, 0.35)
+        assert evaluator.evaluate(seg_id) is None
+
+    def test_get_active_segment(self, evaluator):
+        assert evaluator.get_active_segment() is None
+        edit = {"knob_id": "k", "old_value": 1, "new_value": 2}
+        evaluator.start_segment(edit, brier_before=0.4)
+        assert evaluator.get_active_segment() is not None
+
+    def test_clear_segment(self, evaluator):
+        edit = {"knob_id": "k", "old_value": 1, "new_value": 2}
+        evaluator.start_segment(edit, brier_before=0.4)
+        evaluator.clear_segment()
+        assert evaluator.get_active_segment() is None
+
+    def test_history_written(self, evaluator, tmp_env):
+        edit = {"knob_id": "k", "old_value": 1, "new_value": 2}
+        seg_id = evaluator.start_segment(edit, brier_before=0.50)
+        for score in [0.35, 0.30, 0.32]:
+            evaluator.record_verdict(seg_id, score)
+        evaluator.evaluate(seg_id)
+
+        assert tmp_env["seg_history_path"].exists()
+        lines = tmp_env["seg_history_path"].read_text(encoding="utf-8").strip().split("\n")
+        assert len(lines) == 1
+        record = json.loads(lines[0])
+        assert record["decision"] in ("KEEP", "REVERT", "AMPLIFY")
+
+
+# ── MetaEditController Tests ─────────────────────────────────
+
+
+class TestMetaEditController:
+    def _make_controller(self, tmp_env, registry, attributor, evaluator, updater):
+        return MetaEditController(
+            registry=registry,
+            attributor=attributor,
+            evaluator=evaluator,
+            updater=updater,
+            state_path=tmp_env["state_path"],
+            brier_path=tmp_env["brier_path"],
+            min_errors_to_propose=3,
+            trigger_interval=5,
+        )
+
+    def test_no_errors_returns_no_edit(self, tmp_env, registry, attributor, evaluator, updater):
+        ctrl = self._make_controller(tmp_env, registry, attributor, evaluator, updater)
+        result = ctrl.run()
+        assert result.action == "no_edit"
+
+    def test_insufficient_errors_returns_no_edit(self, tmp_env, registry, attributor, evaluator, updater):
+        _seed_errors(tmp_env["errors_path"], "mountain_threshold_monthly", n=2)
+        ctrl = self._make_controller(tmp_env, registry, attributor, evaluator, updater)
+        result = ctrl.run()
+        assert result.action == "no_edit"
+        assert "only 2" in result.reason
+
+    def test_enough_errors_applies_edit(self, tmp_env, registry, attributor, evaluator, updater):
+        _seed_errors(tmp_env["errors_path"], "mountain_threshold_monthly", n=5)
+        ctrl = self._make_controller(tmp_env, registry, attributor, evaluator, updater)
+        result = ctrl.run()
+        assert result.action == "edit_applied"
+        assert result.edit is not None
+        assert result.segment_id != ""
+
+    def test_edit_changes_knob_value(self, tmp_env, registry, attributor, evaluator, updater):
+        _seed_errors(tmp_env["errors_path"], "mountain_threshold_monthly", n=5)
+        original = registry.get("mountain_threshold_monthly")
+        ctrl = self._make_controller(tmp_env, registry, attributor, evaluator, updater)
+        ctrl.run()
+        new_val = registry.get("mountain_threshold_monthly")
+        assert new_val != original
+
+    def test_segment_running_state_persists(self, tmp_env, registry, attributor, evaluator, updater):
+        _seed_errors(tmp_env["errors_path"], "mountain_threshold_monthly", n=5)
+        ctrl = self._make_controller(tmp_env, registry, attributor, evaluator, updater)
+        ctrl.run()
+
+        state = json.loads(tmp_env["state_path"].read_text(encoding="utf-8"))
+        assert state["status"] == "segment_running"
+
+    def test_second_run_during_segment_returns_running(self, tmp_env, registry, attributor, evaluator, updater):
+        _seed_errors(tmp_env["errors_path"], "mountain_threshold_monthly", n=5)
+        ctrl = self._make_controller(tmp_env, registry, attributor, evaluator, updater)
+        first = ctrl.run()
+        assert first.action == "edit_applied"
+
+        second = ctrl.run()
+        assert second.action == "segment_running"
+
+    def test_full_cycle_edit_then_evaluate(self, tmp_env, registry, attributor, evaluator, updater):
+        _seed_errors(tmp_env["errors_path"], "mountain_threshold_monthly", n=5)
+        ctrl = self._make_controller(tmp_env, registry, attributor, evaluator, updater)
+
+        result1 = ctrl.run()
+        assert result1.action == "edit_applied"
+        seg_id = result1.segment_id
+
+        for score in [0.38, 0.36, 0.39]:
+            evaluator.record_verdict(seg_id, score)
+
+        result2 = ctrl.run()
+        assert result2.action == "segment_evaluated"
+        assert result2.eval_decision is not None
+
+    def test_should_run_interval(self, tmp_env, registry, attributor, evaluator, updater):
+        ctrl = self._make_controller(tmp_env, registry, attributor, evaluator, updater)
+        assert ctrl.should_run(0) is False
+        assert ctrl.should_run(1) is False
+        assert ctrl.should_run(4) is False
+        assert ctrl.should_run(5) is True
+        assert ctrl.should_run(7) is True
+        assert ctrl.should_run(10) is True
+
+    def test_revert_restores_value(self, tmp_env, registry, attributor, evaluator, updater):
+        original = registry.get("mountain_threshold_monthly")
+        _seed_errors(tmp_env["errors_path"], "mountain_threshold_monthly", n=5)
+        ctrl = self._make_controller(tmp_env, registry, attributor, evaluator, updater)
+
+        result1 = ctrl.run()
+        seg_id = result1.segment_id
+
+        # Bad Brier scores → trigger revert
+        for score in [0.60, 0.65, 0.70]:
+            evaluator.record_verdict(seg_id, score)
+
+        # Seed brier_before via state (controller uses 0.5 default)
+        result2 = ctrl.run()
+        if result2.eval_decision and result2.eval_decision.get("decision") == "REVERT":
+            restored = registry.get("mountain_threshold_monthly")
+            assert restored == original

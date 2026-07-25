@@ -1,0 +1,474 @@
+use anyhow::{Context, Result};
+use serde::Serialize;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
+use super::dep_validator::{
+    self, DepCache, Severity, parse_cargo_deps, parse_js_imports, parse_python_imports,
+};
+use super::hallucination_detector::{self, CheckType, Finding};
+#[allow(unused_imports)]
+use super::license_checker;
+
+/// Configuration loaded from quality-rules.toml.
+#[derive(Debug, Clone)]
+pub struct QualityConfig {
+    pub block_on: Vec<Severity>,
+    /// Severities to report as warnings (does not block gate, used for output formatting).
+    #[allow(dead_code)]
+    pub warn_on: Vec<Severity>,
+    pub denied_licenses: Vec<String>,
+    pub allowed_licenses: Vec<String>,
+    pub cache_ttl_hours: u64,
+    pub offline_mode: bool,
+    pub rate_limit_per_sec: u32,
+    pub ignore_packages: Vec<String>,
+    pub ignore_paths: Vec<String>,
+}
+
+impl Default for QualityConfig {
+    fn default() -> Self {
+        Self {
+            block_on: vec![Severity::Critical, Severity::High],
+            warn_on: vec![Severity::Medium, Severity::Low],
+            denied_licenses: vec!["GPL-3.0".to_string(), "AGPL-3.0".to_string()],
+            allowed_licenses: vec![
+                "MIT".to_string(),
+                "Apache-2.0".to_string(),
+                "BSD-2-Clause".to_string(),
+                "BSD-3-Clause".to_string(),
+                "ISC".to_string(),
+            ],
+            cache_ttl_hours: 24,
+            offline_mode: false,
+            rate_limit_per_sec: 10,
+            ignore_packages: vec![],
+            ignore_paths: vec![
+                "node_modules/**".to_string(),
+                "vendor/**".to_string(),
+                ".git/**".to_string(),
+            ],
+        }
+    }
+}
+
+impl QualityConfig {
+    /// Load from the first found config file:
+    /// 1. `data/quality-rules.toml` (project-local)
+    /// 2. `~/.config/codeflow/quality-rules.toml` (user-global)
+    /// Falls back to Default on any parse error.
+    pub fn load() -> Self {
+        let candidates: Vec<PathBuf> = vec![
+            PathBuf::from("data/quality-rules.toml"),
+            dirs::config_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join("codeflow")
+                .join("quality-rules.toml"),
+        ];
+
+        for path in &candidates {
+            if let Ok(content) = std::fs::read_to_string(path) {
+                if let Ok(cfg) = parse_toml_config(&content) {
+                    return cfg;
+                }
+            }
+        }
+
+        Self::default()
+    }
+
+    /// True if a finding at `severity` should block the gate.
+    pub fn is_blocking(&self, sev: Severity) -> bool {
+        self.block_on.contains(&sev)
+    }
+}
+
+fn parse_toml_config(content: &str) -> Result<QualityConfig> {
+    let doc: toml::Value = toml::from_str(content)?;
+
+    fn str_vec(val: &toml::Value, path: &[&str]) -> Vec<String> {
+        let mut v = val;
+        for key in path {
+            match v.get(key) {
+                Some(next) => v = next,
+                None => return vec![],
+            }
+        }
+        v.as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|e| e.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    fn get_u64(val: &toml::Value, path: &[&str], default: u64) -> u64 {
+        let mut v = val;
+        for key in path {
+            match v.get(key) {
+                Some(next) => v = next,
+                None => return default,
+            }
+        }
+        v.as_integer().map(|i| i as u64).unwrap_or(default)
+    }
+
+    fn get_bool(val: &toml::Value, path: &[&str], default: bool) -> bool {
+        let mut v = val;
+        for key in path {
+            match v.get(key) {
+                Some(next) => v = next,
+                None => return default,
+            }
+        }
+        v.as_bool().unwrap_or(default)
+    }
+
+    let block_strs = str_vec(&doc, &["thresholds", "block_on"]);
+    let warn_strs = str_vec(&doc, &["thresholds", "warn_on"]);
+
+    let parse_sev = |s: &str| match s {
+        "critical" => Some(Severity::Critical),
+        "high" => Some(Severity::High),
+        "medium" => Some(Severity::Medium),
+        "low" => Some(Severity::Low),
+        _ => None,
+    };
+
+    let block_on: Vec<Severity> = block_strs.iter().filter_map(|s| parse_sev(s)).collect();
+    let warn_on: Vec<Severity> = warn_strs.iter().filter_map(|s| parse_sev(s)).collect();
+
+    Ok(QualityConfig {
+        block_on: if block_on.is_empty() {
+            vec![Severity::Critical, Severity::High]
+        } else {
+            block_on
+        },
+        warn_on: if warn_on.is_empty() {
+            vec![Severity::Medium, Severity::Low]
+        } else {
+            warn_on
+        },
+        denied_licenses: str_vec(&doc, &["licenses", "denied"]),
+        allowed_licenses: str_vec(&doc, &["licenses", "allowed"]),
+        cache_ttl_hours: get_u64(&doc, &["registries", "cache_ttl_hours"], 24),
+        offline_mode: get_bool(&doc, &["registries", "offline_mode"], false),
+        rate_limit_per_sec: get_u64(&doc, &["registries", "rate_limit_per_sec"], 10) as u32,
+        ignore_packages: str_vec(&doc, &["ignore", "packages"]),
+        ignore_paths: str_vec(&doc, &["ignore", "paths"]),
+    })
+}
+
+/// Aggregate statistics for a gate run.
+#[derive(Debug, Clone, Serialize)]
+pub struct GateStats {
+    pub files_scanned: usize,
+    pub deps_checked: usize,
+    pub findings_by_severity: HashMap<String, usize>,
+}
+
+/// Result of running the quality gate.
+#[derive(Debug, Clone, Serialize)]
+pub struct GateResult {
+    pub findings: Vec<Finding>,
+    pub passed: bool,
+    pub stats: GateStats,
+}
+
+/// Run the full quality gate over the given files.
+pub fn run_gate(files: &[PathBuf], config: &QualityConfig) -> Result<GateResult> {
+    let cache = DepCache::new(config.cache_ttl_hours, config.offline_mode)
+        .context("failed to open dep cache")?;
+    let mut limiter = dep_validator::make_rate_limiter(config.rate_limit_per_sec);
+
+    let mut all_findings: Vec<Finding> = Vec::new();
+    let mut deps_checked: usize = 0;
+
+    for file_path in files {
+        let path_str = file_path.to_string_lossy().to_string();
+
+        // Skip ignored paths (glob-style prefix match)
+        if should_ignore(&path_str, &config.ignore_paths) {
+            continue;
+        }
+
+        let content = match std::fs::read_to_string(file_path) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("[codeflow quality] cannot read {}: {}", path_str, e);
+                continue;
+            }
+        };
+
+        let ext = file_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+
+        // --- Hallucination detector ---
+        let mut hall_findings = hallucination_detector::detect_hallucinations(&content, &ext, &path_str);
+        all_findings.append(&mut hall_findings);
+
+        // --- Dependency validator ---
+        let (pkgs, registry) = extract_packages_for_file(&content, &ext, file_path);
+
+        if let Some(reg) = registry {
+            for pkg in pkgs {
+                if config.ignore_packages.iter().any(|ig| ig == &pkg) {
+                    continue;
+                }
+                deps_checked += 1;
+
+                // Typosquat check (no network needed)
+                let ecosystem = match reg {
+                    dep_validator::Registry::Npm => "npm",
+                    dep_validator::Registry::PyPi => "pypi",
+                    dep_validator::Registry::Crates => "crates",
+                };
+                if let Some(f) =
+                    hallucination_detector::check_typosquat(&pkg, ecosystem, &path_str, 0)
+                {
+                    all_findings.push(f);
+                }
+
+                // Registry existence check
+                let result = match reg {
+                    dep_validator::Registry::Npm => {
+                        dep_validator::validate_npm(&pkg, &cache, &mut limiter)
+                    }
+                    dep_validator::Registry::PyPi => {
+                        dep_validator::validate_pypi(&pkg, &cache, &mut limiter)
+                    }
+                    dep_validator::Registry::Crates => {
+                        dep_validator::validate_crates(&pkg, &cache, &mut limiter)
+                    }
+                };
+
+                match result {
+                    Ok(vr) if !vr.exists => {
+                        all_findings.push(Finding {
+                            check_type: CheckType::HallucinatedDep,
+                            severity: Severity::High,
+                            file_path: path_str.clone(),
+                            line: 0,
+                            message: format!(
+                                "Package '{}' not found on {} registry — possible AI hallucination",
+                                pkg, ecosystem
+                            ),
+                            suggestion: Some(format!(
+                                "Verify '{}' exists on {}",
+                                pkg, ecosystem
+                            )),
+                        });
+                    }
+                    Err(e) => {
+                        eprintln!("[codeflow quality] registry check failed for {}: {}", pkg, e);
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // License check: scan for inline license declarations in manifest files
+        if ext == "toml" || ext == "json" {
+            for lic_id in extract_license_ids(&content) {
+                if let Some(f) = license_checker::check_license(
+                    &path_str,
+                    &lic_id,
+                    &config.denied_licenses,
+                    &config.allowed_licenses,
+                    &path_str,
+                ) {
+                    all_findings.push(f);
+                }
+            }
+        }
+    }
+
+    // Build stats
+    let mut findings_by_severity: HashMap<String, usize> = HashMap::new();
+    for f in &all_findings {
+        *findings_by_severity
+            .entry(f.severity.as_str().to_string())
+            .or_insert(0) += 1;
+    }
+
+    let passed = !all_findings
+        .iter()
+        .any(|f| config.is_blocking(f.severity));
+
+    Ok(GateResult {
+        findings: all_findings,
+        passed,
+        stats: GateStats {
+            files_scanned: files.len(),
+            deps_checked,
+            findings_by_severity,
+        },
+    })
+}
+
+/// Extract package names and registry from file content based on extension.
+fn extract_packages_for_file(
+    content: &str,
+    ext: &str,
+    file_path: &Path,
+) -> (Vec<String>, Option<dep_validator::Registry>) {
+    match ext {
+        "js" | "ts" | "jsx" | "tsx" | "mjs" | "cjs" => {
+            (parse_js_imports(content), Some(dep_validator::Registry::Npm))
+        }
+        "py" => (
+            parse_python_imports(content),
+            Some(dep_validator::Registry::PyPi),
+        ),
+        "toml" => {
+            // Only parse Cargo.toml files
+            let name = file_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("");
+            if name == "Cargo.toml" {
+                (parse_cargo_deps(content), Some(dep_validator::Registry::Crates))
+            } else {
+                (vec![], None)
+            }
+        }
+        _ => (vec![], None),
+    }
+}
+
+/// Extract license identifiers from manifest file content.
+/// Matches `license = "MIT"` (TOML) and `"license": "MIT"` (JSON).
+fn extract_license_ids(content: &str) -> Vec<String> {
+    let re = regex::Regex::new(
+        r#"(?i)"?license"?\s*[=:]\s*["']([A-Za-z0-9\-\.+]+)["']"#,
+    )
+    .unwrap();
+    re.captures_iter(content)
+        .filter_map(|c| c.get(1).map(|m| m.as_str().to_string()))
+        .collect()
+}
+
+/// Simple glob-style ignore: supports `**` prefix patterns.
+fn should_ignore(path: &str, patterns: &[String]) -> bool {
+    let normalized = path.replace('\\', "/");
+    for pat in patterns {
+        let seg = pat.trim_start_matches("**/").trim_end_matches("/**");
+        if normalized.starts_with(&format!("{}/", seg))
+            || normalized.contains(&format!("/{}/", seg))
+            || normalized.ends_with(&format!("/{}", seg))
+            || normalized == seg
+        {
+            return true;
+        }
+    }
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_config_has_sane_values() {
+        let cfg = QualityConfig::default();
+        assert!(cfg.block_on.contains(&Severity::Critical));
+        assert!(cfg.block_on.contains(&Severity::High));
+        assert!(cfg.warn_on.contains(&Severity::Medium));
+        assert!(cfg.denied_licenses.contains(&"GPL-3.0".to_string()));
+        assert!(cfg.allowed_licenses.contains(&"MIT".to_string()));
+    }
+
+    #[test]
+    fn parse_toml_config_valid() {
+        let toml = r#"
+[thresholds]
+block_on = ["critical"]
+warn_on = ["high", "medium", "low"]
+
+[licenses]
+denied = ["GPL-3.0"]
+allowed = ["MIT", "Apache-2.0"]
+
+[registries]
+cache_ttl_hours = 48
+offline_mode = true
+rate_limit_per_sec = 5
+
+[ignore]
+packages = ["internal-pkg"]
+paths = ["vendor/**"]
+"#;
+        let cfg = parse_toml_config(toml).unwrap();
+        assert_eq!(cfg.block_on, vec![Severity::Critical]);
+        assert!(cfg.warn_on.contains(&Severity::High));
+        assert_eq!(cfg.cache_ttl_hours, 48);
+        assert!(cfg.offline_mode);
+        assert_eq!(cfg.rate_limit_per_sec, 5);
+        assert_eq!(cfg.ignore_packages, vec!["internal-pkg".to_string()]);
+    }
+
+    #[test]
+    fn gate_passes_clean_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("clean.py");
+        std::fs::write(&file, "import os\nprint('hello')\n").unwrap();
+
+        let mut cfg = QualityConfig::default();
+        cfg.offline_mode = true; // no network in tests
+
+        let result = run_gate(&[file], &cfg).unwrap();
+        // With offline mode and no typosquats, clean stdlib imports pass
+        assert!(
+            result.findings.is_empty() || result.passed,
+            "clean file should pass or have only low findings"
+        );
+    }
+
+    #[test]
+    fn gate_fails_on_hardcoded_secret() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("bad.py");
+        std::fs::write(
+            &file,
+            r#"api_key = "sk-abc123def456ghi789jkl012"\nprint(api_key)\n"#,
+        )
+        .unwrap();
+
+        let mut cfg = QualityConfig::default();
+        cfg.offline_mode = true;
+
+        let result = run_gate(&[file], &cfg).unwrap();
+        assert!(
+            result.findings.iter().any(|f| f.severity == Severity::Critical),
+            "hardcoded secret should produce critical finding"
+        );
+        assert!(!result.passed, "gate should fail on critical finding");
+    }
+
+    #[test]
+    fn config_block_threshold_override() {
+        // Config with block_on = [] means nothing blocks — gate always passes
+        let mut cfg = QualityConfig::default();
+        cfg.block_on = vec![]; // override: don't block on anything
+
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("secret.js");
+        std::fs::write(&file, r#"const key = "AKIAIOSFODNN7EXAMPLE";"#).unwrap();
+
+        let result = run_gate(&[file], &cfg).unwrap();
+        // Findings still exist, but passed = true because block_on is empty
+        assert!(result.passed, "with empty block_on, gate should always pass");
+    }
+
+    #[test]
+    fn should_ignore_patterns() {
+        assert!(should_ignore("node_modules/lodash/index.js", &["node_modules/**".to_string()]));
+        assert!(should_ignore("vendor/pkg/main.go", &["vendor/**".to_string()]));
+        assert!(!should_ignore("src/main.rs", &["vendor/**".to_string()]));
+        assert!(!should_ignore("src/vendor-utils/main.rs", &["vendor/**".to_string()]));
+    }
+}

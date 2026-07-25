@@ -1,0 +1,170 @@
+"""
+HungerLog — records and reads hunger cycle history from decision-vectors.db.
+Table: hunger_log (id, cycle_date, domain, facts_added, facts_updated,
+                   contradictions_found, coverage_before, coverage_after,
+                   calls_made, stop_reason)
+"""
+
+import sqlite3
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+ROOT = Path(__file__).resolve().parents[4]
+VECTORS_DB = ROOT / ".claude" / "data" / "knowledge-distillation" / "decision-vectors.db"
+
+CREATE_HUNGER_LOG = """
+CREATE TABLE IF NOT EXISTS hunger_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cycle_date TEXT NOT NULL,
+    domain TEXT NOT NULL,
+    facts_added INTEGER DEFAULT 0,
+    facts_updated INTEGER DEFAULT 0,
+    contradictions_found INTEGER DEFAULT 0,
+    coverage_before REAL,
+    coverage_after REAL,
+    calls_made INTEGER DEFAULT 0,
+    stop_reason TEXT
+)
+"""
+
+CREATE_DOMAIN_COVERAGE = """
+CREATE TABLE IF NOT EXISTS domain_coverage (
+    domain TEXT PRIMARY KEY,
+    query_count INTEGER DEFAULT 0,
+    dimensions_total INTEGER DEFAULT 8,
+    dimensions_filled INTEGER DEFAULT 0,
+    avg_confidence REAL DEFAULT 0.0,
+    last_fed TEXT,
+    last_gap_check TEXT
+)
+"""
+
+
+class HungerLog:
+    def __init__(self, db_path: Optional[Path] = None):
+        self.db_path = db_path or VECTORS_DB
+        self._ensure_tables()
+
+    def log_cycle(
+        self,
+        domain: str,
+        facts_added: int = 0,
+        facts_updated: int = 0,
+        contradictions_found: int = 0,
+        coverage_before: Optional[float] = None,
+        coverage_after: Optional[float] = None,
+        calls_made: int = 0,
+        stop_reason: Optional[str] = None,
+    ) -> int:
+        """Insert a cycle record. Returns new row id."""
+        cycle_date = datetime.now(timezone.utc).isoformat()
+        with sqlite3.connect(str(self.db_path)) as conn:
+            cur = conn.execute(
+                """INSERT INTO hunger_log
+                   (cycle_date, domain, facts_added, facts_updated,
+                    contradictions_found, coverage_before, coverage_after,
+                    calls_made, stop_reason)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    cycle_date, domain, facts_added, facts_updated,
+                    contradictions_found, coverage_before, coverage_after,
+                    calls_made, stop_reason,
+                ),
+            )
+            return cur.lastrowid
+
+    def get_last_fed(self, domain: str) -> Optional[str]:
+        """Returns ISO timestamp of the most recent cycle for domain, or None."""
+        if not self.db_path.exists():
+            return None
+        try:
+            with sqlite3.connect(str(self.db_path)) as conn:
+                row = conn.execute(
+                    "SELECT cycle_date FROM hunger_log WHERE domain=? ORDER BY id DESC LIMIT 1",
+                    (domain,),
+                ).fetchone()
+                return row[0] if row else None
+        except sqlite3.OperationalError:
+            return None
+
+    def get_recent_cycles(self, domain: str, n: int = 5) -> list[dict]:
+        """Returns last n cycle dicts for domain, newest first."""
+        if not self.db_path.exists():
+            return []
+        try:
+            with sqlite3.connect(str(self.db_path)) as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute(
+                    "SELECT * FROM hunger_log WHERE domain=? ORDER BY id DESC LIMIT ?",
+                    (domain, n),
+                ).fetchall()
+                return [dict(r) for r in rows]
+        except sqlite3.OperationalError:
+            return []
+
+    def update_domain_coverage(
+        self,
+        domain: str,
+        dimensions_filled: Optional[int] = None,
+        avg_confidence: Optional[float] = None,
+        query_count_delta: int = 0,
+    ) -> None:
+        """Upsert domain_coverage row after a cycle."""
+        with sqlite3.connect(str(self.db_path)) as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO domain_coverage (domain) VALUES (?)", (domain,)
+            )
+            now = datetime.now(timezone.utc).isoformat()
+            if dimensions_filled is not None:
+                conn.execute(
+                    "UPDATE domain_coverage SET dimensions_filled=?, last_fed=? WHERE domain=?",
+                    (dimensions_filled, now, domain),
+                )
+            if avg_confidence is not None:
+                conn.execute(
+                    "UPDATE domain_coverage SET avg_confidence=? WHERE domain=?",
+                    (avg_confidence, domain),
+                )
+            if query_count_delta:
+                conn.execute(
+                    "UPDATE domain_coverage SET query_count = query_count + ? WHERE domain=?",
+                    (query_count_delta, domain),
+                )
+            if dimensions_filled is None and avg_confidence is None:
+                conn.execute(
+                    "UPDATE domain_coverage SET last_fed=? WHERE domain=?",
+                    (now, domain),
+                )
+
+    def get_coverage_summary(self) -> dict:
+        if not self.db_path.exists():
+            return {}
+        try:
+            with sqlite3.connect(str(self.db_path)) as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute("SELECT * FROM domain_coverage ORDER BY query_count DESC").fetchall()
+                return {r["domain"]: dict(r) for r in rows}
+        except sqlite3.OperationalError:
+            return {}
+
+    def print_coverage_summary(self) -> None:
+        summary = self.get_coverage_summary()
+        if not summary:
+            print("No domain coverage data yet. Run /feed to start.")
+            return
+        print("=== Domain Coverage ===")
+        for domain, s in summary.items():
+            filled = s.get("dimensions_filled", 0)
+            total = s.get("dimensions_total", 8)
+            conf = s.get("avg_confidence", 0)
+            queries = s.get("query_count", 0)
+            last = (s.get("last_fed") or "never")[:10]
+            print(f"  {domain}: {filled}/{total} dims, conf={conf:.0%}, queries={queries}, fed={last}")
+
+    def _ensure_tables(self) -> None:
+        if not self.db_path.exists():
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(str(self.db_path)) as conn:
+            conn.execute(CREATE_HUNGER_LOG)
+            conn.execute(CREATE_DOMAIN_COVERAGE)

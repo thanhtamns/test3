@@ -1,0 +1,45 @@
+# Auto-Hunt Mini Stage0 Analysis
+
+You are running a focused niche analysis. Be CONCISE — verdict + mechanism + action only.
+
+## Hypothesis
+
+**Domain:** {domain}
+**Statement:** {statement}
+**Prior confidence:** {prior_confidence}
+**Signal evidence:** {source_evidence}
+
+## Founder Profile
+
+- Capital: {capital_tier} ($0-1K)
+- Skills: {skills_approach}
+- Location: {location}
+- Constraints: {constraints}
+
+## Execute These Steps (5 min max per hypothesis)
+
+1. **Anti-confirmation search**: WebSearch "{domain} failure rate" AND "{domain} free alternative 2026"
+2. **Demand search**: WebSearch "{domain} customers willing to pay" AND "who buys {domain} service"
+3. **Mountain Test v22**:
+   - Q1: Evidence this can reach $10K/mo? (cite 1 URL)
+   - Q2: Founder unfair advantage for this domain?
+   - Q3: What asset compounds over time?
+4. **Verdict**: GO / KILL / CONDITIONAL (1 sentence WHY)
+5. **If GO/CONDITIONAL**: Day 1 action (copy-paste ready, <50 words)
+6. **Kill criteria**: 3 specific thresholds
+
+## Output Format (JSON)
+
+```json
+{
+  "hypothesis_id": "{hypothesis_id}",
+  "domain": "{domain}",
+  "verdict": "GO|KILL|CONDITIONAL",
+  "confidence": 0.0-1.0,
+  "mechanism": "1 sentence: HOW this makes money",
+  "evidence_url": "URL proving $10K/mo possible",
+  "day1_action": "copy-paste ready action",
+  "kill_criteria": ["threshold 1", "threshold 2", "threshold 3"],
+  "anti_confirmation": "key risk found"
+}
+```

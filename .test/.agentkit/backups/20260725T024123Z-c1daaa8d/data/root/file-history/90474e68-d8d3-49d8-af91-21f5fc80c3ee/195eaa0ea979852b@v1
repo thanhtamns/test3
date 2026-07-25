@@ -1,0 +1,68 @@
+package main
+
+import (
+	"context"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/codeflow-dev/codeflow/cloud/internal/api"
+	"github.com/codeflow-dev/codeflow/cloud/internal/clickhouse"
+)
+
+func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
+
+	chDSN := envOr("CLICKHOUSE_DSN", "clickhouse://localhost:9000/codeflow")
+	listenAddr := envOr("LISTEN_ADDR", ":8080")
+
+	ch, err := clickhouse.New(chDSN)
+	if err != nil {
+		slog.Error("failed to connect to clickhouse", "error", err)
+		os.Exit(1)
+	}
+	defer ch.Close()
+
+	slog.Info("connected to clickhouse", "dsn", chDSN)
+
+	handler := api.NewRouter(ch, logger)
+
+	srv := &http.Server{
+		Addr:         listenAddr,
+		Handler:      handler,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  120 * time.Second,
+	}
+
+	go func() {
+		slog.Info("ingest API listening", "addr", listenAddr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("server error", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	slog.Info("shutting down...")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		slog.Error("shutdown error", "error", err)
+	}
+	slog.Info("server stopped")
+}
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}

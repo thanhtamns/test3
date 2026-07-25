@@ -1,0 +1,70 @@
+---
+name: failure
+description: Log a business failure observation (Phase 1 Failure Archaeology). Usage: /failure "WeFit bankruptcy 2020 - cashflow crisis"
+---
+
+# /failure - Failure Archaeology Logger
+
+Log business FAILURES you discover. Failure teaches MORE than success.
+
+## Usage
+
+```
+/failure "WeFit phá sản 2020, raised $3M, burned through cash in 18 months"
+/failure add
+/failure list
+/failure patterns
+```
+
+## Process
+
+### Step 1: Parse or Interview
+
+If description provided → extract fields.
+If `/failure add` → ask with AskUserQuestion:
+
+1. **Company** — Name?
+2. **Sector** — Which industry?
+3. **Founded / Died** — When started and when failed?
+4. **Total invested** — How much money was poured in?
+5. **Root cause** — Why did it die? (1 sentence)
+6. **Failure pattern** — Type: cashflow / market / team / regulation / fraud / competition / timing?
+7. **Could a middleman have prevented this?** — Yes / No / Partially? Explain.
+8. **Source** — Where did you learn this?
+
+### Step 2: Save
+
+```bash
+cd "D:\code\invesments\master_investments" && python execution/scripts/positioning-crud.py add-failure '{JSON}'
+```
+
+### Step 3: Sync + Output
+
+```bash
+cd "D:\code\invesments\master_investments" && python execution/scripts/positioning-crud.py sync-gates
+```
+
+```markdown
+## ✅ Failure Logged
+
+**ID:** {id}
+**Company:** {company}
+**Root Cause:** {root_cause}
+**Pattern:** {failure_pattern}
+**Middleman could help?** {answer}
+
+### 📊 Failure Journal Stats
+- Total failures logged: {total}
+- Phase 1 target: 20 failures
+- Progress: {total}/20 ({pct}%)
+- Top failure pattern: {most_common_pattern}
+
+---
+*Log more with `/failure` | See patterns with `/failure patterns`*
+```
+
+### Subcommands
+
+**`/failure list`** — Show all failures
+**`/failure patterns`** — Group failures by pattern type, show frequencies
+**`/failure search <keyword>`** — Search by company or cause

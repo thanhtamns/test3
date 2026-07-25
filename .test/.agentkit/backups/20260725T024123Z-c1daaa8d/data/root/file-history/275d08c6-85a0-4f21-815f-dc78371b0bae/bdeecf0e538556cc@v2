@@ -1,0 +1,109 @@
+---
+phase: 6
+title: "Compound Review and Mountain Path"
+status: pending
+priority: P2
+effort: "2 months"
+dependencies: [5]
+---
+
+# Phase 6: Compound Review and Mountain Path (Month 4-6)
+
+## Overview
+Evaluate: has the barbell produced a Mountain candidate? Run /stage0 on the top chaos survivor. If MOUNTAIN_CANDIDATE verdict → begin transition. If SIDE_HUSTLE → continue barbell, extend timeline. Key question: can the chaos winner pass the SLEEP TEST (revenue without founder)?
+
+## Requirements
+- Safe side stable at $2-3K/mo (15h/wk or less)
+- At least 1 chaos bet with 3+ months of compound growth data
+- Total income ≥$4K/mo (safe + chaos combined)
+- Decision: continue barbell vs transition to mountain building
+
+## Implementation Steps
+
+### Month 5: Deep Evaluation
+
+**Step 1: Asset Audit (2h)**
+List every asset created in 5 months:
+| Asset | Type | Compound? | Value |
+|-------|------|-----------|-------|
+| Client portfolio | Reputation | Yes — referrals | $X/mo revenue |
+| AI workflow templates | Product | Yes — reusable | Hours saved per client |
+| Trade intelligence data | Data | Yes — grows daily | Subscriber count |
+| Audience (if content worked) | Audience | Yes — each follower adds | Follower count |
+| /hunt knowledge base | Intelligence | Yes — DuckDB compounds | Anomaly count |
+
+**Step 2: Mountain Test on Top Chaos Winner (1 day)**
+Run `/stage0 "<top chaos bet description>" --teach` in master_investments.
+Key questions stage0 will answer:
+- Q4 SLEEP: Does revenue continue without founder? (If NO → still SIDE_HUSTLE)
+- Q5 LEVERAGE: Code? Media? Capital? Labor?
+- Q6 ROI: ≥20%/mo on time invested?
+- Compounding: Self-reinforcing flywheel?
+
+**Step 3: Staircase Position Check**
+Where are you on the staircase?
+
+| Step | Description | Timeline | Status |
+|------|-------------|----------|--------|
+| 1 | Solo AI freelancing | Month 1-3 | Should be DONE |
+| 2 | Productized workflow retainer | Month 3-6 | Should be IN PROGRESS |
+| 3 | First dev hire | Month 6-9 | Ready? |
+| 4 | Micro-SaaS extraction | Month 9-18 | Signal visible? |
+
+### Month 6: Decision Gate
+
+**SCENARIO A — Chaos winner = MOUNTAIN_CANDIDATE:**
+1. Begin shifting allocation: 30% safe / 60% mountain / 10% learning
+2. Safe side becomes maintenance income (retainers on autopilot)
+3. Mountain bet gets full investment of time + reinvested safe-side revenue
+4. Timeline: 6-12 months to $10K/mo if compounding holds
+
+**SCENARIO B — Chaos winner = SIDE_HUSTLE (most likely):**
+1. Maintain barbell structure
+2. Safe side + chaos winner = $4-8K/mo combined
+3. Continue monthly /hunt for new mountain candidates
+4. Begin staircase Step 3 (first dev hire) on safe side
+5. Patience: Rob Walling took 11 years. Pieter Levels took 7+ years.
+
+**SCENARIO C — Everything stalled:**
+1. Safe side <$2K/mo after 6 months → fundamental problem
+2. Audit: is it skill gap, market gap, or effort gap?
+3. Options: (a) Change vertical entirely, (b) Get employed at higher salary to rebuild capital, (c) Relocate to higher-opportunity geography
+4. Run `/stage0 --breadth "what business for this founder profile"` → broad scan
+
+### Compound Review Protocol (Monthly, ongoing)
+
+Every month after Phase 6:
+1. **Run /hunt** on 1 new topic → replenish chaos pipeline
+2. **Review all assets** — what grew? What stalled? What decayed?
+3. **Check kill criteria** for every active bet
+4. **Shift allocation** based on signals (follow the data, not the plan)
+5. **Log outcomes** via `/log-outcome` → feed stage0 compound learning
+6. **Knowledge compound:** Each month's /hunt results persist to DuckDB, improving next month's analysis
+
+## Success Criteria
+- [ ] Asset audit completed with specific numbers
+- [ ] /stage0 run on top chaos winner with MOUNTAIN_CANDIDATE or SIDE_HUSTLE verdict
+- [ ] Staircase position identified with next step planned
+- [ ] Decision gate: Scenario A, B, or C selected with specific actions
+- [ ] Total monthly income ≥$4K/mo (safe + chaos)
+- [ ] Safe side ≤15h/week with stable $2-3K/mo
+- [ ] Monthly review protocol established as habit
+- [ ] ≥6 /hunt runs completed across 6 months (compound intelligence)
+
+## Risk Assessment
+- **Risk:** Impatience — want Mountain at Month 6 but reality says SIDE_HUSTLE → **Mitigation:** Barbell is designed for YEARS not months. $4-8K/mo combined is excellent progress from $1K starting point.
+- **Risk:** Safe side dependency — becomes "job" → **Mitigation:** Hard cap hours. Productize ruthlessly. Delegate to VA when retainer model proven. Never let safe side consume chaos time.
+- **Risk:** No chaos bet ever reaches Mountain → **Mitigation:** Acceptable outcome. Portfolio of $2-5K/mo side hustles + safe income = $6-10K/mo total. Pieter Levels model: multiple small products > 1 big bet.
+
+## The Barbell Never Ends
+
+The barbell is not a 6-month project. It is a PERMANENT operating system:
+- Safe side provides stability → evolves into passive/semi-passive income
+- Chaos side provides optionality → one bet eventually compounds into Mountain
+- Monthly /hunt keeps the pipeline fresh
+- Stage0 validates candidates before you invest heavily
+- Compound learning means Month 12 analysis is VASTLY better than Month 1
+
+> "Hãy tạo 1 dòng tiền đều an toàn ở 1 đầu – để thoát ly hoàn toàn chế độ sinh tồn.
+> Còn đầu kia hãy xây kênh để đặt 1 chân vào sự vô hạn từ internet."

@@ -1,0 +1,23 @@
+---
+name: project-hypothesis-driven-intelligence
+description: "Stage0 evolution from search-aggregation to hypothesis-driven adversarial intelligence engine, inspired by DeepMind Co-Scientist"
+metadata: 
+  node_type: memory
+  type: project
+  originSessionId: 5aaf7e87-6fec-4ed7-8e13-20070f8a9888
+---
+
+Stage0 evolution plan: shift from search-first (60% web search) to think-first (80% reasoning). 5 phases, ~25h.
+
+**Why:** User critique that Stage0 output is "too ordinary, relies too much on web search." Co-Scientist (DeepMind, Nature May 2025) demonstrated that 70% compute should go to VERIFICATION against structured knowledge, not generation or search.
+
+**How to apply:** When implementing, target repo is master_investments (not _mmo). Plan lives at `plans/260527-hypothesis-driven-intelligence-engine/`. 5 phases:
+1. First Principles Generator (Phase 2.6) — novel hypotheses BEFORE web search
+2. Knowledge Graph — structured queryable evidence layer on top of flat vault
+3. Refinement Loop (Phase 2.8) — strengthen/attack/evolve × N rounds until convergence
+4. Mechanism-First Output — causal chains + falsification + evolution traces
+5. Integration into SKILL.md
+
+Key principle: contradictions are MORE valuable than confirmations. Every new component has null-check fallback — cannot break existing pipeline.
+
+Related: [[project_intelligence_controller]], [[project_llm_sensor_wiring]]

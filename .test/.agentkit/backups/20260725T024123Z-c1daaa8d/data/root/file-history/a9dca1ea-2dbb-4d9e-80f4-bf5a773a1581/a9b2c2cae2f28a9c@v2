@@ -1,0 +1,306 @@
+#!/usr/bin/env node
+/**
+ * evolution-auto-runner.cjs — SessionStart hook
+ * Auto-triggers Python evolution scripts when staleness thresholds exceeded.
+ *
+ * 4 checks:
+ *   1. auto_evolve.py — knowledge hunting + integration (>7 days)
+ *   2. scheduled-evolution-loop.py — prompt evolution proposals (>7 days)
+ *   3. batch-auto-verify.py — expired prediction verification (>3 days)
+ *   4. knowledge_hunter.py — external data hunting (>14 days)
+ *
+ * All processes spawned detached + unref'd. Fail-open (exit 0 always).
+ */
+
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const { spawn } = require('child_process');
+
+let isHookEnabled;
+try {
+  ({ isHookEnabled } = require('./lib/ck-config-utils.cjs'));
+} catch {
+  isHookEnabled = () => true;
+}
+
+if (!isHookEnabled('evolution-auto-runner')) {
+  process.exit(0);
+}
+
+const DEBUG = !!process.env.CK_DEBUG;
+const REPO_ROOT = path.resolve(__dirname, '..', '..');
+const LOG_DIR = path.join(__dirname, '.logs');
+const LOG_FILE = path.join(LOG_DIR, 'evolution-auto-runner.log');
+const PYTHON_EXE = path.join(REPO_ROOT, '.claude', 'skills', '.venv', 'Scripts', 'python.exe');
+
+const LOCK_EXPIRY_MS = 600000; // 10 minutes
+
+const SCRIPTS = {
+  autoEvolve: path.join(REPO_ROOT, '.claude', 'skills', 'business', 'deep-intelligence', 'auto_evolve.py'),
+  scheduledEvolution: path.join(REPO_ROOT, '.claude', 'skills', 'business', 'compound', 'scheduled-evolution-loop.py'),
+  batchVerify: path.join(REPO_ROOT, '.claude', 'skills', 'business', 'feedback_loop', 'batch-auto-verify.py'),
+  knowledgeHunter: path.join(REPO_ROOT, '.claude', 'skills', 'business', 'deep-intelligence', 'knowledge_hunter.py'),
+  metaEvolution: path.join(REPO_ROOT, '.claude', 'lib', 'intelligence', 'mechanism', 'meta_evolution_orchestrator.py'),
+};
+
+const DATA_FILES = {
+  evolutionLog: path.join(REPO_ROOT, 'data', 'deep-intelligence', 'evolution_log.json'),
+  evolutionConfig: path.join(REPO_ROOT, '.claude', 'data', 'evolution-config.json'),
+  pendingIndex: path.join(REPO_ROOT, 'data', 'predictions', 'pending-index.json'),
+  batchVerifyMarker: path.join(LOG_DIR, 'batch-verify-last-run.txt'),
+  knowledgeHuntMarker: path.join(LOG_DIR, 'knowledge-hunt-last-run.txt'),
+};
+
+function ensureLogDir() {
+  if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
+}
+
+function log(msg) {
+  ensureLogDir();
+  const line = `[${new Date().toISOString()}] ${msg}\n`;
+  fs.appendFileSync(LOG_FILE, line);
+  if (DEBUG) console.error(`[evolution-auto-runner] ${msg}`);
+}
+
+function readJson(filepath) {
+  try {
+    return JSON.parse(fs.readFileSync(filepath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function lockPath(name) {
+  return path.join(LOG_DIR, `evolution-${name}.lock`);
+}
+
+function isLocked(name) {
+  const lp = lockPath(name);
+  if (!fs.existsSync(lp)) return false;
+  try {
+    const data = JSON.parse(fs.readFileSync(lp, 'utf8'));
+    return (Date.now() - new Date(data.started).getTime()) < LOCK_EXPIRY_MS;
+  } catch {
+    return false;
+  }
+}
+
+function acquireLock(name) {
+  ensureLogDir();
+  fs.writeFileSync(lockPath(name), JSON.stringify({
+    started: new Date().toISOString(),
+    pid: process.pid
+  }));
+}
+
+function releaseLock(name) {
+  try { fs.unlinkSync(lockPath(name)); } catch {}
+}
+
+function spawnDetached(name, scriptPath, args) {
+  if (!fs.existsSync(PYTHON_EXE)) {
+    log(`SKIP ${name}: python venv not found at ${PYTHON_EXE}`);
+    return false;
+  }
+  if (!fs.existsSync(scriptPath)) {
+    log(`SKIP ${name}: script not found at ${scriptPath}`);
+    return false;
+  }
+  if (isLocked(name)) {
+    log(`SKIP ${name}: already running (locked)`);
+    return false;
+  }
+
+  acquireLock(name);
+
+  try {
+    const logOut = path.join(LOG_DIR, `${name}-stdout.log`);
+    const logErr = path.join(LOG_DIR, `${name}-stderr.log`);
+    const out = fs.openSync(logOut, 'a');
+    const err = fs.openSync(logErr, 'a');
+
+    const child = spawn(PYTHON_EXE, [scriptPath, ...args], {
+      cwd: REPO_ROOT,
+      detached: true,
+      stdio: ['ignore', out, err],
+      windowsHide: true,
+    });
+
+    child.on('close', () => releaseLock(name));
+    child.unref();
+
+    log(`SPAWNED ${name} (pid=${child.pid})`);
+    return true;
+  } catch (e) {
+    log(`ERROR ${name}: ${e.message}`);
+    releaseLock(name);
+    return false;
+  }
+}
+
+function daysSince(isoString) {
+  if (!isoString) return Infinity;
+  try {
+    return (Date.now() - new Date(isoString).getTime()) / 86400000;
+  } catch {
+    return Infinity;
+  }
+}
+
+function daysSinceFile(filepath) {
+  try {
+    const content = fs.readFileSync(filepath, 'utf8').trim();
+    return daysSince(content);
+  } catch {
+    return Infinity;
+  }
+}
+
+function writeMarker(filepath) {
+  ensureLogDir();
+  fs.writeFileSync(filepath, new Date().toISOString());
+}
+
+// --- Check 1: Auto-evolve (knowledge hunting + integration) ---
+function checkAutoEvolve() {
+  const data = readJson(DATA_FILES.evolutionLog);
+  if (!data) {
+    log('CHECK auto-evolve: no evolution_log.json, triggering first run');
+    return spawnDetached('auto-evolve', SCRIPTS.autoEvolve, []);
+  }
+
+  const cycles = data.cycles || [];
+  const lastCycle = cycles.length > 0 ? cycles[cycles.length - 1] : null;
+  const lastTs = lastCycle ? lastCycle.timestamp : null;
+  const days = daysSince(lastTs);
+
+  if (days > 7) {
+    log(`CHECK auto-evolve: ${days.toFixed(1)} days since last cycle, triggering`);
+    return spawnDetached('auto-evolve', SCRIPTS.autoEvolve, []);
+  }
+
+  log(`CHECK auto-evolve: ${days.toFixed(1)} days ago, skipping (threshold=7)`);
+  return false;
+}
+
+// --- Check 2: Scheduled evolution loop ---
+function checkScheduledEvolution() {
+  const config = readJson(DATA_FILES.evolutionConfig);
+  const lastRun = config ? config.last_run : null;
+  const days = daysSince(lastRun);
+
+  if (days > 7) {
+    log(`CHECK scheduled-evolution: ${days === Infinity ? 'never' : days.toFixed(1) + 'd'} since last run, triggering`);
+    return spawnDetached('scheduled-evolution', SCRIPTS.scheduledEvolution, []);
+  }
+
+  log(`CHECK scheduled-evolution: ${days.toFixed(1)} days ago, skipping (threshold=7)`);
+  return false;
+}
+
+// --- Check 3: Batch prediction verification ---
+function checkBatchVerify() {
+  const pending = readJson(DATA_FILES.pendingIndex);
+  if (!pending || !Array.isArray(pending) || pending.length === 0) {
+    log('CHECK batch-verify: no pending predictions, skipping');
+    return false;
+  }
+
+  const now = Date.now();
+  const hasExpired = pending.some(p => {
+    if (!p.deadline) return false;
+    return new Date(p.deadline).getTime() < now;
+  });
+
+  if (!hasExpired) {
+    log('CHECK batch-verify: no expired predictions, skipping');
+    return false;
+  }
+
+  const days = daysSinceFile(DATA_FILES.batchVerifyMarker);
+
+  if (days > 3) {
+    log(`CHECK batch-verify: expired predictions found, ${days === Infinity ? 'never' : days.toFixed(1) + 'd'} since last verify, triggering`);
+    writeMarker(DATA_FILES.batchVerifyMarker);
+    return spawnDetached('batch-verify', SCRIPTS.batchVerify, ['--all-expired']);
+  }
+
+  log(`CHECK batch-verify: ${days.toFixed(1)} days ago, skipping (threshold=3)`);
+  return false;
+}
+
+// --- Check 4: Knowledge hunter (external data) ---
+function checkKnowledgeHunt() {
+  const days = daysSinceFile(DATA_FILES.knowledgeHuntMarker);
+
+  if (days > 14) {
+    log(`CHECK knowledge-hunt: ${days === Infinity ? 'never' : days.toFixed(1) + 'd'} since last hunt, triggering`);
+    writeMarker(DATA_FILES.knowledgeHuntMarker);
+    return spawnDetached('knowledge-hunt', SCRIPTS.knowledgeHunter, []);
+  }
+
+  log(`CHECK knowledge-hunt: ${days.toFixed(1)} days ago, skipping (threshold=14)`);
+  return false;
+}
+
+// --- Check 5: Meta-evolution orchestrator (AEVO outer loop) ---
+function checkMetaEvolution() {
+  const statePath = path.join(REPO_ROOT, 'data', 'config', 'meta-edit-controller-state.json');
+  const outcomesPath = path.join(REPO_ROOT, 'data', 'calibration', 'outcomes.jsonl');
+
+  if (!fs.existsSync(outcomesPath)) {
+    log('CHECK meta-evolution: no outcomes file, skipping');
+    return false;
+  }
+
+  const state = readJson(statePath);
+  if (state && state.status === 'segment_running') {
+    log('CHECK meta-evolution: segment running, triggering check');
+    return spawnDetached('meta-evolution', SCRIPTS.metaEvolution, ['--mode', 'session_start']);
+  }
+
+  try {
+    const lines = fs.readFileSync(outcomesPath, 'utf8').trim().split('\n').filter(Boolean);
+    const lastEditTime = state ? state.last_edit_time || '' : '';
+    const outcomesSince = lastEditTime
+      ? lines.filter(l => { try { return JSON.parse(l).timestamp > lastEditTime; } catch { return false; } }).length
+      : lines.length;
+
+    if (outcomesSince >= 5) {
+      log(`CHECK meta-evolution: ${outcomesSince} outcomes since last edit, triggering`);
+      return spawnDetached('meta-evolution', SCRIPTS.metaEvolution, ['--mode', 'session_start']);
+    }
+
+    log(`CHECK meta-evolution: ${outcomesSince} outcomes since last edit, skipping (threshold=5)`);
+  } catch (e) {
+    log(`CHECK meta-evolution: error reading outcomes: ${e.message}`);
+  }
+
+  return false;
+}
+
+// --- Main ---
+try {
+  ensureLogDir();
+  log('--- Evolution auto-runner starting ---');
+
+  let spawned = 0;
+  if (checkAutoEvolve()) spawned++;
+  if (checkScheduledEvolution()) spawned++;
+  if (checkBatchVerify()) spawned++;
+  if (checkKnowledgeHunt()) spawned++;
+  if (checkMetaEvolution()) spawned++;
+
+  if (spawned > 0) {
+    console.log(`🧬 Auto-evolution: ${spawned} background task(s) spawned`);
+  }
+
+  log(`--- Done: ${spawned} task(s) spawned ---`);
+} catch (e) {
+  try { log(`CRASH: ${e.message}`); } catch {}
+  if (DEBUG) console.error(`[evolution-auto-runner] ${e.message}`);
+}
+
+process.exit(0);

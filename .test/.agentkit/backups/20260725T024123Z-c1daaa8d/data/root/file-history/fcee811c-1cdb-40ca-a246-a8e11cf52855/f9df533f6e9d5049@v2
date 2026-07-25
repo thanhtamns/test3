@@ -1,0 +1,185 @@
+{
+  "schema_version": "1.0",
+  "last_global_check": "2026-05-03T18:18:43.546681",
+  "channels": [
+    {
+      "id": "markton_petproducts",
+      "platform": "tiktok",
+      "url": "https://www.tiktok.com/@markton.petproducts",
+      "name": "Mark Tôn XK SP Thú Cưng",
+      "archetype": "ARCH-006",
+      "domain": "export_practitioner",
+      "last_synced": "2026-05-03",
+      "total_videos_at_sync": 637,
+      "keywords_tracked": [
+        "xuất khẩu",
+        "khách hàng",
+        "sai lầm",
+        "AI",
+        "L/C",
+        "Incoterms",
+        "container",
+        "cước biển",
+        "đàm phán"
+      ],
+      "evolution_status": "active"
+    },
+    {
+      "id": "winvnint",
+      "platform": "website",
+      "url": "https://www.winvnint.com/",
+      "name": "WinVN Natural Pet Products",
+      "archetype": null,
+      "domain": "export_manufacturer",
+      "last_synced": null,
+      "total_videos_at_sync": 0,
+      "keywords_tracked": [
+        "coffee wood",
+        "loofah",
+        "pet products",
+        "export"
+      ],
+      "evolution_status": "pending_analysis",
+      "note": "Verified supplier 6+ years export to 30+ countries. Similar product line to Mark Tôn."
+    },
+    {
+      "id": "moc_xo_loofah",
+      "platform": "website",
+      "url": "https://mocxo.com/",
+      "name": "Mộc Xơ - Loofah Brand",
+      "archetype": null,
+      "domain": "export_manufacturer",
+      "last_synced": null,
+      "total_videos_at_sync": 0,
+      "keywords_tracked": [
+        "loofah",
+        "xơ mướp",
+        "eco-friendly",
+        "export US France"
+      ],
+      "evolution_status": "pending_analysis",
+      "note": "Vietnamese loofah brand exporting to US, Canada, Australia, UK, France, Korea."
+    },
+    {
+      "id": "nguyen_coffee_supply",
+      "platform": "tiktok",
+      "url": "https://www.tiktok.com/@nguyencoffeesupply",
+      "name": "Nguyen Coffee Supply",
+      "archetype": "ARCH-002",
+      "domain": "d2c_brand",
+      "last_synced": "2026-05-03",
+      "total_videos_at_sync": 706,
+      "keywords_tracked": [
+        "vietnamese coffee",
+        "specialty",
+        "direct trade",
+        "single origin"
+      ],
+      "evolution_status": "low_priority",
+      "note": "D2C brand content, not export operations. Consumer marketing focus.",
+      "training_value": "low"
+    },
+    {
+      "id": "xuatnhapkhau_logistics",
+      "platform": "tiktok",
+      "url": "https://www.tiktok.com/@xuatnhapkhau_logistics",
+      "name": "XNK Logistics Education",
+      "archetype": null,
+      "domain": "logistics_education",
+      "last_synced": "2026-05-03",
+      "total_videos_at_sync": 205,
+      "keywords_tracked": [
+        "hải quan",
+        "customs",
+        "logistics",
+        "manifest",
+        "quy trình",
+        "thuật ngữ"
+      ],
+      "evolution_status": "active",
+      "note": "Educational content about customs procedures and terminology. Medium value.",
+      "training_value": "medium"
+    },
+    {
+      "id": "xuatnhapkhau",
+      "platform": "tiktok",
+      "url": "https://www.tiktok.com/@xuatnhapkhau",
+      "name": "XNK Generic",
+      "archetype": null,
+      "domain": "unknown",
+      "last_synced": "2026-05-03",
+      "total_videos_at_sync": 30,
+      "keywords_tracked": [],
+      "evolution_status": "inactive",
+      "note": "Too few videos (30). Not enough content to analyze.",
+      "training_value": "none"
+    },
+    {
+      "id": "school_of_hard_knocks",
+      "platform": "youtube",
+      "url": "https://www.youtube.com/@theschoolofhardknocks",
+      "name": "School of Hard Knocks (James Dumoulin)",
+      "archetype": null,
+      "domain": "wealth_interview_media",
+      "last_synced": "2026-05-16",
+      "total_videos_at_sync": 1000,
+      "keywords_tracked": [
+        "billionaire",
+        "millionaire",
+        "how got rich",
+        "negotiation",
+        "real estate",
+        "sales",
+        "compound interest",
+        "Dubai",
+        "Beverly Hills"
+      ],
+      "evolution_status": "selective_track",
+      "note": "17M followers. Original EN source for VN dub channels. Cherry-pick only: guests with verifiable business (SEC, Forbes, corporate). Skip motivation-only.",
+      "training_value": "selective_high",
+      "filter_rule": "Only extract interviews where guest identity is independently verifiable AND business mechanism is discussed (not just mindset/motivation)"
+    },
+    {
+      "id": "toithanhcongbancungthe",
+      "platform": "tiktok",
+      "url": "https://www.tiktok.com/@toithanhcongbancungthe",
+      "name": "Tôi Thành Công Bạn Cũng Thế (VN dub of School of Hard Knocks)",
+      "archetype": null,
+      "domain": "vn_dub_repurpose",
+      "last_synced": "2026-05-16",
+      "total_videos_at_sync": 9,
+      "keywords_tracked": [],
+      "evolution_status": "reference_only",
+      "note": "Vietnamese dub of School of Hard Knocks. IP risk HIGH. Systematically inflates claims. Use ONLY as discovery pointer to original EN interviews, never as primary source.",
+      "training_value": "none_direct",
+      "distortion_flags": ["claim_inflation", "no_attribution", "self_made_distortion", "projected_valuation_as_wealth"]
+    }
+  ],
+  "discovery_queue": [
+    {
+      "search_query": "TikTok xuất khẩu nông sản Việt Nam practitioner",
+      "domain": "agricultural_export",
+      "priority": "high",
+      "last_searched": null
+    },
+    {
+      "search_query": "YouTube Amazon FBA Vietnam seller thực chiến",
+      "domain": "cross_border_ecommerce",
+      "priority": "medium",
+      "last_searched": null
+    },
+    {
+      "search_query": "TikTok thủ công mỹ nghệ xuất khẩu handicraft export",
+      "domain": "handicraft_export",
+      "priority": "medium",
+      "last_searched": null
+    }
+  ],
+  "evolution_rules": {
+    "check_interval_days": 7,
+    "min_new_videos_to_extract": 5,
+    "keyword_match_threshold": 0.3,
+    "auto_extract": false,
+    "notify_on_new_content": true
+  }
+}

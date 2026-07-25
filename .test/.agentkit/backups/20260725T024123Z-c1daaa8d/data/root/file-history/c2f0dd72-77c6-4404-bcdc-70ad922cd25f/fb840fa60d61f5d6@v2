@@ -1,0 +1,229 @@
+"""
+ThinkRunner — standalone orchestrator for /think command.
+Full pipeline: decompose → run queries → assemble facts → synthesize.
+"""
+
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Callable, Optional
+
+from .compound_cache import CompoundCache
+from .decomposer import Decomposer
+from .fact_assembler import FactAssembler
+from .micro_query_runner import MicroQueryRunner
+from .synthesis_engine import SynthesisEngine, SynthesisResult
+from .template_evolver import TemplateEvolver
+
+ROOT = Path(__file__).resolve().parents[4]
+DEFAULT_VECTORS_DB = ROOT / ".claude" / "data" / "knowledge-distillation" / "decision-vectors.db"
+DEFAULT_EVOLUTION_DB = ROOT / ".claude" / "data" / "decomposition" / "evolution.db"
+
+
+class ThinkRunner:
+    def __init__(
+        self,
+        research_fn: Callable[[str], str],
+        vectors_db: Optional[Path] = None,
+        evolution_db: Optional[Path] = None,
+    ):
+        self.research_fn = research_fn
+        self.vectors_db = vectors_db or DEFAULT_VECTORS_DB
+        self.evolution_db = evolution_db or DEFAULT_EVOLUTION_DB
+        self.cache = CompoundCache(db_path=self.vectors_db)
+        self.evolver = TemplateEvolver(db_path=self.evolution_db)
+
+    def think(self, query: str, progress_fn: Optional[Callable[[str], None]] = None) -> SynthesisResult:
+        start = time.time()
+
+        def log(msg: str) -> None:
+            if progress_fn:
+                progress_fn(msg)
+
+        evolved_weights = self.evolver.get_evolved_weights() or None
+        decomposer = Decomposer(weight_overrides=evolved_weights)
+        tree = decomposer.decompose(query)
+        log(f"Decomposed: {tree.total_queries} micro-queries across {len(tree.dimensions)} dimensions")
+
+        cached_facts = []
+        for dim in tree.dimensions:
+            cached = self.cache.lookup(dim.name, tree.context)
+            cached_facts.extend(cached)
+
+        queries_to_fire = tree.queries_to_fire
+        cached_count = tree.total_queries - len(queries_to_fire)
+        log(f"Researching: {len(queries_to_fire)} queries ({cached_count} cached)")
+
+        runner = MicroQueryRunner(research_fn=self.research_fn, batch_delay=0.5)
+        results, stats = runner.run_batch(queries_to_fire)
+
+        assembler = FactAssembler(vectors_db=self.vectors_db)
+        domain = tree.context.get("industry", "general")
+        assembly = assembler.assemble(results, domain=domain)
+        log(f"Assembled: {assembly.facts_added} new facts, {assembly.duplicates} duplicates")
+
+        all_facts = list(cached_facts)
+        from ..hunger.claim_parser import ParsedClaim
+        for r in results:
+            if r.parse_success and r.parsed_fact:
+                f = r.parsed_fact
+                all_facts.append(ParsedClaim(
+                    fact=f.get("fact", ""),
+                    value=self._parse_float(f.get("value")),
+                    dimension=self._map_dim(r.query.dimension),
+                    source_url=f.get("source"),
+                    source_date=f.get("date"),
+                    confidence=f.get("confidence", 0.5),
+                    zone_tag="K" if f.get("confidence", 0) >= 0.75 else "T" if f.get("confidence", 0) >= 0.5 else "?",
+                ))
+
+        engine = SynthesisEngine()
+        result = engine.synthesize(tree, all_facts)
+        log(f"Synthesized: score={result.overall_score:.2f}, {result.facts_used} facts used")
+
+        try:
+            from .strategic_reasoner import StrategicReasoner
+            reasoner = StrategicReasoner(max_calls=3)
+            insight = reasoner.reason(
+                facts=all_facts,
+                dim_scores=result.dimension_scores,
+                query_context=tree.context,
+                founder_context=self._load_founder_context(),
+            )
+            result.strategic_insight = insight.to_dict()
+            log(f"Strategic reasoning: {insight.llm_calls_made} LLM calls, verdict={insight.verdict}")
+        except Exception as e:
+            result.strategic_insight = {"error": str(e), "status": "degraded"}
+            log(f"Strategic reasoning degraded: {e}")
+
+        try:
+            from ..reasoning.techniques import TechniqueOrchestrator, TechniqueInput, FallbackRouter
+            from ..strategy.synthesizer import StrategicSynthesizer
+            from ..reasoning.techniques.technique_registry import build_default_orchestrator
+
+            tech_input = TechniqueInput(
+                facts=all_facts,
+                context=tree.context,
+                founder_context=self._load_founder_context(),
+                ecosystem_map=self._load_ecosystem_map(tree.context),
+                vectors_db=self.vectors_db,
+                kill_signals=self._load_kill_signals(),
+            )
+
+            orchestrator = build_default_orchestrator()
+            orch_result = orchestrator.run_all(tech_input)
+
+            if orch_result.needs_data_dimensions:
+                fallback = FallbackRouter(research_fn=self._wrap_research_fn())
+                new_facts = fallback.route(orch_result.needs_data_dimensions, tree.context)
+                if new_facts:
+                    enriched_input = TechniqueInput(
+                        facts=tech_input.facts + new_facts,
+                        context=tech_input.context,
+                        founder_context=tech_input.founder_context,
+                        ecosystem_map=tech_input.ecosystem_map,
+                        vectors_db=tech_input.vectors_db,
+                        kill_signals=tech_input.kill_signals,
+                    )
+                    orch_result = orchestrator.run_all(enriched_input)
+
+            dim_scores_for_strategy = {
+                k: v.score for k, v in result.dimension_scores.items()
+            }
+            strategist = StrategicSynthesizer()
+            strategy = strategist.synthesize(
+                dim_scores_for_strategy, tech_input.founder_context, self.vectors_db
+            )
+
+            result.technique_results = orch_result.to_dict()
+            result.strategy = strategy.to_dict()
+            log(f"Techniques: consensus={orch_result.consensus}, strategy_weeks={strategy.total_timeline_weeks}")
+        except Exception as e:
+            import traceback
+            result.technique_results = {
+                "error": str(e),
+                "traceback": traceback.format_exc().split("\n")[-4:],
+                "status": "failed",
+            }
+            result.strategy = None
+            log(f"Technique/strategy error: {e}")
+
+        duration_ms = int((time.time() - start) * 1000)
+        self.evolver.record_run(
+            query=query, query_type=tree.query_type,
+            dimensions_used=len(tree.dimensions),
+            queries_fired=stats.queries_fired,
+            facts_added=assembly.facts_added,
+            facts_reused=len(cached_facts),
+            overall_score=result.overall_score,
+            duration_ms=duration_ms,
+        )
+
+        for r in results:
+            if r.parse_success:
+                self.evolver.record_template_usage(
+                    dimension=r.query.dimension,
+                    template_text=r.query.text[:200],
+                    facts_produced=1,
+                    avg_confidence=r.parsed_fact.get("confidence", 0.5) if r.parsed_fact else 0,
+                    parse_success=1.0,
+                )
+            else:
+                self.evolver.record_template_usage(
+                    dimension=r.query.dimension,
+                    template_text=r.query.text[:200],
+                    facts_produced=0,
+                    avg_confidence=0.0,
+                    parse_success=0.0,
+                )
+
+        return result
+
+    def format(self, result: SynthesisResult) -> str:
+        engine = SynthesisEngine()
+        return engine.format_output(result)
+
+    def _parse_float(self, val) -> Optional[float]:
+        if val is None:
+            return None
+        try:
+            return float(val)
+        except (TypeError, ValueError):
+            return None
+
+    def _load_founder_context(self) -> dict:
+        founder_path = ROOT / ".claude" / "data" / "founder-profile.json"
+        if founder_path.exists():
+            import json
+            with founder_path.open("r", encoding="utf-8") as f:
+                return json.load(f)
+        return {"capital_usd": 1000, "hours_per_day": 4, "skills": []}
+
+    def _load_ecosystem_map(self, context: dict) -> dict:
+        return context.get("ecosystem_map", {"players": [], "value_chain": []})
+
+    def _load_kill_signals(self) -> list:
+        import json
+        ks_path = ROOT / ".claude" / "data" / "knowledge-distillation" / "kill-signals.json"
+        if ks_path.exists():
+            with ks_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    return data
+                return data.get("signals", [])
+        return []
+
+    def _wrap_research_fn(self):
+        import json
+        def wrapped(query: str):
+            raw = self.research_fn(query)
+            if not raw:
+                return None
+            try:
+                return json.loads(raw) if isinstance(raw, str) else raw
+            except (json.JSONDecodeError, TypeError):
+                return {"fact": str(raw)[:200], "confidence": 0.4}
+        return wrapped
+
+    def _map_dim(self, decomp_dim: str) -> str:
+        return decomp_dim

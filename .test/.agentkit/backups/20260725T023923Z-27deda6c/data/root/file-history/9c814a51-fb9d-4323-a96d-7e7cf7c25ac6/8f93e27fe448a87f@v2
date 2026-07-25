@@ -1,0 +1,129 @@
+---
+phase: 3
+title: "Synthesis Engine"
+status: pending
+priority: P1
+effort: "2d"
+dependencies: [1]
+---
+
+# Phase 3: Synthesis Engine (LOCAL-ONLY)
+
+## Overview
+
+Pure LOCAL synthesis — zero LLM calls. Takes verified facts from decomposition, scores each dimension, identifies gaps, generates actionable path. Outputs structured analysis with [K]/[T]/[?] zone tags per claim.
+
+## Requirements
+
+- Functional: Score each dimension (0.0-1.0) based on fact coverage + confidence
+- Functional: Gap analysis — which dimensions need more research
+- Functional: Path generation — actionable steps based on gap-to-target analysis
+- Functional: Output with zone tags: [K] verified, [T] inferred, [?] insufficient
+- Non-functional: ZERO LLM calls — pure computation + template-based synthesis
+- Non-functional: Confidence-gated LLM fallback flag (for future use, not implemented here)
+
+## Architecture
+
+```
+VerifiedFacts[] + DecompositionTree
+  → DimensionScorer: per-dimension coverage + confidence score
+  → GapAnalyzer: identify unfilled dimensions + rank by importance
+  → PathGenerator: gap × context → actionable steps
+  → OutputFormatter: combine into structured report with zone tags
+  → Output: SynthesisResult
+```
+
+### Scoring Algorithm
+
+```python
+dimension_score = (
+    facts_count_normalized * 0.3 +     # how many facts found (0-1)
+    avg_confidence * 0.4 +              # average confidence of facts
+    contradiction_penalty * -0.2 +      # contradictions reduce score
+    freshness_bonus * 0.1               # recent facts score higher
+)
+```
+
+### Output Structure
+
+```python
+@dataclass
+class SynthesisResult:
+    query: str
+    overall_score: float              # weighted average of dimension scores
+    dimension_scores: dict[str, DimensionScore]
+    gaps: list[GapReport]             # unfilled dimensions ranked by priority
+    path: list[PathStep]              # actionable steps
+    facts_used: int
+    facts_by_zone: dict[str, int]     # {"K": 12, "T": 5, "?": 3}
+    llm_calls_made: int               # should be 0 for synthesis
+    recommendations: list[str]
+```
+
+## Related Code Files
+
+- Create: `.claude/lib/intelligence/decomposition/synthesis_engine.py`
+- Create: `.claude/lib/intelligence/decomposition/dimension_scorer.py`
+- Create: `.claude/lib/intelligence/decomposition/gap_analyzer.py`
+- Create: `.claude/lib/intelligence/decomposition/path_generator.py`
+- Create: `.claude/lib/intelligence/decomposition/output_formatter.py`
+- Create: `.claude/lib/intelligence/decomposition/tests/test_synthesis_engine.py`
+- Read: `.claude/lib/intelligence/coverage/tracker.py` — CoverageResult pattern
+- Read: `.claude/lib/intelligence/reasoning/engine.py` — ReasoningChainEngine orchestration pattern
+
+## Implementation Steps
+
+1. Create `dimension_scorer.py`:
+   - `DimensionScorer.score(dimension: str, facts: list[ParsedClaim]) → DimensionScore`
+   - DimensionScore: score (0-1), fact_count, avg_confidence, contradictions, zone_tag
+   - Apply scoring formula: fact_count_norm * 0.3 + avg_conf * 0.4 - contradiction_penalty * 0.2 + freshness * 0.1
+   - Auto-assign zone_tag: ≥0.75 → K, ≥0.5 → T, <0.5 → ?
+
+2. Create `gap_analyzer.py`:
+   - `GapAnalyzer.analyze(tree: DecompositionTree, scores: dict) → list[GapReport]`
+   - GapReport: dimension, score, missing_queries, priority, suggested_action
+   - Priority = dimension.weight × (1 - score) — high weight + low score = high priority
+   - Integrates with GapDetector from coverage/ for suggested queries
+
+3. Create `path_generator.py`:
+   - `PathGenerator.generate(query: str, scores: dict, gaps: list, context: dict) → list[PathStep]`
+   - PathStep: step_number, action, rationale, confidence, dependencies, zone_tag
+   - Template-based: career_path → career ladder steps, deal_analysis → DD checklist, etc.
+   - Each step references supporting facts by dimension
+   - Steps sorted by: dependency order, then confidence (high first)
+
+4. Create `output_formatter.py`:
+   - `OutputFormatter.format(result: SynthesisResult) → str`
+   - Structured markdown output with sections per dimension
+   - Zone tag coloring: [K] = solid, [T] = italic note, [?] = explicit warning
+   - Summary table: dimension | score | facts | zone | gaps
+   - Actionable path section with numbered steps
+
+5. Create `synthesis_engine.py`:
+   - `SynthesisEngine.synthesize(tree: DecompositionTree, facts: list[ParsedClaim]) → SynthesisResult`
+   - Orchestrates: score → analyze gaps → generate path → format
+   - Validates: llm_calls_made == 0 (assert LOCAL-only)
+   - Tracks: total facts used, zone distribution, overall confidence
+
+6. Create `tests/test_synthesis_engine.py`:
+   - Test dimension scoring with varying fact counts/confidence
+   - Test gap analysis priority ordering
+   - Test path generation for each question type
+   - Test output formatting with zone tags
+   - Test LOCAL-only assertion (no LLM)
+   - Test edge cases: zero facts, all gaps, all resolved
+   - Target: 25+ tests
+
+## Success Criteria
+
+- [ ] Dimension scoring produces 0.0-1.0 scores with zone tags
+- [ ] Gap analyzer ranks unfilled dimensions by weight × (1-score)
+- [ ] Path generator outputs actionable steps with fact references
+- [ ] Output includes [K]/[T]/[?] tags per claim
+- [ ] ZERO LLM calls during synthesis (enforced by assertion)
+- [ ] All tests pass (25+)
+
+## Risk Assessment
+
+- Template-based synthesis may miss nuance → mitigation: P4 evolves templates from successful outputs
+- Path generation too generic → mitigation: question-type-specific templates with context injection

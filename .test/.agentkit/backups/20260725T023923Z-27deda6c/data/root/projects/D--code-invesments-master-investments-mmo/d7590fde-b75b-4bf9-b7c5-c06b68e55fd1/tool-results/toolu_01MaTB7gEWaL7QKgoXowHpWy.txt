@@ -1,0 +1,252 @@
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\execution_fitness_tracker.py-43-                    case_id TEXT PRIMARY KEY,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\execution_fitness_tracker.py-44-                    strategy_id TEXT,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\execution_fitness_tracker.py:45:                    verdict_class TEXT,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\execution_fitness_tracker.py-46-                    state TEXT DEFAULT 'not_acted',
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\execution_fitness_tracker.py-47-                    registered_at TEXT,
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\execution_fitness_tracker.py-65-            """)
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\execution_fitness_tracker.py-66-
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\execution_fitness_tracker.py:67:    def register_verdict(self, case_id: str, strategy_id: str, verdict_class: str):
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\execution_fitness_tracker.py-68-        now = datetime.now(timezone.utc).isoformat()
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\execution_fitness_tracker.py-69-        with self._conn() as conn:
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\execution_fitness_tracker.py-70-            conn.execute("""
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\execution_fitness_tracker.py-71-                INSERT OR IGNORE INTO execution_states
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\execution_fitness_tracker.py:72:                    (case_id, strategy_id, verdict_class, state, registered_at, revenue)
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\execution_fitness_tracker.py-73-                VALUES (?, ?, ?, 'not_acted', ?, 0.0)
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\execution_fitness_tracker.py:74:            """, (case_id, strategy_id, verdict_class, now))
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\execution_fitness_tracker.py-75-
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\execution_fitness_tracker.py-76-    def record_action(self, case_id: str):
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\execution_fitness_tracker.py-107-            return None
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\execution_fitness_tracker.py-108-        return {
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\execution_fitness_tracker.py:109:            "case_id": row[0], "strategy_id": row[1], "verdict_class": row[2],
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\execution_fitness_tracker.py-110-            "state": row[3], "registered_at": row[4], "acted_at": row[5],
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\execution_fitness_tracker.py-111-            "outcome_at": row[6], "revenue": row[7],
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\aevox_orchestrator.py-51-                case_id=case_id,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\aevox_orchestrator.py-52-                strategy_id=case_data.get("strategy_used", "unknown"),
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\aevox_orchestrator.py:53:                verdict_class=case_data.get("verdict_class", "KILL"),
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\aevox_orchestrator.py-54-            )
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\aevox_orchestrator.py-55-        except Exception as e:
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-33-                    case_id TEXT PRIMARY KEY,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-34-                    topic TEXT NOT NULL,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py:35:                    verdict_class TEXT NOT NULL,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-36-                    verdict_summary TEXT,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-37-                    strategy_used TEXT,
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-50-                    case_id TEXT NOT NULL REFERENCES case_archive(case_id),
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-51-                    strategy_variant TEXT NOT NULL,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py:52:                    replay_verdict_class TEXT NOT NULL,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-53-                    replay_score REAL,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-54-                    delta_from_original REAL,
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-59-                    ON case_archive(topic);
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-60-                CREATE INDEX IF NOT EXISTS idx_case_verdict
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py:61:                    ON case_archive(verdict_class);
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-62-                CREATE INDEX IF NOT EXISTS idx_case_timestamp
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-63-                    ON case_archive(timestamp);
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-84-            conn.execute("""
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-85-                INSERT INTO case_archive
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py:86:                    (case_id, topic, verdict_class, verdict_summary, strategy_used,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-87-                     research_cache, agent_outputs, trace_signals, founder_profile, timestamp)
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-88-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-89-                ON CONFLICT(case_id) DO UPDATE SET
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-90-                    topic=excluded.topic,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py:91:                    verdict_class=excluded.verdict_class,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-92-                    verdict_summary=excluded.verdict_summary,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-93-                    strategy_used=excluded.strategy_used,
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-100-                case_id,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-101-                case_data["topic"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py:102:                case_data["verdict_class"],
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-103-                case_data.get("verdict_summary"),
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-104-                case_data.get("strategy_used"),
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-121-            "case_id": row[0],
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-122-            "topic": row[1],
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py:123:            "verdict_class": row[2],
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-124-            "verdict_summary": row[3],
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-125-            "strategy_used": row[4],
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-137-        self,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-138-        topic: Optional[str] = None,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py:139:        verdict_class: Optional[str] = None,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-140-        limit: int = 50,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-141-    ) -> list[dict]:
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-145-            conditions.append("topic LIKE ?")
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-146-            params.append(f"%{topic}%")
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py:147:        if verdict_class:
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py:148:            conditions.append("verdict_class = ?")
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py:149:            params.append(verdict_class)
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-150-
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-151-        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py:152:        query = f"SELECT case_id, topic, verdict_class, verdict_summary, strategy_used, timestamp FROM case_archive {where} ORDER BY timestamp DESC LIMIT ?"
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-153-        params.append(limit)
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-154-
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-156-            rows = conn.execute(query, params).fetchall()
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-157-        return [
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py:158:            {"case_id": r[0], "topic": r[1], "verdict_class": r[2],
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-159-             "verdict_summary": r[3], "strategy_used": r[4], "timestamp": r[5]}
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-160-            for r in rows
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-165-            with self._conn() as conn:
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-166-                rows = conn.execute(
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py:167:                    "SELECT case_id, topic, verdict_class, verdict_summary, strategy_used, timestamp "
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-168-                    "FROM case_archive ORDER BY RANDOM() LIMIT ?", (n,)
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-169-                ).fetchall()
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-170-            return [
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py:171:                {"case_id": r[0], "topic": r[1], "verdict_class": r[2],
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-172-                 "verdict_summary": r[3], "strategy_used": r[4], "timestamp": r[5]}
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-173-                for r in rows
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-176-        with self._conn() as conn:
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-177-            classes = conn.execute(
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py:178:                "SELECT DISTINCT verdict_class FROM case_archive"
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-179-            ).fetchall()
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-180-        class_names = [c[0] for c in classes]
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-192-                    remainder -= 1
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-193-                rows = conn.execute(
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py:194:                    "SELECT case_id, topic, verdict_class, verdict_summary, strategy_used, timestamp "
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py:195:                    "FROM case_archive WHERE verdict_class=? ORDER BY RANDOM() LIMIT ?",
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-196-                    (cls, alloc),
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-197-                ).fetchall()
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-198-                results.extend([
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py:199:                    {"case_id": r[0], "topic": r[1], "verdict_class": r[2],
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-200-                     "verdict_summary": r[3], "strategy_used": r[4], "timestamp": r[5]}
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\case_archiver.py-201-                    for r in rows
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py-25-    strategy_id: str
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py-26-    strategy_name: str
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py:27:    verdict_class: str
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py-28-    mountain_score: float
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py-29-    confidence: float
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py-55-        confidence = self._compute_confidence(agent_outputs, strategy)
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py-56-
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py:57:        verdict_class = self._classify(mountain_score)
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py-58-
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py-59-        return ReplayVerdict(
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py-61-            strategy_id=strategy.id,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py-62-            strategy_name=strategy.name,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py:63:            verdict_class=verdict_class,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py-64-            mountain_score=round(mountain_score, 4),
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py-65-            confidence=round(confidence, 4),
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py-82-        self,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py-83-        replay_verdict: ReplayVerdict,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py:84:        original_verdict_class: str,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py-85-        actual_outcome: Optional[str],
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py-86-    ) -> float:
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py-88-            return 0.0
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py-89-
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py:90:        replay_dist = self._distance_to_outcome(replay_verdict.verdict_class, actual_outcome)
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py:91:        original_dist = self._distance_to_outcome(original_verdict_class, actual_outcome)
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py-92-
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py-93-        return original_dist - replay_dist
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py-184-        return "KILL"
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py-185-
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py:186:    def _distance_to_outcome(self, verdict_class: str, actual_outcome: str) -> float:
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py-187-        order = ["KILL", "SIDE_HUSTLE", "MOUNTAIN_CANDIDATE"]
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py-188-        outcome_map = {
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py-190-            "KILL": 0, "SIDE_HUSTLE": 1, "MOUNTAIN_CANDIDATE": 2,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py-191-        }
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py:192:        v_idx = order.index(verdict_class) if verdict_class in order else 1
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py-193-        o_idx = outcome_map.get(actual_outcome, 1)
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\replay_engine.py-194-        return abs(v_idx - o_idx) / 2.0
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_aevox_orchestrator.py-18-        "case_id": case_id,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_aevox_orchestrator.py-19-        "topic": topic,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_aevox_orchestrator.py:20:        "verdict_class": "MOUNTAIN_CANDIDATE",
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_aevox_orchestrator.py-21-        "verdict_summary": "Promising",
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_aevox_orchestrator.py-22-        "strategy_used": "default_v25",
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_aevox_orchestrator.py-43-        state = orchestrator.execution_tracker.get_state("case_test")
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_aevox_orchestrator.py-44-        assert state is not None
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_aevox_orchestrator.py:45:        assert state["verdict_class"] == "MOUNTAIN_CANDIDATE"
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_aevox_orchestrator.py-46-
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_aevox_orchestrator.py-47-    def test_post_stage0_triggers_replay(self, orchestrator):
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-23-        "case_id": "case_20260516_dropshipping",
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-24-        "topic": "dropshipping automation",
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py:25:        "verdict_class": "KILL",
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-26-        "verdict_summary": "Saturated market, no moat",
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-27-        "strategy_used": "default_v25",
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-56-        retrieved = archiver.get_case(case_id)
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-57-        assert retrieved["topic"] == "dropshipping automation"
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py:58:        assert retrieved["verdict_class"] == "KILL"
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-59-        assert retrieved["verdict_summary"] == "Saturated market, no moat"
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-60-        assert retrieved["strategy_used"] == "default_v25"
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-92-            "case_id": "case_minimal",
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-93-            "topic": "test topic",
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py:94:            "verdict_class": "MOUNTAIN_CANDIDATE",
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-95-            "timestamp": "2026-05-16T15:00:00Z",
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-96-        }
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-105-    def _seed_cases(self, archiver):
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-106-        cases = [
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py:107:            {"case_id": f"case_{i}", "topic": t, "verdict_class": v, "timestamp": f"2026-05-{i+1:02d}T00:00:00Z"}
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-108-            for i, (t, v) in enumerate([
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-109-                ("dropshipping automation", "KILL"),
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-129-        assert "SaaS for dentists" not in topics
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-130-
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py:131:    def test_query_by_verdict_class(self, archiver):
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-132-        self._seed_cases(archiver)
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py:133:        results = archiver.query_cases(verdict_class="KILL")
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-134-        assert len(results) == 3
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py:135:        assert all(r["verdict_class"] == "KILL" for r in results)
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-136-
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py:137:        results = archiver.query_cases(verdict_class="MOUNTAIN_CANDIDATE")
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-138-        assert len(results) == 3
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-139-
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-142-        results = archiver.sample(n=6, diverse=True)
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-143-        assert len(results) == 6
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py:144:        classes = [r["verdict_class"] for r in results]
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-145-        assert len(set(classes)) >= 2
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-146-
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-167-            "case_id": "case_large",
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-168-            "topic": "large test",
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py:169:            "verdict_class": "KILL",
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-170-            "research_cache": large_research,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_case_archiver.py-171-            "agent_outputs": json.dumps({"out": "y" * 500_000}),
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_execution_fitness.py-21-        assert state["state"] == "not_acted"
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_execution_fitness.py-22-        assert state["revenue"] == 0.0
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_execution_fitness.py:23:        assert state["verdict_class"] == "MOUNTAIN_CANDIDATE"
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_execution_fitness.py-24-
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_execution_fitness.py-25-    def test_record_action_updates_state(self, tracker):
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_aevox_integration.py-24-
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_aevox_integration.py-25-
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_aevox_integration.py:26:def _make_case(case_id, topic="AI SaaS", verdict_class="MOUNTAIN_CANDIDATE"):
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_aevox_integration.py-27-    return {
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_aevox_integration.py-28-        "case_id": case_id,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_aevox_integration.py-29-        "topic": topic,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_aevox_integration.py:30:        "verdict_class": verdict_class,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_aevox_integration.py-31-        "verdict_summary": f"Analysis of {topic}",
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_aevox_integration.py-32-        "strategy_used": "default_v25",
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_replay_engine.py-44-
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_replay_engine.py-45-
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_replay_engine.py:46:def _make_case(case_id="case_test", verdict_class="MOUNTAIN_CANDIDATE", agent_outputs=None):
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_replay_engine.py-47-    if agent_outputs is None:
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_replay_engine.py-48-        agent_outputs = {
+--
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_replay_engine.py-75-        "case_id": case_id,
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_replay_engine.py-76-        "topic": "AI writing SaaS",
+D:\code\invesments\master_investments\.claude\lib\intelligence\evolution\tests\test_replay_engine.py:77:        "verdict_class": verdict_class,
+
+[Showing results with pagination = limit: 250]

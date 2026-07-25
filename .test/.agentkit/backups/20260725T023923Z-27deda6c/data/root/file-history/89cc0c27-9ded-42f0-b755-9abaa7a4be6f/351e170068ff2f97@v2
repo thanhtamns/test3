@@ -1,0 +1,25 @@
+package api
+
+import (
+	"encoding/json"
+	"net/http"
+)
+
+func (h *handler) handleCostByPR(w http.ResponseWriter, r *http.Request) {
+	tenantID := tenantFromCtx(r)
+	project := r.URL.Query().Get("project")
+	days := parseDays(r.URL.Query().Get("days"), 90)
+
+	rows, err := h.store.QueryCostByPR(r.Context(), tenantID, project, days)
+	if err != nil {
+		h.logger.Error("cost by pr query failed", "error", err)
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"by_pr": rows,
+		"count": len(rows),
+	})
+}

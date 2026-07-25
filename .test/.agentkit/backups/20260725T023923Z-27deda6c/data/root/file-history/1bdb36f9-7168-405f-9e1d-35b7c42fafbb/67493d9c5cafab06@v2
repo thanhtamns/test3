@@ -1,0 +1,223 @@
+"""
+CoverageTracker — scores how well local knowledge covers a query domain.
+Determines whether local reasoning is sufficient or LLM is needed.
+"""
+
+import json
+import sqlite3
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Optional
+
+ROOT = Path(__file__).resolve().parents[4]
+VECTORS_DB = ROOT / ".claude" / "data" / "knowledge-distillation" / "decision-vectors.db"
+KILL_SIGNALS_PATH = ROOT / ".claude" / "data" / "knowledge-distillation" / "kill-signals.json"
+
+
+@dataclass
+class CoverageResult:
+    score: float
+    vector_count: int
+    signal_count: int
+    freshness_penalty: float
+    domain: str
+    details: dict
+
+    @property
+    def level(self) -> str:
+        if self.score >= 0.8:
+            return "HIGH"
+        if self.score >= 0.4:
+            return "MEDIUM"
+        return "LOW"
+
+
+class CoverageTracker:
+    def __init__(self, db_path: Optional[Path] = None, kill_signals_path: Optional[Path] = None):
+        self.db_path = db_path or VECTORS_DB
+        self.kill_signals_path = kill_signals_path or KILL_SIGNALS_PATH
+        self._conn = None
+
+    @property
+    def conn(self):
+        if self._conn is None:
+            self._conn = sqlite3.connect(str(self.db_path))
+            self._conn.row_factory = sqlite3.Row
+        return self._conn
+
+    def check(self, query_features: dict) -> CoverageResult:
+        industry = query_features.get("industry", "unknown")
+        model = query_features.get("business_model", "unknown")
+        domain = f"{industry}_{model}"
+
+        vectors = self._count_matching_vectors(query_features)
+        signals = self._count_matching_signals(query_features)
+        freshness = self._freshness_penalty(query_features)
+
+        raw_score = self._compute_score(vectors, signals, freshness)
+
+        return CoverageResult(
+            score=raw_score,
+            vector_count=vectors,
+            signal_count=signals,
+            freshness_penalty=freshness,
+            domain=domain,
+            details={
+                "industry_vectors": self._count_by_field("industry", industry),
+                "model_vectors": self._count_by_field("business_model", model),
+                "total_vectors": self._total_vectors(),
+            },
+        )
+
+    def domain_report(self) -> dict:
+        rows = self.conn.execute("""
+            SELECT
+                features_json,
+                outcome,
+                created_at
+            FROM decision_vectors
+        """).fetchall()
+
+        domains = {}
+        for row in rows:
+            features = json.loads(row["features_json"])
+            industry = features.get("industry", "unknown")
+            model = features.get("business_model", "unknown")
+            domain = f"{industry}_{model}"
+
+            if domain not in domains:
+                domains[domain] = {"vectors": 0, "failures": 0, "successes": 0, "oldest": None}
+
+            domains[domain]["vectors"] += 1
+            if row["outcome"] == "failure":
+                domains[domain]["failures"] += 1
+            elif row["outcome"] == "success":
+                domains[domain]["successes"] += 1
+
+            created = row["created_at"]
+            if created and (domains[domain]["oldest"] is None or created < domains[domain]["oldest"]):
+                domains[domain]["oldest"] = created
+
+        signals = self._load_kill_signals()
+        for domain_key, stats in domains.items():
+            v = stats["vectors"]
+            s = sum(1 for sig in signals if self._signal_matches_domain(sig, domain_key))
+            stats["signals"] = s
+            stats["coverage_pct"] = round(self._compute_score(v, s, 0.0) * 100, 1)
+
+        return domains
+
+    def _count_matching_vectors(self, features: dict) -> int:
+        industry = features.get("industry", "")
+        model = features.get("business_model", "")
+
+        count = 0
+        rows = self.conn.execute("SELECT features_json FROM decision_vectors").fetchall()
+        for row in rows:
+            f = json.loads(row["features_json"])
+            if f.get("industry") == industry or f.get("business_model") == model:
+                count += 1
+        return count
+
+    def _count_matching_signals(self, features: dict) -> int:
+        signals = self._load_kill_signals()
+        count = 0
+        for sig in signals:
+            if sig.get("type") == "feature_combo":
+                conditions = sig.get("conditions", {})
+                match = True
+                for key, expected in conditions.items():
+                    actual = features.get(key, "")
+                    if isinstance(expected, list):
+                        if isinstance(actual, list):
+                            if not any(a in expected for a in actual):
+                                match = False
+                        elif actual not in expected:
+                            match = False
+                    elif actual != expected:
+                        match = False
+                if match:
+                    count += 1
+        return count
+
+    def _freshness_penalty(self, features: dict) -> float:
+        industry = features.get("industry", "")
+        rows = self.conn.execute(
+            "SELECT created_at FROM decision_vectors WHERE features_json LIKE ?",
+            (f'%"{industry}"%',),
+        ).fetchall()
+
+        if not rows:
+            return 0.0
+
+        now = datetime.utcnow()
+        stale_count = 0
+        for row in rows:
+            try:
+                created = datetime.fromisoformat(row["created_at"])
+                if (now - created) > timedelta(days=90):
+                    stale_count += 1
+            except (ValueError, TypeError):
+                pass
+
+        if not rows:
+            return 0.0
+        return (stale_count / len(rows)) * 0.1
+
+    def _compute_score(self, vectors: int, signals: int, freshness_penalty: float) -> float:
+        if vectors >= 20 and signals >= 5:
+            score = 1.0
+        elif vectors >= 10 and signals >= 3:
+            score = 0.7
+        elif vectors >= 5:
+            score = 0.4
+        elif vectors >= 1:
+            score = 0.2
+        else:
+            score = 0.0
+
+        score -= freshness_penalty
+        return max(0.0, min(1.0, score))
+
+    def _count_by_field(self, field: str, value: str) -> int:
+        rows = self.conn.execute("SELECT features_json FROM decision_vectors").fetchall()
+        return sum(1 for r in rows if json.loads(r["features_json"]).get(field) == value)
+
+    def _total_vectors(self) -> int:
+        return self.conn.execute("SELECT COUNT(*) FROM decision_vectors").fetchone()[0]
+
+    def _load_kill_signals(self) -> list:
+        if not self.kill_signals_path.exists():
+            return []
+        return json.loads(self.kill_signals_path.read_text(encoding="utf-8"))
+
+    def _signal_matches_domain(self, signal: dict, domain: str) -> bool:
+        conditions = signal.get("conditions", {})
+        parts = domain.split("_", 1)
+        industry = parts[0] if parts else ""
+        model = parts[1] if len(parts) > 1 else ""
+
+        for key, vals in conditions.items():
+            if key == "industry" and industry:
+                if isinstance(vals, list) and industry not in vals:
+                    return False
+            if key == "business_model" and model:
+                if isinstance(vals, list) and model not in vals:
+                    return False
+        return True
+
+    def close(self):
+        if self._conn:
+            self._conn.close()
+            self._conn = None
+
+
+if __name__ == "__main__":
+    tracker = CoverageTracker()
+    report = tracker.domain_report()
+
+    print("=== Domain Coverage Report ===")
+    for domain, stats in sorted(report.items(), key=lambda x: x[1]["coverage_pct"], reverse=True):
+        print(f"  {domain}: {stats['coverage_pct']}% ({stats['vectors']} vectors, {stats['signals']} signals)")
+    tracker.close()

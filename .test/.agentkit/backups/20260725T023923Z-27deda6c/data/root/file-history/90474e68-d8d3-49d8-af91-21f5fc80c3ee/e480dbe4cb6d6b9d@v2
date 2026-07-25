@@ -1,0 +1,260 @@
+package api
+
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/codeflow-dev/codeflow/cloud/internal/clickhouse"
+	pb "github.com/codeflow-dev/codeflow/cloud/proto"
+	"google.golang.org/protobuf/proto"
+)
+
+func seedEvents(t *testing.T, router http.Handler, tenantID string, events ...*pb.Event) {
+	t.Helper()
+	batch := makeBatch(events...)
+	data, _ := proto.Marshal(batch)
+
+	req := httptest.NewRequest("POST", "/v1/events", bytes.NewReader(data))
+	req.Header.Set("Content-Type", "application/x-protobuf")
+	req.Header.Set("X-Tenant-ID", tenantID)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("seed failed: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestOverview_Empty(t *testing.T) {
+	store := newFakeStorage()
+	router := newTestRouter(store)
+
+	req := httptest.NewRequest("GET", "/v1/overview", nil)
+	req.Header.Set("X-Tenant-ID", "tenant-1")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var stats clickhouse.OverviewStats
+	json.NewDecoder(w.Body).Decode(&stats)
+	if stats.EventCount != 0 {
+		t.Fatalf("expected 0 events, got %d", stats.EventCount)
+	}
+}
+
+func TestOverview_WithEvents(t *testing.T) {
+	store := newFakeStorage()
+	router := newTestRouter(store)
+
+	seedEvents(t, router, "tenant-1",
+		compressionEvent("e1", "git diff", 1000, 400),
+		compressionEvent("e2", "cargo test", 2000, 800),
+		dedupEvent("e3", "cat file", 300),
+	)
+
+	req := httptest.NewRequest("GET", "/v1/overview", nil)
+	req.Header.Set("X-Tenant-ID", "tenant-1")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var stats clickhouse.OverviewStats
+	json.NewDecoder(w.Body).Decode(&stats)
+
+	if stats.EventCount != 3 {
+		t.Fatalf("expected 3 events, got %d", stats.EventCount)
+	}
+	if stats.TotalSaved != 1500 {
+		t.Fatalf("expected 1500 saved, got %d", stats.TotalSaved)
+	}
+}
+
+func TestOverview_TenantIsolation(t *testing.T) {
+	store := newFakeStorage()
+	router := newTestRouter(store)
+
+	seedEvents(t, router, "tenant-a",
+		compressionEvent("e1", "git diff", 1000, 400),
+	)
+	seedEvents(t, router, "tenant-b",
+		compressionEvent("e2", "cargo test", 2000, 800),
+	)
+
+	req := httptest.NewRequest("GET", "/v1/overview", nil)
+	req.Header.Set("X-Tenant-ID", "tenant-a")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	var stats clickhouse.OverviewStats
+	json.NewDecoder(w.Body).Decode(&stats)
+
+	if stats.EventCount != 1 {
+		t.Fatalf("expected 1 event for tenant-a, got %d", stats.EventCount)
+	}
+	if stats.TotalSaved != 400 {
+		t.Fatalf("expected 400 saved for tenant-a, got %d", stats.TotalSaved)
+	}
+}
+
+func TestListProjects(t *testing.T) {
+	store := newFakeStorage()
+	router := newTestRouter(store)
+
+	seedEvents(t, router, "tenant-1",
+		compressionEvent("e1", "git diff", 1000, 400),
+		compressionEvent("e2", "cargo test", 500, 100),
+	)
+
+	req := httptest.NewRequest("GET", "/v1/projects", nil)
+	req.Header.Set("X-Tenant-ID", "tenant-1")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var projects []clickhouse.ProjectSummary
+	json.NewDecoder(w.Body).Decode(&projects)
+
+	if len(projects) != 1 {
+		t.Fatalf("expected 1 project, got %d", len(projects))
+	}
+	if projects[0].ProjectDir != "/home/user/project" {
+		t.Fatalf("unexpected project dir: %s", projects[0].ProjectDir)
+	}
+	if projects[0].TotalSaved != 500 {
+		t.Fatalf("expected 500 saved, got %d", projects[0].TotalSaved)
+	}
+}
+
+func TestProjectStats(t *testing.T) {
+	store := newFakeStorage()
+	router := newTestRouter(store)
+
+	seedEvents(t, router, "tenant-1",
+		compressionEvent("e1", "git diff", 1000, 400),
+	)
+
+	// Project dir encoded: /home/user/project → |home|user|project
+	req := httptest.NewRequest("GET", "/v1/projects/|home|user|project/stats", nil)
+	req.Header.Set("X-Tenant-ID", "tenant-1")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var ps clickhouse.ProjectStats
+	json.NewDecoder(w.Body).Decode(&ps)
+
+	if ps.Summary.TotalSaved != 400 {
+		t.Fatalf("expected 400 saved, got %d", ps.Summary.TotalSaved)
+	}
+	if ps.Summary.EventCount != 1 {
+		t.Fatalf("expected 1 event, got %d", ps.Summary.EventCount)
+	}
+}
+
+func TestSavingsTrend_Default30Days(t *testing.T) {
+	store := newFakeStorage()
+	router := newTestRouter(store)
+
+	seedEvents(t, router, "tenant-1",
+		compressionEvent("e1", "git diff", 1000, 400),
+		dedupEvent("e2", "cat file", 200),
+	)
+
+	req := httptest.NewRequest("GET", "/v1/savings/trend", nil)
+	req.Header.Set("X-Tenant-ID", "tenant-1")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var trend []clickhouse.DailySavings
+	if err := json.NewDecoder(w.Body).Decode(&trend); err != nil {
+		t.Fatalf("decode trend: %v", err)
+	}
+	if len(trend) != 1 {
+		t.Fatalf("expected 1 day in trend, got %d", len(trend))
+	}
+	if trend[0].TotalSaved != 600 {
+		t.Fatalf("expected 600 total saved, got %d", trend[0].TotalSaved)
+	}
+	if trend[0].Compression != 400 {
+		t.Fatalf("expected 400 compression saved, got %d", trend[0].Compression)
+	}
+	if trend[0].Dedup != 200 {
+		t.Fatalf("expected 200 dedup saved, got %d", trend[0].Dedup)
+	}
+}
+
+func TestListProjects_EmptyReturnsArray(t *testing.T) {
+	store := newFakeStorage()
+	router := newTestRouter(store)
+
+	req := httptest.NewRequest("GET", "/v1/projects", nil)
+	req.Header.Set("X-Tenant-ID", "empty-tenant")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	body := strings.TrimSpace(w.Body.String())
+	if body != "[]" {
+		t.Fatalf("expected '[]' for empty projects, got '%s'", body)
+	}
+}
+
+func TestSavingsTrend_CustomDays(t *testing.T) {
+	store := newFakeStorage()
+	router := newTestRouter(store)
+
+	req := httptest.NewRequest("GET", "/v1/savings/trend?days=7", nil)
+	req.Header.Set("X-Tenant-ID", "tenant-1")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+}
+
+func TestSavingsTrend_InvalidDaysClamped(t *testing.T) {
+	store := newFakeStorage()
+	router := newTestRouter(store)
+
+	req := httptest.NewRequest("GET", "/v1/savings/trend?days=abc", nil)
+	req.Header.Set("X-Tenant-ID", "tenant-1")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 (defaults to 30), got %d", w.Code)
+	}
+}

@@ -1,0 +1,469 @@
+use anyhow::Result;
+use serde::Deserialize;
+use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Verdict {
+    Allow,
+    Warn(String),
+    Block(String),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PolicyConfig {
+    #[serde(default)]
+    pub global: GlobalPolicy,
+    #[serde(default)]
+    pub limits: Vec<LimitRule>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GlobalPolicy {
+    #[serde(default = "default_period")]
+    pub period: String,
+    #[serde(default = "default_warn_pct")]
+    pub warn_at_pct: u32,
+    #[serde(default = "default_block_pct")]
+    pub block_at_pct: u32,
+}
+
+impl Default for GlobalPolicy {
+    fn default() -> Self {
+        Self {
+            period: default_period(),
+            warn_at_pct: default_warn_pct(),
+            block_at_pct: default_block_pct(),
+        }
+    }
+}
+
+fn default_period() -> String {
+    "monthly".into()
+}
+fn default_warn_pct() -> u32 {
+    75
+}
+fn default_block_pct() -> u32 {
+    100
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LimitRule {
+    pub scope: String,
+    pub id: String,
+    pub max_usd: f64,
+    #[serde(default = "default_action")]
+    pub action_on_exceed: String,
+}
+
+fn default_action() -> String {
+    "warn".into()
+}
+
+impl PolicyConfig {
+    pub fn load() -> Self {
+        let candidates = config_paths();
+        for path in &candidates {
+            if path.exists() {
+                if let Ok(cfg) = Self::load_from_file(path) {
+                    return cfg;
+                }
+            }
+        }
+        Self::bundled_default()
+    }
+
+    pub fn load_from_file(path: &Path) -> Result<Self> {
+        let content = std::fs::read_to_string(path)?;
+        let cfg: PolicyConfig = toml::from_str(&content)?;
+        for rule in &cfg.limits {
+            anyhow::ensure!(
+                rule.max_usd >= 0.0,
+                "max_usd must be non-negative for {}:{}",
+                rule.scope,
+                rule.id
+            );
+        }
+        Ok(cfg)
+    }
+
+    pub fn bundled_default() -> Self {
+        Self {
+            global: GlobalPolicy::default(),
+            limits: vec![
+                LimitRule {
+                    scope: "developer".into(),
+                    id: "*".into(),
+                    max_usd: 500.0,
+                    action_on_exceed: "warn".into(),
+                },
+            ],
+        }
+    }
+}
+
+fn config_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    if let Ok(cwd) = std::env::current_dir() {
+        paths.push(cwd.join(".codeflow/budget.toml"));
+    }
+    if let Some(config) = dirs::config_dir() {
+        paths.push(config.join("codeflow/budget.toml"));
+    }
+    paths
+}
+
+pub fn period_days(period: &str) -> i64 {
+    match period {
+        "daily" => 1,
+        "weekly" => 7,
+        "monthly" => 30,
+        "quarterly" => 90,
+        "yearly" => 365,
+        _ => 30,
+    }
+}
+
+pub struct PolicyEngine {
+    config: PolicyConfig,
+}
+
+impl PolicyEngine {
+    pub fn new(config: PolicyConfig) -> Self {
+        Self { config }
+    }
+
+    pub fn from_default() -> Self {
+        Self::new(PolicyConfig::load())
+    }
+
+    pub fn evaluate(
+        &self,
+        developer_id: &str,
+        project_dir: &str,
+        accumulated_dev: f64,
+        accumulated_project: f64,
+    ) -> Verdict {
+        self.evaluate_with_team(developer_id, project_dir, accumulated_dev, accumulated_project, None, 0.0)
+    }
+
+    pub fn evaluate_with_team(
+        &self,
+        developer_id: &str,
+        project_dir: &str,
+        accumulated_dev: f64,
+        accumulated_project: f64,
+        team_id: Option<&str>,
+        accumulated_team: f64,
+    ) -> Verdict {
+        let mut worst_pct: u32 = 0;
+        let mut worst_msg: Option<String> = None;
+
+        let current_team = team_id
+            .map(|s| s.to_string())
+            .or_else(|| std::env::var("CODEFLOW_TEAM").ok());
+
+        for rule in &self.config.limits {
+            let (accumulated, scope_label) = match rule.scope.as_str() {
+                "developer" => {
+                    if rule.id != "*" && rule.id != developer_id {
+                        continue;
+                    }
+                    (accumulated_dev, format!("developer:{}", developer_id))
+                }
+                "project" => {
+                    let proj_name = project_dir
+                        .rsplit(['/', '\\'])
+                        .find(|s| !s.is_empty())
+                        .unwrap_or(project_dir);
+                    if rule.id != "*" && rule.id != proj_name {
+                        continue;
+                    }
+                    (accumulated_project, format!("project:{}", proj_name))
+                }
+                "team" => {
+                    let team = match &current_team {
+                        Some(t) => t.as_str(),
+                        None => continue,
+                    };
+                    if rule.id != "*" && rule.id != team {
+                        continue;
+                    }
+                    (accumulated_team, format!("team:{}", team))
+                }
+                _ => continue,
+            };
+
+            let pct = if rule.max_usd > 0.0 {
+                (accumulated.max(0.0) / rule.max_usd * 100.0).ceil() as u32
+            } else {
+                100
+            };
+
+            let block_pct = self.config.global.block_at_pct;
+            let warn_pct = self.config.global.warn_at_pct;
+
+            if pct >= block_pct && rule.action_on_exceed == "block" {
+                return Verdict::Block(format!(
+                    "Budget exceeded for {} — ${:.2}/${:.2} ({}%)",
+                    scope_label, accumulated, rule.max_usd, pct
+                ));
+            }
+
+            if pct >= warn_pct && pct > worst_pct {
+                worst_pct = pct;
+                worst_msg = Some(format!(
+                    "Budget warning for {} — ${:.2}/${:.2} ({}%)",
+                    scope_label, accumulated, rule.max_usd, pct
+                ));
+            }
+        }
+
+        match worst_msg {
+            Some(msg) => Verdict::Warn(msg),
+            None => Verdict::Allow,
+        }
+    }
+
+    pub fn config(&self) -> &PolicyConfig {
+        &self.config
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_config() -> PolicyConfig {
+        PolicyConfig {
+            global: GlobalPolicy {
+                period: "monthly".into(),
+                warn_at_pct: 75,
+                block_at_pct: 100,
+            },
+            limits: vec![
+                LimitRule {
+                    scope: "developer".into(),
+                    id: "*".into(),
+                    max_usd: 100.0,
+                    action_on_exceed: "warn".into(),
+                },
+                LimitRule {
+                    scope: "project".into(),
+                    id: "myapp".into(),
+                    max_usd: 200.0,
+                    action_on_exceed: "block".into(),
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn test_allow_under_budget() {
+        let engine = PolicyEngine::new(test_config());
+        let v = engine.evaluate("alice", "/home/alice/myapp", 50.0, 100.0);
+        assert_eq!(v, Verdict::Allow);
+    }
+
+    #[test]
+    fn test_warn_at_threshold() {
+        let engine = PolicyEngine::new(test_config());
+        let v = engine.evaluate("alice", "/home/alice/myapp", 80.0, 100.0);
+        assert!(matches!(v, Verdict::Warn(_)));
+    }
+
+    #[test]
+    fn test_block_project_exceeded() {
+        let engine = PolicyEngine::new(test_config());
+        let v = engine.evaluate("alice", "/home/alice/myapp", 50.0, 210.0);
+        assert!(matches!(v, Verdict::Block(_)));
+    }
+
+    #[test]
+    fn test_dev_over_100pct_warn_only() {
+        let engine = PolicyEngine::new(test_config());
+        let v = engine.evaluate("alice", "/home/alice/other", 150.0, 10.0);
+        assert!(matches!(v, Verdict::Warn(_)));
+    }
+
+    #[test]
+    fn test_wildcard_matches_any_dev() {
+        let engine = PolicyEngine::new(test_config());
+        let v = engine.evaluate("bob", "/tmp/x", 80.0, 0.0);
+        assert!(matches!(v, Verdict::Warn(_)));
+    }
+
+    #[test]
+    fn test_specific_project_no_match() {
+        let engine = PolicyEngine::new(test_config());
+        let v = engine.evaluate("alice", "/home/alice/other-project", 10.0, 300.0);
+        assert!(matches!(v, Verdict::Warn(_)) || matches!(v, Verdict::Allow));
+    }
+
+    #[test]
+    fn test_parse_toml() {
+        let toml_str = r#"
+[global]
+period = "weekly"
+warn_at_pct = 80
+block_at_pct = 95
+
+[[limits]]
+scope = "developer"
+id = "*"
+max_usd = 250.0
+action_on_exceed = "warn"
+
+[[limits]]
+scope = "project"
+id = "frontend"
+max_usd = 1000.0
+action_on_exceed = "block"
+"#;
+        let cfg: PolicyConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(cfg.global.period, "weekly");
+        assert_eq!(cfg.global.warn_at_pct, 80);
+        assert_eq!(cfg.limits.len(), 2);
+        assert_eq!(cfg.limits[1].scope, "project");
+    }
+
+    #[test]
+    fn test_bundled_default() {
+        let cfg = PolicyConfig::bundled_default();
+        assert_eq!(cfg.global.period, "monthly");
+        assert!(!cfg.limits.is_empty());
+    }
+
+    #[test]
+    fn test_zero_max_usd() {
+        let cfg = PolicyConfig {
+            global: GlobalPolicy::default(),
+            limits: vec![LimitRule {
+                scope: "developer".into(),
+                id: "*".into(),
+                max_usd: 0.0,
+                action_on_exceed: "block".into(),
+            }],
+        };
+        let engine = PolicyEngine::new(cfg);
+        let v = engine.evaluate("alice", "/tmp", 1.0, 0.0);
+        assert!(matches!(v, Verdict::Block(_)));
+    }
+
+    #[test]
+    fn test_period_days() {
+        assert_eq!(period_days("daily"), 1);
+        assert_eq!(period_days("weekly"), 7);
+        assert_eq!(period_days("monthly"), 30);
+        assert_eq!(period_days("quarterly"), 90);
+        assert_eq!(period_days("yearly"), 365);
+        assert_eq!(period_days("unknown"), 30);
+    }
+
+    // --- TDD Step A: Lock existing behavior ---
+
+    #[test]
+    fn test_budget_evaluate_developer_scope() {
+        let engine = PolicyEngine::new(test_config());
+        assert_eq!(engine.evaluate("alice", "/tmp/x", 10.0, 0.0), Verdict::Allow);
+        assert!(matches!(engine.evaluate("alice", "/tmp/x", 80.0, 0.0), Verdict::Warn(_)));
+        // dev scope is warn-only, so even at 150% it's Warn not Block
+        assert!(matches!(engine.evaluate("alice", "/tmp/x", 150.0, 0.0), Verdict::Warn(_)));
+    }
+
+    #[test]
+    fn test_budget_evaluate_project_scope() {
+        let engine = PolicyEngine::new(test_config());
+        assert_eq!(engine.evaluate("alice", "/home/alice/myapp", 10.0, 100.0), Verdict::Allow);
+        assert!(matches!(engine.evaluate("alice", "/home/alice/myapp", 10.0, 160.0), Verdict::Warn(_)));
+        assert!(matches!(engine.evaluate("alice", "/home/alice/myapp", 10.0, 210.0), Verdict::Block(_)));
+    }
+
+    // --- TDD Step B: Team scope tests ---
+
+    #[test]
+    fn test_budget_evaluate_team_scope_warn() {
+        let cfg = PolicyConfig {
+            global: GlobalPolicy {
+                period: "monthly".into(),
+                warn_at_pct: 75,
+                block_at_pct: 100,
+            },
+            limits: vec![
+                LimitRule {
+                    scope: "team".into(),
+                    id: "backend".into(),
+                    max_usd: 500.0,
+                    action_on_exceed: "warn".into(),
+                },
+            ],
+        };
+        let engine = PolicyEngine::new(cfg);
+        let v = engine.evaluate_with_team("alice", "/tmp", 0.0, 0.0, Some("backend"), 400.0);
+        assert!(matches!(v, Verdict::Warn(_)));
+    }
+
+    #[test]
+    fn test_budget_evaluate_team_scope_block() {
+        let cfg = PolicyConfig {
+            global: GlobalPolicy {
+                period: "monthly".into(),
+                warn_at_pct: 75,
+                block_at_pct: 100,
+            },
+            limits: vec![
+                LimitRule {
+                    scope: "team".into(),
+                    id: "backend".into(),
+                    max_usd: 500.0,
+                    action_on_exceed: "block".into(),
+                },
+            ],
+        };
+        let engine = PolicyEngine::new(cfg);
+        let v = engine.evaluate_with_team("alice", "/tmp", 0.0, 0.0, Some("backend"), 510.0);
+        assert!(matches!(v, Verdict::Block(_)));
+    }
+
+    #[test]
+    fn test_budget_evaluate_team_scope_no_team_set() {
+        let cfg = PolicyConfig {
+            global: GlobalPolicy::default(),
+            limits: vec![
+                LimitRule {
+                    scope: "team".into(),
+                    id: "backend".into(),
+                    max_usd: 500.0,
+                    action_on_exceed: "block".into(),
+                },
+            ],
+        };
+        let engine = PolicyEngine::new(cfg);
+        std::env::remove_var("CODEFLOW_TEAM");
+        let v = engine.evaluate_with_team("alice", "/tmp", 0.0, 0.0, None, 999.0);
+        // No team context → team rule skipped → Allow
+        assert_eq!(v, Verdict::Allow);
+    }
+
+    #[test]
+    fn test_budget_evaluate_team_scope_wildcard() {
+        let cfg = PolicyConfig {
+            global: GlobalPolicy {
+                period: "monthly".into(),
+                warn_at_pct: 75,
+                block_at_pct: 100,
+            },
+            limits: vec![
+                LimitRule {
+                    scope: "team".into(),
+                    id: "*".into(),
+                    max_usd: 1000.0,
+                    action_on_exceed: "warn".into(),
+                },
+            ],
+        };
+        let engine = PolicyEngine::new(cfg);
+        let v = engine.evaluate_with_team("alice", "/tmp", 0.0, 0.0, Some("any-team"), 800.0);
+        assert!(matches!(v, Verdict::Warn(_)));
+    }
+}

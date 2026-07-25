@@ -1,0 +1,33 @@
+strip_ansi = true
+on_empty = "(all tests passed)"
+
+[command]
+name = "pytest"
+
+[[strip_lines]]
+pattern = '^\s*$'
+
+[[strip_lines]]
+pattern = '^=+ warnings summary'
+
+[[strip_lines]]
+pattern = '^\s+/.*site-packages/'
+
+[[replace]]
+pattern = 'PASSED'
+replacement = '✓'
+
+[[replace]]
+pattern = 'FAILED'
+replacement = '✗'
+
+[[replace]]
+pattern = '\d+\.\d+s'
+replacement = 'X.Xs'
+
+[head_tail]
+head = 10
+tail = 30
+separator = "\n... ({omitted} lines omitted) ...\n"
+
+max_lines = 100

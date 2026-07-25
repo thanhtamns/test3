@@ -1,0 +1,56 @@
+---
+title: Autonomous Evolution Hook
+description: >-
+  SessionStart hook that auto-triggers knowledge hunting, scheduled evolution,
+  batch prediction verification — eliminating 4 manual gaps in evolution
+  pipeline
+status: completed
+priority: P1
+branch: master
+tags:
+  - evolution
+  - automation
+  - hooks
+blockedBy: []
+blocks: []
+created: '2026-05-09T12:12:56.996Z'
+createdBy: 'ck:plan'
+source: skill
+---
+
+# Autonomous Evolution Hook
+
+## Overview
+
+Create 1 new SessionStart hook + fix 1 existing hook to make master_investments' evolution pipeline fully autonomous. Currently 5 evolution tasks require manual `/evolve`, `/sync-knowledge`, etc. This plan auto-triggers the Python-only tasks via hook-spawned detached processes.
+
+## Problem
+
+| Manual Task | Script | Current Trigger |
+|---|---|---|
+| Knowledge hunting | `auto_evolve.py` | Never auto-triggered |
+| Scheduled evolution | `scheduled-evolution-loop.py` | Never auto-triggered |
+| Batch prediction verify | `batch-auto-verify.py` | Never auto-triggered |
+| Persona knowledge refresh | `knowledge-auto-refresh.cjs` | Runs but only `--list-all`, doesn't refresh |
+
+## Solution
+
+- **Phase 1:** Create `evolution-auto-runner.cjs` — checks 4 staleness conditions, spawns Python scripts detached
+- **Phase 2:** Fix `knowledge-auto-refresh.cjs` — replace `--list-all` with actual refresh logic
+- **Phase 3:** Register hook in `settings.json` + end-to-end test
+
+## Phases
+
+| Phase | Name | Status |
+|-------|------|--------|
+| 1 | [Create evolution-auto-runner.cjs](./phase-01-create-evolution-auto-runner-cjs.md) | Completed |
+| 2 | [Fix knowledge-auto-refresh.cjs](./phase-02-fix-knowledge-auto-refresh-cjs.md) | Completed |
+| 3 | [Register hook + test](./phase-03-register-hook-test.md) | Completed |
+
+## Constraints
+
+- All hooks exit 0 (fail-open)
+- All spawned processes detached + unref'd
+- Lock files expire after 10 minutes
+- Log to `.logs/` directory
+- No LLM dependency — Python scripts only

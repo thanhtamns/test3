@@ -1,0 +1,120 @@
+# Original Source Verification & Training Data Extraction
+
+**Date:** 2026-05-16 | **Source:** School of Hard Knocks → @toithanhcongbancungthe (VN dub)
+**Purpose:** Trace original interviews, verify interviewees, extract high-value intelligence for master_investments training
+
+---
+
+## SOURCE CHANNEL CONFIRMED
+
+**School of Hard Knocks** by James Dumoulin
+- YouTube: https://www.youtube.com/@theschoolofhardknocks
+- 17M followers across platforms, $6M+ projected annual revenue
+- Format: street interviews with wealthy people in Beverly Hills, Dubai, Miami, etc.
+- Notable guests: Mark Cuban, Robert Herjavec, Dave Ramsey, Grant Cardone, Shaq, Tom Brady
+
+Vietnamese channel @toithanhcongbancungthe dubs these interviews without attribution.
+
+---
+
+## INTERVIEWEE VERIFICATION MATRIX
+
+| Video | Person | Verified? | Net Worth | Claim Issues |
+|-------|--------|-----------|-----------|--------------|
+| #1 | **Neil Patel** (NP Digital) | [K] YES | $30-100M | None — claims check out |
+| #2 | **Robert Herjavec** (Cyderes/Shark Tank) | [K] YES | $300-600M | None — tax drag math correct |
+| #3 | Unknown ("Gis") Dubai RE | [?] NO | Unknown | Cannot verify — name not indexed |
+| #4 | **Muhammad BinGhatti** (Binghatti Holding) | [K] YES | $2.5-10.9B | VN dub implies self-made; actually father's company |
+| #5 | Unknown German entrepreneur | [?] NO | Unknown | $69M claim unverifiable without name |
+| #6 | **Maximillian White** | [T] PARTIAL | UNVERIFIED | NOT on Forbes/Bloomberg. "Billionaire" = projected valuation |
+| #7 | **Stephen Cloobeck** (Diamond Resorts) | [K] YES | ~$500M | VN dub: "$3.3B" sale — actual: $2.2B to Apollo |
+| #8 | **Samuel Onuha** (ICON Amsterdam) | [T] PARTIAL | DISPUTED | Revenue claims questioned by investigation |
+| #9 | **Ahmed Ben Chaibah** (AquaFun) | [K] YES | Multimillionaire | 617 rejections confirmed; Guinness holder |
+
+**Result: 5/9 fully verified, 2/9 partially verified (disputed claims), 2/9 unidentifiable**
+
+---
+
+## CLAIM INFLATION DETECTED IN VN DUB
+
+1. **Cloobeck sale: $3.3B → actual $2.2B** (50% inflation)
+2. **BinGhatti: presented as self-made → actually family company since 2008**
+3. **Maximillian White: "billionaire" → projected valuation, not verified wealth**
+4. **Samuel Onuha: "$30M revenue" → questioned by investigation as potentially fabricated**
+
+**Pattern:** Vietnamese dub channels systematically inflate numbers and strip context. Never use as primary source.
+
+---
+
+## HIGH-VALUE VERIFIED INTELLIGENCE (Training-Ready)
+
+### Tier 1: Mathematical/Verifiable Mechanisms (training_value ≥ 8)
+
+**1. Compound Interest Tax Drag** (Herjavec) — Score: 9/10
+- $1M × 0.75^10 cycles = ~$56K. Each 25% tax hit on compounding destroys 94.4% of value over 10 cycles.
+- Application: Any compound growth strategy MUST account for tax drag. Tax-deferred vehicles (IRA, opportunity zones, 1031 exchange) are mathematically critical, not just nice-to-have.
+- → Add to `mental-models.json` under `tax_optimization`
+
+**2. Branded Residences Model** (BinGhatti) — Score: 8/10
+- Partner luxury brand (Bugatti, Mercedes) → access global audience + premium pricing + building IS marketing
+- Sukuk financing: $621M + $500M on Nasdaq Dubai/LSE for Islamic-compliant capital
+- AED 3.5B → 70B portfolio growth through brand partnership strategy
+- → Add to `domain-heuristics/real_estate`
+
+**3. Micro-Influencer ROI** (Patel) — Score: 8/10
+- Micro > macro for ROI: lower CPM, higher engagement, >30% ROI documented
+- SBA 7(a) + seller financing for boring business acquisition without large capital
+- → Add to `domain-heuristics/marketing`
+
+### Tier 2: Pattern-Level Intelligence (training_value 5-7)
+
+**4. COVID Supply Chain Pivot** (German entrepreneur) — Score: 6/10
+- Same logistics infrastructure (China operations), different product during demand spike
+- Timing arbitrage: existing supply chain + new demand = first-mover advantage
+- → Add to `reflex-training-corpus` under `timing_arbitrage`
+
+**5. Banking Relationship Moat** (Cloobeck) — Score: 7/10
+- In RE development, banking relationships = access to capital that competitors can't match
+- Silence as negotiation weapon: let other party fill the void
+- → Add to `domain-heuristics/negotiation`
+
+### Tier 3: Anti-Pattern Training (what NOT to trust)
+
+**6. Survivorship Bias Pattern** — Aquaman's 617 rejections
+- Train system to auto-flag "X rejections before success" narratives
+- Millions fail with same rejection counts; story only exists because of survival
+
+**7. Projected Valuation = Net Worth** — Maximillian White pattern
+- Train system to distinguish: company projected valuation ≠ personal verified net worth
+- Flag anyone claiming billionaire status without Forbes/Bloomberg listing
+
+**8. Escalating Revenue Claims** — Samuel Onuha pattern
+- $6M → $20M → $30M → €40M within months across different interviews
+- Train system to flag revenue claims that grow faster than business cycles allow
+
+---
+
+## FILES CREATED/UPDATED
+
+| File | Location | Purpose |
+|------|----------|---------|
+| `verified-intelligence-school-of-hard-knocks.json` | `master_investments/data/training/` | Full verified intelligence with per-claim confidence tags |
+| `tracked-channels.json` | `master_investments/data/training/` | Added School of Hard Knocks + toithanhcongbancungthe entries |
+| This report | `master_investments_mmo/plans/reports/` | Summary for human review |
+
+---
+
+## NEXT STEPS (Manual)
+
+1. **Integrate Tier 1 mechanisms** into mental-models.json and domain-heuristics/
+2. **Add anti-patterns** to verification-toolkit.md (projected valuation, escalating claims)
+3. **Cherry-pick more School of Hard Knocks interviews** — filter for guests with SEC filings or Forbes entries only
+4. **Video #3 and #5** remain unidentified — could be identified by watching original YouTube video "Asking Dubai Billionaires How They Got RICH!" (ID: Latp0XujNXk) directly
+
+---
+
+## UNRESOLVED
+
+- Video #3 "Gis" identity — not indexed in any text source. Likely minor Dubai RE figure.
+- Video #5 German entrepreneur name — described in video summary but unnamed. Promotional products → medical supplies pivot during COVID, 22 years experience, 8 businesses.
+- Both are in the compilation video "Asking Dubai Billionaires How They Got RICH!" and would require watching the video directly to identify.

@@ -1,0 +1,36 @@
+package api
+
+import (
+	"log/slog"
+	"net/http"
+
+	"github.com/codeflow-dev/codeflow/cloud/internal/clickhouse"
+)
+
+func NewRouter(ch *clickhouse.Client, logger *slog.Logger) http.Handler {
+	mux := http.NewServeMux()
+
+	h := &handler{ch: ch, logger: logger}
+
+	mux.HandleFunc("POST /v1/events", h.handleIngestEvents)
+	mux.HandleFunc("GET /v1/overview", h.handleOverview)
+	mux.HandleFunc("GET /healthz", handleHealthz)
+
+	return withLogging(logger, mux)
+}
+
+func handleHealthz(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status":"ok"}`))
+}
+
+func withLogging(logger *slog.Logger, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		logger.Info("request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"remote", r.RemoteAddr,
+		)
+		next.ServeHTTP(w, r)
+	})
+}

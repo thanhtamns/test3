@@ -1,0 +1,117 @@
+"""
+MicroQueryGenerator — fills dimension templates with context to produce
+concrete micro-factual queries. Zero LLM calls.
+"""
+
+from dataclasses import dataclass
+from typing import Optional
+
+from .dimension_registry import Dimension
+
+
+@dataclass
+class MicroQuery:
+    text: str
+    dimension: str
+    expected_type: str
+    verification_hint: str
+
+    def to_dict(self) -> dict:
+        return {
+            "text": self.text,
+            "dimension": self.dimension,
+            "expected_type": self.expected_type,
+            "verification_hint": self.verification_hint,
+        }
+
+
+EXPECTED_TYPE_HINTS: dict[str, tuple[str, str]] = {
+    "average": ("number", "Cross-check with 2+ sources"),
+    "typical": ("number", "Look for median, not mean"),
+    "top": ("list", "Verify each entity exists"),
+    "who": ("list", "Verify names and roles"),
+    "what %": ("number", "Require source with sample size"),
+    "%": ("number", "Require source with sample size"),
+    "how to": ("text", "Check for actionable steps"),
+    "how many": ("number", "Cross-check with official data"),
+    "is ": ("boolean", "Require evidence for yes/no"),
+    "are there": ("boolean", "Require evidence for yes/no"),
+    "what is": ("text", "Look for definitive answer"),
+    "list": ("list", "Verify each item"),
+    "steps": ("list", "Verify sequence makes sense"),
+    "cost": ("number", "Check currency and date"),
+    "price": ("number", "Check currency and date"),
+    "salary": ("number", "Check currency, location, date"),
+    "revenue": ("number", "Check currency and date"),
+    "margin": ("number", "Verify numerator/denominator"),
+    "rate": ("number", "Require sample size"),
+}
+
+MAX_QUERIES_PER_DIMENSION = 5
+MAX_TOTAL_QUERIES = 40
+
+
+class MicroQueryGenerator:
+    def generate(self, dimension: Dimension, context: dict) -> list[MicroQuery]:
+        queries = []
+        for template in dimension.templates[:MAX_QUERIES_PER_DIMENSION]:
+            filled = self._fill_template(template, context)
+            if not filled:
+                continue
+            expected_type, hint = self._infer_expected_type(filled)
+            queries.append(MicroQuery(
+                text=filled,
+                dimension=dimension.name,
+                expected_type=expected_type,
+                verification_hint=hint,
+            ))
+        return queries
+
+    def generate_batch(self, dimensions: list[Dimension], context: dict) -> list[MicroQuery]:
+        all_queries: list[MicroQuery] = []
+        for dim in dimensions:
+            dim_queries = self.generate(dim, context)
+            all_queries.extend(dim_queries)
+            if len(all_queries) >= MAX_TOTAL_QUERIES:
+                break
+        return all_queries[:MAX_TOTAL_QUERIES]
+
+    def _fill_template(self, template: str, context: dict) -> Optional[str]:
+        industry = context.get("industry", "the industry")
+        role = context.get("target_role", "professionals")
+        metric = self._infer_metric(industry, context)
+
+        placeholders = {
+            "{target}": context.get("target_role") or context.get("reference_person") or context.get("target", role),
+            "{industry}": industry,
+            "{market}": context.get("market", "global"),
+            "{role}": role,
+            "{metric}": metric,
+            "{current_position}": context.get("current_position", "entry-level"),
+            "{target_age}": str(context.get("target_age", 30)),
+            "{reference_person}": context.get("reference_person", role),
+        }
+
+        result = template
+        for placeholder, value in placeholders.items():
+            result = result.replace(placeholder, str(value))
+
+        if "{" in result:
+            return None
+
+        return result
+
+    def _infer_metric(self, industry: str, context: dict) -> str:
+        if context.get("metric"):
+            return context["metric"]
+        finance_industries = {"venture capital", "investment management", "private equity", "hedge fund"}
+        if industry.lower() in finance_industries:
+            return "AUM"
+        return context.get("money_amounts", ["revenue"])[0] if context.get("money_amounts") else "revenue"
+
+    def _infer_expected_type(self, query_text: str) -> tuple[str, str]:
+        query_lower = query_text.lower()
+        for keyword, (etype, hint) in EXPECTED_TYPE_HINTS.items():
+            if keyword in query_lower:
+                return etype, hint
+        return "text", "Verify with authoritative source"

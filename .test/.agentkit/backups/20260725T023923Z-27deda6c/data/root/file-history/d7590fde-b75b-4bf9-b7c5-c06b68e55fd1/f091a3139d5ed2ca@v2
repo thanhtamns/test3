@@ -1,0 +1,141 @@
+---
+phase: 1
+title: "Capital-Path Classifier Rewrite"
+status: pending
+priority: P1
+effort: "3h"
+dependencies: []
+---
+
+# Phase 1: Capital-Path Classifier Rewrite
+
+## Overview
+
+Rewrite `capital-path-classifier.py` from labor-routing to capital-deployment routing. TIER_0 currently hardcodes `no_product_dev: True` and `cash_first: True` — banning product creation for low-capital founders. Replace with `deploy_allocation` logic that splits capital into micro-asset bets.
+
+## Requirements
+
+- Functional: TIER_0 produces `deployment_budget`, `asset_slots` (3-5), `per_slot_budget`, `kill_days` (30) instead of labor constraints
+- Functional: Remove `no_product_dev: True`, `cash_first: True` from TIER_0 and all subtracks
+- Functional: New TIER_0 subtracks based on deployment strategy, not leverage score alone
+- Non-functional: Backward compat — old profiles still classify without error. New fields default null
+
+## Architecture
+
+Current TIER_0 subtracks route by leverage_access_score:
+- CASHFLOW_SEED (0-3): `no_product_dev=True, cash_first=True` — LABOR
+- LEVERAGE_ENTRY (4-6): `ai_assisted_product=True, parallel_earning=True` — HYBRID
+- LEVERAGE_SPRINT (7-10): `product_first=True` — ASSET
+
+**New design:** All 3 subtracks produce `deployment_budget` + `asset_allocation`:
+
+```python
+TIER_0_SUBTRACKS = {
+    "MICRO_DEPLOY": {
+        "leverage_range": (0, 3),
+        "track": "MICRO_DEPLOY",
+        "target_range": (500, 2000),
+        "timeline_days": (30, 90),
+        "primary_hypothesis": "deploy_micro_assets",
+        "constraints": {
+            "max_per_asset": 200,
+            "min_assets": 3,
+            "max_founder_hours_post_setup": 2,  # per week
+            "kill_days": 30,
+            "sleep_test_required": True,
+        },
+        "decision_question_codes": [
+            "DEPLOY_BUDGET", "RISK_CAPITAL", "ASSET_SCAN",
+            "ROI_TARGET", "KILL_CRITERIA", "LEVERAGE",
+        ],
+    },
+    "ASSET_BUILDER": {
+        "leverage_range": (4, 6),
+        "track": "ASSET_BUILDER",
+        "target_range": (1000, 5000),
+        "timeline_days": (30, 120),
+        "primary_hypothesis": "build_and_deploy_assets",
+        "constraints": {
+            "max_per_asset": 500,
+            "min_assets": 2,
+            "max_founder_hours_post_setup": 5,
+            "kill_days": 30,
+            "sleep_test_required": True,
+        },
+        "decision_question_codes": [
+            "DEPLOY_BUDGET", "ASSET_TYPE", "BUILD_VS_BUY",
+            "ROI_TARGET", "COMPOUND_MECHANISM", "LEVERAGE",
+        ],
+    },
+    "LEVERAGE_SPRINT": {
+        "leverage_range": (7, 10),
+        "track": "LEVERAGE_SPRINT",
+        "target_range": (2000, 10000),
+        "timeline_days": (7, 60),
+        "primary_hypothesis": "ship_leverage_asset_first",
+        "constraints": {
+            "max_per_asset": None,  # full budget on one asset OK
+            "min_assets": 1,
+            "max_founder_hours_post_setup": 2,
+            "kill_days": 14,
+            "sleep_test_required": True,
+        },
+        "decision_question_codes": [
+            "SHIP_7D", "FIRST_10_CUSTOMERS", "PRICE_POINT",
+            "DISTRIBUTION", "KILL_14D", "LEVERAGE",
+        ],
+    },
+}
+```
+
+Also update `CAPITAL_TIERS["TIER_0"]` default constraints to remove labor locks:
+
+```python
+"TIER_0": {
+    "range": (0, 1001),
+    "track": "MICRO_DEPLOY",  # was CASHFLOW_SEED
+    "subtracks": True,
+    "target_range": (500, 2000),
+    "timeline_days": (30, 90),
+    "primary_hypothesis": "deploy_micro_assets",  # was earn_cash_then_leverage
+    "constraints": {
+        "sleep_test_required": True,     # NEW: assets must pass sleep test
+        "max_founder_hours_post_setup": 2,  # NEW: <2h/week post setup
+        "deploy_allocation": True,       # NEW: split capital into slots
+    },
+    "decision_question_codes": [
+        "DEPLOY_BUDGET", "RISK_CAPITAL", "ASSET_SCAN",
+        "ROI_TARGET", "KILL_CRITERIA", "LEVERAGE",
+    ],
+},
+```
+
+## Related Code Files
+
+- Modify: `.claude/skills/business/transaction-layer/nui-hunter/scripts/capital-path-classifier.py`
+- Modify: tests referencing CASHFLOW_SEED track name (grep for old names)
+
+## Implementation Steps
+
+1. Read current `capital-path-classifier.py` (314 lines)
+2. Replace `TIER_0_SUBTRACKS` dict: CASHFLOW_SEED→MICRO_DEPLOY, LEVERAGE_ENTRY→ASSET_BUILDER, keep LEVERAGE_SPRINT
+3. Update `TRACK_ALIASES` to map old names: `"CASHFLOW_SEED": "MICRO_DEPLOY", "SERVICE_ENTRY": "MICRO_DEPLOY"`
+4. Replace TIER_0 in `CAPITAL_TIERS`: remove `no_product_dev`, `cash_first`, add `sleep_test_required`, `deploy_allocation`, `max_founder_hours_post_setup`
+5. Update `classify()` output to include `deployment_budget` (= capital_usd), `asset_slots` (from constraints.min_assets), `per_slot_budget` (= capital_usd / min_assets)
+6. Verify TIER_1/2/3 unchanged (only TIER_0 affected)
+7. Run existing tests — expect some failures from renamed tracks
+
+## Success Criteria
+
+- [ ] TIER_0 output has `deployment_budget`, `asset_slots`, `per_slot_budget` fields
+- [ ] `no_product_dev` and `cash_first` do NOT appear anywhere in file
+- [ ] `sleep_test_required: True` present in all TIER_0 subtracks
+- [ ] `max_founder_hours_post_setup` <= 5 for all TIER_0 subtracks
+- [ ] Old track name CASHFLOW_SEED still resolves via TRACK_ALIASES
+- [ ] TIER_1/2/3 outputs identical to before (no regression)
+- [ ] CLI test: `--profile-json '{"capital_usd": 500}'` → track=MICRO_DEPLOY
+
+## Risk Assessment
+
+- **Track rename breaks downstream:** TRACK_ALIASES handles backward compat. Stage0 spec uses tier/track from classifier output — if spec checks `track == "CASHFLOW_SEED"` anywhere, alias resolves it
+- **leverage.py import failure:** Already handled with try/except fallback. No change needed
