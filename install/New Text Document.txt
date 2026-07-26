@@ -1,0 +1,25 @@
+$akBin = Join-Path $env:USERPROFILE "bin"
+  New-Item -ItemType Directory -Force -Path $akBin | Out-Null
+
+  # Backup nếu đã có bản cũ
+  if (Test-Path "$akBin\ak.exe") {
+      Copy-Item "$akBin\ak.exe" "$akBin\ak.exe.bak" -Force
+  }
+
+  Copy-Item "E:\ak.exe" "$akBin\ak.exe" -Force
+
+  # Thêm ~/bin vào User PATH nếu chưa có
+  $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+  if (($userPath -split ";") -notcontains $akBin) {
+      $newPath = if ($userPath) { "$userPath;$akBin" } else { $akBin }
+      [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
+  }
+
+  Mở PowerShell mới và kiểm tra:
+
+  ak --version
+  ak doctor
+
+  Kết quả cần là:
+
+  ak 2.5.0-beta.13
